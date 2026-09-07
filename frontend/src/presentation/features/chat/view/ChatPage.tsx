@@ -175,7 +175,9 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
 
   const timeline = (
     <div
-      className={chatPageStyles.timeline}
+      className={
+        layout === 'workspace' ? chatPageStyles.workspaceTimeline : chatPageStyles.timeline
+      }
       ref={timelineRef}
     >
       <p
@@ -267,8 +269,8 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   if (layout === 'workspace') {
     // 로그인 뒤의 작업 화면은 대화와 하단 입력창으로 구성합니다.
     return (
-      <main className={chatPageStyles.page}>
-        <section className={chatPageStyles.workspace}>
+      <main className={chatPageStyles.workspacePage}>
+        <section className={chatPageStyles.workspaceShell}>
           {timeline}
           <form className={chatPageStyles.composerWorkspace} onSubmit={handleSubmit}>
             {readinessNotice}

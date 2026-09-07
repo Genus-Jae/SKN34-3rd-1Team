@@ -44,13 +44,30 @@ pnpm dev
 
 ## 화면과 현재 동작
 
-| 경로 | 기능 |
-|---|---|
-| `/` | 자연어 기업 조건 해석·제안 확인 검색, 결과 카드, 새 대화 시작 |
-| `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
-| `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
-| `/examples/sample-item/hook` | React Hook Form·로컬 요청 상태 예제 |
-| `/examples/sample-item/redux` | Redux 상태 유지 예제 |
+로그인 전 화면은 공용 헤더를, 로그인 뒤 작업 화면은 사이드바를 씁니다. 로그인·회원가입은 둘 다 쓰지 않는 단독 화면입니다.
+
+| 경로 | 껍데기 | 기능 |
+|---|---|---|
+| `/` | 헤더 | 자연어 기업 조건 해석·제안 확인 검색, 결과 카드, 새 대화 시작 |
+| `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 헤더 | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
+| `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
+| `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
+| `/examples/sample-item/redux` | 헤더 | Redux 상태 유지 예제 |
+| `/login` | 없음 | 이메일·비밀번호 로그인 입력 |
+| `/signup` | 없음 | 이메일·비밀번호만 받는 회원가입 입력 |
+| `/chat` | 사이드바 | 로그인 뒤 작업 채팅 |
+| `/partners` | 사이드바 | 파트너 모집 목록·필터·프로필 기반 추천 |
+| `/partners/new` | 사이드바 | 모집글 작성 |
+| `/partners/detail` | 사이드바 | 모집글 상세·매칭 근거·참여 제안 |
+| `/profile` | 사이드바 | 기업 프로필, 공개 범위, 완성도 체크리스트 |
+| `/admin/members` | 사이드바 | 어드민 회원·기업 목록과 운영 규칙 |
+
+`/login` `/signup` `/partners` `/profile` `/admin/members`는 화면만 있는 단계입니다. 계정·모집·회원 API가
+없어 ViewModel이 예시 값을 돌려주고 제출은 화면 이동만 합니다. 아직 화면이 없는 관심 공고함은 사이드바에서
+링크가 아니라 "준비 중" 표시로 둡니다. 새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
+
+사이드바와 각 화면의 머리말은 화면에 고정하고 본문 칸만 스크롤합니다. 작업 채팅의 입력창은 화면 아래에
+붙어 있고 대화만 그 위에서 스크롤됩니다. 한 칸으로 접히는 좁은 화면에서는 고정을 풀어 문서 전체가 스크롤됩니다.
 
 채팅 화면의 접수 상태는 기본 `acceptingOnly=true`이며 사용자가 대화로 전체(예정·마감·상태 미확인 포함)를
 요청하고 제안을 확인해 변경할 수 있습니다. 빈 검색어 최신 목록 조회는 별도 UI로 연결하지 않았습니다. 검색 제안은 입력창을
@@ -146,7 +163,11 @@ src/
 ├── presentation/features/chat/ # 채팅 검색 View, 페이지 ViewModel, 내부 hooks, chat slice
 ├── presentation/features/support-program-detail/ # 상세·질문 페이지와 각 페이지 ViewModel
 ├── presentation/features/sample-item/ # 상태관리 비교 예제
-├── presentation/shared/        # 앱 공용 헤더, Core API 상태 표시, 지원사업 공통 오류 안내
+├── presentation/features/auth/ # 로그인·회원가입 View와 각 페이지 ViewModel
+├── presentation/features/partner-recruitment/ # 모집 목록·상세·작성 View와 각 페이지 ViewModel
+├── presentation/features/company-profile/ # 기업 프로필 View와 ViewModel
+├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
+├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture
 ```
@@ -167,8 +188,12 @@ UseCase·Repository 경계를 거치되 로딩·결과 상태를 ViewModel의 �
 페이지 ViewModel은 `hooks/useSupportProgramChat`과 `hooks/useSupportProgramSearchReadiness`를
 조합해 확인 검색·검색 재시도의 준비 상태를 검사합니다. 해석 제출·다시 해석은 준비 상태와 독립적입니다. 채팅 Hook은 Redux 상태와 해석·검색·취소·
 시간 제한을 관리하고, 준비 상태 Hook은 상태 조회와 준비 중 polling을 담당합니다.
-IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 소유합니다. 사이드바는 없으며 브랜드·화면 이동은
-`presentation/shared/app-header`의 공용 헤더가 모든 화면 위에서 맡습니다. 새 검색 시작·현재 적용 조건 요약은
+IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 소유합니다. 로그인 전 화면의 브랜드·화면 이동은
+`presentation/shared/app-header`의 공용 헤더가 맡고, 로그인 뒤 작업 화면은 `presentation/shared/app-sidebar`의
+`WorkspaceLayout`이 헤더 대신 사이드바를 놓습니다. 어떤 화면이 어느 껍데기를 쓰는지는 `App`의 라우트가 결정합니다.
+파트너 모집·기업 프로필·어드민이 함께 쓰는 카드·태그·표·버튼 스타일과 켬·끔 스위치는
+`presentation/shared/workspace`에 둡니다.
+새 검색 시작·현재 적용 조건 요약은
 채팅 입력창 위에 간결하게 둡니다. 정상 공고 데이터 통계 패널은 표시하지 않습니다.
 화면 전용 상태와 DOM ref는 Redux에 넣지 않고 Hook 로컬로 유지합니다.
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷을 둡니다.
