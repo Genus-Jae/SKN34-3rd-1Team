@@ -100,14 +100,14 @@ MVVM은 Model·View·ViewModel의 책임을 나누는 화면 설계입니다. �
 | 역할 | 실제 코드 | 담당 작업 |
 |---|---|---|
 | View | [ChatPage.tsx](../../frontend/src/presentation/features/chat/view/ChatPage.tsx) | 입력창·결과 카드 렌더링, 사용자 이벤트 연결 |
-| 페이지 ViewModel | [useChatPageViewModel.ts](../../frontend/src/presentation/features/chat/viewmodel/useChatPageViewModel.ts) | 채팅·준비 상태 조합, 검색 가능 여부 검사, 사이드바·IME·포커스·스크롤, 화면 이벤트 제공 |
+| 페이지 ViewModel | [useChatPageViewModel.ts](../../frontend/src/presentation/features/chat/viewmodel/useChatPageViewModel.ts) | 채팅·준비 상태 조합, 검색 가능 여부 검사, IME·스크롤, 화면 이벤트 제공 |
 | 내부 채팅 Hook | [useSupportProgramChat.ts](../../frontend/src/presentation/features/chat/hooks/useSupportProgramChat.ts) | `draft`, `messages`, `isSearching` 등 Redux 상태와 검색·취소·시간 제한 등 요청 수명 관리 |
 | 내부 준비 상태 Hook | [useSupportProgramSearchReadiness.ts](../../frontend/src/presentation/features/chat/hooks/useSupportProgramSearchReadiness.ts) | 검색 준비 상태 조회와 준비 중 polling 관리 |
 | Model 측 | Domain 모델·UseCase·Repository | 검색 조건과 공고 데이터, 검색·상세 조회 실행 |
 
 View는 페이지 ViewModel 하나가 반환한 상태를 렌더링하고 사용자 이벤트를 반환된 handler에 연결합니다.
 페이지 ViewModel은 두 내부 Hook을 조합하며, 검색 준비 상태를 확인한 뒤 채팅 Hook의 `submitMessage()`를
-호출합니다. 채팅 Hook은 UseCase 실행과 요청 수명을 관리합니다. 사이드바 상태·IME 조합·스크롤 DOM 참조와
+호출합니다. 채팅 Hook은 UseCase 실행과 요청 수명을 관리합니다. IME 조합·스크롤 DOM 참조와
 포커스 제어도 페이지 ViewModel에 두되, 화면 전용 상태와 ref는 Redux가 아닌 Hook 로컬로 유지합니다.
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷만 남깁니다.
 

@@ -34,10 +34,6 @@ type ReadinessHook = ReturnType<typeof useSupportProgramSearchReadiness>
 beforeEach(() => {
   hookMocks.chat.mockReturnValue(createChatHook())
   hookMocks.readiness.mockReturnValue(createReadinessHook())
-  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  }))
 })
 
 afterEach(() => {
@@ -57,7 +53,6 @@ describe('useChatPageViewModel', () => {
     const { result } = renderHook(() => useChatPageViewModel())
     const submitEvent = createSubmitEvent()
 
-    act(() => result.current.openSidebar())
     act(() => {
       result.current.handleSubmit(submitEvent.event)
       result.current.handleRetrySearch()
@@ -74,11 +69,10 @@ describe('useChatPageViewModel', () => {
       canSearch: false,
       canRetrySearch: false,
       isReadyToSubmit: true,
-      isSidebarOpen: false,
     })
   })
 
-  it('검색 가능 상태에서 내부 훅에 위임하고 추천 선택 후 사이드바를 닫는다', () => {
+  it('검색 가능 상태에서 내부 훅에 위임한다', () => {
     const chat = createChatHook({
       canRetrySearch: true,
       isReadyToSubmit: true,
@@ -97,11 +91,8 @@ describe('useChatPageViewModel', () => {
     expect(chat.submitMessage).toHaveBeenCalledOnce()
     expect(chat.retrySearch).toHaveBeenCalledOnce()
 
-    act(() => result.current.openSidebar())
-    expect(result.current.isSidebarOpen).toBe(true)
     act(() => result.current.handleSelectSuggestion('서울 AI'))
     expect(chat.selectSuggestion).toHaveBeenCalledWith('서울 AI')
-    expect(result.current.isSidebarOpen).toBe(false)
 
     act(() => result.current.refetchReadiness())
     expect(readiness.refetch).toHaveBeenCalledOnce()
@@ -133,18 +124,15 @@ describe('useChatPageViewModel', () => {
     })
   })
 
-  it('검색 불가 상태에서도 새 대화를 시작하고 사이드바를 닫는다', () => {
+  it('검색 불가 상태에서도 새 대화를 시작한다', () => {
     const chat = createChatHook()
     hookMocks.chat.mockReturnValue(chat)
     hookMocks.readiness.mockReturnValue(createReadinessHook({ canSearch: false }))
     const { result } = renderHook(() => useChatPageViewModel())
 
-    act(() => result.current.openSidebar())
-    expect(result.current.isSidebarOpen).toBe(true)
     act(() => result.current.handleStartNewConversation())
 
     expect(chat.startNewConversation).toHaveBeenCalledOnce()
-    expect(result.current.isSidebarOpen).toBe(false)
   })
 
   it('검색 중·0건·성공 결과를 스크린 리더 안내로 구분한다', () => {

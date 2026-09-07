@@ -76,7 +76,7 @@ READY 수신 후에는 이전 추가 질문 문맥을 종료합니다. 입력을
 접수 상태 변경은 제안과 미확정 초안을 모두 무효화합니다. 해석은 공고 준비 상태와 독립적으로 허용하고 실제 확인 검색만
 readiness로 차단합니다. 준비 장애·추가 질문·해석 실패·공고 0건을 서로 구분하며 단문 검색 fallback은 없습니다.
 해석 응답은 필수 필드, READY/질문 일관성, 실제 날짜, UTF-16 길이, 문자 규칙, 변경 필드 순서·중복을 Zod로 검증합니다.
-검색 이력에는 확인한 검색 의도와 당시 조건을 복사하며, 사이드바의 **보낸 메시지**는 검색 건수가 아니라 사용자 메시지 수입니다.
+검색 이력에는 확인한 검색 의도와 당시 조건을 복사하며, 채팅 헤더의 **보낸 메시지**는 검색 건수가 아니라 사용자 메시지 수입니다.
 해석과 확인 검색은 요청 제한에서 각각 한 건으로 계산됩니다. [전체 C02 계약](../docs/conversation-condition-update.md)을 참고하세요.
 
 확인한 제안의 실제 검색은 기존 `POST /api/v1/support-programs/search`에
@@ -138,7 +138,7 @@ src/
 ├── presentation/features/chat/ # 채팅 검색 View, 페이지 ViewModel, 내부 hooks, chat slice
 ├── presentation/features/support-program-detail/ # 상세·질문 페이지와 각 페이지 ViewModel
 ├── presentation/features/sample-item/ # 상태관리 비교 예제
-├── presentation/shared/        # Core API 상태 표시, 지원사업 공통 오류 안내
+├── presentation/shared/        # 앱 공용 헤더, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture
 ```
@@ -159,13 +159,14 @@ UseCase·Repository 경계를 거치되 로딩·결과 상태를 ViewModel의 �
 페이지 ViewModel은 `hooks/useSupportProgramChat`과 `hooks/useSupportProgramSearchReadiness`를
 조합해 확인 검색·검색 재시도의 준비 상태를 검사합니다. 해석 제출·다시 해석은 준비 상태와 독립적입니다. 채팅 Hook은 Redux 상태와 해석·검색·취소·
 시간 제한을 관리하고, 준비 상태 Hook은 상태 조회와 준비 중 polling을 담당합니다.
-사이드바 상태, IME 조합, 포커스·스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 소유합니다.
+IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 소유합니다. 사이드바는 없으며 브랜드·화면 이동은
+`presentation/shared/app-header`의 공용 헤더가 모든 화면 위에서 맡고, 새 대화 시작·공고 데이터 요약은 채팅 화면 헤더에 둡니다.
 화면 전용 상태와 DOM ref는 Redux에 넣지 않고 Hook 로컬로 유지합니다.
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷을 둡니다.
 
 | 소유자 | 현재 담당 상태 | 화면 이동·새로고침 동작 |
 |---|---|---|
-| React 로컬 상태 | 사이드바, 상세 조회, Health, Hook SampleItem | 해당 화면이 unmount되면 초기화 |
+| React 로컬 상태 | 상세 조회, Health, Hook SampleItem | 해당 화면이 unmount되면 초기화 |
 | Redux 메모리 | 채팅 메시지·검색별 조건 스냅샷·확정 검색 의도·기업 조건·접수 상태·편집 초안·해석 제안·마지막 추가 질문과 미확정 초안, Redux SampleItem | 앱 내 이동 시 유지, 새로고침 시 초기화 |
 | 서버 | MySQL 공고 카탈로그 | 브라우저 상태와 별개로 유지 |
 

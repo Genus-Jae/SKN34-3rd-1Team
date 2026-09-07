@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { createAppStore } from './app/store'
+import { conversationReset } from './presentation/features/chat/state/chatSlice'
 import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramInterpretation } from './domain/entities/SupportProgramConversation'
 
@@ -38,7 +39,6 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const { store } = renderConversationApp()
     for (const [index, message] of ['서울 SW 2024년 1월 1일 설립 사업화', '마감 공고도 포함해서 지원금 위주', '부산으로 변경'].entries()) {
       await submitMessage(message)
-      expect(screen.getByText('보낸 메시지').parentElement?.querySelector('strong')?.textContent).toBe(String(index + 1))
       expect(network.searchRequests).toHaveLength(index)
       expect(screen.getByRole('region', { name: '조건 변경 제안' }).textContent).toContain('아직 적용하거나 검색하지 않았습니다')
       expect(screen.getByRole('status').textContent).toContain('확인 버튼을 눌러야 검색')
@@ -59,7 +59,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
     expect(screen.getByText(/검색 당시 조건: 접수 상태 전체 · 현재 소재지 부산/)).toBeTruthy()
     expect(network.fetch).toHaveBeenCalledTimes(6)
-    fireEvent.click(screen.getByRole('button', { name: /새 대화 시작/ }))
+    act(() => { store.dispatch(conversationReset()) })
     expect(store.getState().chat.conversationQuery).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()

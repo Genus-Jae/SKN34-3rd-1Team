@@ -10,7 +10,7 @@ export const chatPageStyles = {
   proposalRows: 'grid gap-3',
   proposalRow: 'grid gap-1 border-b border-[#e8ecf7] pb-2',
   proposalValue: 'm-0 grid gap-1 break-words text-xs leading-relaxed text-[#4d597c]',
-  conditionsPanel: 'mx-6 mb-3 rounded-xl border border-[#dfe4f2] bg-white px-4 py-3 max-chat:mx-3',
+  conditionsPanel: 'mx-auto mb-3 w-[min(860px,calc(100%_-_2rem))] rounded-xl border border-[#dfe4f2] bg-white px-4 py-3 max-chat:w-[calc(100%_-_1.2rem)]',
   conditionsSummary: 'cursor-pointer text-sm font-bold text-[#43527a]',
   conditionsFields: 'mt-3 grid grid-cols-2 gap-3 border-0 p-0 disabled:opacity-60 max-chat:grid-cols-1',
   conditionsLabel: 'grid gap-1 text-xs font-bold text-[#536087]',
@@ -21,78 +21,12 @@ export const chatPageStyles = {
   conditionsChips: 'm-0 flex list-none flex-wrap gap-2 p-0 text-xs text-[#43527a]',
   conditionsChip: 'rounded-lg bg-[#f0f2ff] px-2 py-1',
   searchSnapshot: 'mt-2 text-xs leading-relaxed text-[#6471a0]',
-  page: 'grid min-h-screen grid-cols-[278px_minmax(0,1fr)] bg-app-canvas text-app-ink max-chat:block',
-  backdrop: 'hidden',
-  backdropOpen:
-    'max-chat:fixed max-chat:inset-0 max-chat:z-[2] max-chat:block max-chat:border-0 max-chat:bg-[rgb(10_15_32_/_38%)]',
-  sidebar: classes(
-    'relative flex flex-col gap-[1.35rem] px-5 py-[1.6rem]',
-    'bg-[linear-gradient(180deg,#1c2342_0%,#11162e_100%)] text-[#e9edff]',
-    'max-chat:fixed max-chat:inset-y-0 max-chat:left-0 max-chat:z-[3] max-chat:w-[min(278px,86vw)]',
-    'max-chat:shadow-[12px_0_40px_rgb(11_17_40_/_25%)]',
-    'max-chat:transition-transform max-chat:duration-[180ms] max-chat:ease-[ease]',
-  ),
-  sidebarOpen: 'max-chat:translate-x-0',
-  sidebarClosed:
-    'max-chat:invisible max-chat:pointer-events-none max-chat:translate-x-[-102%]',
-  sidebarCloseButton: classes(
-    'hidden cursor-pointer border-0 bg-transparent text-[1.6rem] leading-none text-[#d9dff4]',
-    'max-chat:grid max-chat:size-9 max-chat:place-items-center max-chat:rounded-[0.6rem]',
-    'max-chat:absolute max-chat:top-3 max-chat:right-3',
-    'max-chat:focus:outline-2 max-chat:focus:outline-offset-2 max-chat:focus:outline-brand-accent',
-  ),
-  brand: 'flex items-center gap-3 border-b border-[rgb(219_227_255_/_12%)] px-[0.35rem] pt-1 pb-5',
-  brandMark:
-    'grid size-[2.35rem] place-items-center rounded-[0.8rem] bg-brand-accent text-[1.25rem] font-black text-[#17203d]',
-  brandTitle: 'block text-[1.12rem] tracking-[-0.04em]',
-  brandSubtitle: 'mt-[0.2rem] block text-[0.72rem] text-[#a7b1d4]',
-  sidebarActions: 'grid gap-[0.6rem]',
-  newConversationButton: classes(
-    'cursor-pointer rounded-[0.85rem] border px-4 py-[0.85rem] text-left font-extrabold',
-    'border-[rgb(185_232_143_/_30%)] bg-brand-accent text-[#16203e]',
-  ),
-  newConversationIcon: 'mr-[0.45rem] text-[1.2rem] align-[-0.05em]',
-  sampleButton: classes(
-    'cursor-pointer rounded-[0.85rem] border px-4 py-[0.78rem] text-left font-bold no-underline',
-    'border-[rgb(200_208_235_/_18%)] bg-[rgb(113_128_197_/_12%)] text-[#d9dff4]',
-    'hover:bg-[rgb(113_128_197_/_28%)] hover:text-white',
-  ),
-  sampleButtonIcon: 'mr-[0.45rem]',
-  popularQuestions: 'grid gap-2',
-  sidebarSectionTitle:
-    'mt-0 mb-1 text-[0.72rem] font-extrabold tracking-[0.1em] text-[#8995bd] uppercase',
-  popularQuestionButton: classes(
-    'cursor-pointer rounded-[0.65rem] border-0 px-3 py-[0.68rem] text-left text-[0.78rem]',
-    'bg-[rgb(113_128_197_/_12%)] text-[#c8d0eb]',
-    'transition-colors duration-[160ms] hover:bg-[rgb(113_128_197_/_28%)] hover:text-white',
-    'disabled:cursor-not-allowed disabled:opacity-50',
-  ),
-  dataSummary: 'grid grid-cols-2 gap-[0.6rem] pt-[0.4rem]',
-  dataSummaryTitle:
-    'col-span-2 mt-0 mb-1 text-[0.72rem] font-extrabold tracking-[0.1em] text-[#8995bd] uppercase',
-  dataSummaryCard: 'rounded-[0.7rem] bg-[rgb(113_128_197_/_12%)] p-3',
-  dataSummaryValue: 'block text-[1.2rem] text-brand-accent',
-  dataSummaryLabel: 'mt-[0.18rem] block text-[0.7rem] text-[#a7b1d4]',
-  sidebarFooter: 'mt-auto mb-0 text-[0.72rem] leading-[1.55] text-[#7783a9]',
+  page: 'min-h-screen bg-app-canvas text-app-ink',
   workspace:
-    'grid min-h-screen min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] max-chat:min-h-svh',
-  header: classes(
-    'flex items-center justify-between gap-4 px-[clamp(1.25rem,5vw,4.5rem)] py-6',
-    'border-b border-[#e8ecf7] bg-[rgb(255_255_255_/_82%)]',
-    'max-chat:p-4',
-  ),
-  menuButton:
-    'hidden cursor-pointer border-0 bg-transparent text-[1.35rem] text-[#536087] max-chat:block',
-  headerEyebrow:
-    'mt-0 mb-1 text-[0.7rem] font-extrabold tracking-[0.12em] text-[#6471a0] uppercase',
-  headerTitle: 'm-0 text-[1.25rem] font-bold tracking-[-0.04em] text-[#151d3a]',
-  sourceBadge: classes(
-    'whitespace-nowrap rounded-full border px-[0.7rem] py-[0.45rem] text-[0.72rem] font-bold',
-    'border-[#dfe4ef] bg-[#f5f7fb] text-[#536087] max-chat:text-[0.62rem]',
-  ),
+    'flex min-h-[calc(100vh-3.75rem)] min-w-0 flex-col max-chat:min-h-[calc(100svh-3.75rem)]',
   timeline: classes(
-    'mx-auto w-[min(860px,calc(100%_-_2rem))] overflow-y-auto pt-10 pb-8',
-    'max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-6',
+    'mx-auto min-h-0 w-[min(860px,calc(100%_-_2rem))] flex-1 overflow-y-auto pt-2 pb-6',
+    'max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-4',
   ),
   messageRow: 'mb-[1.8rem] flex gap-3',
   userMessageRow: 'justify-end',
@@ -119,8 +53,14 @@ export const chatPageStyles = {
     'rounded-[1rem_1rem_1rem_0.25rem] bg-white px-[1.1rem] py-4 leading-[1.65]',
     'text-[#6d7898] shadow-[0_10px_30px_rgb(47_67_129_/_7%)]',
   ),
+  intro: 'mx-auto w-[min(860px,calc(100%_-_2rem))] pt-9 max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-6',
+  introTitle: 'm-0 text-[1.45rem] font-bold tracking-[-0.04em] text-[#151d3a] max-chat:text-[1.2rem]',
+  introDescription: 'mt-2 mb-0 text-[0.86rem] leading-[1.6] text-[#6d7898]',
   composer:
-    'mx-auto w-[min(860px,calc(100%_-_2rem))] pb-6 max-chat:w-[calc(100%_-_1.2rem)]',
+    'mx-auto w-[min(860px,calc(100%_-_2rem))] pt-6 pb-7 max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-4 max-chat:pb-5',
+  suggestions: 'mx-auto mb-4 flex w-[min(860px,calc(100%_-_2rem))] flex-wrap gap-2 max-chat:w-[calc(100%_-_1.2rem)]',
+  composerWorkspace:
+    'mx-auto mt-auto w-[min(860px,calc(100%_-_2rem))] pt-2 pb-6 max-chat:w-[calc(100%_-_1.2rem)]',
   composerInputGroup: 'relative',
   searchStatus: 'sr-only',
   searchError: classes(
@@ -128,11 +68,11 @@ export const chatPageStyles = {
     'border-[#f0cfd4] bg-[#fff5f6] text-[#9a3947]',
   ),
   readinessNotice: classes(
-    'mt-0 mb-[0.55rem] rounded-[0.7rem] border px-[0.8rem] py-[0.7rem] text-[0.76rem]',
+    'mx-auto mt-0 mb-6 w-[min(860px,calc(100%_-_2rem))] rounded-[0.7rem] border px-[0.8rem] py-[0.7rem] text-[0.76rem] max-chat:w-[calc(100%_-_1.2rem)]',
     'border-[#d8ddec] bg-[#f7f8fc] text-[#3e4a6d]',
   ),
   readinessErrorNotice: classes(
-    'mt-0 mb-[0.55rem] flex items-start justify-between gap-3 rounded-[0.7rem] border px-[0.8rem] py-[0.7rem] text-[0.76rem]',
+    'mx-auto mt-0 mb-6 flex w-[min(860px,calc(100%_-_2rem))] items-start justify-between gap-3 rounded-[0.7rem] border px-[0.8rem] py-[0.7rem] text-[0.76rem] max-chat:w-[calc(100%_-_1.2rem)]',
     'border-[#f0cfd4] bg-[#fff5f6] text-[#9a3947]',
   ),
   readinessTitle: 'block text-[0.78rem] font-bold',
@@ -147,8 +87,8 @@ export const chatPageStyles = {
   searchRetryButton:
     'shrink-0 cursor-pointer rounded-[0.45rem] border border-[#dcaab2] bg-white px-2 py-[0.3rem] text-[0.72rem] font-bold text-[#8f3340]',
   composerInput: classes(
-    'min-h-[3.25rem] w-full resize-none rounded-2xl border bg-white',
-    'pt-[0.95rem] pr-[3.4rem] pb-[1.35rem] pl-4 text-[#1b2544]',
+    'min-h-[4.25rem] w-full resize-none rounded-2xl border bg-white',
+    'pt-[1.35rem] pr-[3.4rem] pb-[1.75rem] pl-5 text-[#1b2544]',
     'border-[#d7dcef] shadow-[0_10px_28px_rgb(47_67_129_/_7%)] outline-0',
     'focus:border-[#7774d7] focus:shadow-[0_0_0_3px_rgb(119_116_215_/_15%)]',
   ),
@@ -186,17 +126,6 @@ export const chatPageStyles = {
   programSourceLink:
     'rounded-[0.55rem] bg-[#f1f2ff] px-[0.7rem] py-[0.55rem] text-[0.74rem] font-extrabold text-[#5e5fc8] no-underline',
 } as const
-
-export function chatBackdropClassName(isOpen: boolean) {
-  return isOpen
-    ? `${chatPageStyles.backdrop} ${chatPageStyles.backdropOpen}`
-    : chatPageStyles.backdrop
-}
-
-export function chatSidebarClassName(isOpen: boolean) {
-  const visibility = isOpen ? chatPageStyles.sidebarOpen : chatPageStyles.sidebarClosed
-  return `${chatPageStyles.sidebar} ${visibility}`
-}
 
 export function chatMessageRowClassName(isUser: boolean) {
   return isUser
