@@ -2,6 +2,7 @@ package ai.govbiz.core.supportprogram.client.ai
 
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.AiServiceFailure
+import ai.govbiz.core._common.exception.ApiExceptionHandler
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramCandidateRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramEligibility
 import ai.govbiz.core.supportprogram.client.ai.dto.AiScoredSupportProgramPayload
@@ -18,6 +19,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.match.MockRestRequestMatchers.content
 import org.springframework.test.web.client.match.MockRestRequestMatchers.header
@@ -153,7 +155,15 @@ class HttpAiSupportProgramRankingClientTest {
                     .body("{\"detail\":\"timeout\"}"),
             )
 
-        assertRankingFailure(AiServiceFailure.TIMEOUT)
+        val exception = assertThrows(AiServiceCallException::class.java) {
+            client.rankSupportPrograms(rankingRequest())
+        }
+        assertEquals(AiServiceFailure.TIMEOUT, exception.failure)
+        val publicResponse = ApiExceptionHandler().handleAiServiceCallException(
+            exception, MockHttpServletRequest("POST", "/api/v1/support-programs/search"),
+        )
+        assertEquals(HttpStatus.GATEWAY_TIMEOUT, publicResponse.statusCode)
+        assertEquals("AI_SERVICE_TIMEOUT", publicResponse.body!!.properties!!["code"])
     }
 
     private fun assertRankingFailure(expectedFailure: AiServiceFailure) {

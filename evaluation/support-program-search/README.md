@@ -286,3 +286,92 @@ v4 평가는 새 요청·캡처를 만들어 별도 실행 폴더에 기록해�
 실제 16개 검색 캡처와 AI-only 1차 지표는 [최종 보고서](runs/support-program-catalog-20260906-v1/review-final-v1/report.md)에 있다.
 평가 가능한 질문은 6개(양성 2개)뿐이므로 일반적인 검색 품질 검증 완료로 해석하지 않는다.
 다른 PC에서도 `verify-shared-run.py --with-capture`로 원표·라벨·실제 지표를 API 없이 재현할 수 있다.
+
+## 지역 자격의 작은 합성 회귀 평가
+
+`region-eligibility-fixture.json`은 개발 중 작성한 가상 공고 8개를 서울·서울 서초구·부산 조건에
+각각 적용하는 3요청·24판정 자료다. 실제 카탈로그나 독립 heldout 자료가 아니며 기존 `runs/`의
+공고·라벨·점수를 수정하지 않는다. 합성 공고를 MySQL 또는 Qdrant에 등록하지 않는다.
+
+| 원문 사례 | 서울 | 서울 서초구 | 부산 |
+| --- | --- | --- | --- |
+| 서초구 소재 기업만 | UNKNOWN | MATCH | INCOMPATIBLE |
+| 서울 소재 기업만 | MATCH | MATCH | INCOMPATIBLE |
+| 부산 소재 기업만, 태그는 서울 | INCOMPATIBLE | INCOMPATIBLE | MATCH |
+| 소재지와 관계없이 전국 신청 가능 | MATCH | MATCH | MATCH |
+| 전국·서울 태그만 있고 원문 지역 요건 없음 | UNKNOWN | UNKNOWN | UNKNOWN |
+| 기관·설명회 위치만 서울 서초구 | UNKNOWN | UNKNOWN | UNKNOWN |
+| 서울 소재 또는 선정 후 3개월 이내 서울 이전 | MATCH | MATCH | UNKNOWN |
+| 전국 신청 가능하나 서울 소재 제외 | INCOMPATIBLE | INCOMPATIBLE | MATCH |
+
+`evaluate-region-eligibility.py`는 **외부 호출 기능이 없는 오프라인 평가기**다. `build_requests(fixture)`는
+기대값과 해설을 제외한 production v4 요청만 반환한다. 인자 없이 실행하면 이 요청 3개와
+`actualApiCalls: 0`을 출력한다. 각 지역 상태를 비교하고, known 판정은 인용문이 해당 후보의
+원문과 정확히 일치할 뿐 아니라 라벨의 지역 자격 구절도 포함하는지 확인한다. 예를 들어 원문에 실제로
+있는 `AI 분야 기업`을 인용하더라도 서울 소재 자격을 증명하는 것으로 통과시키지 않는다.
+전국 허용 뒤에 붙은 서울 제외 조건을 잘라 인용하는 경우도 실패한다.
+
+```bash
+python3 evaluation/support-program-search/evaluate-region-eligibility.py
+python3 evaluation/support-program-search/evaluate-region-eligibility.py --capture /absolute/path/capture.json
+backend/ai-service/.venv/bin/python -B -m unittest discover \
+  -s evaluation/support-program-search -p 'test_region_eligibility.py'
+```
+
+평가용 캡처는 Service의 상위 5개 필터 **이전**에 실제 `Agent.rank()`가 반환한 모든 후보의 복원된
+평가를 기록해야 한다. 최종 추천만 저장하면 제외된 후보의 잘못된 INCOMPATIBLE 판정을 놓치므로
+평가기가 거부한다. 같은 Agent 호출 결과를 Service에 전달해 공개 응답도 확인할 수 있으며,
+기대값으로 실제 모델 응답을 만들거나 Agent를 두 번 호출하지 않는다. 실제 실행은 사용자 승인 후
+별도의 실행기가 담당하고 자동 재시도하지 않는다.
+
+캡처의 구조는 아래와 같다. `fixtureSha256`·`requestSha256`은 기존
+`evaluate-ranking-replay.py`의 `canonical_sha256` 규칙을 재사용한다. `output`에는
+`SupportProgramRankingOutput.model_dump(mode="json", by_alias=True)`의 전체 결과를 넣는다.
+
+```json
+{
+  "schemaVersion": "support-program-region-eligibility-capture-v1",
+  "fixtureSha256": "<fixture의 canonical SHA-256>",
+  "provenance": {
+    "kind": "live_openai",
+    "model": "<실제 실행 모델>",
+    "promptSha256": "<실행 프롬프트의 SHA-256>"
+  },
+  "observations": [
+    {
+      "caseId": "REGION_SEOUL",
+      "requestSha256": "<실제 전달한 요청의 canonical SHA-256>",
+      "output": {"rankings": ["<모든 후보의 복원된 평가 객체>"]}
+    }
+  ]
+}
+```
+
+위 구조는 형식 설명용이며 실행 결과가 아니다. 실제 캡처에는 3개 사례와 각각 8개 후보의 평가가
+모두 있어야 한다. 평가기는 JSON을 읽고 보고서를 stdout에 출력하며 입력 파일을 수정하지 않는다.
+의미 또는 근거 불일치 시 종료 코드 1, 캡처 무결성 오류 시 2를 반환한다.
+
+출처는 `mock` 또는 `live_openai`로 명시한다. 모의 출력 테스트 통과는 평가기의 오류 감지와 계약
+호환성을 검증할 뿐, OpenAI의 의미 판단 정확도를 검증하지 않는다. `live_openai`도 자체 선언만으로
+실제 호출이 증명되는 것은 아니므로 보고서의 `provenanceVerified`는 항상 false이고 별도 API 사용
+기록·모델·실행 프롬프트·코드 해시를 대조한다. 실제 24판정이 통과해도 이 합성 개발 사례의 통과만
+보고하며 실제 공고 정확도나 전후 개선율로 일반화하지 않는다.
+
+### 승인된 합성 지역 판정 실행
+
+`run-region-eligibility.py`는 기본적으로 키 없이 호출 계획만 출력한다. 사용자에게 유료 호출 승인을
+받은 경우에만 `--execute`로 실행하며, `--output-dir`은 아직 존재하지 않는 경로여야 한다.
+현재 production Agent·Service를 그대로 사용하고 OpenAI Responses에 사례당 1회, 최대 3회만 호출한다.
+공식 OpenAI 이외 주소, 변경된 모델/시간 제한, 자동 재시도·추가 요청은 허용하지 않는다.
+
+```bash
+python3 evaluation/support-program-search/run-region-eligibility.py
+# OPENAI_API_KEY가 프로세스 환경에 있고 해당 유료 호출을 승인받았을 때만 실행:
+python3 evaluation/support-program-search/run-region-eligibility.py --execute \
+  --output-dir /absolute/path/new-region-run
+```
+
+실제 입력·프롬프트·schema 해시, 토큰 사용량, 필터 전 전체 판정 및 같은 호출의 Service 결과를
+기록한다. 기대값은 모델 입력에 포함되지 않는다. 첫 실행 오류가 나면 중단하고 부분 기록과
+실패 manifest를 남긴다. 종료 코드 0은 해당 합성 평가 통과, 1은 의미 평가 불합격, 2는 API·설정·
+사용량 기록 등의 실행 실패다. 합성 랭킹만 실행하며 검색 임베딩·조건 해석·기존 서비스 재시작은 하지 않는다.

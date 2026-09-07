@@ -4,11 +4,25 @@
 새 실행·임시 파일은 기본적으로 제외합니다. `.gitignore`의 명시적 허용 목록으로 공유 범위를 관리합니다.
 실제 공고 텍스트·문의처·판정 기록을 포함하므로 새 파일의 비밀정보·개인정보·공유 범위를 확인한 뒤 추가합니다.
 
-현재 공유 자료는 [support-program-catalog-20260906-v1](support-program-catalog-20260906-v1/README.md)입니다.
+실제 카탈로그 공유 자료는 [support-program-catalog-20260906-v1](support-program-catalog-20260906-v1/README.md)입니다.
 공고 1,422건, 질문 16개, 기존 AI 원표 1,815개와 실제 검색에서 추가된 249쌍의 새 원표 1,245개를 포함합니다.
 실제 검색 16개가 모두 성공했고, 최종 570쌍은 합의 541개·미확정 29개입니다. 기존 세 모드와 사람 입력도 보존합니다.
 AI-only 기준으로 6개 질문(관련 공고 있는 질문 2개)을 평가했으며 [1차 보고서](support-program-catalog-20260906-v1/review-final-v1/report.md)에
 실제 점수와 한계를 기록했습니다. API 키·DB·엑셀 없이 `verify-shared-run.py --with-capture`로 원표부터 지표까지 재현합니다.
+
+지역 자격의 별도 합성 개발 평가도 [1차 실패 기록](region-scope-20260907-v1/README.md)과
+[OR 대안 보완 후 부분집합 재검증](region-scope-20260907-v2/README.md)으로 공유합니다.
+가상 공고·지역 조건, 필터 전 응답, 평가 보고서, 선별된 사용량·해시 및 변경 소스 스냅샷만 포함합니다.
+키·개인정보·원시 오류 로그는 포함하지 않습니다. 저장된 결과는 저장소 루트에서 외부 API 없이 재평가합니다.
+
+```bash
+python3 evaluation/support-program-search/evaluate-region-eligibility.py --fixture evaluation/support-program-search/runs/region-scope-20260907-v1/fixture.json --capture evaluation/support-program-search/runs/region-scope-20260907-v1/capture.json
+python3 evaluation/support-program-search/evaluate-region-eligibility.py --fixture evaluation/support-program-search/runs/region-scope-20260907-v2/fixture.json --capture evaluation/support-program-search/runs/region-scope-20260907-v2/capture.json
+```
+
+v1은 22/24로 종료 코드 1, v2는 16/16으로 종료 코드 0이 정상 재현 결과입니다. v2가 최신 프롬프트로
+전체 24개를 재검증한 것은 아니며 실제 공고 검색 품질·독립 heldout 정확도를 입증하지 않습니다.
+이 명령은 저장된 판정의 평가만 재현하며 모델을 다시 호출하거나 실제 호출 출처를 자동 인증하지 않습니다.
 
 권장 파일 구성은 다음과 같습니다.
 

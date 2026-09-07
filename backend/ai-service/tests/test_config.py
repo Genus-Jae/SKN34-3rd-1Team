@@ -12,6 +12,8 @@ from app.config import (
 @pytest.fixture(autouse=True)
 def configure_required_openai_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.delenv("LLM_RANKING_MODEL_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("LLM_RANKING_RUN_TIMEOUT_SECONDS", raising=False)
 
 
 def test_reads_trimmed_openai_settings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,3 +145,44 @@ def test_rejects_unknown_embedding_tokenization_model(monkeypatch: pytest.Monkey
     monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "unknown-model")
     with pytest.raises(SettingsConfigurationError, match="OPENAI_EMBEDDING_MODEL"):
         Settings.from_environment()
+
+
+def test_ranking_has_independent_45_50_second_defaults(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL_TIMEOUT_SECONDS", "2")
+    monkeypatch.setenv("LLM_RUN_TIMEOUT_SECONDS", "3")
+    settings = Settings.from_environment()
+    assert settings.llm_ranking_model_timeout_seconds == 45
+    assert settings.llm_ranking_run_timeout_seconds == 50
+    assert (settings.llm_model_timeout_seconds, settings.llm_run_timeout_seconds) == (2, 3)
+
+
+def test_ranking_accepts_values_over_30_without_changing_other_agents(monkeypatch):
+    monkeypatch.setenv("LLM_RANKING_MODEL_TIMEOUT_SECONDS", " 55.5 ")
+    monkeypatch.setenv("LLM_RANKING_RUN_TIMEOUT_SECONDS", "60")
+    settings = Settings.from_environment()
+    assert settings.llm_ranking_model_timeout_seconds == 55.5
+    assert settings.llm_ranking_run_timeout_seconds == 60
+
+
+@pytest.mark.parametrize("name", ["LLM_RANKING_MODEL_TIMEOUT_SECONDS", "LLM_RANKING_RUN_TIMEOUT_SECONDS"])
+@pytest.mark.parametrize("value", ["", "private-invalid-setting", "0", "-1", "nan", "inf", "-inf", "60.01"])
+def test_invalid_ranking_timeouts_fail_startup_instead_of_silently_reverting(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(SettingsConfigurationError, match=name) as captured:
+        Settings.from_environment()
+    assert "private-invalid-setting" not in str(captured.value)
+
+
+@pytest.mark.parametrize("model,run", [(45, 45), (50, 45), (60, 60)])
+def test_ranking_model_deadline_must_be_less_than_run_deadline(monkeypatch, model, run):
+    monkeypatch.setenv("LLM_RANKING_MODEL_TIMEOUT_SECONDS", str(model))
+    monkeypatch.setenv("LLM_RANKING_RUN_TIMEOUT_SECONDS", str(run))
+    with pytest.raises(SettingsConfigurationError, match="must be less than"):
+        Settings.from_environment()
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), 61, True])
+def test_direct_settings_construction_also_rejects_invalid_ranking_timeout(value):
+    with pytest.raises(SettingsConfigurationError):
+        Settings(openai_api_key="test-key", openai_model="test-model", llm_model_timeout_seconds=25,
+                 llm_run_timeout_seconds=30, llm_ranking_model_timeout_seconds=value)

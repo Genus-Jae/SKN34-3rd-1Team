@@ -4,6 +4,24 @@
 !.gitignore
 !README.md
 
+# 지역 자격 합성 평가: 비밀정보 없는 고정 입력·실패/재검증 기록만 공유한다.
+!region-scope-20260907-v1/
+!region-scope-20260907-v1/README.md
+!region-scope-20260907-v1/fixture.json
+!region-scope-20260907-v1/capture.json
+!region-scope-20260907-v1/report.json
+!region-scope-20260907-v1/api-usage.json
+!region-scope-20260907-v1/execution-manifest.json
+!region-scope-20260907-v1/changed-sources-at-execution.json
+!region-scope-20260907-v2/
+!region-scope-20260907-v2/README.md
+!region-scope-20260907-v2/fixture.json
+!region-scope-20260907-v2/capture.json
+!region-scope-20260907-v2/report.json
+!region-scope-20260907-v2/api-usage.json
+!region-scope-20260907-v2/execution-manifest.json
+!region-scope-20260907-v2/changed-sources-at-execution.json
+
 !support-program-catalog-20260906-v1/
 !support-program-catalog-20260906-v1/README.md
 !support-program-catalog-20260906-v1/fixture-unlabeled.json

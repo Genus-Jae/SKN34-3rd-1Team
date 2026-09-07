@@ -9,6 +9,8 @@ from openai import AsyncOpenAI
 from pydantic import ValidationError
 
 from app.support_program_ranking.errors import AgentExecutionError
+from app.support_program_ranking.errors import AgentFailureCode
+from app.support_program_ranking.errors import AgentTimeoutError
 from app.support_program_ranking.agent import SupportProgramRecommendationAgent
 from app.support_program_ranking.models import (
     SCORING_VERSION,
@@ -67,12 +69,16 @@ def valid_output(candidate_count: int = 1) -> SupportProgramRankingOutput:
 
 
 def llm_output(candidate_count: int = 1) -> dict[str, object]:
-    return {
+    output = {
         "rankings": {
             assessment.program_id: assessment.model_dump(by_alias=True, exclude={"program_id"})
             for assessment in valid_output(candidate_count).rankings
         }
     }
+    for assessment in output["rankings"].values():
+        assessment["targetAssessment"]["evidence"] = [0]
+        assessment["regionAssessment"]["evidence"] = [1]
+    return output
 
 
 def llm_output_json(candidate_count: int = 1) -> str:
@@ -106,6 +112,36 @@ def test_prompt_distinguishes_requested_support_from_topic_similarity_without_re
     assert "현재 단계와 원하는 활동을 구분" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "최대 개수이지 채워야 할 개수가 아닙니다" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "UNKNOWN 규칙은 유지" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+
+
+@pytest.mark.parametrize("rule", [
+    "회사 '서울' / 본문 '서울 서초구 소재 기업만 신청 가능' → UNKNOWN",
+    "회사 '서울 서초구' / 본문 '서울특별시 소재 기업' → MATCH",
+    "회사 '서울 강남구' / 본문 '서울 서초구 소재 기업만 신청 가능' → INCOMPATIBLE",
+    "상·하위 포함 관계가 불명확한 지역명도 추정하지 말고 UNKNOWN",
+])
+def test_region_prompt_contains_directional_scope_examples(rule):
+    # Instruction regression only; fixed text is not evidence of live model quality.
+    assert rule in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+
+
+def test_region_prompt_requires_location_evidence_and_preserves_national_and_conditional_access():
+    instructions = SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    assert "일반 대상·지원 내용의 인용으로 지역을 증명하지" in instructions
+    assert "전국 태그만 있으면 UNKNOWN" in instructions
+    assert "소재지 제한 없이 전국 기업 신청 가능" in instructions
+    assert "행사 장소·지원기관 주소·우대 지역을 기업의 필수 소재지로 바꾸지" in instructions
+    assert "이전·확장 확약" in instructions
+    assert "대상 자격의 UNKNOWN을 지역 MATCH의 근거로 사용하지" in instructions
+
+
+def test_region_prompt_does_not_require_every_alternative_or_treat_unconfirmed_relocation_as_false():
+    instructions = SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    assert "현재 소재지 경로를 이미 충족하면" in instructions
+    assert "다른 경로인 이전 의사를 추가로 요구하지" in instructions
+    assert "이전 경로는 미확인이면 UNKNOWN이지 INCOMPATIBLE이 아닙니다" in instructions
+    assert "모든 허용 경로가 명백하게 불충족일 때만 INCOMPATIBLE" in instructions
+    assert "회사 '서울'은 MATCH, 회사 '부산'이고 이전 의사 미입력은 UNKNOWN" in instructions
 
 
 @pytest.mark.anyio
@@ -179,6 +215,38 @@ def test_company_condition_instructions_preserve_uncertainty_and_explicit_condit
     assert "서울 기준" in instructions
     assert "공고별 업력 기준일" in instructions and "계산 방식·제외·예외" in instructions
     assert "기준일로 임의 대체하지" in instructions and "UNKNOWN" in instructions
+    assert "적용 조건에 없는 하위 소재지를 추가하지" in instructions
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("explicit_conditions", [False, True])
+async def test_region_instructions_reach_model_without_inventing_a_district_or_rewriting_unknown(explicit_conditions):
+    payload = ranking_request().model_dump(by_alias=True)
+    payload["originalQuery"] = "서초구 지원사업" if explicit_conditions else "서울 기업 지원사업"
+    if explicit_conditions:
+        payload["companyConditions"] = {"region": "서울", "referenceDate": "2026-09-07"}
+    payload["candidates"][0]["targetDescription"] = "서울 서초구 소재 기업만 신청 가능"
+    selection = llm_output()
+    selection["rankings"]["BIZINFO:program-1"]["regionAssessment"].update(
+        eligibility="UNKNOWN", score=7, explanation="서울 정보만으로는 서초구 소재 여부를 확인할 수 없습니다.",
+    )
+    model = ScriptedModel([[assistant_message(json.dumps(selection, ensure_ascii=False))]])
+    agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
+
+    result = await agent.rank(SupportProgramRankingRequest.model_validate(payload))
+
+    sent = json.loads(model.first_call.input[0]["content"])
+    assert sent["originalQuery"] == payload["originalQuery"]
+    assert sent.get("companyConditions", {}).get("region") == ("서울" if explicit_conditions else None)
+    assert "지역 자격의 범위·근거:" in model.first_call.system_instructions
+    if explicit_conditions:
+        assert "적용 조건에 없는 하위 소재지를 추가하지" in model.first_call.system_instructions
+    region = result.rankings[0].region_assessment
+    assert region.eligibility.value == "UNKNOWN"
+    assert region.score == 7
+    assert region.evidence[0].quote == payload["candidates"][0]["targetDescription"]
+    assert len(model.calls) == 1
+    model.assert_complete()
 
 
 @pytest.mark.anyio
@@ -378,7 +446,9 @@ async def test_preserves_incompatible_judgment_with_zero_score(dimension: str) -
 
     result = await agent.rank(ranking_request())
 
-    assert result.model_dump(by_alias=True)["rankings"][0][dimension] == output["rankings"]["BIZINFO:program-1"][dimension]
+    expected = valid_output().model_dump(by_alias=True)["rankings"][0][dimension]
+    expected.update(eligibility="INCOMPATIBLE", score=0)
+    assert result.model_dump(by_alias=True)["rankings"][0][dimension] == expected
     assert len(model.calls) == 1
 
 
@@ -404,6 +474,25 @@ async def test_turns_invalid_structured_output_into_boundary_error() -> None:
         await agent.rank(ranking_request())
 
     assert isinstance(captured.value.__cause__, ModelBehaviorError)
+    assert captured.value.reason_code is AgentFailureCode.EXECUTION_FAILED
+
+
+@pytest.mark.anyio
+async def test_unexpected_final_output_has_a_fixed_diagnostic_code(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    import app.support_program_ranking.agent as agent_module
+
+    run = AsyncMock(return_value=SimpleNamespace(final_output="private malformed output"))
+    monkeypatch.setattr(agent_module.Runner, "run", run)
+    agent = SupportProgramRecommendationAgent(
+        model=ScriptedModel([]), model_timeout_seconds=1, run_timeout_seconds=2,
+    )
+    with pytest.raises(AgentExecutionError) as captured:
+        await agent.rank(ranking_request())
+    assert captured.value.reason_code is AgentFailureCode.UNEXPECTED_OUTPUT_TYPE
+    assert "private" not in str(captured.value)
+    run.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -437,10 +526,83 @@ async def test_enforces_whole_ranking_deadline() -> None:
         run_timeout_seconds=0.01,
     )
 
-    with pytest.raises(AgentExecutionError) as captured:
+    with pytest.raises(AgentTimeoutError) as captured:
         await agent.rank(ranking_request())
 
     assert isinstance(captured.value.__cause__, TimeoutError)
+
+
+@pytest.mark.anyio
+async def test_model_deadline_is_classified_as_timeout_without_a_second_call():
+    from agents import ModelTimeoutError
+    async def hang_forever(_):
+        await asyncio.Event().wait()
+        return []
+    model = ScriptedModel([ModelStep.respond(hang_forever)])
+    agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=0.01, run_timeout_seconds=1)
+    with pytest.raises(AgentTimeoutError) as captured:
+        await agent.rank(ranking_request())
+    assert isinstance(captured.value.__cause__, ModelTimeoutError)
+    assert len(model.calls) == 1
+
+
+@pytest.mark.anyio
+async def test_http_timeout_is_classified_without_retries():
+    from openai import APITimeoutError
+    calls = []
+    def handler(request):
+        calls.append(request)
+        raise httpx2.ReadTimeout("private transport details", request=request)
+    client = AsyncOpenAI(api_key="test-key", timeout=25, max_retries=0,
+                         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
+    agent = SupportProgramRecommendationAgent(
+        model=OpenAIResponsesModel(model="gpt-5.6-luna", openai_client=client),
+        model_timeout_seconds=45, run_timeout_seconds=50,
+    )
+    try:
+        with pytest.raises(AgentTimeoutError) as captured:
+            await agent.rank(ranking_request())
+    finally:
+        await client.close()
+    assert isinstance(captured.value.__cause__, APITimeoutError)
+    assert len(calls) == 1
+    assert calls[0].extensions["timeout"] == dict.fromkeys(("connect", "read", "write", "pool"), 45)
+
+
+@pytest.mark.anyio
+async def test_ranking_http_override_does_not_change_shared_client_for_other_agents():
+    from app.support_program_conversation.agent import SupportProgramConversationAgent
+    from app.support_program_conversation.models import SupportProgramConversationRequest
+    from app.support_program_evidence.agent import SupportProgramEvidenceAnswerAgent
+    from app.support_program_evidence.models import SupportProgramEvidenceAnswerRequest
+    captured_timeouts = []
+    outputs = [llm_output_json(), json.dumps({"status": "READY", "updates": [], "clarificationQuestion": None}),
+               json.dumps({"answer": "제공된 공고 근거입니다.", "answerStatus": "ANSWERED", "citationChunkIndexes": [0]})]
+    def handler(request):
+        captured_timeouts.append(request.extensions["timeout"])
+        return httpx2.Response(200, json=responses_body(outputs.pop(0)))
+    client = AsyncOpenAI(api_key="test-key", timeout=25, max_retries=0,
+                         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
+    model = OpenAIResponsesModel(model="gpt-5.6-luna", openai_client=client)
+    ranking = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=45, run_timeout_seconds=50)
+    conversation = SupportProgramConversationAgent(model=model, model_timeout_seconds=25, run_timeout_seconds=30)
+    evidence = SupportProgramEvidenceAnswerAgent(model=model, model_timeout_seconds=25, run_timeout_seconds=30)
+    try:
+        await ranking.rank(ranking_request())
+        await conversation.interpret(SupportProgramConversationRequest.model_validate({
+            "schemaVersion": "govbiz-support-program-conversation-v1", "referenceDate": "2026-09-07", "message": "유지",
+            "context": {"query": "사업화 지원", "acceptingOnly": True, "companyConditions": {
+                "region": None, "industry": None, "establishedOn": None, "supportPurpose": None,
+            }},
+        }))
+        await evidence.answer(SupportProgramEvidenceAnswerRequest.model_validate({
+            "question": "지원 대상은?", "chunks": [{"id": "a" * 64, "documentId": "BIZINFO:1", "order": 0, "text": "중소기업 지원사업"}],
+        }))
+    finally:
+        await client.close()
+    assert captured_timeouts == [dict.fromkeys(("connect", "read", "write", "pool"), value) for value in (45, 25, 25)]
+    assert client.timeout == 25
+    assert outputs == []
 
 
 def responses_body(output_json: str) -> dict[str, object]:
@@ -477,9 +639,11 @@ def responses_body(output_json: str) -> dict[str, object]:
 @pytest.mark.parametrize("candidate_count", [1, 20])
 async def test_openai_request_uses_non_stored_strict_structured_output(candidate_count: int) -> None:
     captured_requests: list[dict[str, object]] = []
+    captured_timeouts = []
 
     def handler(request: httpx2.Request) -> httpx2.Response:
         captured_requests.append(json.loads(request.content))
+        captured_timeouts.append(request.extensions["timeout"])
         return httpx2.Response(
             200,
             json=responses_body(llm_output_json(candidate_count)),
@@ -491,14 +655,15 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
         base_url="https://openai.test/v1/",
         http_client=http_client,
         max_retries=0,
+        timeout=25,
     )
     agent = SupportProgramRecommendationAgent(
         model=OpenAIResponsesModel(
             model="gpt-5.6-luna",
             openai_client=openai_client,
         ),
-        model_timeout_seconds=4.0,
-        run_timeout_seconds=5.0,
+        model_timeout_seconds=45.0,
+        run_timeout_seconds=50.0,
     )
 
     try:
@@ -509,6 +674,9 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
         await openai_client.close()
 
     request_body = captured_requests[0]
+    assert captured_timeouts == [dict.fromkeys(("connect", "read", "write", "pool"), 45)]
+    assert openai_client.timeout == 25
+    assert "timeout" not in request_body
     assert request_body["store"] is False
     assert request_body["max_output_tokens"] == 10_000
     assert request_body["reasoning"] == {"effort": "none"}
@@ -523,7 +691,13 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
     assert keyed_schema["type"] == "object"
     assert keyed_schema["required"] == list(keyed_schema["properties"]) == expected_ids
     assert keyed_schema["additionalProperties"] is False
-    assessment_schema = schema["$defs"]["SupportProgramAssessment"]
+    assessment_schema = schema["$defs"]["SupportProgramSelectionFor2Options"]
+    region_description = assessment_schema["properties"]["regionAssessment"]["description"]
+    assert "상위 지역만 알고 공고가 하위 지역으로 제한되면 UNKNOWN" in region_description
+    assert "태그·제목·일반 지원 내용은 지역 근거가 아니다" in region_description
+    assert "허용 경로 중 하나를 이미 충족하면 MATCH" in region_description
+    assert "이전 경로 미확인의 조합은 UNKNOWN" in region_description
+    assert "description" not in assessment_schema["properties"]["targetAssessment"]
     assert "totalScore" not in assessment_schema["properties"]
     assert "totalScore" not in assessment_schema["required"]
     assert "programId" not in assessment_schema["properties"]
@@ -542,9 +716,74 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
             assert branch["required"] == ["eligibility", "score", "evidence", "explanation"]
             assert branch["additionalProperties"] is False
             assert branch["properties"]["evidence"]["maxItems"] == 1
+            assert branch["properties"]["evidence"]["items"] == {
+                "type": "integer", "minimum": 0, "maximum": 1,
+            }
             assert branch["properties"]["explanation"]["maxLength"] == 160
         assert incompatible["properties"]["evidence"]["minItems"] == 1
-    evidence_schema = schema["$defs"]["SupportProgramEligibilityEvidence"]
-    assert evidence_schema["required"] == ["field", "quote"]
-    assert evidence_schema["properties"]["field"]["enum"] == ["SUMMARY", "TARGET_DESCRIPTION"]
-    assert evidence_schema["properties"]["quote"]["maxLength"] == 240
+    assert "SupportProgramEligibilityEvidence" not in schema["$defs"]
+    payload = json.loads(request_body["input"][0]["content"])
+    for candidate in payload["candidates"]:
+        assert candidate["evidenceOptions"] == [
+            {"index": 0, "field": "SUMMARY", "quote": candidate["summary"]},
+            {"index": 1, "field": "TARGET_DESCRIPTION", "quote": candidate["targetDescription"]},
+        ]
+
+
+@pytest.mark.anyio
+async def test_sdk_serializes_twenty_distinct_candidate_local_selection_schemas():
+    payload = ranking_request(20).model_dump(by_alias=True)
+    selected = llm_output(20)
+    for count, candidate in enumerate(payload["candidates"]):
+        candidate["summary"] = "\x00".join(f"{count}번 후보의 {index}번 근거" for index in range(count)) or "\x00"
+        candidate["targetDescription"] = "\x00"
+        for dimension in ("targetAssessment", "regionAssessment"):
+            selected["rankings"][candidate["id"]][dimension].update(
+                eligibility="UNKNOWN", evidence=[count - 1] if count else [],
+            )
+    request = SupportProgramRankingRequest.model_validate(payload)
+    captured = []
+
+    def handle_http(http_request):
+        captured.append(json.loads(http_request.content))
+        return httpx2.Response(200, json=responses_body(json.dumps(selected, ensure_ascii=False)))
+
+    client = AsyncOpenAI(
+        api_key="test-key-never-sent", base_url="https://openai.test/v1/", max_retries=0,
+        http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handle_http)),
+    )
+    agent = SupportProgramRecommendationAgent(
+        model=OpenAIResponsesModel(model="gpt-5.6-luna", openai_client=client),
+        model_timeout_seconds=45, run_timeout_seconds=50,
+    )
+    try:
+        output = await agent.rank(request)
+    finally:
+        await client.close()
+
+    assert len(captured) == 1
+    wire = captured[0]
+    assert wire["text"]["format"]["strict"] is True
+    schema = wire["text"]["format"]["schema"]
+    keyed_schema = rankings_schema(schema)
+    assert keyed_schema["required"] == [candidate.id for candidate in request.candidates]
+    assert keyed_schema["additionalProperties"] is False
+    sent = json.loads(wire["input"][0]["content"])
+    for count, (candidate, restored) in enumerate(zip(sent["candidates"], output.rankings, strict=True)):
+        assert len(candidate["evidenceOptions"]) == count
+        assert candidate["summary"] == request.candidates[count].summary
+        assert candidate["targetDescription"] == request.candidates[count].target_description
+        assessment_schema = schema["$defs"][f"SupportProgramSelectionFor{count}Options"]
+        target_schema = assessment_schema["properties"]["targetAssessment"]
+        reference = target_schema["anyOf"][0]["$ref"] if count else target_schema["$ref"]
+        compatible = schema["$defs"][reference.split("/")[-1]]
+        evidence_schema = compatible["properties"]["evidence"]
+        assert evidence_schema["items"]["maximum"] == max(0, count - 1)
+        assert evidence_schema["maxItems"] == (1 if count else 0)
+        if count:
+            assert restored.target_assessment.evidence[0].model_dump() == {
+                "field": "SUMMARY", "quote": f"{count}번 후보의 {count - 1}번 근거",
+            }
+        else:
+            assert compatible["properties"]["eligibility"]["const"] == "UNKNOWN"
+            assert restored.target_assessment.evidence == restored.region_assessment.evidence == []

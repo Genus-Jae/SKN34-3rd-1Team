@@ -3,5 +3,8 @@
 # 입력/출력의 SHA-256은 실제 파일 바이트 기준이다. 자동 변환하지 않는다.
 runs/**/*.json -text !eol
 runs/**/*.jsonl -text !eol
+# Windows에서 기록한 합성 평가 JSON의 원본 CRLF는 보존하고 실제 후행 공백은 검사한다.
+runs/region-scope-20260907-v1/*.json whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+runs/region-scope-20260907-v2/*.json whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 # CSV writer의 CRLF도 원본 바이트다. 실제 후행 공백 검사는 유지한다.
 runs/**/*.csv -text !eol whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

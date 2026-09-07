@@ -1,5 +1,9 @@
 package ai.govbiz.core._common.ai_config
 
+import ai.govbiz.core._health_ai_service.client.AiServiceHealthClient
+import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramConversationClient
+import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramEvidenceClient
+import ai.govbiz.core.supportprogram.client.ai.HttpAiSupportProgramRankingClient
 import java.lang.reflect.InvocationTargetException
 import java.net.URI
 import java.time.Duration
@@ -8,6 +12,8 @@ import java.util.stream.Stream
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNotSame
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -16,6 +22,7 @@ import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
+import org.springframework.test.util.ReflectionTestUtils
 import org.springframework.web.client.RestClient
 
 class AiServiceClientPropertiesTest {
@@ -40,6 +47,7 @@ class AiServiceClientPropertiesTest {
         assertEquals(CONNECT_TIMEOUT, properties.connectTimeout)
         assertEquals(READ_TIMEOUT, properties.readTimeout)
         assertEquals(Duration.ofSeconds(30), properties.semanticSearchReadTimeout)
+        assertEquals(Duration.ofSeconds(55), properties.rankingReadTimeout)
     }
 
     @ParameterizedTest
@@ -116,6 +124,48 @@ class AiServiceClientPropertiesTest {
     }
 
     @Test
+    fun rejectsNonPositiveRankingTimeout() {
+        for (timeout in listOf(Duration.ZERO, Duration.ofMillis(-1))) {
+            assertThrows(IllegalArgumentException::class.java) {
+                AiServiceClientProperties(URI.create("http://127.0.0.1:8000"), CONNECT_TIMEOUT, READ_TIMEOUT, rankingReadTimeout = timeout)
+            }
+        }
+    }
+
+    @Test
+    fun bindsRankingTimeoutIndependentlyAndInjectsItsDedicatedBeanOnlyIntoRanking() {
+        ApplicationContextRunner()
+            .withUserConfiguration(
+                AiServiceClientConfig::class.java, HttpAiSupportProgramRankingClient::class.java,
+                AiServiceHealthClient::class.java, AiSupportProgramConversationClient::class.java,
+                AiSupportProgramEvidenceClient::class.java,
+            )
+            .withBean(RestClient.Builder::class.java, Supplier { RestClient.builder() })
+            .withPropertyValues(
+                "app.ai-service.base-url=http://127.0.0.1:8000",
+                "app.ai-service.connect-timeout=1s",
+                "app.ai-service.read-timeout=35s",
+                "app.ai-service.ranking-read-timeout=75s",
+            )
+            .run { context ->
+                val properties = context.getBean(AiServiceClientProperties::class.java)
+                assertEquals(Duration.ofSeconds(75), properties.rankingReadTimeout)
+                assertEquals(Duration.ofSeconds(35), properties.readTimeout)
+                assertEquals(Duration.ofSeconds(30), properties.semanticSearchReadTimeout)
+                val ranking = context.getBean("aiRankingRestClient", RestClient::class.java)
+                val shared = context.getBean("aiServiceRestClient", RestClient::class.java)
+                val semantic = context.getBean("aiSemanticSearchRestClient", RestClient::class.java)
+                assertNotSame(ranking, shared)
+                assertNotSame(ranking, semantic)
+                assertSame(ranking, ReflectionTestUtils.getField(context.getBean(HttpAiSupportProgramRankingClient::class.java), "restClient"))
+                assertSame(shared, ReflectionTestUtils.getField(context.getBean(AiServiceHealthClient::class.java), "restClient"))
+                assertSame(shared, ReflectionTestUtils.getField(context.getBean(AiSupportProgramConversationClient::class.java), "restClient"))
+                assertSame(shared, ReflectionTestUtils.getField(context.getBean(AiSupportProgramEvidenceClient::class.java), "answerRestClient"))
+                assertSame(semantic, ReflectionTestUtils.getField(context.getBean(AiSupportProgramEvidenceClient::class.java), "semanticSearchRestClient"))
+            }
+    }
+
+    @Test
     fun rejectsMissingRequiredValues() {
         assertConstructorRejectsNull(null, CONNECT_TIMEOUT, READ_TIMEOUT)
         assertConstructorRejectsNull(
@@ -128,21 +178,24 @@ class AiServiceClientPropertiesTest {
             CONNECT_TIMEOUT,
             null,
         )
+        assertConstructorRejectsNull(URI.create("http://127.0.0.1:8000"), CONNECT_TIMEOUT, READ_TIMEOUT, null)
     }
 
     private fun assertConstructorRejectsNull(
         baseUrl: URI?,
         connectTimeout: Duration?,
         readTimeout: Duration?,
+        rankingReadTimeout: Duration? = Duration.ofSeconds(55),
     ) {
         val constructor = AiServiceClientProperties::class.java.getDeclaredConstructor(
             URI::class.java,
             Duration::class.java,
             Duration::class.java,
             Duration::class.java,
+            Duration::class.java,
         )
         val exception = assertThrows(InvocationTargetException::class.java) {
-            constructor.newInstance(baseUrl, connectTimeout, readTimeout, Duration.ofSeconds(30))
+            constructor.newInstance(baseUrl, connectTimeout, readTimeout, Duration.ofSeconds(30), rankingReadTimeout)
         }
         assertInstanceOf(
             NullPointerException::class.java,

@@ -34,6 +34,11 @@ HTTP router
 별개 후보로 검증합니다. `targetEligibility`와 `regionEligibility`는
 `MATCH`, `INCOMPATIBLE`, `UNKNOWN` 중 하나이며, 정보 부족을 뜻하는 `UNKNOWN`은 자동 제외하지 않습니다.
 순위화 Agent는 공고 단위 점수·추천 이유와 SUMMARY/TARGET_DESCRIPTION 자격 인용·판정 설명을 반환합니다.
+모델에는 전체 본문과 후보별 `evidenceOptions`를 전달하고 인용 문구 대신 번호만 받습니다.
+`agent.py`의 `build_evidence_options`는 제어문자를 경계로 나누고 긴 연속 구간을 최대 240자·최소 60자 겹침의
+원문 조각을 끝까지 생성합니다. `_assessment_selection_type`은 후보의 선택지 수로 번호 범위를
+제한합니다. Agent가 모든 후보의 번호를 해당 후보의 정확한 field/quote로 복원한 뒤 기존 Service의
+원문 검증을 수행하므로 HTTP v4 계약은 그대로입니다. 잘못된 번호는 후보를 버리거나 보정하지 않고 오류로 반환합니다.
 두 자격 모두 MATCH인 후보를 먼저, UNKNOWN이 있는 확인 필요 후보를 다음으로 반환합니다.
 공식 API 요약의 자격 인용이며 첨부 PDF/HWP를 읽은 최종 자격 판정은 아닙니다. 상세 원문 검색과 근거 문단 인용 답변은
 아래 `support_program_evidence` 수직 기능이 담당합니다.
@@ -76,7 +81,9 @@ Answer Agent는 한 번의 typed structured output 호출만 사용하며 tool·
 Service는 현재 메시지 exact evidence·명시적 전체 날짜·패치 중복·병합 후 날짜 및 READY query를 검증합니다.
 부재 필드는 코드로 보존하며 보류 중인 초안이 있으면 그 상태에서 이어갑니다. 모델이 전체 상태를 다시 쓰거나
 다른 Agent·임베딩·검색을 호출하지 않습니다. 사용자 확인 후 기존 검색 API를 별도로 호출하는 책임은 Web/Core에 있습니다.
-같은 client/model·timeout을 사용하고 store=false/tracing 비활성입니다. 대화 세션·graph·handoff·provider는 없습니다.
+같은 client/model을 사용하고 store=false/tracing 비활성입니다. 조건 해석과 근거 답변의 모델·HTTP 제한은
+25초, 전체 Agent 제한은 30초입니다. 순위화의 별도 제한은 공유 client의 기본 timeout을 변경하지 않습니다.
+대화 세션·graph·handoff·provider는 없습니다.
 패치 인용 검증은 의미 정확도를 보증하지 않으며 옛 지역 query 제거 등의 의미 회귀는 별도 실제 모델 평가가 필요합니다.
 
 ## 계층 규칙
@@ -97,6 +104,13 @@ Service는 현재 메시지 exact evidence·명시적 전체 날짜·패치 중�
 후보 원문은 신뢰할 수 없는 데이터입니다. 프롬프트는 후보 안의 명령을 따르지 않도록 명시하고,
 Agent는 tool이나 handoff 없이 한 turn만 실행합니다. Core와 AI Service는 모두 존재하지 않는 공고 ID와
 잘못된 점수 합계를 거부합니다.
+
+순위화는 모델·요청별 HTTP 45초, 전체 실행 50초의 제한을 기본 사용합니다. `AgentTimeoutError`를
+안전한 504로, 그 밖의 `AgentExecutionError`를 기존 503으로 반환합니다. router는 실패 종류·고정
+`AgentFailureCode`·오류 클래스명·후보 수·경과 시간만 기록하며 입력·응답·원문 예외·traceback을 로그에 넣지 않습니다.
+고정 코드는 후보 집합·절단 본문 판정·근거 누락·원문 인용 불일치·출력 타입·인용 번호 복원의 실패 지점을 구분할 뿐,
+판정 규칙·정합성 검증·공개 응답을 변경하지 않습니다.
+클라이언트 자동 재시도와 fallback은 추가하지 않습니다.
 
 ## 새 Agent를 추가하는 기준
 
@@ -120,6 +134,8 @@ tests/
 │   └── test_service.py
 ├── support_program_ranking/
 │   ├── test_agent.py
+│   ├── test_evidence_options.py
+│   ├── test_evidence_selection.py
 │   └── test_router.py
 ├── support_program_evidence/
 │   ├── conftest.py
@@ -139,12 +155,14 @@ tests/
 ```
 
 - Agent 테스트: 실제 Runner + ScriptedModel, strict OpenAI wire 계약
-- 순위화 API 테스트: 요청 검증, 정렬, 후보 ID 위조·누락 거부, 자격 불일치 제외, 안전한 503
+- 인용 선택 테스트: 원문 조각의 전체 구간·Unicode 보존, 후보별 번호 범위 및 원문 복원, 20개의 서로 다른 선택지 수를 가진 SDK 스키마
+- 순위화 API 테스트: 요청 검증, 정렬, 후보 ID 위조·누락 거부, 자격 불일치 제외, timeout 504/기타 503와 안전한 실패 로그
 - 색인 테스트: 고정 임베딩 HTTP 응답과 Qdrant로 색인·현재 해시 필터·누락 및 장애 처리 검증
 - 상세 근거 테스트: 별도 collection, 현재 청크 전량 색인, 교차 문서 ID 재사용 차단, strict Agent 출력·인용 집합 검증
 - 조건 변경 테스트: UTF-16·날짜·필수 nullable 키, 실제 SDK strict schema, 현재 메시지 인용, 부재 필드 보존·초안 병합, 안전한 오류·대역 계약
-- bootstrap 테스트: 단일 client/model/Agent/Service 객체 그래프와 종료 시 client close
+- bootstrap 테스트: 단일 client/model/Agent/Service 객체 그래프와 종료 시 client close, 순위화 전용 시간 제한 주입
 - 공유 임베딩 전처리 테스트: 두 Service의 토큰화가 이벤트 루프 밖에서 실행되고 입력 순서·토큰 상한을 유지하는지 확인
 
 테스트의 고정 모델 응답과 임베딩 벡터는 동작·계약 검증용입니다. 실제 한국어 질문의 검색 정확도나
 모델의 자격 판단 정확도를 측정한 결과는 아닙니다.
+실제 SDK와 MockTransport로 순위화 HTTP 제한 45초 및 같은 client/model의 해석·근거 요청 25초 보존을 검증합니다.

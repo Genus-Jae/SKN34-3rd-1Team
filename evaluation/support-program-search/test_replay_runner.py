@@ -158,10 +158,14 @@ class ReplayRunnerTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertFalse(self.output.exists())
 
-    async def execute_offline(self, *, upstream_status=200, fail_close=False):
+    async def execute_offline(self, *, upstream_status=200, fail_close=False,
+                              ranking_timeouts=(25, 30), shared_timeouts=None,
+                              responses_payload_transform=None, skip_upstream=False):
         import httpx
         from fastapi import FastAPI
         from fastapi.responses import JSONResponse
+        from app.support_program_ranking.agent import build_evidence_options
+        from app.support_program_ranking.models import SupportProgramRankingRequest
         from app.support_program_ranking.prompt import SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
 
         attempts, received_requests, closed = [], [], []
@@ -198,9 +202,27 @@ class ReplayRunnerTest(unittest.TestCase):
             @app.post("/internal/v1/support-program-rankings/rank")
             async def rank(payload: dict):
                 received_requests.append(copy.deepcopy(payload))
-                response = await upstream_client.post("https://api.openai.com/v1/responses", json=payload)
-                if response.status_code != 200:
-                    return JSONResponse(status_code=503, content={"detail": "offline upstream unavailable"})
+                normalized = SupportProgramRankingRequest.model_validate(payload)
+                model_payload = normalized.model_dump(mode="json", by_alias=True)
+                for candidate, source in zip(model_payload["candidates"], normalized.candidates, strict=True):
+                    candidate["evidenceOptions"] = [
+                        {"index": index, **option.model_dump()}
+                        for index, option in enumerate(build_evidence_options(source))
+                    ]
+                # Match the Responses request boundary: instructions are separate
+                # from the user input containing server-generated evidence options.
+                responses_payload = {
+                    "model": settings.openai_model,
+                    "instructions": app.state.container.support_program_ranking_service._agent._agent.instructions,
+                    "input": [{"content": json.dumps(model_payload, ensure_ascii=False), "role": "user"}],
+                    "store": False,
+                }
+                if responses_payload_transform is not None:
+                    responses_payload = responses_payload_transform(responses_payload)
+                if not skip_upstream:
+                    response = await upstream_client.post("https://api.openai.com/v1/responses", json=responses_payload)
+                    if response.status_code != 200:
+                        return JSONResponse(status_code=503, content={"detail": "offline upstream unavailable"})
                 return {"originalQuery": payload["originalQuery"], "scoringVersion": payload["scoringVersion"],
                         "rankings": []}
 
@@ -209,7 +231,14 @@ class ReplayRunnerTest(unittest.TestCase):
         args = SimpleNamespace(**self.paths, output_dir=self.output)
         prompts = {"before": "before test prompt", "after": SUPPORT_PROGRAM_RANKING_INSTRUCTIONS}
         self.execution_state = (attempts, received_requests, closed)
-        with patch.dict(os.environ, {"OPENAI_API_KEY": SECRET_MARKER}, clear=True), \
+        environment = {"OPENAI_API_KEY": SECRET_MARKER}
+        if ranking_timeouts is not None:
+            environment.update(LLM_RANKING_MODEL_TIMEOUT_SECONDS=str(ranking_timeouts[0]),
+                               LLM_RANKING_RUN_TIMEOUT_SECONDS=str(ranking_timeouts[1]))
+        if shared_timeouts is not None:
+            environment.update(LLM_MODEL_TIMEOUT_SECONDS=str(shared_timeouts[0]),
+                               LLM_RUN_TIMEOUT_SECONDS=str(shared_timeouts[1]))
+        with patch.dict(os.environ, environment, clear=True), \
                 patch("app.main.create_app", side_effect=create_offline_app), redirect_stdout(io.StringIO()):
             await runner.execute(args, self.envelope, prompts)
 
@@ -222,6 +251,75 @@ class ReplayRunnerTest(unittest.TestCase):
     def assert_no_secret_in_artifacts(self):
         for path in self.output.iterdir():
             self.assertNotIn(SECRET_MARKER, path.read_text(encoding="utf-8"), str(path))
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_production_default_ranking_timeouts_are_rejected_before_creating_app_or_sending(self):
+        with self.assertRaisesRegex(ValueError, "frozen 25/30 second ranking timeouts"):
+            asyncio.run(self.execute_offline(ranking_timeouts=None, shared_timeouts=(25, 30)))
+        self.assertFalse(self.output.exists())
+        self.assertEqual(([], [], []), self.execution_state)
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_frozen_ranking_timeouts_are_independent_of_shared_timeouts_and_recorded(self):
+        asyncio.run(self.execute_offline(shared_timeouts=(10, 15)))
+        manifest = self.read_manifest()
+        self.assertEqual("succeeded", manifest["status"])
+        self.assertEqual({"model": 25.0, "agent": 30.0}, manifest["timeoutsSeconds"])
+        self.assertEqual(32, manifest["actualCalls"])
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_actual_responses_input_hash_includes_evidence_options_and_not_instructions(self):
+        asyncio.run(self.execute_offline())
+        results = [json.loads(line) for line in (self.output / "results.jsonl").read_text(encoding="utf-8").splitlines()]
+        requests = [entry for entry in self.read_usage() if entry["event"] == "request"]
+        for index, (attempt, result, usage) in enumerate(zip(self.execution_state[0], results, requests, strict=True)):
+            payload = json.loads(attempt.content)
+            actual_input = payload["input"]
+            expected = hashlib.sha256(json.dumps(
+                actual_input, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+            ).encode("utf-8")).hexdigest()
+            self.assertEqual(expected, result["modelInputSha256"])
+            self.assertEqual(expected, usage["modelInputSha256"])
+            self.assertNotEqual(result["requestSha256"], expected)
+            model_payload = json.loads(actual_input[0]["content"])
+            for candidate in model_payload["candidates"]:
+                self.assertEqual([
+                    {"index": 0, "field": "SUMMARY", "quote": candidate["summary"]},
+                    {"index": 1, "field": "TARGET_DESCRIPTION", "quote": candidate["targetDescription"]},
+                ], candidate.pop("evidenceOptions"))
+            without_options = [{**actual_input[0], "content": json.dumps(model_payload, ensure_ascii=False)}]
+            self.assertNotEqual(expected, runner.evaluator.canonical_sha256(without_options))
+            self.assertNotEqual(expected, runner.evaluator.canonical_sha256(payload))
+        for path in self.output.iterdir():
+            saved = path.read_text(encoding="utf-8")
+            self.assertNotIn("evidenceOptions", saved)
+            self.assertNotIn("오프라인 테스트 전용 내용", saved)
+        self.assert_no_secret_in_artifacts()
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_missing_responses_input_is_rejected_before_upstream_without_fallback_hash(self):
+        def without_input(payload):
+            payload.pop("input")
+            return payload
+
+        with self.assertRaisesRegex(ValueError, "actual Responses input"):
+            asyncio.run(self.execute_offline(responses_payload_transform=without_input))
+        self.assertEqual([], self.execution_state[0])
+        self.assertEqual("", (self.output / "results.jsonl").read_text(encoding="utf-8"))
+        self.assertEqual("failed", self.read_manifest()["status"])
+        self.assertEqual(0, self.read_manifest()["actualCalls"])
+        self.assertEqual(["failed"], [entry["event"] for entry in self.read_usage()])
+        self.assert_no_secret_in_artifacts()
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_uncaptured_model_input_does_not_fall_back_to_normalized_core_request(self):
+        with self.assertRaisesRegex(ValueError, "did not capture the actual model input"):
+            asyncio.run(self.execute_offline(skip_upstream=True))
+        self.assertEqual([], self.execution_state[0])
+        self.assertEqual("", (self.output / "results.jsonl").read_text(encoding="utf-8"))
+        self.assertEqual("failed", self.read_manifest()["status"])
+        self.assertEqual(0, self.read_manifest()["actualCalls"])
+        self.assert_no_secret_in_artifacts()
 
     @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
     def test_non_json_upstream_failure_preserves_http_status_and_failed_manifest(self):

@@ -3,6 +3,8 @@ package ai.govbiz.core._common.ai_config
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.AiServiceFailure
 import ai.govbiz.core._health_ai_service.client.AiServiceHealthClient
+import ai.govbiz.core.supportprogram.client.ai.HttpAiSupportProgramRankingClient
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramRankingRequest
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
@@ -143,6 +145,61 @@ class AiServiceClientConfigIntegrationTest {
             { assertEquals(AiServiceFailure.TIMEOUT, exception.failure) },
             { assertEquals(0L, requestReceived.count) },
         )
+    }
+
+    @Test
+    fun appliesTheRankingSpecificReadTimeoutInsteadOfTheSharedTimeout() {
+        val requestReceived = CountDownLatch(1)
+        server.createContext("/internal/v1/support-program-rankings/rank") { exchange ->
+            requestReceived.countDown()
+            try {
+                Thread.sleep(Duration.ofSeconds(2).toMillis())
+                sendJson(exchange, """{"originalQuery":"AI","scoringVersion":"govbiz-support-program-ranking-v4","rankings":[]}""")
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                exchange.close()
+            }
+        }
+        server.start()
+        val properties = AiServiceClientProperties(
+            URI.create("http://127.0.0.1:${server.address.port}"), CONNECT_TIMEOUT,
+            Duration.ofSeconds(35), rankingReadTimeout = Duration.ofMillis(150),
+        )
+        val client = HttpAiSupportProgramRankingClient(AiServiceClientConfig().aiRankingRestClient(RestClient.builder(), properties))
+
+        val exception = assertThrows(AiServiceCallException::class.java) {
+            client.rankSupportPrograms(AiSupportProgramRankingRequest("AI", "govbiz-support-program-ranking-v4", 1, emptyList()))
+        }
+
+        assertEquals(AiServiceFailure.TIMEOUT, exception.failure)
+        assertEquals(0L, requestReceived.count)
+    }
+
+    @Test
+    fun retainsTheSemanticReadTimeoutWhenRankingHasALongerBudget() {
+        val requestReceived = CountDownLatch(1)
+        server.createContext(HEALTH_PATH) { exchange ->
+            requestReceived.countDown()
+            try {
+                Thread.sleep(Duration.ofSeconds(2).toMillis())
+                sendJson(exchange, VALID_RESPONSE)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                exchange.close()
+            }
+        }
+        server.start()
+        val properties = AiServiceClientProperties(
+            URI.create("http://127.0.0.1:${server.address.port}"), CONNECT_TIMEOUT,
+            Duration.ofSeconds(35), semanticSearchReadTimeout = Duration.ofMillis(150),
+            rankingReadTimeout = Duration.ofSeconds(55),
+        )
+        val client = AiServiceHealthClient(AiServiceClientConfig().aiSemanticSearchRestClient(RestClient.builder(), properties))
+
+        val exception = assertThrows(AiServiceCallException::class.java) { client.getHealth() }
+
+        assertEquals(AiServiceFailure.TIMEOUT, exception.failure)
+        assertEquals(0L, requestReceived.count)
     }
 
     private fun createClient(readTimeout: Duration): AiServiceHealthClient {

@@ -137,7 +137,52 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls.every(([url]) => String(url).endsWith('/conversation/interpret'))).toBe(true)
   })
+
+  it('검색 서버의 확인된 시간 초과는 구체적으로 안내하고 같은 조건으로 검색만 수동 재시도한다', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
+      .mockResolvedValueOnce(searchTimeoutResponse())
+      .mockResolvedValueOnce(json({ query: seoulConversationContext.query, programs: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { store } = renderConversationApp()
+    await submitMessage('서울 SW 사업화')
+    expect(fetchMock).toHaveBeenCalledOnce()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    expect(screen.getByRole('alert').textContent).toContain('서버의 지원사업 검색 시간이 초과되었습니다')
+    expect(screen.queryByRole('button', { name: '다시 해석' })).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(store.getState().chat.searchOptions.companyConditions).toEqual(seoulConversationContext.companyConditions)
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '다시 검색' })))
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(String(fetchMock.mock.calls[2][0])).toContain('/support-programs/search')
+    expect(fetchMock.mock.calls[2][1].body).toEqual(fetchMock.mock.calls[1][1].body)
+    expect(store.getState().chat.searchError).toBeNull()
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({
+      searchQuery: seoulConversationContext.query,
+      searchOptions: { acceptingOnly: true, companyConditions: seoulConversationContext.companyConditions },
+    })
+  })
+
+  it.each([{ code: 'UNKNOWN_TIMEOUT' }, { title: null }])('알 수 없거나 잘못된 검색 504는 일반 오류로 표시한다: %o', async (changes) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
+      .mockResolvedValueOnce(searchTimeoutResponse(changes))
+    vi.stubGlobal('fetch', fetchMock)
+    renderConversationApp()
+    await submitMessage('서울 SW')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    expect(screen.getByRole('alert').textContent).toContain('지원사업을 검색하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+    expect(screen.getByRole('alert').textContent).not.toContain('서버의 지원사업 검색 시간이 초과되었습니다')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })
+
+function searchTimeoutResponse(changes: Record<string, unknown> = {}) {
+  return new Response(JSON.stringify({
+    type: 'urn:govbiz:problem:ai-service-timeout', title: 'AI Service Gateway Timeout', status: 504,
+    detail: 'private server detail', instance: '/api/v1/support-programs/search', code: 'AI_SERVICE_TIMEOUT', ...changes,
+  }), { status: 504, headers: { 'Content-Type': 'application/problem+json' } })
+}
 
 async function submitMessage(message: string) {
   const input = screen.getByRole('textbox', { name: '지원사업 검색어' })

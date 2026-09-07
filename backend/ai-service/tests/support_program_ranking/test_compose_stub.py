@@ -17,11 +17,13 @@ from app.support_program_ranking.service import SupportProgramRankingService
 @pytest.mark.parametrize("candidate_count", [1, 20])
 @pytest.mark.parametrize("has_relevant_candidate", [True, False])
 @pytest.mark.parametrize("source_text_truncated", [False, True])
+@pytest.mark.parametrize("no_quote_options", [False, True])
 async def test_compose_stub_matches_the_production_ranking_contract(
     monkeypatch: pytest.MonkeyPatch,
     candidate_count: int,
     has_relevant_candidate: bool,
     source_text_truncated: bool,
+    no_quote_options: bool,
 ) -> None:
     stub_path = Path(__file__).resolve().parents[4] / "infrastructure/stubs/openai/server.py"
     spec = importlib.util.spec_from_file_location("compose_openai_stub", stub_path)
@@ -37,10 +39,10 @@ async def test_compose_stub_matches_the_production_ranking_contract(
                 "id": f"BIZINFO:공고:{index}/원본",
                 "title": "서울 AI 지원" if has_relevant_candidate and index == candidate_count - 1 else "수출 지원",
                 "organization": "테스트 기관",
-                "summary": "지원사업 안내",
+                "summary": "\x00" if no_quote_options else "지원사업 안내",
                 "categories": [],
                 "regions": ["서울"],
-                "targetDescription": "중소기업",
+                "targetDescription": "\x00" if no_quote_options else "중소기업",
                 "applicationPeriod": "상시 접수",
                 "status": "OPEN",
                 "sourceTextTruncated": source_text_truncated,
@@ -92,10 +94,15 @@ async def test_compose_stub_matches_the_production_ranking_contract(
         assert "targetAssessment" in assessment and "regionAssessment" in assessment
         for dimension in ("targetAssessment", "regionAssessment"):
             assert "evidence" in assessment[dimension] and "explanation" in assessment[dimension]
-            if source_text_truncated:
+            assert all(type(index) is int for index in assessment[dimension]["evidence"])
+            if source_text_truncated or no_quote_options:
                 assert assessment[dimension]["eligibility"] == "UNKNOWN"
                 assert assessment[dimension]["evidence"] == []
     assert result.original_query == request.original_query
     expected_ids = [request.candidates[-1].id] if has_relevant_candidate else []
     assert [ranking.program_id for ranking in result.rankings] == expected_ids
     assert [ranking.total_score for ranking in result.rankings] == ([100] if has_relevant_candidate else [])
+    for ranking in result.rankings:
+        for evidence in [*ranking.target_evidence, *ranking.region_evidence]:
+            assert evidence.field in {"SUMMARY", "TARGET_DESCRIPTION"}
+            assert evidence.quote in {"지원사업 안내", "중소기업"}

@@ -292,7 +292,7 @@ describe('Redux chat flow', () => {
     expect(store.getState().chat.messages).toHaveLength(2)
   })
 
-  it('waits past 30 seconds, cancels at 70 seconds, and allows retry while ignoring the old result', async () => {
+  it('waits past 70 seconds, cancels at 90 seconds, and allows retry while ignoring the old result', async () => {
     vi.useFakeTimers()
     const pending = deferredSearchResult()
     let requestSignal: AbortSignal | undefined
@@ -311,13 +311,13 @@ describe('Redux chat flow', () => {
     expect(execute).toHaveBeenCalledOnce()
 
     act(() => {
-      vi.advanceTimersByTime(30_000)
+      vi.advanceTimersByTime(70_000)
     })
     expect(requestSignal?.aborted).toBe(false)
     expect(store.getState().chat.searchStatus).toBe('pending')
 
     act(() => {
-      vi.advanceTimersByTime(39_999)
+      vi.advanceTimersByTime(19_999)
     })
     expect(requestSignal?.aborted).toBe(false)
     expect(store.getState().chat.searchStatus).toBe('pending')
@@ -379,7 +379,7 @@ function renderChatHook(
   store: ReturnType<typeof createAppStore>,
   searchUseCase: Pick<SearchSupportProgramsUseCase, 'execute'>,
 ) {
-  // 기존 70초 검색·취소 회귀는 READY를 준비한 뒤 사용자의 명시적 확인으로 시작합니다.
+  // 검색·취소 회귀는 READY를 준비한 뒤 사용자의 명시적 확인으로 시작합니다.
   // 실제 해석→확인 흐름은 useSupportProgramConversation.test.ts에서 별도로 검증합니다.
   return renderHook(() => {
     const chat = useSupportProgramChat(searchUseCase, { execute: vi.fn() })

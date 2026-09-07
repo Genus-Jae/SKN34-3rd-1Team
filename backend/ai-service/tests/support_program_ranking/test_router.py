@@ -5,7 +5,7 @@ from agents.testing import ScriptedModel, assistant_message
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.support_program_ranking.errors import AgentExecutionError
+from app.support_program_ranking.errors import AgentExecutionError, AgentFailureCode, AgentTimeoutError
 from app.support_program_ranking.agent import SupportProgramRecommendationAgent
 from app.support_program_ranking.models import (
     SCORING_VERSION,
@@ -262,12 +262,16 @@ def test_computes_the_failed_capture_sum_in_service_and_keeps_http_contract() ->
             ),
         ]
     )
-    llm_output = json.dumps({
+    selections = {
         "rankings": {
             assessment.program_id: assessment.model_dump(by_alias=True, exclude={"program_id"})
             for assessment in output.rankings
         }
-    }, ensure_ascii=False)
+    }
+    for assessment in selections["rankings"].values():
+        for dimension in ("targetAssessment", "regionAssessment"):
+            assessment[dimension]["evidence"] = [0] if assessment[dimension]["evidence"] else []
+    llm_output = json.dumps(selections, ensure_ascii=False)
     assert "totalScore" not in llm_output
     model = ScriptedModel([[assistant_message(llm_output)]])
     client = TestClient(
@@ -292,11 +296,11 @@ def test_computes_the_failed_capture_sum_in_service_and_keeps_http_contract() ->
             "semanticRelevance": 24,
             "targetFit": 25,
             "targetEligibility": "MATCH",
-            "targetEvidence": [{"field": "SUMMARY", "quote": "기업"}],
+            "targetEvidence": [{"field": "SUMMARY", "quote": "창업기업 지원"}],
             "targetExplanation": "본문의 기업 조건을 비교했습니다.",
             "regionFit": 15,
             "regionEligibility": "MATCH",
-            "regionEvidence": [{"field": "SUMMARY", "quote": "지원"}],
+            "regionEvidence": [{"field": "SUMMARY", "quote": "창업기업 지원"}],
             "regionExplanation": "본문의 지역 조건을 비교했습니다.",
             "applicationStatusFit": 10,
             "supportTypeFit": 7,
@@ -336,7 +340,10 @@ def test_invalid_llm_eligibility_returns_503_without_retry_or_fallback(dimension
         assessment.program_id: assessment.model_dump(by_alias=True, exclude={"program_id"})
         for assessment in output.rankings
     }}
-    payload["rankings"]["BIZINFO:program-low"][dimension] = {"eligibility": "INCOMPATIBLE", "score": 4}
+    for assessment in payload["rankings"].values():
+        for axis in ("targetAssessment", "regionAssessment"):
+            assessment[axis]["evidence"] = [0]
+    payload["rankings"]["BIZINFO:program-low"][dimension].update(eligibility="INCOMPATIBLE", score=4)
     model = ScriptedModel([[assistant_message(json.dumps(payload, ensure_ascii=False))]])
     client = TestClient(
         create_app(
@@ -597,6 +604,42 @@ def test_rejects_an_agent_output_that_omits_a_candidate_without_leaking_details(
         "detail": "Support program ranking is temporarily unavailable."
     }
     assert "program-high" not in response.text
+
+
+@pytest.mark.parametrize("timed_out,status_code,kind", [(True, 504, "timeout"), (False, 503, "execution")])
+@pytest.mark.parametrize("reason_code", [None, *AgentFailureCode, "private untrusted reason"])
+def test_logs_only_safe_failure_metadata_and_distinguishes_timeout(monkeypatch, caplog, timed_out, status_code, kind, reason_code):
+    from unittest.mock import AsyncMock
+    import app.support_program_ranking.router as router_module
+    cause = TimeoutError("private upstream body sk-private-key") if timed_out else ValueError("private upstream response")
+    error = AgentTimeoutError("private timeout") if timed_out else AgentExecutionError("private invalid output")
+    if reason_code is not None:
+        error.reason_code = reason_code
+    error.__cause__ = cause
+    service = AsyncMock()
+    service.rank.side_effect = error
+    application = create_app(settings=TEST_SETTINGS, support_program_recommendation_agent=SuccessfulAgent())
+    application.dependency_overrides[router_module.get_support_program_ranking_service] = lambda: service
+    times = iter([100.0, 100.125])
+    monkeypatch.setattr(router_module, "perf_counter", lambda: next(times))
+    payload = request_body()
+    payload["originalQuery"] = "비공개 질문"
+    payload["companyConditions"] = {"region": "비공개 지역", "referenceDate": "2026-09-07"}
+    with TestClient(application) as client:
+        response = client.post("/internal/v1/support-program-rankings/rank", json=payload)
+    assert response.status_code == status_code
+    expected_detail = "Support program ranking timed out." if timed_out else "Support program ranking is temporarily unavailable."
+    assert response.json() == {"detail": expected_detail}
+    records = [record for record in caplog.records if record.name == router_module.__name__]
+    assert len(records) == 1
+    expected_code = reason_code if isinstance(reason_code, AgentFailureCode) else AgentFailureCode.EXECUTION_FAILED
+    assert records[0].getMessage() == (
+        f"support_program_ranking_failed failure_kind={kind} reason_code={expected_code.value} "
+        f"error_type={type(cause).__name__} candidate_count=2 elapsed_ms=125"
+    )
+    assert records[0].exc_info is None and records[0].stack_info is None
+    assert all(secret not in records[0].getMessage() + response.text for secret in ("private", "비공개", "창업기업"))
+    service.rank.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

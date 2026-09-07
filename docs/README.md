@@ -38,6 +38,8 @@
 | [C01 기업 조건 검색](company-conditions-search.md) | 익명 조건 입력·적용·초기화, POST 검색 반영, 검증 결과와 후속 범위 |
 | [원문 우선 자격 판정](source-first-eligibility-review.md) | 태그와 신청 요건 구분, 본문 인용 검증, 확인 필요 공고 분리와 검증 한계 |
 | [C02 후속 대화 조건 갱신](conversation-condition-update.md) | 작은 대화 상태·조건 변경 제안·확인 질문·사용자 확인 검색과 검증 범위 |
+| [검색 랭킹 시간 초과 수정](support-program-ranking-timeout-fix.md) | 랭킹 전용 시간 예산, 504 구분과 검색 재시도, 장애 관측·검증 기록 |
+| [지역 자격 범위·근거 개선](region-eligibility-scope-fix.md) | 상·하위 소재지 구분, 지역을 뒷받침하는 인용 선택, 합성 지역 평가와 실제 검증 |
 | [판정·검토 도구](../evaluation/support-program-search/review/README.md) | AI-only·혼합·사람 검토 모드 선택과 출처 관리 |
 | [Agent 모듈 구조](../backend/ai-service/docs/agent-structure.md) | Agent의 책임과 기능 추가 기준 |
 | [기능 확장 안내](customization-guide.md) | 새 기능을 추가할 때의 계층·계약·검증 순서 |
