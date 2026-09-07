@@ -2,33 +2,34 @@
 
 ## 적용 범위
 
-이 파일은 백엔드 구현 규칙을 서비스별로 구분한다. `AI Service 구현 규칙`은
-`backend/ai-service/**`에, `Core API 구조 및 명명 규칙`은 `backend/core-api/**`에 적용한다.
+`AI Service 구현 규칙`은 `backend/ai-service/**`에, `Core API 구조 및 명명 규칙`은
+`backend/core-api/**`에 적용한다. `변경 범위별 검증`은 저장소 전체에 적용한다.
+구조 규칙은 책임과 경계를 지키기 위한 것이며, 모든 기능에 같은 수의 계층·클래스를 만들라는
+뜻이 아니다. 요청과 무관한 기존 코드를 이 지침에 맞추기 위해 일괄 재배치하지 않는다.
 
 ## AI Service 구현 규칙
 
 ### 단순성 우선
 
-- 사용자가 요청한 현재 기능만 구현한다. 미래 요구를 추측해 구조를 추가하지 않는다.
+- 사용자가 요청한 현재 기능만 구현한다. "나중에 필요할 수 있다"는 이유로 구조를 추가하지 않는다.
 - 가장 단순하게 현재 요구와 테스트를 만족하는 구현을 우선한다.
 - 기본적으로 구체 클래스와 직접적인 함수 호출을 사용한다.
 - 하나의 기능을 불필요하게 여러 계층, 클래스 또는 파일로 분리하지 않는다.
 - 새 클래스나 파일은 현재 책임을 한 문장으로 설명할 수 있을 때만 추가한다.
-- "나중에 필요할 수 있다"는 이유만으로 코드를 추가하지 않는다.
 
 ### 추상화 제한
 
-- 사용자가 명시적으로 요청하지 않는 한 새로운 `Protocol`, ABC, port, provider abstraction,
-  registry, base class, 범용 factory를 만들지 않는다.
-- 다음 조건 중 하나도 충족하지 않으면 추상화를 추가하지 않는다.
+- 새로운 `Protocol`, ABC, port, provider abstraction, registry, base class, 범용 factory 및
+  공통 코드 추출은 다음 조건 중 하나 이상을 충족하고, 구체 구현보다 책임·중복·장애 경계를
+  명확하게 만들 때만 허용한다. 조건을 충족해도 추상화를 반드시 추가할 필요는 없다.
+
   1. 현재 production 구현체가 2개 이상이다.
   2. 현재 production 코드에서 같은 로직이 실제로 반복된다.
   3. 외부 시스템 경계를 격리해야 하는 명확한 장애 또는 보안 이유가 있다.
-  4. 사용자가 해당 추상화를 명시적으로 요청했다.
+  4. 사용자가 해당 추상화 또는 공통화를 명시적으로 요청했다.
+
 - 테스트 편의를 이유로 production 추상화를 추가하지 않는다. 테스트에서는 `monkeypatch`,
   `AsyncMock` 또는 구체 클래스의 테스트 대역을 우선한다.
-- 공통 코드는 실제 production 사용처가 2개 이상 생겼을 때만 추출한다. 단, 사용자가 공통화를
-  명시적으로 요청한 경우에는 바로 적용한다.
 
 ### 현재 제품 정책
 
@@ -41,16 +42,20 @@
 
 - 요청 범위 밖의 패턴 통일, 파일 재배치 또는 미래 대비 리팩터링을 하지 않는다.
 - 새로운 production 의존성, 외부 서비스 또는 실행 계층을 추가하기 전에 사용자에게 알린다.
-- 구현 후 실제 호출 흐름을 `HTTP API → Service → Agent → OpenAI → Response` 형식으로 설명한다.
-- `backend/ai-service` 변경 후에는 AI Service 전체 테스트를 실행한다.
+- 호출 흐름을 추가하거나 변경했다면 실제로 거치는 구성 요소를 간단히 설명한다. 예를 들어 답변
+  생성은 `HTTP API → Service → Agent → OpenAI → Response`로 설명하되, 색인·임베딩 등 다른
+  경로를 이 형식에 억지로 맞추거나 설명을 위해 계층을 추가하지 않는다.
+- 테스트는 아래 `변경 범위별 검증`을 따른다.
 
 ## Core API 구조 및 명명 규칙
 
 ### 기능 중심 배치
 
 - Kotlin 기본 패키지는 `ai.govbiz.core`이며 실제 디렉터리와 `package` 선언을 항상 일치시킨다.
-- 업무 코드는 기능 디렉터리 안에서 `controller → service → facade → client` 흐름을 기본으로 하고,
-  프레임워크와 무관한 업무 모델은 `domain`에 둔다.
+- 업무 코드는 기능 디렉터리에 둔다. 외부 HTTP 호출은 `Controller → Service → [Facade] → Client`,
+  관계형 DB 접근은 아래 영속성 규칙을 따른다. 대괄호는 필요한 경우에만 사용하는 계층이다.
+- 프레임워크와 무관한 업무 모델과 순수한 업무 규칙은 `domain`에 둔다.
+  `data class`인지 `object`인지보다 책임과 의존성으로 위치를 판단한다.
 - `supportprogram`은 실제 지원사업 기능, `_health`와 `_health_ai_service`는 상태 확인 기능,
   `_sampleitem`은 계층 학습 예제, `_common`은 둘 이상의 기능이 실제로 공유하는 코드다.
 - 공개 HTTP 계약은 해당 기능의 `controller/dto`, 외부 시스템 계약은 `client/dto`, 검증된 내부
@@ -137,8 +142,9 @@
 
 ### 데이터베이스 검증
 
-- Flyway migration, MyBatis Mapper XML 또는 Repository를 변경하면 실제 MySQL 8.4 Testcontainers를
-  사용하는 통합 테스트를 실행한다. MySQL 전용 JSON, UPSERT, 날짜, 문자 정렬 동작을 H2로 대체하지 않는다.
+- Flyway migration, MyBatis Mapper XML 또는 Repository 변경 시(실행에 영향 없는 문서·주석 제외)
+  실제 MySQL 8.4 Testcontainers 통합 테스트를 실행한다. MySQL 전용 JSON, UPSERT, 날짜,
+  문자 정렬 동작을 H2로 대체하지 않는다. 이미 적용될 수 있는 migration의 수정 금지는 그대로 적용한다.
 - Repository 통합 테스트는 변경 범위에 맞춰 한글·특수문자, JSON 배열, nullable 날짜, 복합 식별자,
   UPSERT와 transaction rollback을 검증한다.
 - 동기화 기능을 변경하면 동일 데이터 재수집, 누락 공고 비활성화, 중간 실패 시 기존 데이터 보존을
@@ -147,21 +153,46 @@
 
 ### 의존 방향과 변경 원칙
 
-- 외부 시스템 호출의 기본 의존 방향은 `Controller → Service → Facade → Client`로 고정한다.
 - Controller는 Facade나 Client를 직접 호출하지 않고 사용자 유스케이스를 담당하는 Service만 호출한다.
 - Service는 필요한 Repository를 직접 사용하며, 외부 하위 시스템의 호출·검증·변환이
-  복잡할 때만 Facade를 사용한다. 단순 Client 호출을 한 줄 전달하는 Facade는 만들지 않는다.
+  복잡할 때만 Facade를 사용한다. 단순 외부 호출은 Service에서 Client를 직접 사용하고,
+  한 줄 전달만 하는 Facade는 만들지 않는다.
 - Facade는 상위 Service를 다시 호출하지 않는다. `Service ↔ Facade` 순환 의존성은 금지한다.
-- Facade가 필요 없는 단순 외부 호출은 Service가 Client를 직접 사용할 수 있다.
 - 외부 시스템의 원본 JSON과 예외를 공개 API에 그대로 노출하지 않는다. Client 경계에서 DTO와
   안정적인 내부 예외로 변환한다.
 - 새로운 공통 추상화는 production 사용처가 둘 이상이거나 외부 시스템 장애·보안 경계를
   격리해야 할 때만 추가한다.
-- 구조나 이름을 변경하면 `backend/core-api/README.md`와 `docs/architecture.md`도 함께 갱신한다.
+- 구조·이름·공개 계약·실행 방법이 바뀌면 `backend/core-api/README.md`와 `docs/architecture.md`에서
+  영향을 받는 설명을 확인하고 갱신한다. 문서에 영향을 주지 않는 내부 변경만으로 두 문서를
+  형식적으로 수정하거나 동일한 작업 기록을 반복 추가하지 않는다.
 
 ### 검증
 
 - 테스트 패키지는 production 패키지 구조를 따라 배치한다.
-- Core API 변경 후에는 JDK 21 환경에서 `./gradlew clean test --no-daemon`을 실행한다.
-- 파일 이동 후에는 이전 package·import·문서 경로가 남지 않았는지 `rg`로 확인하고
-  `git diff --check`를 통과시킨다.
+- 파일 이동 후에는 이전 package·import·문서 경로가 남지 않았는지 `rg`로 확인한다.
+- 테스트 실행 범위와 명령은 아래를 따른다.
+
+## 변경 범위별 검증
+
+- 개발 중에는 관련 테스트로 빠르게 확인하고, 마무리 전에 변경된 최신 코드에 대해 아래 필수 검증을
+  완료한다. 통과 이후 관련 코드·설정·테스트가 다시 바뀌거나 실패·미해결 우려가 생기지 않았다면
+  같은 전체 테스트를 반복하지 않는다. 커밋 메시지나 작업 요약 작성만으로 다시 실행하지 않는다.
+- 문서·주석만 바뀌고 실행 동작에 영향이 없다면 경로·링크·설명과 `git diff --check`를 확인한다.
+  전체 애플리케이션 테스트는 필요 없다. 실행 설정·의존성·프롬프트 변경은 문서 변경으로 취급하지 않는다.
+- Core API 코드·실행 설정·의존성·테스트 변경: JDK 21 환경에서 `backend/core-api`를 작업 디렉터리로
+  `./gradlew test --no-daemon`을 실행한다. 파일 이동·삭제, 빌드·리소스 처리 변경 또는 오래된 산출물
+  의심이 있으면 `./gradlew clean test --no-daemon`을 사용한다. 위 MySQL 통합 테스트 요구는 유지한다.
+- AI Service 코드·실행 설정·의존성·프롬프트·테스트 변경: `backend/ai-service`에서
+  `uv run --locked --extra dev python -m pytest`로 AI Service 전체 테스트를 실행한다.
+- Frontend 코드·설정·의존성·테스트 변경: `frontend/package.json`의 Node.js·pnpm 버전에 맞춰
+  `frontend`에서 `pnpm test`, `pnpm lint`, `pnpm build`를 실행한다.
+- 평가 도구 변경: 해당 평가 디렉터리의 README와 `.github/workflows/ci.yml`에 있는 관련 검증을
+  실행한다. 검색 평가와 근거 답변 평가는 각각의 실행 환경에서 별도 프로세스로 실행한다.
+- 서비스 사이의 공개 계약을 바꾸면 응답 생산자와 소비자 양쪽을 검증한다. 의존성·Docker·Compose·CI
+  변경은 위 테스트에 더해 `.github/workflows/ci.yml`의 해당 잠금 파일·빌드·통합 검증을 확인해 실행한다.
+  CI의 clean build 요구를 로컬의 증분 테스트로 대체하지 않는다.
+- 최종 변경에 `git diff --check`를 실행한다. 테스트를 실행하지 못했거나 통합 테스트가 건너뛰어진
+  경우에는 이유와 미검증 범위를 명시한다. 실패를 숨기거나 관련 없는 기존 변경을 되돌리지 않는다.
+- 자동 테스트·스텁 검증 통과를 실제 검색·RAG 품질 측정 완료로 표현하지 않는다. 유료 API 평가는
+  사용자가 승인한 전송 데이터와 호출 예산 안에서만 실행하고, 추가 승인이 필요하면 무료 검증을 먼저
+  마친다. AI 판정 결과를 사람이 검토한 정답으로 표시하지 않는다.
