@@ -4,7 +4,6 @@ import type { RootState } from '../../../../app/store'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCompanyConditions, SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
 import type { SupportProgramConversationContext, SupportProgramInterpretation, SupportProgramInterpretRequest, SupportProgramPendingClarification } from '../../../../domain/entities/SupportProgramConversation'
-import { emptyCompanyConditionsDraft, type CompanyConditionsDraft } from '../validation/companyConditionsForm'
 import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
 
 export type ChatSearchOptions = {
@@ -39,7 +38,6 @@ type ChatState = {
   searchError: string | null
   searchStatus: ChatSearchStatus
   searchOptions: ChatSearchOptions
-  companyConditionsDraft: CompanyConditionsDraft
   conversationQuery: string | null
   interpretation: ChatInterpretation
   pendingClarification: SupportProgramPendingClarification | null
@@ -70,37 +68,6 @@ const chatSlice = createSlice({
       if (state.interpretation.status === 'ready' || state.interpretation.status === 'failed') {
         state.interpretation = { status: 'idle' }
       }
-    },
-    companyConditionDraftChanged(state, action: PayloadAction<{ field: keyof CompanyConditionsDraft; value: string }>) {
-      if (isBusy(state)) return
-      invalidateProposal(state)
-      state.companyConditionsDraft[action.payload.field] = action.payload.value
-    },
-    companyConditionsApplied(state, action: PayloadAction<SupportProgramCompanyConditions>) {
-      if (isBusy(state)) return
-      invalidateProposal(state)
-      state.searchOptions.companyConditions = Object.keys(action.payload).length ? action.payload : undefined
-      state.companyConditionsDraft = { ...emptyCompanyConditionsDraft(), ...action.payload }
-    },
-    companyConditionRemoved(state, action: PayloadAction<keyof CompanyConditionsDraft>) {
-      if (isBusy(state)) return
-      invalidateProposal(state)
-      delete state.searchOptions.companyConditions?.[action.payload]
-      if (Object.keys(state.searchOptions.companyConditions ?? {}).length === 0) {
-        state.searchOptions.companyConditions = undefined
-      }
-      state.companyConditionsDraft[action.payload] = ''
-    },
-    companyConditionsCleared(state) {
-      if (isBusy(state)) return
-      invalidateProposal(state)
-      state.searchOptions = { acceptingOnly: true }
-      state.companyConditionsDraft = emptyCompanyConditionsDraft()
-    },
-    acceptingOnlyChanged(state, action: PayloadAction<boolean>) {
-      if (isBusy(state)) return
-      invalidateProposal(state)
-      state.searchOptions.acceptingOnly = action.payload
     },
     interpretationStarted: {
       reducer(state, action: PayloadAction<{ requestId: string; messageId: string; request: SupportProgramInterpretRequest }>) {
@@ -145,7 +112,6 @@ const chatSlice = createSlice({
       const context = proposal.result.proposedContext
       state.conversationQuery = context.query!.trim()
       state.searchOptions = conversationContextToSearchOptions(context)
-      state.companyConditionsDraft = { ...emptyCompanyConditionsDraft(), ...state.searchOptions.companyConditions }
       state.confirmedSearch = { query: state.conversationQuery, ...copySearchOptions(state.searchOptions) }
       state.pendingClarification = null
       state.interpretation = { status: 'idle' }
@@ -246,11 +212,6 @@ const chatSlice = createSlice({
 })
 
 export const {
-  acceptingOnlyChanged,
-  companyConditionDraftChanged,
-  companyConditionRemoved,
-  companyConditionsApplied,
-  companyConditionsCleared,
   conversationReset,
   draftChanged,
   interpretationStarted,
@@ -291,7 +252,6 @@ function createInitialState(welcomeMessage = createWelcomeMessage()): ChatState 
     searchError: null,
     searchStatus: 'idle',
     searchOptions: { acceptingOnly: true },
-    companyConditionsDraft: emptyCompanyConditionsDraft(),
     conversationQuery: null,
     interpretation: { status: 'idle' },
     pendingClarification: null,
@@ -338,12 +298,4 @@ export function selectConversationContext(state: RootState): SupportProgramConve
 
 function isBusy(state: ChatState) {
   return state.searchStatus === 'pending' || state.interpretation.status === 'pending'
-}
-
-function invalidateProposal(state: ChatState) {
-  state.interpretation = { status: 'idle' }
-  state.pendingClarification = null
-  state.confirmedSearch = null
-  state.searchError = null
-  if (state.searchStatus === 'failed') state.searchStatus = 'idle'
 }

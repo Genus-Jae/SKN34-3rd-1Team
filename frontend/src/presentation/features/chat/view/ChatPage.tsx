@@ -2,13 +2,9 @@ import { Link } from 'react-router'
 
 import type { SupportProgram, SupportProgramEligibilityAxis } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramConversationContext, SupportProgramInterpretation } from '../../../../domain/entities/SupportProgramConversation'
-import type {
-  SupportProgramSearchReadiness,
-  SupportProgramSourceSearchState,
-} from '../../../../domain/entities/SupportProgramSearchReadiness'
+import type { SupportProgramSearchReadiness } from '../../../../domain/entities/SupportProgramSearchReadiness'
 import { useChatPageViewModel } from '../viewmodel/useChatPageViewModel'
 import type { ChatSearchOptions } from '../state/chatSlice'
-import { companyConditionFields, seoulToday } from '../validation/companyConditionsForm'
 import { groupSupportProgramsByEligibility } from '../supportProgramEligibility'
 import {
   chatMessageBubbleClassName,
@@ -16,11 +12,12 @@ import {
   chatPageStyles,
 } from './ChatPage.styles'
 
-const syncTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'Asia/Seoul',
-})
+const companyConditionFields = [
+  { key: 'region', label: '현재 소재지' },
+  { key: 'industry', label: '업종' },
+  { key: 'establishedOn', label: '설립일' },
+  { key: 'supportPurpose', label: '지원 목적' },
+] as const
 
 /** `landing`은 첫 진입 화면(입력창 상단), `workspace`는 로그인 뒤 원래 채팅 배치(입력창 하단)입니다. */
 export type ChatPageLayout = 'landing' | 'workspace'
@@ -35,14 +32,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     cancelInterpretation,
     handleConfirmInterpretation,
     handleRetryInterpretation,
-    searchOptions,
-    companyConditionsDraft,
-    conditionsError,
-    updateCompanyCondition,
-    applyCompanyConditions,
-    removeCompanyCondition,
-    clearCompanyConditions,
-    updateAcceptingOnly,
     canSearch,
     canRetrySearch,
     cancelSearch,
@@ -64,6 +53,9 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     timelineRef,
   } = useChatPageViewModel()
 
+  const hasReadinessNotice = readiness.isInitialLoading || readiness.isError
+    || readiness.data?.searchState !== 'SEARCHABLE'
+
   const introBlock = (
     <div className={chatPageStyles.intro}>
       <h1 className={chatPageStyles.introTitle}>GovBiz에게 물어보세요</h1>
@@ -79,7 +71,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
         <textarea
           className={chatPageStyles.composerInput}
           aria-label="지원사업 검색어"
-          aria-describedby="support-program-search-readiness"
+          aria-describedby={hasReadinessNotice ? 'support-program-search-readiness' : undefined}
           value={draft}
           disabled={isInterpreting}
           onChange={handleDraftChange}
@@ -138,7 +130,8 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
 
   const composerHint = (
       <small className={chatPageStyles.composerHint}>
-        Enter로 조건 해석 · 확인 버튼을 눌러야 검색 · Shift+Enter로 줄바꿈
+        Enter로 전송 · Shift+Enter로 줄바꿈 · 검색 전 조건을 확인해요.
+        <span className="block">개인정보·비밀정보는 입력하지 마세요.</span>
       </small>
   )
 
@@ -239,79 +232,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     </div>
   )
 
-  const conditionsPanel = (
-    <section className={chatPageStyles.conditionsPanel} aria-label="기업 검색 조건">
-      <details>
-        <summary className={chatPageStyles.conditionsSummary}>기업 조건 입력·수정 (선택)</summary>
-        <form onSubmit={(event) => { event.preventDefault(); applyCompanyConditions() }} noValidate>
-          <fieldset className={chatPageStyles.conditionsFields} disabled={isBusy}>
-            <legend className="sr-only">기업 조건 입력</legend>
-            {companyConditionFields.map((field) => (
-              <label key={field.key} className={chatPageStyles.conditionsLabel}>
-                {field.label}
-                <input
-                  className={chatPageStyles.conditionsInput}
-                  type={field.key === 'establishedOn' ? 'date' : 'text'}
-                  value={companyConditionsDraft[field.key]}
-                  onChange={(event) => updateCompanyCondition(field.key, event.target.value)}
-                  placeholder={field.placeholder}
-                  maxLength={field.maxLength}
-                  min={field.key === 'establishedOn' ? '1900-01-01' : undefined}
-                  max={field.key === 'establishedOn' ? seoulToday() : undefined}
-                  aria-describedby="company-conditions-hint"
-                />
-              </label>
-            ))}
-            <div className={chatPageStyles.conditionsActions}>
-              <button className={chatPageStyles.conditionsButton} type="submit">조건 적용</button>
-              <button className={chatPageStyles.conditionsButton} type="button" onClick={clearCompanyConditions}>
-                조건 전체 초기화
-              </button>
-            </div>
-          </fieldset>
-        </form>
-        <p id="company-conditions-hint" className={chatPageStyles.conditionsHint}>
-          현재 소재지를 입력해 주세요. 이전 예정 지역은 추정하지 않습니다. 편집한 값은 ‘조건 적용’ 후 다음 검색부터 사용합니다.
-          조건은 이번 대화에서만 유지되며 새 대화·새로고침 시 초기화됩니다.
-          입력한 조건은 AI 추천에 사용되므로 개인정보·비밀정보는 입력하지 마세요.
-        </p>
-      </details>
-      {conditionsError ? <p className={chatPageStyles.searchError} role="alert">{conditionsError}</p> : null}
-      <div className={chatPageStyles.conditionsActions}>
-        <label className={chatPageStyles.conditionsLabel}>
-          접수 상태
-          <select
-            className={chatPageStyles.conditionsInput}
-            value={searchOptions.acceptingOnly ? 'accepting' : 'all'}
-            disabled={isBusy}
-            onChange={(event) => updateAcceptingOnly(event.target.value === 'accepting')}
-          >
-            <option value="accepting">접수 중만</option>
-            <option value="all">전체 (예정·마감·상태 미확인 포함)</option>
-          </select>
-        </label>
-        <ul className={chatPageStyles.conditionsChips} aria-label="적용된 기업 조건">
-          {companyConditionFields.map((field) => {
-            const value = searchOptions.companyConditions?.[field.key]
-            return value ? (
-              <li key={field.key} className={chatPageStyles.conditionsChip}>
-                {field.label}: {value}{' '}
-                <button type="button" disabled={isBusy} aria-label={`${field.label} 조건 해제`} onClick={() => removeCompanyCondition(field.key)}>×</button>
-              </li>
-            ) : null
-          })}
-        </ul>
-      </div>
-      <p className={chatPageStyles.conditionsHint}>
-        미입력은 자격 충족을 뜻하지 않습니다. AI 판단은 원문 확인이 필요합니다. 검색어와 충돌하면 적용한 기업 조건을 우선합니다.
-        새 메시지의 변경안은 확인 후 적용됩니다. 수동 폼을 수정하면 기존 제안과 미확정 초안은 취소됩니다.
-      </p>
-      <p className={chatPageStyles.conditionsHint}>
-        조건을 바꾸면 다시 검색해 주세요. 아래 각 검색에는 당시 조건을 표시합니다.
-      </p>
-    </section>
-  )
-
   const readinessNotice = (
     <SupportProgramSearchReadinessNotice
       readiness={readiness.data}
@@ -323,11 +243,10 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   )
 
   if (layout === 'workspace') {
-    // 로그인 뒤의 작업 화면: 원래 채팅 화면 배치(조건 → 대화 → 하단 입력창)에서 사이드바·화면 헤더만 없앤 형태입니다.
+    // 로그인 뒤의 작업 화면은 대화와 하단 입력창으로 구성합니다.
     return (
       <main className={chatPageStyles.page}>
         <section className={chatPageStyles.workspace}>
-          {conditionsPanel}
           {timeline}
           <form className={chatPageStyles.composerWorkspace} onSubmit={handleSubmit}>
             {readinessNotice}
@@ -351,7 +270,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
         </form>
         {suggestionChips}
         {timeline}
-        {conditionsPanel}
         {readinessNotice}
       </section>
     </main>
@@ -376,38 +294,32 @@ function ConversationProposal({ current, proposal, canConfirm, onConfirm, onCanc
   const ready = proposal.status === 'READY'
   const proposed = proposal.proposedContext
   const rows = [
-    { label: '검색 의도', before: current.query, after: proposed.query },
     ...companyConditionFields.map((field) => ({ label: field.label,
       before: current.companyConditions[field.key], after: proposed.companyConditions[field.key] })),
     { label: '접수 상태', before: current.acceptingOnly ? '접수 중만' : '전체', after: proposed.acceptingOnly ? '접수 중만' : '전체' },
-  ]
+  ].filter((row) => row.before !== row.after)
+  const hasRetainedConditions = companyConditionFields.some((field) => (
+    current.companyConditions[field.key] !== null
+    && current.companyConditions[field.key] === proposed.companyConditions[field.key]
+  )) || (!proposed.acceptingOnly && current.acceptingOnly === proposed.acceptingOnly)
   return (
     <section className={chatPageStyles.proposalPanel} aria-label={ready ? '조건 변경 제안' : '조건 추가 확인'}>
-      <h2 className={chatPageStyles.resultSectionTitle}>{ready ? '이 조건으로 검색할까요?' : '추가 확인이 필요합니다'}</h2>
-      <p className={chatPageStyles.conditionsHint}>
-        {ready ? '아직 적용하거나 검색하지 않았습니다. 변경 전·후와 검색 의도를 확인해 주세요.'
-          : '아래는 미확정 초안입니다. 현재 적용 조건은 바뀌지 않았으며 공고를 검색하지 않았습니다.'}
-      </p>
-      {proposal.clarificationQuestion ? <p className={chatPageStyles.proposalQuestion}>{proposal.clarificationQuestion}</p> : null}
-      <dl className={chatPageStyles.proposalRows}>
-        {rows.map((row) => <div key={row.label} className={chatPageStyles.proposalRow}>
-          <dt className={chatPageStyles.conditionsLabel}>{row.label} · {row.before === row.after ? '유지' : row.after === null ? '해제' : '변경'}</dt>
-          <dd className={chatPageStyles.proposalValue}>
-            <span>현재: {row.before ?? '미입력'}</span>
-            <span>{ready ? '제안' : '미확정'}: {row.after ?? '미입력'}</span>
-          </dd>
-        </div>)}
-      </dl>
-      <p className={chatPageStyles.conditionsHint}>
-        미입력은 자격 충족이 아닙니다. AI 해석의 정확성을 직접 확인해 주세요. 해석과 검색은 각각 한 번의 요청입니다.
-      </p>
+      <h2 className={chatPageStyles.proposalTitle}>{ready ? proposed.query : proposal.clarificationQuestion}</h2>
+      {ready && rows.length > 0 ? (
+        <ul className={chatPageStyles.proposalChanges} aria-label="변경할 조건">
+          {rows.map((row) => <li key={row.label} className={chatPageStyles.proposalChange}>
+            {row.after === null ? `${row.label} 해제` : `${row.label}: ${row.after}`}
+          </li>)}
+        </ul>
+      ) : null}
+      {ready && hasRetainedConditions ? <p className={chatPageStyles.proposalHint}>나머지 조건은 유지됩니다.</p> : null}
+      {!ready ? <p className={chatPageStyles.proposalHint}>답변을 입력해 주세요. 아직 검색하지 않았어요.</p> : null}
       <div className={chatPageStyles.conditionsActions}>
         {ready ? <button type="button" className={chatPageStyles.conditionsButton} disabled={!canConfirm}
           onClick={onConfirm}>이 조건으로 검색</button> : null}
         <button type="button" className={chatPageStyles.conditionsButton} onClick={onCancel}>제안 취소</button>
       </div>
       {ready && !canConfirm ? <p className={chatPageStyles.conditionsHint}>공고 검색 준비가 완료되면 확인한 조건으로 검색할 수 있습니다.</p> : null}
-      {!ready ? <p className={chatPageStyles.conditionsHint}>아래 입력창에 답해 주세요. 마지막 질문과 이 미확정 초안만 이어서 해석합니다.</p> : null}
     </section>
   )
 }
@@ -451,7 +363,8 @@ function SupportProgramSearchReadinessNotice({
     )
   }
 
-  const content = getReadinessNoticeContent(readiness)
+  const message = getReadinessNoticeMessage(readiness)
+  if (message === null) return null
   const isUnavailable = readiness.searchState === 'UNAVAILABLE'
 
   return (
@@ -463,130 +376,34 @@ function SupportProgramSearchReadinessNotice({
       role={isUnavailable ? 'alert' : undefined}
       aria-live={isUnavailable ? undefined : 'polite'}
     >
-      <div>
-        <strong className={chatPageStyles.readinessTitle}>{content.title}</strong>
-        <p className={chatPageStyles.readinessDescription}>{content.description}</p>
-        <dl className={chatPageStyles.readinessDetails}>
-          <div>
-            <dt>검색 가능한 공고</dt>
-            <dd>{readiness.programCount}건</dd>
-          </div>
-          <div>
-            <dt>검색 인덱스</dt>
-            <dd>{readiness.indexReady ? '준비됨' : '준비 중'}</dd>
-          </div>
-          <div>
-            <dt>마지막 성공 동기화</dt>
-            <dd>{formatSyncTime(readiness.lastSuccessfulSyncAt)}</dd>
-          </div>
-          <div>
-            <dt>마지막 실패 동기화</dt>
-            <dd>{formatSyncTime(readiness.lastFailedSyncAt)}</dd>
-          </div>
-        </dl>
-        <ul className={chatPageStyles.readinessSources} aria-label="제공처별 공고 준비 상태">
-          {readiness.sources.map((source) => (
-            <li key={source.sourceCode} className={chatPageStyles.readinessSource}>
-              <strong>{source.sourceName}</strong>
-              <span className={chatPageStyles.readinessSourceState}>
-                {formatSourceSearchState(source.searchState)}
-              </span>
-              <dl className={chatPageStyles.readinessDetails}>
-                <div>
-                  <dt>저장된 공고</dt>
-                  <dd>{source.programCount}건</dd>
-                </div>
-                <div>
-                  <dt>검색 준비</dt>
-                  <dd>{source.indexReady ? '준비됨' : source.searchState === 'PREPARING' ? '준비 중' : '준비 확인 불가'}</dd>
-                </div>
-                <div>
-                  <dt>성공 동기화</dt>
-                  <dd>{formatSyncTime(source.lastSuccessfulSyncAt)}</dd>
-                </div>
-                <div>
-                  <dt>실패 동기화</dt>
-                  <dd>{formatSyncTime(source.lastFailedSyncAt)}</dd>
-                </div>
-              </dl>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <span>{message}</span>
       {isUnavailable || readiness.searchState === 'SEARCHABLE_WITH_PARTIAL_SOURCES' ? (
         <button
           type="button"
           className={chatPageStyles.readinessRetryButton}
           onClick={onRetry}
+          disabled={isRefreshing}
         >
-          상태 다시 확인
+          {isRefreshing ? '확인 중…' : '상태 다시 확인'}
         </button>
-      ) : null}
-      {isRefreshing ? (
-        <span className={chatPageStyles.readinessRefreshing}>상태를 다시 확인하고 있습니다.</span>
       ) : null}
     </section>
   )
 }
 
-function getReadinessNoticeContent(readiness: SupportProgramSearchReadiness) {
+function getReadinessNoticeMessage(readiness: SupportProgramSearchReadiness) {
   switch (readiness.searchState) {
     case 'PREPARING':
-      return {
-        title: '초기 공고 데이터를 준비하고 있습니다.',
-        description: '준비가 완료되면 자동으로 검색할 수 있습니다.',
-      }
+      return '공고를 준비하고 있습니다. 잠시만 기다려 주세요.'
     case 'SEARCHABLE':
-      if (readiness.programCount === 0) {
-        return {
-          title: '현재 제공 중인 공고가 없습니다.',
-          description: '새 공고가 동기화되면 검색 결과에 표시됩니다.',
-        }
-      }
-      return {
-        title: '공고 검색이 가능합니다.',
-        description: '현재 저장된 공고를 바로 검색할 수 있습니다.',
-      }
+      return null
     case 'SEARCHABLE_WITH_SYNC_FAILURE':
-      return {
-        title: '이전 공고 데이터로 검색할 수 있습니다.',
-        description: '최신 공고 동기화에 실패했지만, 이전에 저장된 공고는 계속 검색할 수 있습니다.',
-      }
-    case 'SEARCHABLE_WITH_PARTIAL_SOURCES': {
-      const searchableSources = readiness.sources
-        .filter((source) => source.searchState === 'SEARCHABLE'
-          || source.searchState === 'SEARCHABLE_WITH_SYNC_FAILURE')
-        .map((source) => source.sourceName)
-      return {
-        title: '일부 제공처의 공고를 검색할 수 있습니다.',
-        description: `현재 검색 범위: ${searchableSources.join(', ')}. 나머지 제공처는 준비가 완료되면 검색에 포함됩니다.`,
-      }
-    }
+      return '최신 공고를 불러오지 못해 이전에 저장한 공고에서 검색합니다.'
+    case 'SEARCHABLE_WITH_PARTIAL_SOURCES':
+      return '일부 제공처의 공고만 검색할 수 있습니다.'
     case 'UNAVAILABLE':
-      return {
-        title: '현재 공고 데이터를 검색할 수 없습니다.',
-        description: '잠시 후 상태를 다시 확인해 주세요.',
-      }
+      return '현재 공고 데이터를 검색할 수 없습니다. 잠시 후 다시 확인해 주세요.'
   }
-}
-
-function formatSourceSearchState(state: SupportProgramSourceSearchState) {
-  const labels: Record<SupportProgramSourceSearchState, string> = {
-    PREPARING: '초기 준비 중',
-    SEARCHABLE: '검색 가능',
-    SEARCHABLE_WITH_SYNC_FAILURE: '이전 공고 검색 가능 · 최신 동기화 실패',
-    UNAVAILABLE: '검색 불가',
-  }
-  return labels[state]
-}
-
-function formatSyncTime(value: string | null) {
-  if (!value) return '기록 없음'
-
-  const date = new Date(value)
-  if (Number.isNaN(date.valueOf())) return value
-
-  return syncTimeFormatter.format(date)
 }
 
 function ProgramResults({ programs }: { programs: SupportProgram[] }) {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -27,6 +27,97 @@ beforeEach(() => { readiness.canSearch = true })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
+  it('검색어만 제안하면 제목과 확인·취소만 간단히 보여주고 미입력 조건은 나열하지 않는다', async () => {
+    const context = { ...emptyConversationContext, query: '제조기업 R&D 사업' }
+    const network = mockConversationNetwork([readyConversationProposal(context)])
+    const { store } = renderConversationApp()
+    await submitMessage('제조기업 R&D 사업 찾아줘')
+
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    const card = within(proposal)
+    expect(card.getByRole('heading', { name: context.query })).toBeTruthy()
+    expect(card.getByRole('button', { name: '이 조건으로 검색' })).toBeTruthy()
+    expect(card.getByRole('button', { name: '제안 취소' })).toBeTruthy()
+    expect(proposal.textContent).not.toMatch(/미입력|현재:|제안:|변경 전·후|해석과 검색은 각각|나머지 조건/)
+    expect(proposal.textContent).not.toMatch(/현재 소재지|업종|설립일|지원 목적|접수 상태/)
+    expect(network.searchRequests).toHaveLength(0)
+    expect(store.getState().chat.conversationQuery).toBeNull()
+    await act(async () => fireEvent.click(card.getByRole('button', { name: '이 조건으로 검색' })))
+    expect(network.searchRequests).toEqual([{ query: context.query, acceptingOnly: true }])
+  })
+
+  it('검색어만 바꾸면 기존 기업 조건은 반복하지 않고 유지 안내 한 줄로 표시한다', async () => {
+    const nextContext = { ...seoulConversationContext, query: '수출 지원' }
+    const network = mockConversationNetwork([
+      readyConversationProposal(seoulConversationContext), readyConversationProposal(nextContext),
+    ])
+    renderConversationApp()
+    await submitMessage('서울 SW 사업화')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    await submitMessage('수출 지원도 찾아줘')
+
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    const card = within(proposal)
+    expect(card.getByRole('heading', { name: '수출 지원' })).toBeTruthy()
+    expect(card.getByText('나머지 조건은 유지됩니다.')).toBeTruthy()
+    expect(proposal.textContent).not.toMatch(/현재 소재지|업종|설립일|지원 목적|접수 상태|서울|SW|2024-01-01/)
+    expect(network.searchRequests).toHaveLength(1)
+    await act(async () => fireEvent.click(card.getByRole('button', { name: '이 조건으로 검색' })))
+    expect(network.searchRequests[1]).toEqual({ query: '수출 지원', acceptingOnly: true,
+      companyConditions: seoulConversationContext.companyConditions })
+  })
+
+  it('변경된 값과 해제만 보여주며 취소하면 적용 조건과 이전 검색 스냅샷을 보존한다', async () => {
+    const nextContext = { ...seoulConversationContext, acceptingOnly: false,
+      companyConditions: { ...seoulConversationContext.companyConditions, region: '부산', industry: null } }
+    const network = mockConversationNetwork([
+      readyConversationProposal(seoulConversationContext), readyConversationProposal(nextContext),
+    ])
+    const { store } = renderConversationApp()
+    await submitMessage('서울 SW 사업화')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    await submitMessage('부산으로 바꾸고 업종은 빼줘. 마감 공고도 포함해줘')
+
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    const card = within(proposal)
+    expect(card.getByText('현재 소재지: 부산')).toBeTruthy()
+    expect(card.getByText('업종 해제')).toBeTruthy()
+    expect(card.getByText('접수 상태: 전체')).toBeTruthy()
+    expect(card.getByText('나머지 조건은 유지됩니다.')).toBeTruthy()
+    expect(proposal.textContent).not.toMatch(/설립일|지원 목적|서울|2024-01-01|현재:|제안:|미입력/)
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true,
+      companyConditions: seoulConversationContext.companyConditions })
+    fireEvent.click(card.getByRole('button', { name: '제안 취소' }))
+    expect(screen.queryByRole('region', { name: '조건 변경 제안' })).toBeNull()
+    expect(network.searchRequests).toHaveLength(1)
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true,
+      companyConditions: seoulConversationContext.companyConditions })
+    expect(store.getState().chat.messages.filter((message) => message.searchOptions !== undefined).at(-1)).toMatchObject({
+      searchQuery: seoulConversationContext.query, searchOptions: { acceptingOnly: true,
+        companyConditions: seoulConversationContext.companyConditions },
+    })
+    expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
+  })
+
+  it('기업 조건이 없어도 유지되는 전체 접수 상태는 한 줄로 안내하고 검색에 그대로 적용한다', async () => {
+    const current = { ...emptyConversationContext, query: '지원금', acceptingOnly: false }
+    const next = { ...current, query: '수출 지원' }
+    const network = mockConversationNetwork([readyConversationProposal(current), readyConversationProposal(next)])
+    renderConversationApp()
+    await submitMessage('마감 공고도 포함해서 지원금 찾아줘')
+    const first = within(screen.getByRole('region', { name: '조건 변경 제안' }))
+    expect(first.getByText('접수 상태: 전체')).toBeTruthy()
+    expect(first.queryByText('나머지 조건은 유지됩니다.')).toBeNull()
+    await act(async () => fireEvent.click(first.getByRole('button', { name: '이 조건으로 검색' })))
+    await submitMessage('수출 지원도 찾아줘')
+
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    expect(within(proposal).getByText('나머지 조건은 유지됩니다.')).toBeTruthy()
+    expect(proposal.textContent).not.toMatch(/접수 상태|현재 소재지|미입력/)
+    await act(async () => fireEvent.click(within(proposal).getByRole('button', { name: '이 조건으로 검색' })))
+    expect(network.searchRequests[1]).toEqual({ query: '수출 지원', acceptingOnly: false })
+  })
+
   it('서울 SW → 지원금 → 부산을 각각 확인한 뒤에만 검색하며 실제 body와 검색 스냅샷이 일치한다', async () => {
     const grants = { ...seoulConversationContext, query: '지원금', acceptingOnly: false,
       companyConditions: { ...seoulConversationContext.companyConditions, supportPurpose: '지원금' } }
@@ -40,7 +131,8 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     for (const [index, message] of ['서울 SW 2024년 1월 1일 설립 사업화', '마감 공고도 포함해서 지원금 위주', '부산으로 변경'].entries()) {
       await submitMessage(message)
       expect(network.searchRequests).toHaveLength(index)
-      expect(screen.getByRole('region', { name: '조건 변경 제안' }).textContent).toContain('아직 적용하거나 검색하지 않았습니다')
+      expect(within(screen.getByRole('region', { name: '조건 변경 제안' }))
+        .getByRole('heading', { name: index === 0 ? '사업화 지원' : '지원금' })).toBeTruthy()
       expect(screen.getByRole('status').textContent).toContain('확인 버튼을 눌러야 검색')
       await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
       await waitFor(() => expect(network.searchRequests).toHaveLength(index + 1))
@@ -76,8 +168,12 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     ])
     const { store } = renderConversationApp()
     await submitMessage('서울 SW 설립 2년 사업화')
-    expect(screen.getByRole('region', { name: '조건 추가 확인' }).textContent).toContain(question)
-    expect(screen.getByText(/아래는 미확정 초안입니다/)).toBeTruthy()
+    const clarification = screen.getByRole('region', { name: '조건 추가 확인' })
+    expect(within(clarification).getByRole('heading', { name: question })).toBeTruthy()
+    expect(within(clarification).getByText('답변을 입력해 주세요. 아직 검색하지 않았어요.')).toBeTruthy()
+    expect(clarification.textContent).not.toMatch(/미확정 초안|미입력|현재:|제안:|현재 소재지|설립일 ·|2024-01-01|서울|SW/)
+    expect(within(clarification).getAllByRole('button')).toHaveLength(1)
+    expect(within(clarification).getByRole('button', { name: '제안 취소' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '이 조건으로 검색' })).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
     expect(network.searchRequests).toHaveLength(0)
@@ -85,7 +181,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.interpretRequests[1]).toEqual({ message: '2024-01-01', context: emptyConversationContext,
       pendingClarification: { question, draftContext: draft } })
     expect(network.searchRequests).toHaveLength(0)
-    expect(screen.getByRole('region', { name: '조건 변경 제안' }).textContent).toContain('제안: 2024-01-01')
+    expect(screen.getByRole('region', { name: '조건 변경 제안' }).textContent).toContain('설립일: 2024-01-01')
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
     expect(network.searchRequests).toHaveLength(1)
     expect(store.getState().chat.searchOptions.companyConditions?.establishedOn).toBe('2024-01-01')
@@ -107,19 +203,58 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.searchRequests).toHaveLength(1)
   })
 
-  it('수동 폼 변경과 제안 취소는 미확정 초안을 폐기하고 실제 검색은 보내지 않는다', async () => {
-    const network = mockConversationNetwork([readyConversationProposal(seoulConversationContext), readyConversationProposal(seoulConversationContext)])
+  it.each(['READY', 'CLARIFICATION_REQUIRED'] as const)('%s 제안 취소는 미확정 초안을 폐기하고 실제 검색은 보내지 않는다', async (status) => {
+    const proposal: SupportProgramInterpretation = status === 'READY'
+      ? readyConversationProposal(seoulConversationContext)
+      : { status, proposedContext: { ...seoulConversationContext,
+        companyConditions: { ...seoulConversationContext.companyConditions, establishedOn: null },
+      }, clarificationQuestion: '정확한 설립일을 알려주세요.', changedFields: ['REGION', 'INDUSTRY'] }
+    const network = mockConversationNetwork([proposal, readyConversationProposal(seoulConversationContext)])
     const { store } = renderConversationApp()
     await submitMessage('서울 SW 사업화')
-    fireEvent.click(screen.getByText('기업 조건 입력·수정 (선택)'))
-    fireEvent.change(screen.getByLabelText('현재 소재지'), { target: { value: '부산' } })
+    expect(store.getState().chat.pendingClarification !== null).toBe(status === 'CLARIFICATION_REQUIRED')
+    fireEvent.click(screen.getByRole('button', { name: '제안 취소' }))
     expect(screen.queryByRole('button', { name: '이 조건으로 검색' })).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+    expect(store.getState().chat.pendingClarification).toBeNull()
+    expect(screen.queryByRole('region', { name: '조건 추가 확인' })).toBeNull()
+    expect(network.searchRequests).toHaveLength(0)
     await submitMessage('서울 SW 사업화')
+    expect(network.interpretRequests[1]).toEqual({ message: '서울 SW 사업화', context: emptyConversationContext,
+      pendingClarification: null })
     fireEvent.click(screen.getByRole('button', { name: '제안 취소' }))
     expect(screen.queryByRole('region', { name: '조건 변경 제안' })).toBeNull()
     expect(store.getState().chat.pendingClarification).toBeNull()
     expect(network.searchRequests).toHaveLength(0)
+  })
+
+  it('자연어 조건 초기화는 확인 후 검색에 적용하고 이전 검색의 조건은 보존한다', async () => {
+    const resetContext = { ...emptyConversationContext, query: '지원금' }
+    const network = mockConversationNetwork([
+      readyConversationProposal(seoulConversationContext),
+      { ...readyConversationProposal(resetContext), changedFields: ['QUERY', 'REGION', 'INDUSTRY', 'ESTABLISHED_ON', 'SUPPORT_PURPOSE'] },
+    ])
+    const { store } = renderConversationApp()
+    await submitMessage('서울 SW 2024-01-01 설립 사업화')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+
+    await submitMessage('기업 조건 모두 초기화하고 지원금 찾아줘')
+    expect(network.interpretRequests[1]).toEqual({ message: '기업 조건 모두 초기화하고 지원금 찾아줘',
+      context: seoulConversationContext, pendingClarification: null })
+    expect(network.searchRequests).toHaveLength(1)
+    expect(store.getState().chat.searchOptions.companyConditions).toEqual(seoulConversationContext.companyConditions)
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    for (const label of ['현재 소재지', '업종', '설립일', '지원 목적']) {
+      expect(within(proposal).getByText(`${label} 해제`)).toBeTruthy()
+    }
+    expect(proposal.textContent).not.toMatch(/미입력|현재:|제안:|나머지 조건/)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+
+    expect(network.searchRequests[1]).toEqual({ query: '지원금', acceptingOnly: true })
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+    expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ searchQuery: '지원금', searchOptions: { acceptingOnly: true } })
+    expect(network.fetch).toHaveBeenCalledTimes(4)
   })
 
   it('해석 실패는 다시 해석만 제공하고 검색 실패 재시도와 혼동하지 않는다', async () => {

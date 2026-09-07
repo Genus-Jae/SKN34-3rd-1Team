@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { appContainer } from '../../../../app/appContainer'
 import { useAppDispatch, useAppSelector } from '../../../../app/hooks'
@@ -11,11 +11,6 @@ import { SupportProgramRequestError } from '../../../../domain/errors/SupportPro
 import { SupportProgramSearchTimeoutError } from '../../../../domain/errors/SupportProgramSearchTimeoutError'
 import { supportProgramRequestFailureMessage } from '../../../shared/support-program/supportProgramRequestFailureMessage'
 import {
-  acceptingOnlyChanged,
-  companyConditionDraftChanged,
-  companyConditionRemoved,
-  companyConditionsApplied,
-  companyConditionsCleared,
   conversationReset,
   draftChanged,
   interpretationStarted,
@@ -40,7 +35,6 @@ import {
   selectIsChatSearching,
   selectIsReadyToSubmit,
 } from '../state/chatSlice'
-import { validateCompanyConditions, type CompanyConditionsDraft } from '../validation/companyConditionsForm'
 
 export const supportProgramChatSuggestions = [
   '서울 AI 창업지원 사업 찾아줘',
@@ -77,7 +71,6 @@ export function useSupportProgramChat(
   const canRetrySearch = useAppSelector(selectCanRetryChatSearch)
   const searchError = useAppSelector(selectChatSearchError)
   const searchOptions = useAppSelector((state) => state.chat.searchOptions)
-  const companyConditionsDraft = useAppSelector((state) => state.chat.companyConditionsDraft)
   const interpretation = useAppSelector((state) => state.chat.interpretation)
   const pendingClarification = useAppSelector((state) => state.chat.pendingClarification)
   const conversationQuery = useAppSelector((state) => state.chat.conversationQuery)
@@ -89,7 +82,6 @@ export function useSupportProgramChat(
       supportPurpose: searchOptions.companyConditions?.supportPurpose ?? null },
   }
   const isInterpreting = interpretation.status === 'pending'
-  const [conditionsError, setConditionsError] = useState<string | null>(null)
 
   useEffect(() => () => {
     const interpreting = activeInterpretationRequest.current
@@ -112,7 +104,6 @@ export function useSupportProgramChat(
   }, [dispatchToStore])
 
   function startNewConversation() {
-    setConditionsError(null)
     stopInterpretationRequest()
     const currentRequest = activeSearchRequest.current
     activeSearchRequest.current = null
@@ -160,31 +151,6 @@ export function useSupportProgramChat(
 
   function updateDraft(value: string) {
     dispatchToStore(draftChanged(value))
-  }
-
-  function updateCompanyCondition(field: keyof CompanyConditionsDraft, value: string) {
-    dispatchToStore(companyConditionDraftChanged({ field, value }))
-    setConditionsError(null)
-  }
-
-  function applyCompanyConditions() {
-    const validation = validateCompanyConditions(companyConditionsDraft)
-    setConditionsError(validation.error)
-    if (validation.conditions) dispatchToStore(companyConditionsApplied(validation.conditions))
-  }
-
-  function removeCompanyCondition(field: keyof CompanyConditionsDraft) {
-    dispatchToStore(companyConditionRemoved(field))
-    setConditionsError(null)
-  }
-
-  function clearCompanyConditions() {
-    dispatchToStore(companyConditionsCleared())
-    setConditionsError(null)
-  }
-
-  function updateAcceptingOnly(value: boolean) {
-    dispatchToStore(acceptingOnlyChanged(value))
   }
 
   function runSearch(command: SupportProgramSearch, messageId?: string) {
@@ -320,7 +286,6 @@ export function useSupportProgramChat(
     return dispatchToStore((dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
       const current = getState().chat.interpretation
       if (current.status !== 'ready' || !current.requestId || !current.result?.proposedContext.query) return Promise.resolve()
-      setConditionsError(null)
       dispatch(proposalConfirmed(current.requestId))
       const command = getState().chat.confirmedSearch
       return command ? runSearch(command, current.messageId) : Promise.resolve()
@@ -347,13 +312,6 @@ export function useSupportProgramChat(
     retryInterpretation,
     retrySearch,
     searchOptions,
-    companyConditionsDraft,
-    conditionsError,
-    updateCompanyCondition,
-    applyCompanyConditions,
-    removeCompanyCondition,
-    clearCompanyConditions,
-    updateAcceptingOnly,
     conversationCount,
     canRetrySearch,
     draft,

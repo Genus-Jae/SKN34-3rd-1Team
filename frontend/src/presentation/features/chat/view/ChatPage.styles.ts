@@ -5,21 +5,14 @@ function classes(...groups: string[]) {
 // 색상이나 CSS 속성이 아니라 ChatPage에서 맡는 UI 역할을 이름으로 사용합니다.
 // open/closed, user/assistant처럼 화면 상태가 달라지는 경우에는 base 스타일과 variant를 분리합니다.
 export const chatPageStyles = {
-  proposalPanel: 'ml-11 rounded-xl border border-[#bfc8eb] bg-white p-4 max-chat:ml-0',
-  proposalQuestion: 'text-sm font-bold leading-relaxed text-[#43527a]',
-  proposalRows: 'grid gap-3',
-  proposalRow: 'grid gap-1 border-b border-[#e8ecf7] pb-2',
-  proposalValue: 'm-0 grid gap-1 break-words text-xs leading-relaxed text-[#4d597c]',
-  conditionsPanel: 'mx-auto mb-3 w-[min(860px,calc(100%_-_2rem))] rounded-xl border border-[#dfe4f2] bg-white px-4 py-3 max-chat:w-[calc(100%_-_1.2rem)]',
-  conditionsSummary: 'cursor-pointer text-sm font-bold text-[#43527a]',
-  conditionsFields: 'mt-3 grid grid-cols-2 gap-3 border-0 p-0 disabled:opacity-60 max-chat:grid-cols-1',
-  conditionsLabel: 'grid gap-1 text-xs font-bold text-[#536087]',
-  conditionsInput: 'w-full rounded-lg border border-[#d8e0f3] bg-white px-3 py-2 text-sm font-normal text-app-ink',
+  proposalPanel: 'ml-11 grid w-fit max-w-[calc(100%_-_2.75rem)] gap-3 rounded-xl border border-[#bfc8eb] bg-white p-3 max-chat:ml-0 max-chat:max-w-full',
+  proposalTitle: 'm-0 text-sm font-bold leading-relaxed text-[#293454] [overflow-wrap:anywhere]',
+  proposalChanges: 'm-0 flex list-none flex-wrap gap-2 p-0',
+  proposalChange: 'rounded-md bg-[#f0f2ff] px-2 py-1 text-xs leading-relaxed text-[#43527a] [overflow-wrap:anywhere]',
+  proposalHint: 'm-0 text-xs leading-relaxed text-[#6471a0]',
   conditionsActions: 'col-span-full flex flex-wrap items-center gap-2',
   conditionsButton: 'rounded-lg border border-[#d8e0f3] bg-[#f0f2ff] px-3 py-2 text-xs font-bold text-[#43527a] disabled:opacity-50',
   conditionsHint: 'my-2 text-xs leading-relaxed text-[#6471a0]',
-  conditionsChips: 'm-0 flex list-none flex-wrap gap-2 p-0 text-xs text-[#43527a]',
-  conditionsChip: 'rounded-lg bg-[#f0f2ff] px-2 py-1',
   searchSnapshot: 'mt-2 text-xs leading-relaxed text-[#6471a0]',
   page: 'min-h-screen bg-app-canvas text-app-ink',
   workspace:
@@ -68,22 +61,15 @@ export const chatPageStyles = {
     'border-[#f0cfd4] bg-[#fff5f6] text-[#9a3947]',
   ),
   readinessNotice: classes(
-    'mx-auto mt-0 mb-6 w-[min(860px,calc(100%_-_2rem))] rounded-[0.7rem] border px-[0.8rem] py-[0.7rem] text-[0.76rem] max-chat:w-[calc(100%_-_1.2rem)]',
-    'border-[#d8ddec] bg-[#f7f8fc] text-[#3e4a6d]',
+    'mx-auto mb-3 flex w-[min(860px,calc(100%_-_2rem))] flex-wrap items-center gap-2 text-xs leading-relaxed max-chat:w-[calc(100%_-_1.2rem)]',
+    'text-[#536087]',
   ),
   readinessErrorNotice: classes(
-    'mx-auto mt-0 mb-6 flex w-[min(860px,calc(100%_-_2rem))] items-start justify-between gap-3 rounded-[0.7rem] border px-[0.8rem] py-[0.7rem] text-[0.76rem] max-chat:w-[calc(100%_-_1.2rem)]',
-    'border-[#f0cfd4] bg-[#fff5f6] text-[#9a3947]',
+    'mx-auto mb-3 flex w-[min(860px,calc(100%_-_2rem))] flex-wrap items-center gap-2 text-xs leading-relaxed max-chat:w-[calc(100%_-_1.2rem)]',
+    'text-[#9a3947]',
   ),
-  readinessTitle: 'block text-[0.78rem] font-bold',
-  readinessDescription: 'mt-[0.25rem] mb-0 leading-[1.45]',
-  readinessDetails: 'mt-[0.55rem] mb-0 grid grid-cols-2 gap-x-4 gap-y-1 text-[0.7rem] leading-[1.4] max-chat:grid-cols-1',
-  readinessSources: 'mt-2 mb-0 grid list-none grid-cols-2 gap-2 p-0 max-chat:grid-cols-1',
-  readinessSource: 'min-w-0 rounded-md border border-current/15 px-2 py-2',
-  readinessSourceState: 'mt-1 block text-[0.7rem]',
   readinessRetryButton:
-    'shrink-0 cursor-pointer rounded-[0.45rem] border border-[#dcaab2] bg-white px-2 py-[0.3rem] text-[0.72rem] font-bold text-[#8f3340]',
-  readinessRefreshing: 'mt-[0.5rem] block text-[0.7rem] text-[#6471a0]',
+    'shrink-0 cursor-pointer rounded-[0.45rem] border border-[#dcaab2] bg-white px-2 py-[0.3rem] text-[0.72rem] font-bold text-[#8f3340] disabled:cursor-wait disabled:opacity-50',
   searchRetryButton:
     'shrink-0 cursor-pointer rounded-[0.45rem] border border-[#dcaab2] bg-white px-2 py-[0.3rem] text-[0.72rem] font-bold text-[#8f3340]',
   composerInput: classes(

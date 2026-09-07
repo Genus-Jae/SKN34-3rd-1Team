@@ -81,25 +81,6 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(interpret.mock.calls[2][0]).toEqual({ message: '수출 공고', context: emptyConversationContext, pendingClarification: null })
   })
 
-  it.each(['draft', 'apply', 'remove', 'clear', 'accepting'] as const)('수동 %s 변경은 제안·미확정 초안을 무효화한다', async (operation) => {
-    const interpret = vi.fn().mockResolvedValue(clarification)
-    const { result, store, search } = renderConversation(interpret)
-    act(() => result.current.updateDraft('설립 2년'))
-    await act(async () => result.current.submitMessage())
-    act(() => {
-      if (operation === 'draft') result.current.updateCompanyCondition('region', '부산')
-      if (operation === 'apply') result.current.applyCompanyConditions()
-      if (operation === 'remove') result.current.removeCompanyCondition('region')
-      if (operation === 'clear') result.current.clearCompanyConditions()
-      if (operation === 'accepting') result.current.updateAcceptingOnly(false)
-    })
-    expect(result.current.interpretation.status).toBe('idle')
-    expect(result.current.pendingClarification).toBeNull()
-    expect(store.getState().chat.confirmedSearch).toBeNull()
-    await act(async () => result.current.confirmInterpretation())
-    expect(search).not.toHaveBeenCalled()
-  })
-
   it.each([clarification, readyConversationProposal(seoulConversationContext)])('확인 전 취소는 적용 조건과 검색 호출에 영향을 주지 않는다 ($status)', async (proposal) => {
     const { result, store, search } = renderConversation(vi.fn().mockResolvedValue(proposal))
     act(() => result.current.updateDraft('서울 SW'))
@@ -113,7 +94,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(search).not.toHaveBeenCalled()
   })
 
-  it('해석 중 중복 제출·조건 변경을 차단하고 취소한 늦은 응답을 무시한다', async () => {
+  it('해석 중 중복 제출·새 메시지 입력을 차단하고 취소한 늦은 응답을 무시한다', async () => {
     const pending = deferred<SupportProgramInterpretation>()
     const interpret = vi.fn().mockReturnValue(pending.promise)
     const { result, store, search } = renderConversation(interpret)
@@ -121,11 +102,10 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     let request!: Promise<void>
     act(() => { request = result.current.submitMessage() })
     await act(async () => result.current.submitMessage())
-    act(() => result.current.updateCompanyCondition('region', '부산'))
     act(() => result.current.updateDraft('수출'))
     expect(interpret).toHaveBeenCalledOnce()
     expect(result.current.draft).toBe('')
-    expect(result.current.companyConditionsDraft.region).toBe('')
+    expect(result.current.confirmedContext).toEqual(emptyConversationContext)
     act(() => result.current.cancelSearch())
     expect(interpret.mock.calls[0][1].aborted).toBe(true)
     pending.resolve(readyConversationProposal(seoulConversationContext))
@@ -191,7 +171,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(store.getState().chat.messages.at(-1)).toMatchObject({ searchQuery: '사업화 지원', searchOptions: {
       acceptingOnly: false, companyConditions: context.companyConditions,
     } })
-    act(() => result.current.updateCompanyCondition('region', '부산'))
+    act(() => result.current.updateDraft('부산으로 변경'))
     await act(async () => result.current.retrySearch())
     expect(search).toHaveBeenCalledTimes(2)
   })
@@ -237,16 +217,70 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(store.getState().chat.messages.at(-1)?.searchQuery).toBe(search.mock.calls[0][0].query)
   })
 
-  it('유효한 제안을 확인해 폼을 교체하면 이전 수동 입력의 검증 오류도 해제한다', async () => {
-    const { result } = renderConversation(vi.fn().mockResolvedValue(readyConversationProposal(seoulConversationContext)))
-    act(() => result.current.updateCompanyCondition('establishedOn', '2024-02-30'))
-    act(() => result.current.applyCompanyConditions())
-    expect(result.current.conditionsError).toBeTruthy()
-    act(() => result.current.updateDraft('2024-01-01 설립'))
+  it('대화로 지역 조건을 해제하고 접수 상태를 전체로 바꿔도 확인 전에는 기존 조건을 유지한다', async () => {
+    const revisedContext = { ...seoulConversationContext, acceptingOnly: false,
+      companyConditions: { ...seoulConversationContext.companyConditions, region: null } }
+    const interpret = vi.fn().mockResolvedValueOnce(readyConversationProposal(seoulConversationContext))
+      .mockResolvedValueOnce(readyConversationProposal(revisedContext))
+    const { result, store, search } = renderConversation(interpret)
+    act(() => result.current.updateDraft('서울 SW 사업화'))
     await act(async () => result.current.submitMessage())
     await act(async () => result.current.confirmInterpretation())
-    expect(result.current.conditionsError).toBeNull()
-    expect(result.current.companyConditionsDraft.establishedOn).toBe('2024-01-01')
+    const firstSnapshot = store.getState().chat.messages[1].searchOptions
+
+    act(() => result.current.updateDraft('지역 조건은 빼고 마감 공고도 포함해 줘'))
+    await act(async () => result.current.submitMessage())
+    expect(result.current.confirmedContext).toEqual(seoulConversationContext)
+    expect(search).toHaveBeenCalledOnce()
+    await act(async () => result.current.confirmInterpretation())
+
+    expect(result.current.confirmedContext).toEqual(revisedContext)
+    expect(search).toHaveBeenLastCalledWith({ query: revisedContext.query, acceptingOnly: false,
+      companyConditions: { industry: 'SW', establishedOn: '2024-01-01', supportPurpose: '사업화' } }, expect.any(AbortSignal))
+    expect(store.getState().chat.messages[1].searchOptions).toEqual(firstSnapshot)
+    expect(firstSnapshot?.companyConditions?.region).toBe('서울')
+    expect(firstSnapshot?.acceptingOnly).toBe(true)
+  })
+
+  it('대화에서 조건 전체 해제를 확인하면 기업 조건을 생략하고 이후 새 대화는 초기 상태로 시작한다', async () => {
+    const clearedContext = { ...emptyConversationContext, query: '지원금' }
+    const interpret = vi.fn().mockResolvedValueOnce(readyConversationProposal(seoulConversationContext))
+      .mockResolvedValueOnce(readyConversationProposal(clearedContext))
+    const { result, store, search } = renderConversation(interpret)
+    act(() => result.current.updateDraft('서울 SW 사업화'))
+    await act(async () => result.current.submitMessage())
+    await act(async () => result.current.confirmInterpretation())
+    act(() => result.current.updateDraft('기업 조건을 모두 지우고 지원금 찾아줘'))
+    await act(async () => result.current.submitMessage())
+    expect(result.current.confirmedContext).toEqual(seoulConversationContext)
+    await act(async () => result.current.confirmInterpretation())
+    expect(search).toHaveBeenLastCalledWith({ query: '지원금', acceptingOnly: true }, expect.any(AbortSignal))
+    expect(result.current.searchOptions.companyConditions).toBeUndefined()
+
+    act(() => result.current.startNewConversation())
+    expect(result.current.confirmedContext).toEqual(emptyConversationContext)
+    expect(store.getState().chat.confirmedSearch).toBeNull()
+    expect(store.getState().chat.messages).toHaveLength(1)
+    expect(createAppStore().getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+  })
+
+  it('조건을 확인한 검색을 취소해도 확정 조건을 유지하고 늦은 결과를 무시한다', async () => {
+    const pending = deferred<Awaited<ReturnType<SearchSupportProgramsUseCase['execute']>>>()
+    const search = vi.fn<SearchSupportProgramsUseCase['execute']>().mockReturnValue(pending.promise)
+    const { result, store } = renderConversation(vi.fn().mockResolvedValue(readyConversationProposal(seoulConversationContext)), search)
+    act(() => result.current.updateDraft('서울 SW 사업화'))
+    await act(async () => result.current.submitMessage())
+    let request!: Promise<void>
+    act(() => { request = result.current.confirmInterpretation() })
+    act(() => result.current.cancelSearch())
+    expect(result.current.draft).toBe('사업화 지원')
+    expect(result.current.confirmedContext).toEqual(seoulConversationContext)
+    expect(search.mock.calls[0][1]?.aborted).toBe(true)
+
+    pending.resolve({ query: '사업화 지원', programs: [supportPrograms[0]] })
+    await act(async () => request)
+    expect(store.getState().chat.messages).toHaveLength(2)
+    expect(store.getState().chat.searchStatus).toBe('idle')
   })
 })
 
