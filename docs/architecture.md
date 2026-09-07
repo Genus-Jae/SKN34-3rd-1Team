@@ -370,7 +370,7 @@ C02는 작은 현재 상태와 새 발화만 해석하며 화면의 전체 메�
 `hooks/useSupportProgramChat`의 Redux 상태·검색 요청 수명과 `hooks/useSupportProgramSearchReadiness`의
 준비 상태 조회·polling을 조합합니다. 페이지 ViewModel은
 검색 확인·검색 재시도만 준비 상태에 따라 제한하며 메시지 제출·추천 질문·다시 해석은 이와 독립적으로 처리합니다.
-페이지 ViewModel은 사이드바 상태를 소유하고, DOM 참조·입력 조합·
+페이지 ViewModel은 DOM 참조·입력 조합·
 포커스·스크롤도 Hook 로컬로 관리합니다. View는 렌더링·이벤트 연결·순수 표시용 포맷을 담당합니다.
 React Router는 검색 화면,
 지원사업 상세와 두 SampleItem 예제 화면을 연결합니다. SampleItem은 업무 기능이 아니라 같은 UseCase의

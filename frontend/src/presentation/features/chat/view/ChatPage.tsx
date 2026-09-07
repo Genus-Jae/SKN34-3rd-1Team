@@ -11,11 +11,9 @@ import type { ChatSearchOptions } from '../state/chatSlice'
 import { companyConditionFields, seoulToday } from '../validation/companyConditionsForm'
 import { groupSupportProgramsByEligibility } from '../supportProgramEligibility'
 import {
-  chatBackdropClassName,
   chatMessageBubbleClassName,
   chatMessageRowClassName,
   chatPageStyles,
-  chatSidebarClassName,
 } from './ChatPage.styles'
 
 const syncTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
@@ -24,7 +22,10 @@ const syncTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul',
 })
 
-export function ChatPage() {
+/** `landing`은 첫 진입 화면(입력창 상단), `workspace`는 로그인 뒤 원래 채팅 배치(입력창 하단)입니다. */
+export type ChatPageLayout = 'landing' | 'workspace'
+
+export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   const {
     confirmedContext,
     interpretation,
@@ -44,9 +45,7 @@ export function ChatPage() {
     updateAcceptingOnly,
     canSearch,
     canRetrySearch,
-    conversationCount,
     cancelSearch,
-    closeSidebar,
     draft,
     handleCompositionEnd,
     handleCompositionStart,
@@ -54,306 +53,65 @@ export function ChatPage() {
     handleInputKeyDown,
     handleRetrySearch,
     handleSelectSuggestion,
-    handleStartNewConversation,
     handleSubmit,
     isReadyToSubmit,
-    isSidebarOpen,
-    menuButtonRef,
     messages,
-    openSidebar,
     readiness,
     refetchReadiness,
     searchError,
     searchStatusAnnouncement,
-    sidebarPrimaryActionRef,
-    sidebarRef,
     suggestions,
     timelineRef,
   } = useChatPageViewModel()
 
-  return (
-    <main className={chatPageStyles.page}>
-      <div
-        className={chatBackdropClassName(isSidebarOpen)}
-        aria-hidden="true"
-        onClick={closeSidebar}
-      />
+  const introBlock = (
+    <div className={chatPageStyles.intro}>
+      <h1 className={chatPageStyles.introTitle}>GovBiz에게 물어보세요</h1>
+      <p className={chatPageStyles.introDescription}>
+        지역·업종·설립일 같은 조건을 자연어로 말하면 현재 접수 중인 정부지원사업을 찾아 드립니다.
+        검색 결과는 기업마당 공식 공고와 원문 링크를 기반으로 합니다.
+      </p>
+    </div>
+  )
 
-      <aside
-        ref={sidebarRef}
-        id="chat-sidebar"
-        className={chatSidebarClassName(isSidebarOpen)}
-        aria-label="지원사업 검색 메뉴"
-        aria-modal={isSidebarOpen || undefined}
-        role={isSidebarOpen ? 'dialog' : undefined}
-        tabIndex={-1}
-      >
-        <button
-          type="button"
-          className={chatPageStyles.sidebarCloseButton}
-          aria-label="메뉴 닫기"
-          onClick={closeSidebar}
-        >
-          ×
-        </button>
-        <div className={chatPageStyles.brand}>
-          <span className={chatPageStyles.brandMark}>
-            G
-          </span>
-          <div>
-            <strong className={chatPageStyles.brandTitle}>GovBiz</strong>
-            <span className={chatPageStyles.brandSubtitle}>
-              지원사업 탐색 도우미
-            </span>
-          </div>
-        </div>
-
-        <div className={chatPageStyles.sidebarActions}>
+  const composerInputGroup = (
+      <div className={chatPageStyles.composerInputGroup}>
+        <textarea
+          className={chatPageStyles.composerInput}
+          aria-label="지원사업 검색어"
+          aria-describedby="support-program-search-readiness"
+          value={draft}
+          disabled={isInterpreting}
+          onChange={handleDraftChange}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          onKeyDown={handleInputKeyDown}
+          placeholder="예: 서울에서 AI 창업지원 사업을 찾아줘"
+          rows={1}
+        />
+        {isBusy ? (
           <button
-            ref={sidebarPrimaryActionRef}
-            className={chatPageStyles.newConversationButton}
             type="button"
-            onClick={handleStartNewConversation}
+            className={chatPageStyles.cancelSearchButton}
+            onClick={cancelSearch}
           >
-            <span className={chatPageStyles.newConversationIcon}>＋</span>
-            새 대화 시작
+            취소
           </button>
-          <Link
-            className={chatPageStyles.sampleButton}
-            to="/examples/sample-item/hook"
-          >
-            <span className={chatPageStyles.sampleButtonIcon}>▦</span>
-            상태관리 비교 예제
-          </Link>
-        </div>
-
-        <div className={chatPageStyles.popularQuestions}>
-          <p className={chatPageStyles.sidebarSectionTitle}>
-            추천 질문
-          </p>
-          {suggestions.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              className={chatPageStyles.popularQuestionButton}
-              onClick={() => handleSelectSuggestion(suggestion)}
-              disabled={isBusy}
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
-
-        <div className={chatPageStyles.dataSummary}>
-          <p className={chatPageStyles.dataSummaryTitle}>
-            공고 데이터
-          </p>
-          <div className={chatPageStyles.dataSummaryCard}>
-            <strong className={chatPageStyles.dataSummaryValue}>
-              {readiness.data ? `${readiness.data.programCount}건` : '확인 중'}
-            </strong>
-            <span className={chatPageStyles.dataSummaryLabel}>검색 가능한 공고</span>
-          </div>
-          <div className={chatPageStyles.dataSummaryCard}>
-            <strong className={chatPageStyles.dataSummaryValue}>{conversationCount}</strong>
-            <span className={chatPageStyles.dataSummaryLabel}>
-              보낸 메시지
-            </span>
-          </div>
-        </div>
-
-        <p className={chatPageStyles.sidebarFooter}>
-          검색 결과는 기업마당 공식 공고와 원문 링크를 기반으로 합니다.
-        </p>
-      </aside>
-
-      <section className={chatPageStyles.workspace} inert={isSidebarOpen}>
-        <header className={chatPageStyles.header}>
+        ) : (
           <button
-            ref={menuButtonRef}
-            type="button"
-            className={chatPageStyles.menuButton}
-            aria-controls="chat-sidebar"
-            aria-expanded={isSidebarOpen}
-            aria-label="메뉴 열기"
-            onClick={openSidebar}
+            type="submit"
+            className={chatPageStyles.submitButton}
+            aria-label="검색 전송"
+            disabled={!isReadyToSubmit}
           >
-            ☰
+            ↑
           </button>
-          <div>
-            <p className={chatPageStyles.headerEyebrow}>
-              지원사업 검색
-            </p>
-            <h1 className={chatPageStyles.headerTitle}>
-              GovBiz에게 물어보세요
-            </h1>
-          </div>
-          <span className={chatPageStyles.sourceBadge}>
-            기업마당 공식 데이터
-          </span>
-        </header>
+        )}
+      </div>
+  )
 
-        <section className={chatPageStyles.conditionsPanel} aria-label="기업 검색 조건">
-          <details>
-            <summary className={chatPageStyles.conditionsSummary}>기업 조건 입력·수정 (선택)</summary>
-            <form onSubmit={(event) => { event.preventDefault(); applyCompanyConditions() }} noValidate>
-              <fieldset className={chatPageStyles.conditionsFields} disabled={isBusy}>
-                <legend className="sr-only">기업 조건 입력</legend>
-                {companyConditionFields.map((field) => (
-                  <label key={field.key} className={chatPageStyles.conditionsLabel}>
-                    {field.label}
-                    <input
-                      className={chatPageStyles.conditionsInput}
-                      type={field.key === 'establishedOn' ? 'date' : 'text'}
-                      value={companyConditionsDraft[field.key]}
-                      onChange={(event) => updateCompanyCondition(field.key, event.target.value)}
-                      placeholder={field.placeholder}
-                      maxLength={field.maxLength}
-                      min={field.key === 'establishedOn' ? '1900-01-01' : undefined}
-                      max={field.key === 'establishedOn' ? seoulToday() : undefined}
-                      aria-describedby="company-conditions-hint"
-                    />
-                  </label>
-                ))}
-                <div className={chatPageStyles.conditionsActions}>
-                  <button className={chatPageStyles.conditionsButton} type="submit">조건 적용</button>
-                  <button className={chatPageStyles.conditionsButton} type="button" onClick={clearCompanyConditions}>
-                    조건 전체 초기화
-                  </button>
-                </div>
-              </fieldset>
-            </form>
-            <p id="company-conditions-hint" className={chatPageStyles.conditionsHint}>
-              현재 소재지를 입력해 주세요. 이전 예정 지역은 추정하지 않습니다. 편집한 값은 ‘조건 적용’ 후 다음 검색부터 사용합니다.
-              조건은 이번 대화에서만 유지되며 새 대화·새로고침 시 초기화됩니다.
-              입력한 조건은 AI 추천에 사용되므로 개인정보·비밀정보는 입력하지 마세요.
-            </p>
-          </details>
-          {conditionsError ? <p className={chatPageStyles.searchError} role="alert">{conditionsError}</p> : null}
-          <div className={chatPageStyles.conditionsActions}>
-            <label className={chatPageStyles.conditionsLabel}>
-              접수 상태
-              <select
-                className={chatPageStyles.conditionsInput}
-                value={searchOptions.acceptingOnly ? 'accepting' : 'all'}
-                disabled={isBusy}
-                onChange={(event) => updateAcceptingOnly(event.target.value === 'accepting')}
-              >
-                <option value="accepting">접수 중만</option>
-                <option value="all">전체 (예정·마감·상태 미확인 포함)</option>
-              </select>
-            </label>
-            <ul className={chatPageStyles.conditionsChips} aria-label="적용된 기업 조건">
-              {companyConditionFields.map((field) => {
-                const value = searchOptions.companyConditions?.[field.key]
-                return value ? (
-                  <li key={field.key} className={chatPageStyles.conditionsChip}>
-                    {field.label}: {value}{' '}
-                    <button type="button" disabled={isBusy} aria-label={`${field.label} 조건 해제`} onClick={() => removeCompanyCondition(field.key)}>×</button>
-                  </li>
-                ) : null
-              })}
-            </ul>
-          </div>
-          <p className={chatPageStyles.conditionsHint}>
-            미입력은 자격 충족을 뜻하지 않습니다. AI 판단은 원문 확인이 필요합니다. 검색어와 충돌하면 적용한 기업 조건을 우선합니다.
-            새 메시지의 변경안은 확인 후 적용됩니다. 수동 폼을 수정하면 기존 제안과 미확정 초안은 취소됩니다.
-          </p>
-          <p className={chatPageStyles.conditionsHint}>
-            조건을 바꾸면 다시 검색해 주세요. 아래 각 검색에는 당시 조건을 표시합니다.
-          </p>
-        </section>
-
-        <div
-          className={chatPageStyles.timeline}
-          ref={timelineRef}
-        >
-          <p
-            className={chatPageStyles.searchStatus}
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            {searchStatusAnnouncement}
-          </p>
-          {messages.map((message) => {
-            const isUser = message.role === 'user'
-
-            return (
-              <article
-                key={message.id}
-                className={chatMessageRowClassName(isUser)}
-              >
-                {!isUser ? (
-                  <span className={chatPageStyles.assistantAvatar}>
-                    G
-                  </span>
-                ) : null}
-                <div className={chatPageStyles.messageContent}>
-                  <div className={chatMessageBubbleClassName(isUser)}>
-                    {message.text}
-                  </div>
-                  {message.searchOptions && isUser ? (
-                    <div>
-                      <p className={chatPageStyles.searchSnapshot}>검색 당시 조건: {formatSearchOptions(message.searchOptions)}</p>
-                      {message.searchQuery ? <p className={chatPageStyles.searchSnapshot}>확인한 검색 의도: {message.searchQuery}</p> : null}
-                    </div>
-                  ) : null}
-                  {message.id === messages[0]?.id ? (
-                    <div className={chatPageStyles.suggestedQuestions}>
-                      {suggestions.map((suggestion) => (
-                        <button
-                          key={suggestion}
-                          type="button"
-                          className={chatPageStyles.suggestedQuestionButton}
-                          onClick={() => handleSelectSuggestion(suggestion)}
-                          disabled={isBusy}
-                        >
-                          {suggestion}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {message.programs?.length ? (
-                    <ProgramResults programs={message.programs} />
-                  ) : null}
-                </div>
-              </article>
-            )
-          })}
-          {isBusy ? (
-            <div className={chatPageStyles.messageRow}>
-              <span className={chatPageStyles.assistantAvatar}>
-                G
-              </span>
-              <div className={chatPageStyles.searchingBubble}>
-                {isInterpreting ? '조건 변경안을 해석하고 있어요. 아직 검색하지 않았습니다…' : '공고를 찾아보고 있어요…'}
-              </div>
-            </div>
-          ) : null}
-          {interpretation.result && !isBusy ? (
-            <ConversationProposal current={interpretation.request?.context ?? confirmedContext}
-              proposal={interpretation.result} canConfirm={canSearch}
-              onConfirm={handleConfirmInterpretation} onCancel={cancelInterpretation} />
-          ) : pendingClarification && !isBusy ? (
-            <ConversationProposal current={confirmedContext} canConfirm={false}
-              proposal={{ status: 'CLARIFICATION_REQUIRED', proposedContext: pendingClarification.draftContext,
-                clarificationQuestion: pendingClarification.question, changedFields: [] }}
-              onConfirm={handleConfirmInterpretation} onCancel={cancelInterpretation} />
-          ) : null}
-        </div>
-
-        <form
-          className={chatPageStyles.composer}
-          onSubmit={handleSubmit}
-        >
-          <SupportProgramSearchReadinessNotice
-            readiness={readiness.data}
-            isError={readiness.isError}
-            isInitialLoading={readiness.isInitialLoading}
-            isRefreshing={readiness.isRefreshing}
-            onRetry={refetchReadiness}
-          />
+  const composerErrors = (
+    <>
           {interpretation.error ? (
             <div className={chatPageStyles.searchError} role="alert">
               <span>{interpretation.error}</span>
@@ -375,43 +133,226 @@ export function ChatPage() {
               ) : null}
             </div>
           ) : null}
-          <div className={chatPageStyles.composerInputGroup}>
-            <textarea
-              className={chatPageStyles.composerInput}
-              aria-label="지원사업 검색어"
-              aria-describedby="support-program-search-readiness"
-              value={draft}
-              disabled={isInterpreting}
-              onChange={handleDraftChange}
-              onCompositionStart={handleCompositionStart}
-              onCompositionEnd={handleCompositionEnd}
-              onKeyDown={handleInputKeyDown}
-              placeholder="예: 서울에서 AI 창업지원 사업을 찾아줘"
-              rows={1}
-            />
-            {isBusy ? (
-              <button
-                type="button"
-                className={chatPageStyles.cancelSearchButton}
-                onClick={cancelSearch}
-              >
-                취소
-              </button>
-            ) : (
-              <button
-                type="submit"
-                className={chatPageStyles.submitButton}
-                aria-label="검색 전송"
-                disabled={!isReadyToSubmit}
-              >
-                ↑
-              </button>
-            )}
+    </>
+  )
+
+  const composerHint = (
+      <small className={chatPageStyles.composerHint}>
+        Enter로 조건 해석 · 확인 버튼을 눌러야 검색 · Shift+Enter로 줄바꿈
+      </small>
+  )
+
+  const suggestionChips = (
+    <div className={chatPageStyles.suggestions} aria-label="예시 질문">
+      {suggestions.map((suggestion) => (
+        <button
+          key={suggestion}
+          type="button"
+          className={chatPageStyles.suggestedQuestionButton}
+          onClick={() => handleSelectSuggestion(suggestion)}
+          disabled={isBusy}
+        >
+          {suggestion}
+        </button>
+      ))}
+    </div>
+  )
+
+  const timeline = (
+    <div
+      className={chatPageStyles.timeline}
+      ref={timelineRef}
+    >
+      <p
+        className={chatPageStyles.searchStatus}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {searchStatusAnnouncement}
+      </p>
+      {messages.map((message) => {
+        const isUser = message.role === 'user'
+
+        return (
+          <article
+            key={message.id}
+            className={chatMessageRowClassName(isUser)}
+          >
+            {!isUser ? (
+              <span className={chatPageStyles.assistantAvatar}>
+                G
+              </span>
+            ) : null}
+            <div className={chatPageStyles.messageContent}>
+              <div className={chatMessageBubbleClassName(isUser)}>
+                {message.text}
+              </div>
+              {message.searchOptions && isUser ? (
+                <div>
+                  <p className={chatPageStyles.searchSnapshot}>검색 당시 조건: {formatSearchOptions(message.searchOptions)}</p>
+                  {message.searchQuery ? <p className={chatPageStyles.searchSnapshot}>확인한 검색 의도: {message.searchQuery}</p> : null}
+                </div>
+              ) : null}
+              {layout === 'workspace' && message.id === messages[0]?.id ? (
+                <div className={chatPageStyles.suggestedQuestions}>
+                  {suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className={chatPageStyles.suggestedQuestionButton}
+                      onClick={() => handleSelectSuggestion(suggestion)}
+                      disabled={isBusy}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {message.programs?.length ? (
+                <ProgramResults programs={message.programs} />
+              ) : null}
+            </div>
+          </article>
+        )
+      })}
+      {isBusy ? (
+        <div className={chatPageStyles.messageRow}>
+          <span className={chatPageStyles.assistantAvatar}>
+            G
+          </span>
+          <div className={chatPageStyles.searchingBubble}>
+            {isInterpreting ? '조건 변경안을 해석하고 있어요. 아직 검색하지 않았습니다…' : '공고를 찾아보고 있어요…'}
           </div>
-          <small className={chatPageStyles.composerHint}>
-            Enter로 조건 해석 · 확인 버튼을 눌러야 검색 · Shift+Enter로 줄바꿈
-          </small>
+        </div>
+      ) : null}
+      {interpretation.result && !isBusy ? (
+        <ConversationProposal current={interpretation.request?.context ?? confirmedContext}
+          proposal={interpretation.result} canConfirm={canSearch}
+          onConfirm={handleConfirmInterpretation} onCancel={cancelInterpretation} />
+      ) : pendingClarification && !isBusy ? (
+        <ConversationProposal current={confirmedContext} canConfirm={false}
+          proposal={{ status: 'CLARIFICATION_REQUIRED', proposedContext: pendingClarification.draftContext,
+            clarificationQuestion: pendingClarification.question, changedFields: [] }}
+          onConfirm={handleConfirmInterpretation} onCancel={cancelInterpretation} />
+      ) : null}
+    </div>
+  )
+
+  const conditionsPanel = (
+    <section className={chatPageStyles.conditionsPanel} aria-label="기업 검색 조건">
+      <details>
+        <summary className={chatPageStyles.conditionsSummary}>기업 조건 입력·수정 (선택)</summary>
+        <form onSubmit={(event) => { event.preventDefault(); applyCompanyConditions() }} noValidate>
+          <fieldset className={chatPageStyles.conditionsFields} disabled={isBusy}>
+            <legend className="sr-only">기업 조건 입력</legend>
+            {companyConditionFields.map((field) => (
+              <label key={field.key} className={chatPageStyles.conditionsLabel}>
+                {field.label}
+                <input
+                  className={chatPageStyles.conditionsInput}
+                  type={field.key === 'establishedOn' ? 'date' : 'text'}
+                  value={companyConditionsDraft[field.key]}
+                  onChange={(event) => updateCompanyCondition(field.key, event.target.value)}
+                  placeholder={field.placeholder}
+                  maxLength={field.maxLength}
+                  min={field.key === 'establishedOn' ? '1900-01-01' : undefined}
+                  max={field.key === 'establishedOn' ? seoulToday() : undefined}
+                  aria-describedby="company-conditions-hint"
+                />
+              </label>
+            ))}
+            <div className={chatPageStyles.conditionsActions}>
+              <button className={chatPageStyles.conditionsButton} type="submit">조건 적용</button>
+              <button className={chatPageStyles.conditionsButton} type="button" onClick={clearCompanyConditions}>
+                조건 전체 초기화
+              </button>
+            </div>
+          </fieldset>
         </form>
+        <p id="company-conditions-hint" className={chatPageStyles.conditionsHint}>
+          현재 소재지를 입력해 주세요. 이전 예정 지역은 추정하지 않습니다. 편집한 값은 ‘조건 적용’ 후 다음 검색부터 사용합니다.
+          조건은 이번 대화에서만 유지되며 새 대화·새로고침 시 초기화됩니다.
+          입력한 조건은 AI 추천에 사용되므로 개인정보·비밀정보는 입력하지 마세요.
+        </p>
+      </details>
+      {conditionsError ? <p className={chatPageStyles.searchError} role="alert">{conditionsError}</p> : null}
+      <div className={chatPageStyles.conditionsActions}>
+        <label className={chatPageStyles.conditionsLabel}>
+          접수 상태
+          <select
+            className={chatPageStyles.conditionsInput}
+            value={searchOptions.acceptingOnly ? 'accepting' : 'all'}
+            disabled={isBusy}
+            onChange={(event) => updateAcceptingOnly(event.target.value === 'accepting')}
+          >
+            <option value="accepting">접수 중만</option>
+            <option value="all">전체 (예정·마감·상태 미확인 포함)</option>
+          </select>
+        </label>
+        <ul className={chatPageStyles.conditionsChips} aria-label="적용된 기업 조건">
+          {companyConditionFields.map((field) => {
+            const value = searchOptions.companyConditions?.[field.key]
+            return value ? (
+              <li key={field.key} className={chatPageStyles.conditionsChip}>
+                {field.label}: {value}{' '}
+                <button type="button" disabled={isBusy} aria-label={`${field.label} 조건 해제`} onClick={() => removeCompanyCondition(field.key)}>×</button>
+              </li>
+            ) : null
+          })}
+        </ul>
+      </div>
+      <p className={chatPageStyles.conditionsHint}>
+        미입력은 자격 충족을 뜻하지 않습니다. AI 판단은 원문 확인이 필요합니다. 검색어와 충돌하면 적용한 기업 조건을 우선합니다.
+        새 메시지의 변경안은 확인 후 적용됩니다. 수동 폼을 수정하면 기존 제안과 미확정 초안은 취소됩니다.
+      </p>
+      <p className={chatPageStyles.conditionsHint}>
+        조건을 바꾸면 다시 검색해 주세요. 아래 각 검색에는 당시 조건을 표시합니다.
+      </p>
+    </section>
+  )
+
+  const readinessNotice = (
+    <SupportProgramSearchReadinessNotice
+      readiness={readiness.data}
+      isError={readiness.isError}
+      isInitialLoading={readiness.isInitialLoading}
+      isRefreshing={readiness.isRefreshing}
+      onRetry={refetchReadiness}
+    />
+  )
+
+  if (layout === 'workspace') {
+    // 로그인 뒤의 작업 화면: 원래 채팅 화면 배치(조건 → 대화 → 하단 입력창)에서 사이드바·화면 헤더만 없앤 형태입니다.
+    return (
+      <main className={chatPageStyles.page}>
+        <section className={chatPageStyles.workspace}>
+          {conditionsPanel}
+          {timeline}
+          <form className={chatPageStyles.composerWorkspace} onSubmit={handleSubmit}>
+            {readinessNotice}
+            {composerErrors}
+            {composerInputGroup}
+            {composerHint}
+          </form>
+        </section>
+      </main>
+    )
+  }
+
+  return (
+    <main className={chatPageStyles.page}>
+      <section className={chatPageStyles.workspace}>
+        {introBlock}
+        <form className={chatPageStyles.composer} onSubmit={handleSubmit}>
+          {composerInputGroup}
+          {composerErrors}
+          {composerHint}
+        </form>
+        {suggestionChips}
+        {timeline}
+        {conditionsPanel}
+        {readinessNotice}
       </section>
     </main>
   )

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
+import { conversationReset } from './presentation/features/chat/state/chatSlice'
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from './data/fixtures/supportPrograms'
 import { readyConversationProposal } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramSearchReadiness } from './domain/entities/SupportProgramSearchReadiness'
@@ -42,6 +43,30 @@ afterEach(() => {
 })
 
 describe('App navigation', () => {
+  it('공용 헤더 가운데에 현재 화면 이름을 표시한다', () => {
+    renderApp(createAppStore())
+
+    const header = screen.getByRole('banner', { name: '앱 헤더' })
+    expect(within(header).getByText('AI 채팅')).toBeTruthy()
+
+    fireEvent.click(within(header).getByRole('link', { name: '상태관리 비교 예제' }))
+    expect(within(header).getByText('상태관리 비교 예제', { selector: 'p' })).toBeTruthy()
+  })
+
+  it('로그인을 누르면 안내 문구 없이 입력창이 아래에 있는 작업 채팅 화면으로 이동한다', () => {
+    renderApp(createAppStore())
+    expect(screen.getByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('link', { name: '로그인' }))
+
+    expect(screen.queryByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeNull()
+    expect(within(screen.getByRole('banner', { name: '앱 헤더' })).getByText('AI 채팅')).toBeTruthy()
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    const conditions = screen.getByRole('region', { name: '기업 검색 조건' })
+    expect(conditions.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })).toBeTruthy()
+  })
+
   it('서울 조건 검색에서 전국 태그·경북 이전 확인 필요 공고를 조건 확인과 분리하고 상세 복귀 시 판정을 보존한다', async () => {
     const latest = { ...supportPrograms[3], recommendationScore: null }
     const programs = [relocationReviewRequiredProgram, conditionMatchedProgram, supportPrograms[1], latest]
@@ -183,7 +208,7 @@ describe('App navigation', () => {
 
     fireEvent.change(region, { target: { value: '제주' } })
     fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
-    fireEvent.click(screen.getByRole('button', { name: /새 대화 시작/ }))
+    act(() => { store.dispatch(conversationReset()) })
     expect(region.value).toBe('')
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
@@ -236,7 +261,7 @@ describe('App navigation', () => {
 
     renderApp(appStore)
 
-    expect(screen.getByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
     const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
     fireEvent.change(chatInput, { target: { value: '서울 AI 지원사업' } })
 
@@ -292,7 +317,7 @@ describe('App navigation', () => {
 
     fireEvent.click(screen.getByRole('link', { name: /지원사업 채팅으로 돌아가기/ }))
 
-    expect(screen.getByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
     expect(
       (screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘') as HTMLTextAreaElement)
         .value,
@@ -343,7 +368,7 @@ describe('App navigation', () => {
     expect(sourceLink.getAttribute('rel')).toBe('noreferrer')
 
     fireEvent.click(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }))
-    expect(screen.getByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
   })
 
   it('상세에서 별도 질문 페이지로 이동하고 질문 제출 후에만 원문 근거 답변과 링크를 표시한다', async () => {
@@ -1040,86 +1065,6 @@ describe('App navigation', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('모바일 메뉴는 포커스를 사이드바에 가두고 닫을 때 메뉴 버튼으로 돌려준다', () => {
-    installMobileMediaQuery()
-    renderApp(createAppStore())
-
-    const sidebar = screen.getByLabelText('지원사업 검색 메뉴')
-    expect(sidebar.className).toContain('max-chat:invisible')
-    expect(sidebar.className).toContain('max-chat:pointer-events-none')
-    expect(screen.getByText('추천 질문')).toBeTruthy()
-    expect(screen.getByRole('status')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '검색 전송' })).toBeTruthy()
-
-    const menuButton = screen.getByRole('button', { name: '메뉴 열기' })
-    expect(menuButton.getAttribute('aria-expanded')).toBe('false')
-    menuButton.focus()
-    fireEvent.click(menuButton)
-    expect(menuButton.getAttribute('aria-expanded')).toBe('true')
-    expect(sidebar.getAttribute('role')).toBe('dialog')
-    expect(sidebar.getAttribute('aria-modal')).toBe('true')
-    expect(menuButton.closest('section')?.hasAttribute('inert')).toBe(true)
-
-    const sidebarCloseButton = within(sidebar).getByRole('button', { name: '메뉴 닫기' })
-    const sidebarFocusableElements = Array.from(
-      sidebar.querySelectorAll<HTMLElement>('button, a[href]'),
-    )
-    const firstSidebarElement = sidebarFocusableElements[0]
-    const lastSidebarElement = sidebarFocusableElements.at(-1)
-    expect(document.activeElement).toBe(sidebarCloseButton)
-
-    screen.getByRole('textbox', { name: '지원사업 검색어' }).focus()
-    fireEvent.keyDown(document, { key: 'Tab' })
-    expect(document.activeElement).toBe(firstSidebarElement)
-
-    lastSidebarElement?.focus()
-    fireEvent.keyDown(document, { key: 'Tab' })
-    expect(document.activeElement).toBe(firstSidebarElement)
-
-    firstSidebarElement?.focus()
-    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
-    expect(document.activeElement).toBe(lastSidebarElement)
-
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(menuButton.getAttribute('aria-expanded')).toBe('false')
-    expect(document.activeElement).toBe(menuButton)
-    expect(menuButton.closest('section')?.hasAttribute('inert')).toBe(false)
-
-    fireEvent.click(menuButton)
-    fireEvent.click(screen.getByRole('button', { name: '메뉴 닫기' }))
-    expect(menuButton.getAttribute('aria-expanded')).toBe('false')
-    expect(document.activeElement).toBe(menuButton)
-
-    fireEvent.click(menuButton)
-    const backdrop = document.querySelector('main > div[aria-hidden="true"]')
-    expect(backdrop).toBeTruthy()
-    fireEvent.click(backdrop!)
-    expect(menuButton.getAttribute('aria-expanded')).toBe('false')
-    expect(document.activeElement).toBe(menuButton)
-  })
-
-  it('모바일 메뉴를 연 뒤 데스크톱으로 전환하면 drawer 상태와 포커스를 정리한다', () => {
-    const mobileMediaQuery = installMobileMediaQuery()
-    renderApp(createAppStore())
-
-    const menuButton = screen.getByRole('button', { name: '메뉴 열기' })
-    const sidebar = screen.getByLabelText('지원사업 검색 메뉴')
-    const workspace = menuButton.closest('section')
-    const primarySidebarAction = within(sidebar).getByRole('button', { name: /새 대화 시작/ })
-
-    fireEvent.click(menuButton)
-    expect(sidebar.getAttribute('role')).toBe('dialog')
-    expect(workspace?.hasAttribute('inert')).toBe(true)
-
-    act(() => mobileMediaQuery.moveToDesktop())
-
-    expect(menuButton.getAttribute('aria-expanded')).toBe('false')
-    expect(sidebar.getAttribute('role')).toBeNull()
-    expect(sidebar.getAttribute('aria-modal')).toBeNull()
-    expect(workspace?.hasAttribute('inert')).toBe(false)
-    expect(document.activeElement).toBe(primarySidebarAction)
-  })
-
   it('새로고침 또는 공유 URL의 직접 진입도 Core API에서 상세 정보를 다시 조회한다', async () => {
     const detail = { ...supportPrograms[0], matchedReasons: [], recommendationScore: null }
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(detail))
@@ -1277,26 +1222,5 @@ function createReadinessHook(overrides: {
         lastSuccessfulSyncAt: data.lastSuccessfulSyncAt, lastFailedSyncAt: data.lastFailedSyncAt,
       }],
     } : undefined,
-  }
-}
-
-function installMobileMediaQuery() {
-  let listener: ((event: MediaQueryListEvent) => void) | undefined
-
-  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-    addEventListener(_type: string, eventListener: EventListenerOrEventListenerObject | null) {
-      if (typeof eventListener === 'function') {
-        listener = eventListener as (event: MediaQueryListEvent) => void
-      }
-    },
-    removeEventListener() {
-      listener = undefined
-    },
-  }))
-
-  return {
-    moveToDesktop() {
-      listener?.({ matches: false } as MediaQueryListEvent)
-    },
   }
 }
