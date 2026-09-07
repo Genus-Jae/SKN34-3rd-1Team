@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router'
 
 import { ChatPage } from './presentation/features/chat/view/ChatPage'
 import { SupportProgramDetailPage } from './presentation/features/support-program-detail/view/SupportProgramDetailPage'
+import { SupportProgramEvidenceQuestionPage } from './presentation/features/support-program-detail/view/SupportProgramEvidenceQuestionPage'
 import { ReduxSampleItemPage } from './presentation/features/sample-item/view/ReduxSampleItemPage'
 import { SampleItemPage } from './presentation/features/sample-item/view/SampleItemPage'
 
@@ -13,6 +14,10 @@ function App() {
       <Route
         path="/support-programs/detail"
         element={<SupportProgramDetailPage />}
+      />
+      <Route
+        path="/support-programs/detail/question"
+        element={<SupportProgramEvidenceQuestionPage />}
       />
       <Route path="/examples/sample-item/hook" element={<SampleItemPage />} />
       <Route path="/examples/sample-item/redux" element={<ReduxSampleItemPage />} />

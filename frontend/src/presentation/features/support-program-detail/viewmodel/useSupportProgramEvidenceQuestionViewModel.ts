@@ -26,7 +26,7 @@ export type SupportProgramEvidenceQuestionState =
   | { status: 'cancelled' }
   | { status: 'validation-failed'; message: string }
 
-/** 상세 화면에서 사용자가 명시적으로 요청한 원문 근거 질문만 실행합니다. */
+/** 원문 질문 페이지의 입력·응답 상태와 사용자가 요청한 질문의 수명을 관리합니다. */
 export function useSupportProgramEvidenceQuestionViewModel(
   identity: SupportProgramIdentity,
   askSupportProgramEvidenceQuestionUseCase: SupportProgramEvidenceQuestionUseCase = appContainer.resolve(

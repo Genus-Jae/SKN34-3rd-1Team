@@ -16,7 +16,7 @@ K-Startup 외부 API 호출·가짜 공고 영속화·새 스키마·새 product
 | 빈 검색어 최신 목록 | `findPublishedPresent`로 공개된 DB 스냅샷을 읽어, 공개 이후 색인 장애에도 기존 공고 유지 |
 | 누락 벡터 복구 | 제공처별 색인·조건부 상태 갱신·legacy 채택. 한 제공처 실패 뒤에도 나머지를 처리하고 마지막에 실패 전달 |
 | K-Startup 공식 URL | Frontend에서 `KSTARTUP`과 `k-startup.go.kr` 및 하위 도메인의 HTTP(S) URL 조합 허용 |
-| 원문 근거 질문 | `BIZINFO`만 입력 제공. K-Startup 등 다른 제공처는 미지원 안내·원문 링크를 표시하고 전송 차단 |
+| 원문 근거 질문 | `BIZINFO` 상세에서 별도 질문 페이지로 이동. K-Startup 등 다른 제공처는 미지원 안내·원문 링크를 표시하고 전송 차단 |
 | 평가용 신규 읽기 | fixture 내보내기와 실제 capture 모두 운영 검색과 같은 준비된 제공처 범위 사용 |
 
 ## 준비 상태와 검색 범위
@@ -87,7 +87,8 @@ Frontend는 `BIZINFO`에 `bizinfo.go.kr`, `KSTARTUP`에 `k-startup.go.kr`와 각
 거부하고 정상 공고만 조용히 남기지 않습니다.
 
 K-Startup 공식 URL 표시는 서버의 원문 수집을 허용하는 설정이 아닙니다. 원문 질문은 여전히 기업마당만
-지원하며 다른 제공처에서는 질문 입력을 렌더링하지 않고 ViewModel에서도 HTTP 요청 전송을 막습니다.
+지원하며 기업마당 상세에서 `/support-programs/detail/question`으로 이동해 질문합니다. 다른 제공처 상세에는
+미지원 안내와 원문 링크를 유지하고, 질문 페이지로 직접 접속해도 입력을 렌더링하지 않으며 ViewModel에서 HTTP 요청 전송을 막습니다.
 현재 공개된 미지원 제공처에 대한 서버의 422 계약은 유지합니다.
 
 ## 검증과 남은 범위

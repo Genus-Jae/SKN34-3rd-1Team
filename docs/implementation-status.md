@@ -40,7 +40,7 @@ K-Startup 공식 URL 표시와 RAG 미지원 사전 안내를 검증했습니다
 | 추천 결과 카드 | 구현됨 | 제목·기관·신청 기간·출처·추천 이유·점수 표시 |
 | 공고 상세 화면 | 구현됨 | URL의 제공처 코드·원본 ID로 MySQL에서 재조회, 404·오류 안내, 원문 링크 제공 |
 | 상세 직접 접속·새로고침 | 구현됨 | 검색 결과 상태가 없어도 같은 식별자로 API 조회 |
-| 상세 원문 질문 화면 | 구현됨 | 기업마당은 명시적 질문 시 호출. 다른 제공처는 입력 대신 미지원 안내·원문 링크를 표시하고 질문 요청을 차단 |
+| 공고 원문 질문 페이지 | 구현됨 | 기업마당 상세의 질문하기 링크로 별도 `/support-programs/detail/question`에 이동. URL 식별자로 직접 접속·새로고침 지원, 명시적 질문 제출 때만 호출. 미지원 제공처는 안내·전송 차단 유지 |
 | 공고별 공식 원문 질문 API | 구현됨 | 기업마당 현재 공고에 한해 명시적 질문 시 답변·원문 인용·근거 부족 상태를 반환 |
 | 검색 입력 검증 | 구현됨 | 공백 입력·중복 전송 방지, 500자 초과 시 입력 보존·안내, 한글 IME Enter 처리 |
 | 검색 취소 | 구현됨 | 새 대화·화면 이탈 시 요청 취소, 요청 ID로 오래된 응답 무시 |
@@ -56,6 +56,7 @@ K-Startup 공식 URL 표시와 RAG 미지원 사전 안내를 검증했습니다
 관련 코드: [화면 라우트](../frontend/src/App.tsx), [채팅 페이지 ViewModel](../frontend/src/presentation/features/chat/viewmodel/useChatPageViewModel.ts),
 [내부 채팅 Hook](../frontend/src/presentation/features/chat/hooks/useSupportProgramChat.ts),
 [내부 준비 상태 Hook](../frontend/src/presentation/features/chat/hooks/useSupportProgramSearchReadiness.ts),
+[원문 질문 페이지](../frontend/src/presentation/features/support-program-detail/view/SupportProgramEvidenceQuestionPage.tsx),
 [공개 Controller](../backend/core-api/src/main/kotlin/ai/govbiz/core/supportprogram/controller/SupportProgramController.kt).
 
 ## 공고 수집·저장·동기화

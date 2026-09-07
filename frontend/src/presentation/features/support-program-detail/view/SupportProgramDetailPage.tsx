@@ -4,7 +4,6 @@ import { Link, useSearchParams } from 'react-router'
 import type { SupportProgram, SupportProgramStatus } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import { useSupportProgramDetailViewModel } from '../viewmodel/useSupportProgramDetailViewModel'
-import { SupportProgramEvidenceQuestionSection } from './SupportProgramEvidenceQuestionSection'
 import { supportProgramDetailStyles } from './SupportProgramDetailPage.styles'
 
 /** URL의 제공처·원본 공고 ID로 최신 상세 정보를 조회하는 화면입니다. */
@@ -144,12 +143,31 @@ function SupportProgramDetail({ program }: { program: SupportProgram }) {
         </section>
       ) : null}
 
-      <SupportProgramEvidenceQuestionSection
-        identity={{
-          sourceCode: program.sourceCode,
-          sourceProgramId: program.id,
-        }}
-      />
+      <section className={supportProgramDetailStyles.questionSection} aria-labelledby="evidence-question-title">
+        <h2 id="evidence-question-title" className={supportProgramDetailStyles.sectionTitle}>
+          공고 원문 기반 질문
+        </h2>
+        {program.sourceCode === 'BIZINFO' ? (
+          <>
+            <p className={supportProgramDetailStyles.questionDescription}>
+              궁금한 신청 조건을 질문하고 공고 원문에서 답변 근거를 확인하세요.
+            </p>
+            <Link
+              className={supportProgramDetailStyles.questionLink}
+              to={`/support-programs/detail/question?${new URLSearchParams({
+                sourceCode: program.sourceCode,
+                sourceProgramId: program.id,
+              })}`}
+            >
+              이 공고에 질문하기
+            </Link>
+          </>
+        ) : (
+          <p className={supportProgramDetailStyles.questionDescription}>
+            이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다. 원문 공고에서 확인해 주세요.
+          </p>
+        )}
+      </section>
 
       <section className={supportProgramDetailStyles.sourceSection} aria-labelledby="source-information">
         <div>

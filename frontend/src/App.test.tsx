@@ -193,7 +193,7 @@ describe('App navigation', () => {
     expect(screen.getByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeTruthy()
   })
 
-  it('상세 공고에서는 사용자가 질문을 제출한 뒤에만 원문 근거 답변과 링크를 표시한다', async () => {
+  it('상세에서 별도 질문 페이지로 이동하고 질문 제출 후에만 원문 근거 답변과 링크를 표시한다', async () => {
     const detail = { ...supportPrograms[0], matchedReasons: [], recommendationScore: null }
     const evidenceAnswer = {
       answer: '서울 소재 창업 7년 이내 중소기업이 신청 대상입니다.',
@@ -215,6 +215,18 @@ describe('App navigation', () => {
     )
 
     await screen.findByRole('heading', { name: detail.title })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('textbox', { name: '공고 원문에 질문하기' })).toBeNull()
+
+    const questionLink = screen.getByRole('link', { name: '이 공고에 질문하기' })
+    const questionUrl = new URL(questionLink.getAttribute('href')!, 'http://localhost')
+    expect(questionUrl.pathname).toBe('/support-programs/detail/question')
+    expect(questionUrl.searchParams.get('sourceCode')).toBe(detail.sourceCode)
+    expect(questionUrl.searchParams.get('sourceProgramId')).toBe(detail.id)
+    fireEvent.click(questionLink)
+
+    expect(screen.getByRole('heading', { name: '이 공고에 질문하기', level: 1 })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' })).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledOnce()
 
     const question = screen.getByRole('textbox', { name: '공고 원문에 질문하기' })
@@ -261,9 +273,146 @@ describe('App navigation', () => {
       .toBeTruthy()
     expect(screen.queryByRole('textbox', { name: '공고 원문에 질문하기' })).toBeNull()
     expect(screen.queryByRole('button', { name: '질문하고 근거 받기' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '이 공고에 질문하기' })).toBeNull()
     expect(screen.getByRole('link', { name: 'K-Startup 원문 보기 ↗' }).getAttribute('href')).toBe(detail.sourceUrl)
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(new URL(String(fetchMock.mock.calls[0]?.[0])).pathname).toBe('/api/v1/support-programs/detail')
+  })
+
+  it('질문 URL로 직접 진입하면 자동 조회 없이 특수문자 식별자로 질문하고 같은 공고 상세로 돌아간다', async () => {
+    const detail = {
+      ...supportPrograms[0],
+      id: 'fixture%20/공고?종류=AI&사업=창업+수출',
+      matchedReasons: [],
+      recommendationScore: null,
+    }
+    const answer = {
+      answer: '지원 대상은 중소기업입니다.',
+      answerStatus: 'ANSWERED',
+      citations: [{ excerpt: '중소기업 지원사업', sourceUrl: detail.sourceUrl, chunkOrder: 0 }],
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(answer))
+      .mockResolvedValueOnce(jsonResponse(detail))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await act(async () => {
+      renderApp(
+        createAppStore(),
+        `/support-programs/detail/question?sourceCode=${encodeURIComponent(detail.sourceCode)}&sourceProgramId=${encodeURIComponent(detail.id)}`,
+      )
+    })
+
+    expect(screen.getByRole('heading', { name: '이 공고에 질문하기', level: 1 })).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+    const backLink = screen.getByRole('link', { name: '← 공고 상세로 돌아가기' })
+    const backUrl = new URL(backLink.getAttribute('href')!, 'http://localhost')
+    expect(backUrl.pathname).toBe('/support-programs/detail')
+    expect(backUrl.searchParams.get('sourceCode')).toBe(detail.sourceCode)
+    expect(backUrl.searchParams.get('sourceProgramId')).toBe(detail.id)
+
+    const question = screen.getByRole('textbox', { name: '공고 원문에 질문하기' })
+    fireEvent.change(question, { target: { value: '지원 대상은 누구인가요?' } })
+    fireEvent.submit(question.closest('form')!)
+
+    await screen.findByText(answer.answer)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).pathname)
+      .toBe('/api/v1/support-programs/detail/answers')
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' })
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      sourceCode: detail.sourceCode,
+      sourceProgramId: detail.id,
+      question: '지원 대상은 누구인가요?',
+    })
+
+    fireEvent.click(backLink)
+    await screen.findByRole('heading', { name: detail.title })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const detailRequestUrl = new URL(String(fetchMock.mock.calls[1]?.[0]))
+    expect(detailRequestUrl.pathname).toBe('/api/v1/support-programs/detail')
+    expect(detailRequestUrl.searchParams.get('sourceProgramId')).toBe(detail.id)
+    expect(screen.queryByRole('textbox', { name: '공고 원문에 질문하기' })).toBeNull()
+  })
+
+  it.each([
+    '/support-programs/detail/question',
+    '/support-programs/detail/question?sourceCode=BIZINFO',
+    '/support-programs/detail/question?sourceProgramId=missing-source-code',
+    '/support-programs/detail/question?sourceCode=%20&sourceProgramId=blank-source-code',
+    '/support-programs/detail/question?sourceCode=BIZINFO&sourceProgramId=%20',
+  ])('질문 페이지 식별자가 누락되거나 공백인 URL(%s)은 폼과 API 요청 없이 안내한다', (path) => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp(createAppStore(), path)
+
+    expect(screen.getByRole('heading', { name: '공고 정보를 찾을 수 없습니다' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' })).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '공고 원문에 질문하기' })).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('K-Startup 질문 URL로 직접 진입하면 미지원 안내만 표시하고 API를 호출하지 않는다', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await act(async () => {
+      renderApp(createAppStore(), '/support-programs/detail/question?sourceCode=KSTARTUP&sourceProgramId=kstartup-program')
+    })
+
+    expect(screen.getByText('이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다. 원문 공고에서 확인해 주세요.'))
+      .toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '공고 원문에 질문하기' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '질문하고 근거 받기' })).toBeNull()
+    const backUrl = new URL(
+      screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }).getAttribute('href')!,
+      'http://localhost',
+    )
+    expect(backUrl.searchParams.get('sourceCode')).toBe('KSTARTUP')
+    expect(backUrl.searchParams.get('sourceProgramId')).toBe('kstartup-program')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('질문 요청 중 상세로 돌아가면 요청을 취소하고 재진입한 질문에 늦은 답변을 표시하지 않는다', async () => {
+    const detail = { ...supportPrograms[0], matchedReasons: [], recommendationScore: null }
+    let resolveAnswer!: (response: Response) => void
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveAnswer = resolve }))
+      .mockResolvedValueOnce(jsonResponse(detail))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderApp(
+      createAppStore(),
+      `/support-programs/detail/question?sourceCode=${detail.sourceCode}&sourceProgramId=${detail.id}`,
+    )
+    const question = screen.getByRole('textbox', { name: '공고 원문에 질문하기' })
+    fireEvent.change(question, { target: { value: '이전 질문' } })
+    fireEvent.submit(question.closest('form')!)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const signal = fetchMock.mock.calls[0]?.[1]?.signal as AbortSignal
+    expect(signal.aborted).toBe(false)
+    expect(screen.getByRole('button', { name: '질문 취소' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
+    expect(signal.aborted).toBe(true)
+    await screen.findByRole('heading', { name: detail.title })
+    fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
+    const nextQuestion = screen.getByRole('textbox', { name: '공고 원문에 질문하기' })
+    expect((nextQuestion as HTMLTextAreaElement).value).toBe('')
+    fireEvent.change(nextQuestion, { target: { value: '새 질문' } })
+
+    await act(async () => resolveAnswer(jsonResponse({
+      answer: '이전 질문의 늦은 답변입니다.',
+      answerStatus: 'ANSWERED',
+      citations: [{ excerpt: '이전 근거', sourceUrl: detail.sourceUrl, chunkOrder: 0 }],
+    })))
+
+    expect(screen.queryByText('이전 질문의 늦은 답변입니다.')).toBeNull()
+    expect((nextQuestion as HTMLTextAreaElement).value).toBe('새 질문')
+    expect((screen.getByRole('button', { name: '질문하고 근거 받기' }) as HTMLButtonElement).disabled)
+      .toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it.each([
@@ -283,7 +432,7 @@ describe('App navigation', () => {
       .mockResolvedValueOnce(answerResponse instanceof Response ? answerResponse : jsonResponse(answerResponse))
     vi.stubGlobal('fetch', fetchMock)
 
-    // 상세 조회 후 질문 화면의 초기 effect까지 끝내고 사용자 입력을 시작합니다.
+    // 상세 조회와 질문 페이지 진입의 초기 effect까지 끝내고 사용자 입력을 시작합니다.
     await act(async () => {
       renderApp(
         createAppStore(),
@@ -291,6 +440,8 @@ describe('App navigation', () => {
       )
     })
 
+    await screen.findByRole('heading', { name: detail.title })
+    fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
     const question = await screen.findByRole('textbox', { name: '공고 원문에 질문하기' })
     fireEvent.change(question, { target: { value: '신청 대상은 누구인가요?' } })
     await waitFor(() => {

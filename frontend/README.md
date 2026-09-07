@@ -48,6 +48,7 @@ pnpm dev
 |---|---|
 | `/` | 자연어 검색, 결과 카드, 새 대화 시작 |
 | `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
+| `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | React Hook Form·로컬 요청 상태 예제 |
 | `/examples/sample-item/redux` | Redux 상태 유지 예제 |
 
@@ -72,8 +73,11 @@ pnpm dev
 `BIZINFO`의 기업마당 도메인과 `KSTARTUP`의 `k-startup.go.kr` 도메인 및 하위 도메인을 허용합니다.
 그 외 제공처를 추가할 때는 해당 제공처의 공식 도메인을
 allowlist에 명시적으로 추가합니다. 테스트용 제공처는 production 허용 목록에 포함하지 않습니다.
-공고 원문 근거 질문은 현재 `BIZINFO`만 지원합니다. 다른 제공처 상세에는 질문 입력 대신
-미지원 안내와 기존 원문 링크를 표시하고, ViewModel에서도 근거 질문 요청을 보내지 않습니다.
+공고 원문 근거 질문은 현재 `BIZINFO`만 지원합니다. 기업마당 상세의 **이 공고에 질문하기** 링크로
+별도 질문 페이지에 이동합니다. 질문 페이지도 URL 식별자를 검증해 직접 접속·새로고침을 지원하며,
+진입만으로 상세 API나 질문 API를 호출하지 않습니다. 사용자가 질문을 제출할 때만 기존 답변 API를
+호출하고, 질문·답변은 새로고침 시 초기화됩니다. 다른 제공처 상세에는 미지원 안내와 기존 원문 링크를
+표시합니다. 미지원 제공처의 질문 페이지로 직접 접속해도 입력을 표시하지 않고 ViewModel에서 전송을 차단합니다.
 K-Startup API 연동은 아직 추가하지 않았으며 URL 허용 목록만 준비했습니다. 알 수 없는 제공처나
 위조 URL이 응답에 포함되면 전체 응답을 거부합니다.
 
@@ -86,7 +90,7 @@ K-Startup API 연동은 아직 추가하지 않았으며 URL 허용 목록만 �
 src/
 ├── app/                         # Redux Store, typed hook, Awilix 조립·등록
 ├── presentation/features/chat/ # 채팅 검색 View, 페이지 ViewModel, 내부 hooks, chat slice
-├── presentation/features/support-program-detail/ # 상세 조회·원문 근거 질문 View, ViewModel
+├── presentation/features/support-program-detail/ # 상세·질문 페이지와 각 페이지 ViewModel
 ├── presentation/features/sample-item/ # 상태관리 비교 예제
 ├── presentation/shared/        # Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
@@ -98,8 +102,10 @@ src/
 변경합니다. Awilix 등록은 `app/di`에 있으며 Domain은 컨테이너를 알지 못합니다. 상세 조회는 같은
 UseCase·Repository 경계를 거치되 로딩·결과 상태를 ViewModel의 로컬 state에 둡니다.
 
-상세 조회와 원문 근거 질문은 `support-program-detail` feature가 View·스타일·ViewModel·테스트를
-함께 소유합니다. 채팅 feature와는 `/support-programs/detail` URL의 `sourceCode`·`sourceProgramId`로
+상세 조회와 원문 근거 질문은 `support-program-detail` feature 안의 별도 페이지입니다.
+`SupportProgramDetailPage`는 `useSupportProgramDetailViewModel`, `SupportProgramEvidenceQuestionPage`는
+`useSupportProgramEvidenceQuestionViewModel`을 대표 ViewModel로 사용하며 View·스타일·테스트를 함께 둡니다.
+두 페이지는 URL의 `sourceCode`·`sourceProgramId`로 연결합니다. 채팅 feature와도 `/support-programs/detail`의 식별자로
 연결하며 서로의 View·ViewModel을 import하지 않습니다. 두 기능이 사용하는 안전한 오류 문구는
 `presentation/shared/support-program`에 둡니다. Domain·UseCase·Repository·DI는 기존 공용 계층을 유지합니다.
 
