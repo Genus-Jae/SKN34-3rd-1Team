@@ -10,7 +10,7 @@ import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
 import { conversationReset } from './presentation/features/chat/state/chatSlice'
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from './data/fixtures/supportPrograms'
-import { readyConversationProposal } from './data/fixtures/supportProgramConversation'
+import { emptyConversationContext, readyConversationProposal } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramSearchReadiness } from './domain/entities/SupportProgramSearchReadiness'
 import { supportProgramEvidenceQuestionTimeoutMilliseconds } from './presentation/features/support-program-detail/viewmodel/useSupportProgramEvidenceQuestionViewModel'
 
@@ -61,10 +61,53 @@ describe('App navigation', () => {
 
     expect(screen.queryByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeNull()
     expect(within(screen.getByRole('banner', { name: '앱 헤더' })).getByText('AI 채팅')).toBeTruthy()
-    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
-    const conditions = screen.getByRole('region', { name: '기업 검색 조건' })
-    expect(conditions.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '기업 검색 조건' })).toBeNull()
     expect(screen.getByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })).toBeTruthy()
+  })
+
+  it.each(['/', '/chat'])('%s 채팅 화면은 수동 조건 패널 없이 메시지 입력으로 시작한다', (path) => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp(createAppStore(), path)
+
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '검색 전송' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '기업 검색 조건' })).toBeNull()
+    expect(screen.queryByText('기업 조건 입력·수정 (선택)')).toBeNull()
+    for (const label of ['현재 소재지', '업종', '설립일', '지원 목적']) {
+      expect(screen.queryByLabelText(label)).toBeNull()
+    }
+    expect(screen.queryByRole('combobox', { name: '접수 상태' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '조건 적용' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '조건 전체 초기화' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /조건 해제$/ })).toBeNull()
+    expect(screen.queryByText(/편집한 값은 ‘조건 적용’ 후/)).toBeNull()
+    expect(screen.queryByText(/수동 폼을 수정하면/)).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['/', 1550], ['/chat', 1550], ['/', 0], ['/chat', 0],
+  ] as const)('%s에서 검색 가능 공고가 %i건이면 운영 상태 패널 없이 입력창을 표시한다', (path, programCount) => {
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
+      data: {
+        searchState: 'SEARCHABLE', programCount, indexReady: true,
+        lastSuccessfulSyncAt: '2026-09-07T19:18:00+09:00', lastFailedSyncAt: null,
+      },
+    }))
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp(createAppStore(), path)
+
+    const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    expect(document.getElementById('support-program-search-readiness')).toBeNull()
+    expect(searchInput.getAttribute('aria-describedby')).toBeNull()
+    expect(screen.queryByText('공고 검색이 가능합니다.')).toBeNull()
+    expect(screen.queryByText('현재 저장된 공고를 바로 검색할 수 있습니다.')).toBeNull()
+    expect(screen.queryByRole('button', { name: '상태 다시 확인' })).toBeNull()
+    expectReadinessDetailsAbsent()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('서울 조건 검색에서 전국 태그·경북 이전 확인 필요 공고를 조건 확인과 분리하고 상세 복귀 시 판정을 보존한다', async () => {
@@ -72,17 +115,21 @@ describe('App navigation', () => {
     const programs = [relocationReviewRequiredProgram, conditionMatchedProgram, supportPrograms[1], latest]
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ query: '사업화', programs }))
+      .mockResolvedValueOnce(jsonResponse({ query: '사업화', programs: [] }))
       .mockResolvedValueOnce(jsonResponse({ ...conditionMatchedProgram, eligibilityReview: null, recommendationScore: null, matchedReasons: [] }))
     vi.stubGlobal('fetch', fetchMock)
+    const seoulContext = { ...emptyConversationContext, query: '사업화', companyConditions: {
+      region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29', supportPurpose: null,
+    } }
+    vi.mocked(appContainer.resolve('interpretSupportProgramConversationUseCase').execute)
+      .mockResolvedValueOnce(readyConversationProposal(seoulContext))
+      .mockResolvedValueOnce(readyConversationProposal({ ...seoulContext,
+        companyConditions: { ...seoulContext.companyConditions, region: '부산' },
+      }))
     const store = createAppStore()
     renderApp(store)
-    fireEvent.click(screen.getByText('기업 조건 입력·수정 (선택)'))
-    fireEvent.change(screen.getByLabelText('현재 소재지'), { target: { value: '서울' } })
-    fireEvent.change(screen.getByLabelText('업종'), { target: { value: '소프트웨어 개발업' } })
-    fireEvent.change(screen.getByLabelText('설립일'), { target: { value: '2024-02-29' } })
-    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
-    fireEvent.change(input, { target: { value: '사업화' } })
+    fireEvent.change(input, { target: { value: '서울 소프트웨어 개발업 2024-02-29 설립 사업화' } })
     await submitConfirmedSearch(input)
 
     const matchedSection = await screen.findByRole('region', { name: '조건 확인 공고' })
@@ -112,10 +159,10 @@ describe('App navigation', () => {
       companyConditions: { region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29' },
     })
 
-    fireEvent.change(screen.getByLabelText('현재 소재지'), { target: { value: '부산' } })
-    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
+    fireEvent.change(input, { target: { value: '현재 소재지를 부산으로 변경' } })
+    await submitConfirmedSearch(input)
     expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     fireEvent.click(within(getProgramCard(conditionMatchedProgram.title)).getByRole('link', { name: '상세 조건 보기' }))
     await screen.findByText('자격 미평가 · 공고 상세 정보')
     expect(screen.getByText(/상세 조회는 검색 당시 기업 조건으로 자격을 다시 평가하지 않습니다/)).toBeTruthy()
@@ -124,9 +171,9 @@ describe('App navigation', () => {
     expect(within(screen.getByRole('region', { name: '조건 확인 공고' })).getByRole('heading', { name: conditionMatchedProgram.title })).toBeTruthy()
     expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
     expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('부산')
-    expect(store.getState().chat.messages.at(-1)?.programs?.[1]?.eligibilityReview)
+    expect(store.getState().chat.messages.find((message) => message.programs?.length === 4)?.programs?.[1]?.eligibilityReview)
       .toEqual(conditionMatchedProgram.eligibilityReview)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('근거가 없는 UNKNOWN을 표시하고 API 본문 인용의 HTML을 실행하지 않는다', async () => {
@@ -156,39 +203,37 @@ describe('App navigation', () => {
     expect(screen.queryByRole('region', { name: '조건 확인 공고' })).toBeNull()
   })
 
-  it('기업 조건을 명시적으로 적용·수정·해제하고 접수 상태와 함께 검색 JSON에 보낸다', async () => {
+  it('대화 제안 확인으로 기업 조건·접수 상태를 적용·수정·해제하고 새 대화에서 초기화한다', async () => {
     const fetchMock = vi.fn().mockImplementation(async () => jsonResponse({ query: '지원금', programs: [] }))
     vi.stubGlobal('fetch', fetchMock)
+    const seoulContext = { ...emptyConversationContext, query: '지원금', companyConditions: {
+      region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29', supportPurpose: '사업화',
+    } }
+    const busanContext = { ...seoulContext, query: '서울 지원금', acceptingOnly: false,
+      companyConditions: { ...seoulContext.companyConditions, region: '부산', industry: null },
+    }
+    vi.mocked(appContainer.resolve('interpretSupportProgramConversationUseCase').execute)
+      .mockResolvedValueOnce(readyConversationProposal(seoulContext))
+      .mockResolvedValueOnce(readyConversationProposal(busanContext))
+      .mockResolvedValueOnce(readyConversationProposal({ ...emptyConversationContext, query: '지원금' }))
+      .mockResolvedValueOnce(readyConversationProposal({ ...seoulContext,
+        companyConditions: { ...seoulContext.companyConditions, region: '제주' },
+      }))
     const store = createAppStore()
     renderApp(store)
-    fireEvent.click(screen.getByText('기업 조건 입력·수정 (선택)'))
-    expect(screen.getByText(/입력한 조건은 AI 추천에 사용되므로 개인정보·비밀정보는 입력하지 마세요/)).toBeTruthy()
-    const region = screen.getByLabelText('현재 소재지') as HTMLInputElement
-    const industry = screen.getByLabelText('업종') as HTMLInputElement
-    const establishedOn = screen.getByLabelText('설립일')
-    const purpose = screen.getByLabelText('지원 목적')
-    fireEvent.change(region, { target: { value: ' 서울 ' } })
-    fireEvent.change(industry, { target: { value: '소프트웨어 개발업' } })
-    fireEvent.change(establishedOn, { target: { value: '2024-02-29' } })
-    fireEvent.change(purpose, { target: { value: '사업화' } })
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(screen.queryByRole('button', { name: '현재 소재지 조건 해제' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
-    expect(screen.getByRole('button', { name: '현재 소재지 조건 해제' })).toBeTruthy()
-    expect(fetchMock).not.toHaveBeenCalled()
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
-    fireEvent.change(searchInput, { target: { value: '지원금' } })
-    await submitConfirmedSearch(searchInput)
+    fireEvent.change(searchInput, { target: { value: '서울 소프트웨어 개발업 2024-02-29 설립 사업화 지원금' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect(screen.getByRole('region', { name: '조건 변경 제안' })).toBeTruthy()
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+    await confirmLatestProposal()
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       query: '지원금', acceptingOnly: true,
       companyConditions: { region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29', supportPurpose: '사업화' },
     })
 
-    fireEvent.change(region, { target: { value: '부산' } })
-    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
-    fireEvent.click(screen.getByRole('button', { name: '업종 조건 해제' }))
-    fireEvent.change(screen.getByRole('combobox', { name: '접수 상태' }), { target: { value: 'all' } })
-    fireEvent.change(searchInput, { target: { value: '서울 지원금' } })
+    fireEvent.change(searchInput, { target: { value: '현재 소재지는 부산, 업종 조건을 빼고 마감 공고도 포함해서 서울 지원금 찾아줘' } })
     await submitConfirmedSearch(searchInput)
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
       query: '서울 지원금', acceptingOnly: false,
@@ -197,24 +242,36 @@ describe('App navigation', () => {
     expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
     expect(screen.getByText(/검색 당시 조건: 접수 상태 전체 · 현재 소재지 부산/)).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: '조건 전체 초기화' }))
-    expect(region.value).toBe('')
-    expect(industry.value).toBe('')
-    fireEvent.change(searchInput, { target: { value: '지원금' } })
-    await submitConfirmedSearch(searchInput)
+    fireEvent.change(searchInput, { target: { value: '기업 조건 모두 지우고 접수 중인 지원금만 찾아줘' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: false,
+      companyConditions: { region: '부산', establishedOn: '2024-02-29', supportPurpose: '사업화' },
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await confirmLatestProposal()
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)))
       .toEqual({ query: '지원금', acceptingOnly: true })
     expect(store.getState().chat.searchStatus).toBe('idle')
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+    expect(screen.getByText(/검색 당시 조건: 접수 상태 전체 · 현재 소재지 부산/)).toBeTruthy()
 
-    fireEvent.change(region, { target: { value: '제주' } })
-    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
+    fireEvent.change(searchInput, { target: { value: '제주 소프트웨어 개발업 2024-02-29 설립 사업화 지원금' } })
+    await submitConfirmedSearch(searchInput)
+    expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('제주')
     act(() => { store.dispatch(conversationReset()) })
-    expect(region.value).toBe('')
+    expect((searchInput as HTMLTextAreaElement).value).toBe('')
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
   })
 
   it('준비 상태와 오류 안내가 있어도 검색·취소 버튼을 입력창 안에 배치한다', async () => {
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
+      data: {
+        searchState: 'SEARCHABLE_WITH_SYNC_FAILURE', programCount: 12, indexReady: true,
+        lastSuccessfulSyncAt: '2026-09-05T09:00:00+09:00',
+        lastFailedSyncAt: '2026-09-05T10:00:00+09:00',
+      },
+    }))
     let rejectSearch!: (reason: Error) => void
     const fetchMock = vi.fn().mockReturnValue(new Promise<Response>((_resolve, reject) => {
       rejectSearch = reject
@@ -225,6 +282,8 @@ describe('App navigation', () => {
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     const inputGroup = input.parentElement!
     const notice = document.getElementById('support-program-search-readiness')!
+    expect(notice).toBeTruthy()
+    expect(input.getAttribute('aria-describedby')).toBe(notice.id)
     expect(inputGroup.classList.contains('relative')).toBe(true)
     expect(inputGroup.contains(notice)).toBe(false)
     expect(screen.getByRole('button', { name: '검색 전송' }).parentElement).toBe(inputGroup)
@@ -853,14 +912,18 @@ describe('App navigation', () => {
 
     renderApp(createAppStore())
 
-    expect(screen.getByText('초기 공고 데이터를 준비하고 있습니다.')).toBeTruthy()
-    expect(screen.getByText('준비가 완료되면 자동으로 검색할 수 있습니다.')).toBeTruthy()
+    expect(screen.getByText('공고를 준비하고 있습니다. 잠시만 기다려 주세요.')).toBeTruthy()
+    expectReadinessDetailsAbsent()
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    expect(searchInput.getAttribute('aria-describedby')).toBe('support-program-search-readiness')
     expect((searchInput as HTMLTextAreaElement).disabled).toBe(false)
     expect((screen.getByRole('button', { name: '검색 전송' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getAllByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })[0] as HTMLButtonElement).disabled)
       .toBe(false)
-    await submitConfirmedSearch(searchInput)
+    fireEvent.change(searchInput, { target: { value: '서울 AI' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect((await screen.findByRole('button', { name: '이 조건으로 검색' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(vi.mocked(appContainer.resolve('interpretSupportProgramConversationUseCase').execute)).toHaveBeenCalledOnce()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -876,11 +939,74 @@ describe('App navigation', () => {
     renderApp(createAppStore())
 
     expect(screen.getByText('공고 데이터 상태를 확인하고 있습니다.')).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' }).getAttribute('aria-describedby'))
+      .toBe('support-program-search-readiness')
+    expectReadinessDetailsAbsent()
     expect((screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement).disabled)
       .toBe(false)
   })
 
-  it('최신 동기화가 실패해도 이전 공고 검색은 유지하고 동기화 시각을 보여 준다', async () => {
+  it.each(['/', '/chat'])('%s에서 상태 조회 실패는 간단히 안내하고 재조회 성공 시 안내와 접근성 참조를 제거한다', async (path) => {
+    const refetch = vi.fn()
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
+      data: undefined, canSearch: false, isError: true, refetch,
+    }))
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ query: '창업', programs: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const store = createAppStore()
+    const view = renderApp(store, path)
+
+    const notice = document.getElementById('support-program-search-readiness')!
+    const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    expect(within(notice).getByText('공고 데이터 상태를 확인하지 못했습니다. 잠시 후 다시 확인해 주세요.')).toBeTruthy()
+    expect(notice.getAttribute('role')).toBe('alert')
+    expect(searchInput.getAttribute('aria-describedby')).toBe(notice.id)
+    expectReadinessDetailsAbsent()
+    fireEvent.change(searchInput, { target: { value: '창업' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect((await screen.findByRole('button', { name: '이 조건으로 검색' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '상태 다시 확인' }))
+    expect(refetch).toHaveBeenCalledOnce()
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook())
+    view.rerender(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+        </MemoryRouter>
+      </Provider>,
+    )
+
+    expect(document.getElementById('support-program-search-readiness')).toBeNull()
+    expect(searchInput.getAttribute('aria-describedby')).toBeNull()
+    expect(screen.queryByRole('button', { name: '상태 다시 확인' })).toBeNull()
+    expect((screen.getByRole('button', { name: '이 조건으로 검색' }) as HTMLButtonElement).disabled).toBe(false)
+    await confirmLatestProposal()
+    await screen.findByText('현재 일치하는 공고를 찾지 못했습니다. 지역이나 분야를 바꿔 다시 검색해 보세요.')
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it.each(['UNAVAILABLE', 'SEARCHABLE_WITH_PARTIAL_SOURCES'] as const)('%s 재확인 중에는 짧은 상태 안내의 중복 요청을 막는다', (searchState) => {
+    const refetch = vi.fn()
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
+      data: {
+        searchState, programCount: 12, indexReady: searchState !== 'UNAVAILABLE',
+        lastSuccessfulSyncAt: '2026-09-05T09:00:00+09:00',
+        lastFailedSyncAt: '2026-09-05T10:00:00+09:00',
+      },
+      canSearch: searchState !== 'UNAVAILABLE', isRefreshing: true, refetch,
+    }))
+    renderApp(createAppStore())
+
+    const retry = screen.getByRole('button', { name: '확인 중…' }) as HTMLButtonElement
+    expect(retry.disabled).toBe(true)
+    fireEvent.click(retry)
+    expect(refetch).not.toHaveBeenCalled()
+    expectReadinessDetailsAbsent()
+  })
+
+  it('최신 동기화가 실패해도 이전 공고 검색은 유지하고 짧은 주의만 표시한다', async () => {
     readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
       createReadinessHook({
         data: {
@@ -900,12 +1026,9 @@ describe('App navigation', () => {
 
     renderApp(createAppStore())
 
-    expect(screen.getByText('이전 공고 데이터로 검색할 수 있습니다.')).toBeTruthy()
-    expect(screen.getByText('최신 공고 동기화에 실패했지만, 이전에 저장된 공고는 계속 검색할 수 있습니다.'))
-      .toBeTruthy()
-    expect(screen.getByText('마지막 성공 동기화')).toBeTruthy()
-    expect(screen.getByText('마지막 실패 동기화')).toBeTruthy()
-    expect(screen.getAllByText('12건').length).toBeGreaterThan(0)
+    expect(screen.getByText('최신 공고를 불러오지 못해 이전에 저장한 공고에서 검색합니다.')).toBeTruthy()
+    expectReadinessDetailsAbsent()
+    expect(screen.queryByText('12건')).toBeNull()
 
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     expect((searchInput as HTMLTextAreaElement).disabled).toBe(false)
@@ -915,7 +1038,7 @@ describe('App navigation', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('검색 불가 상태는 검색을 막고 상태 확인을 다시 요청할 수 있다', () => {
+  it('검색 불가 상태는 검색을 막고 짧은 안내에서 상태 확인을 다시 요청할 수 있다', async () => {
     const refetch = vi.fn()
     readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
       createReadinessHook({
@@ -931,17 +1054,24 @@ describe('App navigation', () => {
       }),
     )
 
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
     renderApp(createAppStore())
 
     expect(screen.getByRole('alert').textContent).toContain('현재 공고 데이터를 검색할 수 없습니다.')
-    expect((screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement).disabled)
-      .toBe(false)
+    const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
+    expect(searchInput.disabled).toBe(false)
+    expect(searchInput.getAttribute('aria-describedby')).toBe('support-program-search-readiness')
+    expectReadinessDetailsAbsent()
+    fireEvent.change(searchInput, { target: { value: '창업' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect((await screen.findByRole('button', { name: '이 조건으로 검색' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '상태 다시 확인' }))
     expect(refetch).toHaveBeenCalledOnce()
   })
 
-  it('일부 제공처만 준비되어도 검색을 허용하고 제공처별 상태와 검색 범위를 보여 준다', async () => {
-    const refetch = vi.fn()
+  it('일부 제공처만 준비되어도 검색을 허용하고 상세 상태 없이 검색 범위 주의만 표시한다', async () => {
     readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
       createReadinessHook({
         data: {
@@ -958,28 +1088,18 @@ describe('App navigation', () => {
             programCount: 7, indexReady: false, lastSuccessfulSyncAt: null, lastFailedSyncAt: null,
           }],
         },
-        refetch,
       }),
     )
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ query: '창업', programs: [supportPrograms[0]] }))
     vi.stubGlobal('fetch', fetchMock)
     renderApp(createAppStore())
 
-    expect(screen.getByText('일부 제공처의 공고를 검색할 수 있습니다.')).toBeTruthy()
-    expect(screen.getByText('현재 검색 범위: 기업마당. 나머지 제공처는 준비가 완료되면 검색에 포함됩니다.')).toBeTruthy()
-    const sources = within(screen.getByRole('list', { name: '제공처별 공고 준비 상태' })).getAllByRole('listitem')
-    expect(sources).toHaveLength(2)
-    expect(within(sources[0]).getByText('기업마당')).toBeTruthy()
-    expect(within(sources[0]).getByText('이전 공고 검색 가능 · 최신 동기화 실패')).toBeTruthy()
-    expect(within(sources[0]).getByText('12건')).toBeTruthy()
-    expect(within(sources[0]).getByText('2026. 9. 5. 오전 9:00')).toBeTruthy()
-    expect(within(sources[0]).getByText('2026. 9. 5. 오전 10:00')).toBeTruthy()
-    expect(within(sources[1]).getByText('K-Startup')).toBeTruthy()
-    expect(within(sources[1]).getByText('초기 준비 중')).toBeTruthy()
-    expect(within(sources[1]).getByText('7건')).toBeTruthy()
-    expect(within(sources[1]).getAllByText('기록 없음')).toHaveLength(2)
-    fireEvent.click(screen.getByRole('button', { name: '상태 다시 확인' }))
-    expect(refetch).toHaveBeenCalledOnce()
+    expect(screen.getByText('일부 제공처의 공고만 검색할 수 있습니다.')).toBeTruthy()
+    expectReadinessDetailsAbsent()
+    expect(screen.queryByText('기업마당')).toBeNull()
+    expect(screen.queryByText('K-Startup')).toBeNull()
+    expect(screen.queryByText('12건')).toBeNull()
+    expect(screen.queryByText('7건')).toBeNull()
 
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     expect((searchInput as HTMLTextAreaElement).disabled).toBe(false)
@@ -1036,7 +1156,8 @@ describe('App navigation', () => {
     await submitConfirmedSearch(searchInput)
 
     await screen.findByText('현재 일치하는 공고를 찾지 못했습니다. 지역이나 분야를 바꿔 다시 검색해 보세요.')
-    expect(screen.getByText('공고 검색이 가능합니다.')).toBeTruthy()
+    expect(document.getElementById('support-program-search-readiness')).toBeNull()
+    expect(searchInput.getAttribute('aria-describedby')).toBeNull()
   })
 
   it('진행 중인 검색은 취소할 수 있고 검색어를 유지한다', async () => {
@@ -1189,6 +1310,16 @@ function getProgramCard(title: string): HTMLElement {
   const card = screen.getByRole('heading', { name: title, level: 2 }).closest('article')
   if (!card) throw new Error(`지원사업 카드가 없습니다: ${title}`)
   return card
+}
+
+function expectReadinessDetailsAbsent() {
+  expect(screen.queryByRole('list', { name: '제공처별 공고 준비 상태' })).toBeNull()
+  for (const label of [
+    '검색 가능한 공고', '검색 인덱스', '마지막 성공 동기화', '마지막 실패 동기화',
+    '저장된 공고', '검색 준비', '성공 동기화', '실패 동기화', '기록 없음',
+  ]) {
+    expect(screen.queryByText(label)).toBeNull()
+  }
 }
 
 function createReadinessHook(overrides: {
