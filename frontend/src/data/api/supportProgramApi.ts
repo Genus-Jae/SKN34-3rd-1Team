@@ -50,6 +50,23 @@ export class SupportProgramApiError extends Error {
   }
 }
 
+const searchTimeoutProblemSchema = z.object({
+  type: z.literal('urn:govbiz:problem:ai-service-timeout'),
+  title: z.string().min(1),
+  status: z.literal(504),
+  detail: z.string(),
+  instance: z.literal(SEARCH_SUPPORT_PROGRAMS_PATH),
+  code: z.literal('AI_SERVICE_TIMEOUT'),
+})
+
+/** 검증된 검색 시간 초과만 구분하며 서버의 오류 본문은 보관하지 않습니다. */
+export class SupportProgramSearchTimeoutApiError extends SupportProgramApiError {
+  constructor() {
+    super('Core API reported a support program search timeout.')
+    this.name = 'SupportProgramSearchTimeoutApiError'
+  }
+}
+
 const requestRejectionProblemSchema = z.object({
   type: z.string().min(1),
   title: z.string().min(1),
@@ -105,6 +122,11 @@ export async function searchSupportProgramsApi(
   if (!response.ok) {
     const requestRejection = await readRequestRejection(response)
     if (requestRejection) throw requestRejection
+    if (response.status === 504
+      && response.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase() === 'application/problem+json') {
+      const timeout = searchTimeoutProblemSchema.safeParse(await response.json().catch(() => null))
+      if (timeout.success) throw new SupportProgramSearchTimeoutApiError()
+    }
     throw new SupportProgramApiError(
       `Core API returned HTTP ${response.status} for the support program search request.`,
     )

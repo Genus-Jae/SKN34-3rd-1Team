@@ -229,16 +229,23 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `BIZINFO_SYNC_FIXED_DELAY` | `PT6H` | 이전 수집 작업 종료 후 다음 실행까지의 지연 |
 | `AI_SERVICE_BASE_URL` | `http://127.0.0.1:8000` | 내부 AI Service 주소 |
 | `AI_SERVICE_CONNECT_TIMEOUT` | `1s` | AI Service 연결 제한시간 |
-| `AI_SERVICE_READ_TIMEOUT` | `35s` | AI Health·점수화·원문 근거 답변 응답 제한시간 |
+| `AI_SERVICE_READ_TIMEOUT` | `35s` | AI Health·대화 조건 해석·원문 근거 답변 응답 제한시간 |
+| `AI_RANKING_READ_TIMEOUT` | `55s` | 지원사업 최종 점수화 전용 응답 제한시간 |
 | `AI_SEMANTIC_SEARCH_READ_TIMEOUT` | `30s` | 의미 검색·색인 응답 제한시간 |
 | `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | 이미 공개된 공고의 누락 벡터 자동 복구 여부 |
 | `SUPPORT_PROGRAM_INDEX_INITIAL_DELAY` | `PT0S` | 첫 누락 벡터 복구까지의 지연 |
 | `SUPPORT_PROGRAM_INDEX_FIXED_DELAY` | `PT1M` | 이전 복구 작업 종료 후 다음 실행까지의 지연 |
 | `APP_CORS_ALLOWED_ORIGIN` | `http://localhost:5173` | 허용할 Web origin |
 
-추천 점수화와 원문 근거 답변의 AI 모델·Agent 기본 제한은 각각 `25s`·`30s`이며 Core 읽기 제한
-`35s`보다 짧습니다. 검색은 의미 검색과 점수화를 순서대로 호출하므로 브라우저 검색 제한은 두 Core
-읽기 제한 `30s + 35s`에 여유를 둔 `70s`입니다. 이 값은 요청 제한이며 응답시간 보장은 아닙니다.
+추천 점수화만 AI 모델 `45s`·Agent 실행 `50s`·Core 읽기 `55s`로 제한합니다.
+`AiServiceClientProperties.rankingReadTimeout`과 전용 `aiRankingRestClient`를 사용하며
+`HttpAiSupportProgramRankingClient`에만 주입합니다. 공유 `aiServiceRestClient`의 `35s`와
+의미 검색·색인의 `aiSemanticSearchRestClient` `30s`는 유지합니다. 대화 조건 해석·원문 근거 답변의
+AI 모델·Agent 제한도 기존 `25s`·`30s`이며 Health와 함께 공유 Core 제한을 사용합니다.
+검색은 의미 검색과 점수화를 순서대로 호출하므로 브라우저 검색 제한은 두 Core 읽기 제한
+`30s + 55s`에 여유를 둔 `90s`입니다. 이 값은 요청 제한이며 응답시간 보장은 아닙니다.
+AI의 HTTP 504나 Core 읽기 시간 초과는 기존대로 `TIMEOUT → 504 AI_SERVICE_TIMEOUT`으로 전달하며
+빈 결과·일반 장애로 바꾸지 않습니다. 후보 수·모델·프롬프트·원문 자격 판단 계약은 바꾸지 않습니다.
 
 `SUPPORT_PROGRAM_INDEX_ENABLED=false`는 별도 복구 스케줄러만 끕니다. 새 카탈로그 공개 전의 필수
 색인은 계속 실행됩니다. 두 스케줄러는 각각 별도의 단일 스레드에서 실행되며 실패를 기록한 뒤
@@ -364,6 +371,11 @@ C02 회귀는 공개 HTTP의 nullable 필수 키·엄격한 타입·문자/날�
 2026-09-07 C02 검증은 Temurin JDK 21.0.12와 실제 MySQL 8.4.11(Testcontainers `mysql:8.4`)에서 전체
 `clean test`를 실행해 47개 스위트·508개 테스트가 통과했습니다(실패·오류·건너뜀 0). 신규 C02 75개와
 기존 433개를 모두 포함하며, 테스트 필터나 대체 DB·유료 모델 호출은 사용하지 않았습니다.
+
+같은 날 랭킹 전용 timeout을 분리한 뒤에도 JDK 21.0.12·MySQL 8.4.11에서 필터 없이 전체
+`./gradlew clean test --no-daemon`을 다시 실행해 47개 스위트·512개 테스트가 통과했습니다
+(실패·오류·건너뜀 0). 설정 바인딩·전용 bean 주입·실제 HTTP 읽기 제한·공개 timeout 오류 매핑과
+기존 MySQL 통합 43개를 포함하며, 개발 서비스 변경이나 유료 모델 호출 없이 검증했습니다.
 
 `SupportProgramEvidenceIntegrationTest`는 실제 Core HTTP·MySQL과 고정한 공식 HTML 2건으로 RAG 경계를
 통합 검증합니다. 기본 실행에서 원문/AI 외부 HTTP는 스텁이며 API 키를 사용하지 않습니다.

@@ -13,7 +13,7 @@ import org.springframework.web.client.RestClient
 /** 지원사업 후보의 AI 점수화 API를 호출하는 HTTP 어댑터입니다. */
 @Component
 class HttpAiSupportProgramRankingClient(
-    @param:Qualifier("aiServiceRestClient") private val restClient: RestClient,
+    @param:Qualifier("aiRankingRestClient") private val restClient: RestClient,
 ) : AiSupportProgramRankingClient {
     override fun rankSupportPrograms(
         request: AiSupportProgramRankingRequest,

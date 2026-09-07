@@ -65,7 +65,7 @@ async def test_builds_and_wires_agent_in_the_composition_root(
                                   "evidence": [{"field": "TARGET_DESCRIPTION", "quote": "중소기업"}],
                                   "explanation": "기업 대상 근거"},
                 regionAssessment={"eligibility": "MATCH", "score": 15,
-                                  "evidence": [{"field": "SUMMARY", "quote": "지원"}],
+                                  "evidence": [{"field": "SUMMARY", "quote": "반도체 지원"}],
                                   "explanation": "지역 조건 근거"},
                 applicationStatusFit=10,
                 supportTypeFit=10,
@@ -73,14 +73,14 @@ async def test_builds_and_wires_agent_in_the_composition_root(
             )
         ]
     )
-    model = ScriptedModel(
-        [[assistant_message(json.dumps({
-            "rankings": {
-                assessment.program_id: assessment.model_dump(by_alias=True, exclude={"program_id"})
-                for assessment in expected.rankings
-            }
-        }, ensure_ascii=False))]]
-    )
+    selections = {"rankings": {
+        assessment.program_id: assessment.model_dump(by_alias=True, exclude={"program_id"})
+        for assessment in expected.rankings
+    }}
+    for assessment in selections["rankings"].values():
+        assessment["targetAssessment"]["evidence"] = [1]
+        assessment["regionAssessment"]["evidence"] = [0]
+    model = ScriptedModel([[assistant_message(json.dumps(selections, ensure_ascii=False))]])
 
     def fake_openai_client(**arguments: object) -> FakeOpenAIClient:
         captured_client_arguments.update(arguments)
@@ -121,6 +121,13 @@ async def test_builds_and_wires_agent_in_the_composition_root(
     assert container.support_program_conversation_service._agent._agent.model is model
     assert container.support_program_conversation_service._agent._agent.model_settings.timeout == 1.25
     assert container.support_program_conversation_service._agent._run_timeout_seconds == 1.75
+    ranking_agent = container.support_program_ranking_service._agent
+    assert ranking_agent._agent.model_settings.timeout == 45
+    assert ranking_agent._agent.model_settings.extra_args == {"timeout": 45}
+    assert ranking_agent._run_timeout_seconds == 50
+    evidence_agent = container.support_program_evidence_answer_service._agent
+    assert evidence_agent._agent.model_settings.timeout == 1.25
+    assert evidence_agent._run_timeout_seconds == 1.75
     assert captured_client_arguments == {
         "api_key": "private-key",
         "timeout": 1.25,

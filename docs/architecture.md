@@ -92,9 +92,10 @@ Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보�
    의미 검색과 키워드의 1부터 시작하는 순위를 동일 가중치 RRF `1 / (60 + 순위)`로 합산하고,
    동점은 의미 검색 순위·제공처 포함 ID 오름차순으로 정렬해 중복 없는 최대 20개를 점수화에 전달합니다.
    의미 검색 응답이 실패하거나 잘못됐으면 오류를 반환합니다. 키워드 일치가 없으면 의미 검색 순서를 유지합니다.
-5. AI는 모든 후보의 의미·자격·세부 점수를 `SupportProgramAssessment`로 판단하고 총점은 출력하지 않습니다.
+5. AI는 모든 후보의 의미·자격·세부 점수를 판단하고 총점은 출력하지 않습니다.
    요청별 strict schema의 `rankings`는 후보 ID 자체를 필수 키로 선언한 객체이며 다른 키는 금지합니다.
-   Agent는 검증된 키를 ID로 붙여 기존 내부 `AssessedSupportProgram` 목록으로 변환합니다.
+   Agent가 후보별 원문 조각 선택지를 제공하고, LLM은 인용문을 재작성하지 않고 근거 번호만 선택합니다.
+   번호를 해당 후보의 원래 필드·문구로 복원한 뒤 검증된 키를 ID로 붙여 `AssessedSupportProgram` 목록으로 변환합니다.
    AI Service가 다섯 점수를 합산해 기존 HTTP 항목 `ScoredSupportProgram`으로 변환·검증한 후
    원문 인용과 자격·추천 기준을 검증한 후 조건 확인 묶음 우선·확인 필요 묶음 후순위로 정렬합니다.
    Core도 최종 응답의 후보 ID·질의·계약 버전·점수·묶음별 순서·추천 이유·실제 본문 인용을 재검증해
@@ -123,7 +124,9 @@ GET /api/v1/support-programs/readiness
 충족해야 하며, `targetEligibility` 또는 `regionEligibility`가 `INCOMPATIBLE`이면 추천에서 제외합니다.
 LLM 출력은 `targetAssessment`·`regionAssessment` 안에 `eligibility`와 `score`를 함께 묶습니다.
 nested `anyOf` 스키마가 `INCOMPATIBLE`의 점수를 0으로 제한하고, `MATCH`·`UNKNOWN`에는 기존 항목별
-범위(대상 0~25점·지역 0~15점)를 적용합니다. 각 판정에는 설명과 공식 API 본문 인용도 포함합니다.
+범위(대상 0~25점·지역 0~15점)를 적용합니다. 각 판정에는 설명과 후보별 원문 조각 번호도 포함합니다.
+Agent가 번호를 공식 API 본문의 `{field, quote}`로 복원하며 Core와 공개 HTTP 인용 계약은 유지합니다.
+전체 `summary`·`targetDescription`도 그대로 모델에 제공해 조각 경계로 뒤쪽 조건·예외가 생략되지 않게 합니다.
 후보 summary/targetDescription은 최대 6,000/2,000 code point이며 절단 여부를 별도로 전달합니다.
 절단된 후보는 누락된 조건을 확인한 것처럼 판정하지 않도록 두 축 모두 `UNKNOWN`만 허용합니다.
 `regions`는 후보 검색용 태그이지 자격 근거가 아닙니다. AI와 Core는 MATCH/INCOMPATIBLE의 본문 인용을 필수로
@@ -388,14 +391,18 @@ AI Service는 조건 변경 해석·점수화·원문 근거 답변에서 각각
 유지합니다. 토크나이저 준비·인코딩·잘라내기를 작업 스레드에서 실행해 HTTP 이벤트 루프를 막지 않으며,
 OpenAI 호출·응답 검증·오류 처리는 각 Service에 남겨 둡니다.
 
-조건 해석·추천 점수화·근거 답변의 기본 제한시간은 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`입니다.
-AI Health도 Core의 같은 읽기 설정을 사용합니다. 공고 의미 검색 전체는 AI에서 `25s`, Core 읽기는
-`30s`이며, 검색 화면은 의미 검색과 점수화의 순차 호출을 고려해 `70s` 후 요청을 취소합니다.
-C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 70초 검색 요청에 해석을 합치지 않습니다.
+추천 점수화는 전용 설정으로 모델 `45s` → Agent 실행 `50s` → Core 읽기 `55s`를 사용합니다.
+조건 해석·근거 답변은 기존 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`를 유지합니다.
+AI Health도 Core의 기존 공유 읽기 설정을 사용합니다. 공고 의미 검색 전체는 AI에서 `25s`, Core 읽기는
+`30s`이며, 검색 화면은 의미 검색과 점수화의 순차 호출을 고려해 `90s` 후 요청을 취소합니다.
+C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 검색 요청에 해석을 합치지 않습니다.
+이 값은 시간 예산이며 성능 목표가 아닙니다. 랭킹의 전용 RestClient 외에는 기존 의존 방향을 유지합니다.
 
 ## 오류 경계
 
-AI Service의 LLM 실행 실패·색인 미준비·Qdrant 실패는 내부 503으로 반환되고 Core는 공개
+AI Service의 랭킹 모델·Agent 시간 초과는 내부 504로 반환되고 Core는 공개 `504 AI_SERVICE_TIMEOUT`으로
+전달합니다. 검색 화면은 이 검증된 오류 계약에 한해 AI 처리 시간 초과와 수동 재시도를 안내합니다.
+시간 초과 외 LLM 실행 실패·색인 미준비·Qdrant 실패는 내부 503으로 반환되고 Core는 공개
 `503 AI_SERVICE_UNAVAILABLE`로 변환합니다. Core가 관측한 연결·읽기 timeout 및 점수화·색인 API의
 내부 408·504는 504, 예상하지 않은 HTTP 상태나 잘못된 응답 계약은 502로 분류합니다.
 공개 응답은 `application/problem+json`이며 내부 URL·원본 라이브러리 예외를 노출하지 않습니다.

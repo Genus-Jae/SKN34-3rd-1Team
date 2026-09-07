@@ -47,7 +47,8 @@
 - 실제 흐름은 `HTTP API → Service → Agent → OpenAI → Response`다. 기존 후보 랭킹 Agent 1회 호출을 유지한다.
   질의 임베딩은 기존 별도 호출이다. 새 provider·Agent 프레임워크·규칙 기반 장애 fallback·production 의존성은 없다.
 - 후보별 설명·인용이 늘어나 랭킹 출력 한도를 4,000에서 10,000토큰으로 늘렸다. 실제 출력량만큼 비용이 발생하며,
-  기존 모델 25초·전체 실행 30초 제한은 유지한다. 20개 후보의 실제 응답시간·출력량은 별도 유료 검증 대상이다.
+  당시 모델 25초·전체 실행 30초 제한을 유지했다. 후속 [검색 오류 수정](support-program-ranking-timeout-fix.md)에서
+  랭킹 전용 45/50초와 원문 조각 번호 선택·복원을 추가했다. 아래 기록은 최초 원문 우선 구현 당시 결과다.
 - 본문과 태그가 충돌할 때 태그를 근거에서 제외하지만, 인용 존재 검증만으로 AI의 논리적 판정 정확성을 보장하지 않는다.
   `MATCH`는 제공된 정보에서 확인한 대상·지역 관계이며 모든 신청 요건·선정 가능성에 대한 보증이 아니다.
   [OpenAI Docs의 Structured Outputs 안내](https://developers.openai.com/api/docs/guides/structured-outputs#handling-mistakes)도

@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from app.support_program_ranking.errors import AgentExecutionError
+from app.support_program_ranking.errors import AgentExecutionError, AgentFailureCode
 
 from .agent import SupportProgramRecommendationAgent
 from .models import (
@@ -34,7 +34,8 @@ class SupportProgramRankingService:
         actual_ids = {ranking.program_id for ranking in output.rankings}
         if actual_ids != expected_ids or len(output.rankings) != len(request.candidates):
             raise AgentExecutionError(
-                "Support program recommendation agent changed the candidate id set"
+                "Support program recommendation agent changed the candidate id set",
+                reason_code=AgentFailureCode.CANDIDATE_SET_MISMATCH,
             )
 
         candidates_by_id = {candidate.id: candidate for candidate in request.candidates}
@@ -44,12 +45,21 @@ class SupportProgramRankingService:
             source_fields = {"SUMMARY": candidate.summary, "TARGET_DESCRIPTION": candidate.target_description}
             for eligibility in (assessment.target_assessment, assessment.region_assessment):
                 if candidate.source_text_truncated and eligibility.eligibility is not SupportProgramEligibility.UNKNOWN:
-                    raise AgentExecutionError("Truncated source text requires UNKNOWN eligibility")
+                    raise AgentExecutionError(
+                        "Truncated source text requires UNKNOWN eligibility",
+                        reason_code=AgentFailureCode.TRUNCATED_SOURCE_KNOWN_ELIGIBILITY,
+                    )
                 if eligibility.eligibility is not SupportProgramEligibility.UNKNOWN and not eligibility.evidence:
-                    raise AgentExecutionError("Known eligibility requires source evidence")
+                    raise AgentExecutionError(
+                        "Known eligibility requires source evidence",
+                        reason_code=AgentFailureCode.MISSING_KNOWN_EVIDENCE,
+                    )
                 for evidence in eligibility.evidence:
                     if evidence.quote not in source_fields[evidence.field]:
-                        raise AgentExecutionError("Eligibility evidence is not an exact quote of the candidate source")
+                        raise AgentExecutionError(
+                            "Eligibility evidence is not an exact quote of the candidate source",
+                            reason_code=AgentFailureCode.EXACT_QUOTE_MISMATCH,
+                        )
 
         try:
             scored_rankings = [

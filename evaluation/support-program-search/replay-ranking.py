@@ -32,27 +32,28 @@ async def execute(args, envelope, prompts):
     from app.support_program_ranking.models import SupportProgramRankingRequest, SupportProgramRankingResponse
     from app.support_program_ranking.prompt import SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
 
-    # This experiment changes only instructions, not model, reasoning, limits or scoring contract.
+    # Historical prompt experiment: explicitly freeze ranking at 25/30 seconds,
+    # even though production ranking now defaults to 45/50 seconds.
     settings = Settings.from_environment()
     if os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") != "https://api.openai.com/v1":
         raise ValueError("Replay permits only the official OpenAI endpoint")
     if settings.openai_model != "gpt-5.6-luna":
         raise ValueError("Replay preserves the measured gpt-5.6-luna model")
-    if (settings.llm_model_timeout_seconds, settings.llm_run_timeout_seconds) != (25.0, 30.0):
-        raise ValueError("Replay requires the frozen 25/30 second timeouts")
+    ranking_timeouts = (settings.llm_ranking_model_timeout_seconds, settings.llm_ranking_run_timeout_seconds)
+    if ranking_timeouts != (25.0, 30.0):
+        raise ValueError("Replay requires the frozen 25/30 second ranking timeouts")
     if prompts["after"] != SUPPORT_PROGRAM_RANKING_INSTRUCTIONS:
         raise ValueError("After prompt must equal the current production instructions")
     requests = envelope["queries"]
-    normalized = {
-        row["id"]: SupportProgramRankingRequest.model_validate(row["request"])
-        for row in requests
-    }
+    for row in requests:
+        SupportProgramRankingRequest.model_validate(row["request"])
     args.output_dir.mkdir(parents=True, exist_ok=False)
     apps = {}
     clients = {}
     observations = []
     usage = []
     current = {}
+    model_input_hashes = {}
     call_count = 0
     max_output_tokens = None
     max_calls = 2 * len(requests)
@@ -78,10 +79,20 @@ async def execute(args, envelope, prompts):
             nonlocal call_count
             if request.url.host != "api.openai.com" or request.url.path != "/v1/responses" or call_count >= max_calls:
                 raise RuntimeError("Replay request destination or budget exceeded")
+            payload = json.loads(await request.aread())
+            if not isinstance(payload, dict) or not isinstance(payload.get("input"), (str, list)):
+                raise ValueError("Replay requires an actual Responses input to hash")
+            key = (current["queryId"], current["variant"])
+            if key in model_input_hashes:
+                raise ValueError("Replay requires exactly one model input per ranking")
+            # Hash the wire input (including evidenceOptions), never reconstruct it
+            # from the Core request or persist source text / request credentials.
+            input_hash = evaluator.canonical_sha256(payload["input"])
+            model_input_hashes[key] = input_hash
             call_count += 1
             request.extensions["replayStart"] = time.monotonic()
             request.extensions["replaySequence"] = call_count
-            record_usage({"event": "request", "sequence": call_count})
+            record_usage({"event": "request", "sequence": call_count, "modelInputSha256": input_hash})
 
         async def on_response(response):
             await response.aread()
@@ -125,9 +136,12 @@ async def execute(args, envelope, prompts):
                     body = result.model_dump(mode="json", by_alias=True)
                     if body["originalQuery"] != row["request"]["originalQuery"] or body["scoringVersion"] != row["request"]["scoringVersion"]:
                         raise ValueError("Ranking response identity mismatch")
+                    input_hash = model_input_hashes.get((row["id"], variant))
+                    if input_hash is None:
+                        raise ValueError("Replay did not capture the actual model input")
                     item = {
                         **current, "requestSha256": evaluator.canonical_sha256(row["request"]),
-                        "modelInputSha256": hashlib.sha256(normalized[row["id"]].model_dump_json(by_alias=True).encode()).hexdigest(),
+                        "modelInputSha256": input_hash,
                         "promptSha256": hashlib.sha256(prompts[variant].encode()).hexdigest(),
                         "elapsedSeconds": time.monotonic() - start, "response": body,
                     }
@@ -172,7 +186,7 @@ async def execute(args, envelope, prompts):
                 "queryCount": len(requests), "plannedCalls": max_calls, "actualCalls": call_count,
                 "completedRankings": len(observations), "embeddingCalls": 0, "sdkMaxRetries": 0,
                 "agentMaxTurns": 1, "maxOutputTokens": max_output_tokens, "reasoningEffort": "none", "store": False,
-                "tracing": False, "timeoutsSeconds": {"model": 25, "agent": 30},
+                "tracing": False, "timeoutsSeconds": {"model": ranking_timeouts[0], "agent": ranking_timeouts[1]},
                 "measurement": "Fixed candidate HTTP replay using in-process ASGI; not a new full search or browser latency measurement.",
                 "variants": {},
             }

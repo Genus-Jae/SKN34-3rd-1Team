@@ -6,6 +6,7 @@ import {
   searchSupportProgramsApi,
   SupportProgramEvidenceApiError,
   SupportProgramRequestApiError,
+  SupportProgramSearchTimeoutApiError,
 } from '../api/supportProgramApi'
 import { toSupportProgram } from '../models/SupportProgramDto'
 import { toSupportProgramEvidenceAnswer } from '../models/SupportProgramEvidenceAnswerDto'
@@ -14,6 +15,7 @@ import { toSupportProgramInterpretation } from '../models/SupportProgramConversa
 import type { SupportProgramInterpretRequest } from '../../domain/entities/SupportProgramConversation'
 import type { SupportProgram } from '../../domain/entities/SupportProgram'
 import { SupportProgramRequestError } from '../../domain/errors/SupportProgramRequestError'
+import { SupportProgramSearchTimeoutError } from '../../domain/errors/SupportProgramSearchTimeoutError'
 import type { SupportProgramSearchReadiness } from '../../domain/entities/SupportProgramSearchReadiness'
 import type {
   SupportProgramRepository,
@@ -41,6 +43,7 @@ export class SupportProgramRepositoryImpl implements SupportProgramRepository {
       const response = await searchSupportProgramsApi(command, signal)
       return response.programs.map(toSupportProgram)
     } catch (error) {
+      if (error instanceof SupportProgramSearchTimeoutApiError) throw new SupportProgramSearchTimeoutError()
       throw toRequestError(error)
     }
   }

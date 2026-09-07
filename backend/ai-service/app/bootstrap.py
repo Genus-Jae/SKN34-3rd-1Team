@@ -63,8 +63,8 @@ def build_application_container(
         assert model is not None
         ranking_agent = SupportProgramRecommendationAgent(
             model=model,
-            model_timeout_seconds=settings.llm_model_timeout_seconds,
-            run_timeout_seconds=settings.llm_run_timeout_seconds,
+            model_timeout_seconds=settings.llm_ranking_model_timeout_seconds,
+            run_timeout_seconds=settings.llm_ranking_run_timeout_seconds,
         )
     if evidence_answer_agent is None:
         assert model is not None

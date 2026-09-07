@@ -7,8 +7,8 @@ from pydantic import ValidationError
 
 from app.config import Settings
 from app.main import create_app
-from app.support_program_ranking.agent import SupportProgramRecommendationAgent
-from app.support_program_ranking.errors import AgentExecutionError
+from app.support_program_ranking.agent import SupportProgramRecommendationAgent, build_evidence_options
+from app.support_program_ranking.errors import AgentExecutionError, AgentFailureCode
 from app.support_program_ranking.models import (
     SCORING_VERSION,
     AssessedSupportProgram,
@@ -68,6 +68,18 @@ class FixedAgent:
         return self.output
 
 
+def selection_json(expected, request):
+    selection = expected.model_dump(by_alias=True, exclude={"program_id"})
+    options = build_evidence_options(request.candidates[0])
+    for dimension in ("targetAssessment", "regionAssessment"):
+        selection[dimension]["evidence"] = [
+            next(index for index, option in enumerate(options)
+                 if option.field == quote["field"] and quote["quote"] in option.quote)
+            for quote in selection[dimension]["evidence"]
+        ]
+    return json.dumps({"rankings": {expected.program_id: selection}}, ensure_ascii=False)
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize("company_conditions", [False, True])
 async def test_confirmed_bucket_precedes_higher_unknown_scores_and_combined_limit(company_conditions):
@@ -98,9 +110,7 @@ async def test_nationwide_tag_does_not_override_gyeongbuk_relocation_uncertainty
         "evidence": [{"field": "SUMMARY", "quote": "경북 소재 중소기업 또는 선정 후 경북 이전 확약 기업"}],
         "explanation": "서울 기업이므로 선정 후 경북 이전 확약 가능 여부를 확인해야 합니다.",
     })
-    model = ScriptedModel([[assistant_message(json.dumps({
-        "rankings": {expected.program_id: expected.model_dump(by_alias=True, exclude={"program_id"})},
-    }, ensure_ascii=False))]])
+    model = ScriptedModel([[assistant_message(selection_json(expected, request))]])
     agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
     result = await SupportProgramRankingService(agent).rank(request)
     assert len(result.rankings) == 1
@@ -144,17 +154,17 @@ async def test_actual_conditional_relocation_or_expansion_phrase_preserves_both_
         "evidence": [{"field": "SUMMARY", "quote": conditional_clause}],
         "explanation": "지원기간 내 경상북도 사업장 이전 또는 확장 확약 가능 여부와 적용 조건을 확인해야 합니다.",
     })
-    model = ScriptedModel([[assistant_message(json.dumps({
-        "rankings": {expected.program_id: expected.model_dump(by_alias=True, exclude={"program_id"})},
-    }, ensure_ascii=False))]])
+    model = ScriptedModel([[assistant_message(selection_json(expected, request))]])
     agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
     result = await SupportProgramRankingService(agent).rank(request)
     assert len(result.rankings) == 1
     ranking = result.rankings[0]
     assert ranking.target_eligibility.value == ranking.region_eligibility.value == "UNKNOWN"
     assert ranking.total_score == 60
-    assert ranking.target_evidence[0].quote == industry_clause
-    assert ranking.region_evidence[0].quote == conditional_clause
+    assert industry_clause in ranking.target_evidence[0].quote
+    assert conditional_clause in ranking.region_evidence[0].quote
+    assert ranking.target_evidence[0].quote in source
+    assert ranking.region_evidence[0].quote in source
     assert "이전 또는 확장 확약" in ranking.region_explanation
     assert len(model.calls) == 1
     instructions = model.first_call.system_instructions
@@ -178,8 +188,9 @@ async def test_every_candidate_quote_is_checked_even_when_excluded_or_below_mini
         "evidence": [{"field": "SUMMARY", "quote": "존재하지 않는 경북 지역 제한"}],
         "explanation": "지역 제한을 확인해야 합니다.",
     })
-    with pytest.raises(AgentExecutionError, match="exact quote"):
+    with pytest.raises(AgentExecutionError, match="exact quote") as captured:
         await SupportProgramRankingService(FixedAgent([value])).rank(request_for([candidate()]))
+    assert captured.value.reason_code is AgentFailureCode.EXACT_QUOTE_MISMATCH
 
 
 @pytest.mark.anyio
@@ -204,9 +215,29 @@ async def test_cannot_quote_metadata_other_field_other_candidate_or_modified_sou
 @pytest.mark.parametrize("target,region", [("MATCH", "UNKNOWN"), ("UNKNOWN", "MATCH"),
                                            ("INCOMPATIBLE", "UNKNOWN"), ("UNKNOWN", "INCOMPATIBLE")])
 async def test_truncated_source_rejects_any_known_assessment(target, region):
-    with pytest.raises(AgentExecutionError, match="Truncated"):
+    with pytest.raises(AgentExecutionError, match="Truncated") as captured:
         await SupportProgramRankingService(FixedAgent([assessment(target=target, region=region)])).rank(
             request_for([candidate(sourceTextTruncated=True)]))
+    assert captured.value.reason_code is AgentFailureCode.TRUNCATED_SOURCE_KNOWN_ELIGIBILITY
+
+
+@pytest.mark.anyio
+async def test_candidate_set_failure_has_a_fixed_diagnostic_code():
+    with pytest.raises(AgentExecutionError) as captured:
+        await SupportProgramRankingService(FixedAgent([assessment()])).rank(
+            request_for([candidate(), candidate(2)]))
+    assert captured.value.reason_code is AgentFailureCode.CANDIDATE_SET_MISMATCH
+
+
+@pytest.mark.anyio
+async def test_missing_known_evidence_defense_has_a_fixed_diagnostic_code():
+    # The real SDK validates this first; bypass only in the test to exercise the service defense.
+    value = assessment()
+    invalid_target = value.target_assessment.model_copy(update={"evidence": []})
+    invalid_value = value.model_copy(update={"target_assessment": invalid_target})
+    with pytest.raises(AgentExecutionError) as captured:
+        await SupportProgramRankingService(FixedAgent([invalid_value])).rank(request_for([candidate()]))
+    assert captured.value.reason_code is AgentFailureCode.MISSING_KNOWN_EVIDENCE
 
 
 @pytest.mark.anyio

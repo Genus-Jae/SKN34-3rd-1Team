@@ -8,6 +8,7 @@ import type { InterpretSupportProgramConversationUseCase } from '../../../../dom
 import type { SupportProgramInterpretRequest } from '../../../../domain/entities/SupportProgramConversation'
 import type { SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
 import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
+import { SupportProgramSearchTimeoutError } from '../../../../domain/errors/SupportProgramSearchTimeoutError'
 import { supportProgramRequestFailureMessage } from '../../../shared/support-program/supportProgramRequestFailureMessage'
 import {
   acceptingOnlyChanged,
@@ -47,8 +48,8 @@ export const supportProgramChatSuggestions = [
   '제조기업 R&D 사업을 찾아줘',
 ]
 
-/** 순차 의미 검색(30초)·점수화(35초)에 여유를 두고 검색 요청 시간을 제한합니다. */
-export const supportProgramSearchTimeoutMilliseconds = 70_000
+/** 순차 의미 검색(30초)·점수화(55초)에 여유를 두고 검색 요청 시간을 제한합니다. */
+export const supportProgramSearchTimeoutMilliseconds = 90_000
 export const supportProgramInterpretationTimeoutMilliseconds = 40_000
 
 type SupportProgramSearchUseCase = Pick<SearchSupportProgramsUseCase, 'execute'>
@@ -245,7 +246,9 @@ export function useSupportProgramChat(
           requestId,
           message: error instanceof SupportProgramRequestError
             ? supportProgramRequestFailureMessage(error)
-            : undefined,
+            : error instanceof SupportProgramSearchTimeoutError
+              ? '서버의 지원사업 검색 시간이 초과되었습니다. 확인한 조건으로 다시 검색해 주세요.'
+              : undefined,
         })
         dispatchAction(searchFailedAction)
       } finally {

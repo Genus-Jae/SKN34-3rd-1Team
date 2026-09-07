@@ -76,8 +76,9 @@ context의 query·acceptingOnly·companyConditions 및 네 조건 필드는 모�
 정확한 공개/내부 예시는 [C02 계약](../../docs/conversation-condition-update.md)을 참고하세요.
 
 `HTTP API → SupportProgramConversationService → SupportProgramConversationAgent → OpenAI → Response`로
-한 번의 typed structured 호출만 실행합니다. 기존 client/model, store=false, tracing 비활성, 모델/실행 timeout을
-공유하며 이 역할의 최대 출력은 2,000 tokens입니다. 세션·전체 대화 이력·영속성·추가 provider는 없습니다.
+한 번의 typed structured 호출만 실행합니다. 기존 client/model, store=false, tracing 비활성을 공유하며
+이 역할의 모델·HTTP 25초/전체 실행 30초 제한과 최대 출력 2,000 tokens를 유지합니다.
+세션·전체 대화 이력·영속성·추가 provider는 없습니다.
 모델은 상태·패치·질문만 출력하고 Service가 검증 후 계약 버전을 붙입니다. 검색/임베딩/랭킹은 호출하지 않습니다.
 
 Service는 현재 message의 exact substring evidence, 중복 없는 0~6개 SET/CLEAR, 명시된 완전한 설립일을
@@ -234,7 +235,7 @@ payload 불일치, 검증 실패는 `EVIDENCE_UNAVAILABLE`입니다. 부분 검�
 | 원하는 지원 유형 적합성 | 10 |
 
 LLM에 전달할 평가 지시는 [prompt.py](app/support_program_ranking/prompt.py)에 둡니다.
-[models.py](app/support_program_ranking/models.py)는 AI 출력 값 `SupportProgramAssessment`, Agent가 검증된 ID를 붙인
+[models.py](app/support_program_ranking/models.py)는 복원된 평가 값 `SupportProgramAssessment`, Agent가 검증된 ID를 붙인
 내부 항목 `AssessedSupportProgram`, 검증된 HTTP 응답 `ScoredSupportProgram`을 구분합니다.
 AI는 의미·자격·항목별 점수를 판단하되 `totalScore`와 값 안의 `programId`는 출력하지 않습니다.
 [service.py](app/support_program_ranking/service.py)가 모든 후보의 본문 인용을 검증하고 다섯 점수를 합산한 뒤
@@ -247,7 +248,8 @@ Core도 같은 HTTP 계약을 재검증합니다. 배점·추천 임계치는 �
 대상·지역 모두 UNKNOWN만 허용합니다. 입력은 공식 API 요약이지 첨부 PDF/HWP 전체 원문이 아닙니다.
 읽지 않은 부분의 조건 충족이나 최종 신청 자격을 확정하지 않습니다.
 기존 Agent의 단일 호출(`max_turns=1`)을 유지하고 출력 토큰 상한만 10,000으로 늘렸습니다.
-실행·모델 timeout은 그대로이며 20개 후보의 실제 모델 응답시간·품질은 별도 승인된 실호출 검증이 필요합니다.
+순위화 시간 제한은 아래 설정 절의 별도 기본값을 사용하며, 20개 후보의 실제 모델 응답시간·품질은
+별도 승인된 실호출 검증이 필요합니다.
 
 ### 추천 반환 최소 기준
 
@@ -269,6 +271,30 @@ Service는 제외·점수 미달 후보까지 모두 해당 후보의 지정 본
 실제 보고된 '지원기간 내 경상북도 지역으로 사업장 이전(또는 확장) 확약기업 신청 가능' 문구는
 조건 유무 두 경로의 ScriptedModel 회귀로 전달·인용·UNKNOWN 보존을 검증합니다. 모델의 의미 판단 정확도 보장은 아닙니다.
 인용 존재 검증은 인용의 논리적 충분성까지 보장하지 않습니다. 자격의 의미 판단은 여전히 모델이 수행합니다.
+
+지역 판정 지침과 내부 `regionAssessment` schema 설명에는 소재지 범위의 포함 방향을 명시합니다.
+서울만 확인됐는데 서초구 한정이면 UNKNOWN, 서초구 소재가 확인되고 서울 전체 대상이면 MATCH,
+다른 구로 확인됐고 예외 없이 서초구만 허용하면 INCOMPATIBLE입니다. 실제 지역 허용·제한을 표현하는
+구절을 선택해야 하며, 전국 태그·기관 주소·행사 장소·일반 대상 문구만으로 지역을 확정하지 않습니다.
+본문의 전국 무제한 신청은 구분하여 MATCH를 허용하고 이전 확약 미확인은 UNKNOWN을 유지합니다.
+이는 모델 지침이며 서버의 독립적인 행정구역 증명 규칙은 아닙니다.
+[지역 범위·근거 개선 기록](../../docs/region-eligibility-scope-fix.md)에 실제 검증과 한계를 정리합니다.
+
+LLM 내부에서는 인용 문구를 생성하지 않고 후보별 `evidenceOptions`의 번호만 선택합니다.
+Agent가 전체 `summary`·`targetDescription`을 그대로 전달하면서 두 필드의 원문 조각을
+`[{index: 0, field: "SUMMARY", quote: "..."}, ...]`로 추가합니다. 모델의 assessment.evidence는 `[0]`처럼
+번호 배열이며 최대 1개입니다. 후보별 동적 스키마가 `0..선택지 수-1`의 정수만 허용하고 Agent가 다시
+범위를 검증한 뒤 해당 후보의 원래 field/quote를 복원합니다. 외부·내부 HTTP v4 계약은 변경하지 않습니다.
+원본 식별자를 분해하지 않으며 서로 다른 후보의 같은 번호는 각자의 원문에만 대응합니다.
+
+조각은 Unicode code point 기준 최대 240자이며 긴 연속 구간 안에서 최소 60자 겹침으로 끝까지 만듭니다. 가능한 경우
+창의 후반부에서 문장·단어 경계를 선택하며 정규화·생략 부호·문자 접합은 하지 않습니다.
+Unicode C 문자는 제거해 앞뒤를 붙이지 않고 경계로 분리합니다. 공백뿐인 구간은 인용으로 만들지 않지만
+전체 본문은 그대로 제공하며 조각 수 상한으로 뒷부분을 버리지 않습니다. 인용 가능한 조각이 없으면
+UNKNOWN과 빈 evidence만 유효합니다. 선택지는 복사 오류 방지용이며 모델은 전체 본문의 필수 요건·예외로
+판단해야 합니다. 번호 선택이 의미 적합성이나 운영 응답시간을 보장하지는 않습니다.
+제어문자와 짧은 글자가 번갈아 반복되는 극단 입력에서는 선택지 수와 직렬화된 입력 크기가 크게 늘어날 수
+있습니다. 이번 변경은 뒤쪽 자격 예외를 누락시키는 임의 선택지 상한이나 UNKNOWN 보정을 추가하지 않습니다.
 Agent에 전달하는 strict output schema의 `rankings`는 배열이 아닌 객체입니다. 요청 후보의 ID 20개가 있다면
 그 ID 20개 자체를 모두 `required` 속성 키로 선언하고 `additionalProperties=false`로 다른 키를 금지합니다.
 배열 길이만 맞추고 특정 공고를 중복 평가하는 실패를 막기 위한 구조이며, 적합하지 않은 후보도 평가한 뒤
@@ -315,8 +341,8 @@ Core API
 → OpenAI Agents SDK Runner.run(max_turns=1)
    ├→ prompt.py의 평가 기준 사용
    ├→ 후보 문장을 지시가 아닌 데이터로 취급
-   └→ 요청별 필수 ID 키 rankings 객체의 SupportProgramAssessment 값으로 세부 점수·자격 판정 (총점 없음)
-→ Agent가 검증된 ID 키를 붙여 SupportProgramRankingOutput의 AssessedSupportProgram 목록으로 변환
+   └→ 요청별 필수 ID 키 rankings 객체로 세부 점수·자격·인용 번호 선택 (총점 없음)
+→ Agent가 모든 후보의 인용 번호를 원문 field/quote로 복원하고 ID 키를 붙여 SupportProgramRankingOutput으로 변환
 → Service가 입력 후보 ID exact set을 재검증
 → Service가 다섯 점수 합산 → 기존 HTTP 항목 ScoredSupportProgram으로 변환·검증
 → 총점 내림차순 정렬
@@ -371,7 +397,11 @@ app/
 요청 형식 오류
 → FastAPI/Pydantic 422
 
-OpenAI timeout·거부·SDK 오류·structured output 오류
+순위화 모델·HTTP·전체 실행 timeout
+→ AgentTimeoutError (AgentExecutionError 하위 타입)
+→ 상세정보 없는 내부 HTTP 504
+
+OpenAI 거부·기타 SDK 오류·structured output 오류
 → AgentExecutionError
 → 상세정보 없는 내부 HTTP 503
 
@@ -391,6 +421,15 @@ OpenAI timeout·거부·SDK 오류·structured output 오류
 사용자 질문, 공고 원문, API key와 OpenAI 원문 오류를 실패 응답에 포함하지 않습니다. Core는 다시
 내부 응답의 ID·점수 범위·점수 합계·순서를 검증합니다. 부적합·정보 부족 판정을 `MATCH`로 바꾸거나
 유효하지 않은 AI 출력을 정상 결과로 보정하지 않습니다. 재시도·fallback은 추가하지 않습니다.
+순위화 실패 로그에는 `failure_kind`, 고정 `reason_code`, 오류 클래스명, 후보 수, 경과 시간만 기록합니다.
+질문·기업 조건·프롬프트·응답 본문·API key·원문 예외 메시지와 traceback은 기록하지 않습니다.
+조건 해석과 상세 근거 답변의 기존 오류 응답은 변경하지 않습니다.
+`reason_code`는 후보 집합 불일치 `CANDIDATE_SET_MISMATCH`, 절단 본문의 확정 판정
+`TRUNCATED_SOURCE_KNOWN_ELIGIBILITY`, 확정 판정 근거 누락 `MISSING_KNOWN_EVIDENCE`, 지정 본문
+인용 불일치 `EXACT_QUOTE_MISMATCH`, 예상 밖 Agent 출력 타입 `UNEXPECTED_OUTPUT_TYPE`을 구분합니다.
+번호 복원 단계의 범위·출력 검증 오류는 `INVALID_EVIDENCE_SELECTION`입니다.
+그 밖의 실행 실패는 `EXECUTION_FAILED`이며 timeout 여부는 기존 `failure_kind`로 구분합니다.
+이 진단 코드는 HTTP 응답에 노출하지 않으며, 검증 기준이나 부적합 후보 처리 방식을 바꾸지 않습니다.
 
 ## 설정
 
@@ -399,6 +438,8 @@ OPENAI_API_KEY=필수
 OPENAI_MODEL=gpt-5.6-luna
 LLM_MODEL_TIMEOUT_SECONDS=25.0
 LLM_RUN_TIMEOUT_SECONDS=30.0
+LLM_RANKING_MODEL_TIMEOUT_SECONDS=45.0
+LLM_RANKING_RUN_TIMEOUT_SECONDS=50.0
 QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=
 QDRANT_TIMEOUT_SECONDS=5
@@ -407,11 +448,17 @@ OPENAI_EMBEDDING_DIMENSIONS=1536
 EMBEDDING_TIMEOUT_SECONDS=15
 ```
 
-기본 전체 Agent 제한 `30s`는 모델 호출 제한 `25s`보다 길고 Core의 기본 읽기 제한 `35s`보다 짧습니다.
-환경변수를 변경할 때도 이 관계를 유지해야 합니다. 설정 코드가 세 값의 대소 관계를 자동 검증하지는 않습니다.
-AI의 각 timeout 환경변수는 0초 초과·30초 이하만 허용하며 그 밖의 값은 해당 기본값을 사용합니다.
-모델·Agent 제한은 추천 점수화와 원문 근거 답변에 공통 적용됩니다. 기본값은 저장된 실제 추천 호출의
-10.874~19.195초 관측에 맞춰 조정했으며, 기본값 변경 자체가 부하·운영 안정성 검증을 뜻하지는 않습니다.
+순위화만 모델·HTTP `45s` < 전체 Agent `50s` < Core 순위화 읽기 `55s`의 별도 기본 제한을 사용합니다.
+두 `LLM_RANKING_*` 값은 유한한 0초 초과·60초 이하이며 모델 제한이 전체 제한보다 작아야 합니다.
+잘못된 값은 기동 오류로 거부하고 기본값으로 조용히 대체하지 않습니다. 변경 시 Core 읽기 제한과
+상위 요청 제한도 함께 맞춰야 하며 AI 설정은 다른 서비스의 제한까지 자동 검증하지 않습니다.
+같은 OpenAI client/model을 유지하면서 순위화의 `ModelSettings.extra_args.timeout`으로 HTTP 제한을
+요청별로 덮어씁니다. 이는 HTTP 옵션이며 OpenAI JSON 요청 본문에 추가되는 필드가 아닙니다.
+조건 해석·원문 근거 답변은 기존 모델·HTTP `25s`, 전체 Agent `30s`, Core 읽기 `35s`를 유지합니다.
+기존 비순위화 timeout 환경변수는 0초 초과·30초 이하 이외의 값에 기존 기본값 대체 정책을 유지합니다.
+시간 제한 분리에서는 모델·후보 20개·출력 상한 10,000 tokens·프롬프트·자격 검증을 변경하지 않았습니다.
+후속 인용 번호 선택 변경은 LLM 내부 출력 형식과 관련 프롬프트만 바꾸며 배점·자격 검증은 유지합니다.
+시간 제한 확장은 응답 성공이나 부하·운영 안정성을 보장하지 않으며 실제 검색 검증은 별도입니다.
 색인·의미 검색은 별도 Core 읽기 제한을 사용합니다. AI batch/search 전체 제한은 `25s`, prune은
 `15s`이고 Core 색인·검색 읽기 제한 기본값은 `30s`입니다. 이 구현은 임베딩을 재시도 없이 호출하며
 한 문서 최대 8,191 tokens, 임베딩 API 요청당 최대 32개로 나눕니다. 긴 문서의 뒷부분은 이 단계의 후보
@@ -467,3 +514,27 @@ C02 구현 후 Windows Python 3.12.13 환경에서 전체 `python -m pytest` **4
 (2026-09-07, 기존 319 + 신규 140). 현재 메시지 인용·날짜 창작 거부·UTF-16 경계·초안 병합·부재 필드 보존,
 실제 SDK strict schema와 Compose 대역 8개 시나리오를 포함합니다. 유료 모델 호출이나 실제 의미 품질 평가가
 아니며, 테스트의 OpenAI HTTP 통신은 모두 mock transport입니다.
+
+순위화 시간 제한 분리 후 같은 Windows Python 3.12.13 환경에서 전체 `python -m pytest`
+**491개**가 통과했습니다(2026-09-07, 기존 459 + 신규 32). 실제 SDK와 MockTransport로 순위화
+HTTP 45초·같은 client/model의 조건 해석 및 근거 답변 HTTP 25초 보존, 모델·HTTP·전체 실행 시간
+초과의 분류, 504/503 및 민감정보 없는 실패 로그를 확인했습니다. 유료 호출·재시작·배포는 하지 않았습니다.
+
+고정 실패 진단 코드 추가 후 전체 **508개**가 통과했습니다(같은 환경, 2026-09-07, 기존 491 + 신규 17).
+다섯 발생 지점과 일반 오류 기본값·임의 진단 문자열의 로그 제외를 검증했습니다. 이는 관측 개선이며
+실제 실패한 모델 출력의 원인을 확정하거나 인용 오류 자체를 해결했다는 의미는 아닙니다.
+
+인용 번호 선택·원문 복원 변경 후 전체 **564개**가 통과했습니다(같은 환경, 2026-09-07, 기존 508 + 신규 56).
+최대 6,000/2,000자 본문의 끝부분 보존, Unicode·제어문자 경계, 후보별 번호와 필드 복원, 잘못된 번호·known
+빈 근거 거부, 제외 후보까지 검증, 기존 exact 인용 검증을 포함합니다. 옵션 수 0~19가 섞인 20후보의 실제
+SDK strict schema 직렬화·복원을 MockTransport로 확인했습니다. 별도 Compose 대역 **24개**(랭킹 16,
+조건 해석 8)도 통과했습니다. 이 검증은 유료 모델 호출 없이 수행했으며 실제 검색 품질·응답시간을 보장하지 않습니다.
+
+지역 범위·인용 근거 지침 보강 후 전체 **571개**가 통과했습니다(Windows Python 3.12.13,
+2026-09-07, 22.65초, 기존 564 + 신규 7). 상·하위 지역 예시·지역 구절 필요 지침과 실제 SDK schema의
+설명 전달, 적용 지역 보존, UNKNOWN 복원 계약을 확인했습니다. 이 모의 검증과 실제 의미 평가는 구분합니다.
+
+후속 OR 대안 보강 후 최신 전체 **572개**가 통과했습니다(같은 환경, 16.40초). 현재 소재지 경로를
+충족하면 이전 의사를 더 요구하지 않고, 이전 의사 미확인을 불충족으로 단정하지 않도록 지침과 내부
+schema 설명을 보강했습니다. 실제 합성 검증의 22/24와 보완 후 부분집합 16/16 결과 및 AI만 재빌드·재시작한 로컬 반영 상태는
+[별도 기록](../../docs/region-eligibility-scope-fix.md)을 참고하세요.

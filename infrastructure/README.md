@@ -56,9 +56,12 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `BIZINFO_SYNC_FIXED_DELAY` | `PT6H` | 이전 동기화가 끝난 뒤 다음 동기화까지의 ISO-8601 기간 |
 | `OPENAI_API_KEY` | 없음(필수) | AI Service만 사용하는 OpenAI 인증키 |
 | `OPENAI_MODEL` | `gpt-5.6-luna` | 현재 Compose에 설정된 Agent의 Structured Output 모델 |
-| `LLM_MODEL_TIMEOUT_SECONDS` | `25.0` | OpenAI 모델 호출 한 번의 제한시간(초) |
-| `LLM_RUN_TIMEOUT_SECONDS` | `30.0` | Agent의 `Runner.run` 실행 제한시간(초) |
-| `AI_SERVICE_READ_TIMEOUT` | `35s` | Core API의 AI Health·점수화·원문 근거 답변 읽기 제한시간 |
+| `LLM_MODEL_TIMEOUT_SECONDS` | `25.0` | 조건 해석·원문 근거 답변의 OpenAI 호출 제한시간(초) |
+| `LLM_RUN_TIMEOUT_SECONDS` | `30.0` | 조건 해석·원문 근거 답변의 Agent 실행 제한시간(초) |
+| `LLM_RANKING_MODEL_TIMEOUT_SECONDS` | `45.0` | 후보 점수화 전용 OpenAI 호출 제한시간(초) |
+| `LLM_RANKING_RUN_TIMEOUT_SECONDS` | `50.0` | 후보 점수화 전용 Agent 실행 제한시간(초) |
+| `AI_SERVICE_READ_TIMEOUT` | `35s` | Core API의 AI Health·조건 해석·원문 근거 답변 읽기 제한시간 |
+| `AI_RANKING_READ_TIMEOUT` | `55s` | Core API의 후보 점수화 전용 읽기 제한시간 |
 | `SUPPORT_PROGRAM_REQUEST_PER_CLIENT_PER_MINUTE` | `6` | 검색·원문 질문이 공유하는 접속 주소별 최근 60초 허용 요청 수 |
 | `SUPPORT_PROGRAM_REQUEST_GLOBAL_PER_MINUTE` | `60` | Core 프로세스 전체의 최근 60초 허용 요청 수 |
 | `SUPPORT_PROGRAM_REQUEST_MAX_CONCURRENT` | `4` | 두 API의 최대 동시 처리 수. 초과 시 대기 없이 거절 |
@@ -80,10 +83,14 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 
 OpenAI는 공고 임베딩과 후보 점수화의 필수 의존성입니다. 키가 없으면 Compose 설정과 AI Service
 시작이 실패하고, 실행 중 AI 호출이 실패하면 Core API가 오류 종류에 따라 502·503·504로
-전달합니다. 모델 `25s`·전체 Agent 실행 `30s`·Core API 읽기 `35s` 순서로 제한시간을 유지합니다.
-모델·Agent 설정은 추천 점수화와 원문 근거 답변이 공유합니다. 검색 화면은 순차적인 의미 검색과
-점수화의 Core 읽기 제한 `30s + 35s`에 여유를 둔 `70s` 후 요청을 취소하고 재시도를 허용합니다.
+전달합니다. 후보 점수화는 모델 `45s` → Agent 실행 `50s` → Core 전용 읽기 `55s` 순서입니다.
+조건 해석·원문 근거 답변은 기존 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`를 유지합니다.
+검색 화면은 순차적인 의미 검색과 점수화의 Core 읽기 제한 `30s + 55s`에 여유를 둔 `90s` 후
+요청을 취소하고 수동 재시도를 허용합니다. 시간 초과는 성공이나 빈 결과로 바꾸지 않고 명시적인 오류로
+반환합니다. 이 값은 대기 상한이지 응답속도 목표가 아니며 자동 재시도는 하지 않습니다.
 기존 `.env`나 서버 환경변수에 예전 제한시간을 지정했다면 기본값보다 우선하므로 직접 갱신해야 합니다.
+랭킹 시간 예산은 별도 변수로 조정하며, 변경할 때는 모델 < Agent < Core 읽기 및
+의미 검색 + 점수화 < 화면 상한의 관계도 함께 유지해야 합니다.
 
 공고 색인에도 OpenAI 임베딩 비용이 발생합니다. 신규·변경된 검색용 텍스트만 임베딩하며, 동일 내용은
 Qdrant에 저장된 벡터를 재사용합니다. 의미 검색·색인 API의 전체 제한시간은 최대 25초이며 Core의
