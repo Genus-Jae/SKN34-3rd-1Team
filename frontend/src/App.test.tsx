@@ -9,6 +9,7 @@ import App from './App'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from './data/fixtures/supportPrograms'
+import { readyConversationProposal } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramSearchReadiness } from './domain/entities/SupportProgramSearchReadiness'
 import { supportProgramEvidenceQuestionTimeoutMilliseconds } from './presentation/features/support-program-detail/viewmodel/useSupportProgramEvidenceQuestionViewModel'
 
@@ -25,6 +26,9 @@ vi.mock('./presentation/features/chat/hooks/useSupportProgramSearchReadiness', (
 ))
 
 beforeEach(() => {
+  // 기존 검색·상세 회귀는 해석만 대역으로 두고 실제 확인 버튼을 눌러 검색합니다.
+  vi.spyOn(appContainer.resolve('interpretSupportProgramConversationUseCase'), 'execute')
+    .mockImplementation(async ({ message, context }) => readyConversationProposal({ ...context, query: message.trim() }))
   readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
     createReadinessHook(),
   )
@@ -54,7 +58,7 @@ describe('App navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(input, { target: { value: '사업화' } })
-    fireEvent.submit(input.closest('form')!)
+    await submitConfirmedSearch(input)
 
     const matchedSection = await screen.findByRole('region', { name: '조건 확인 공고' })
     const reviewSection = screen.getByRole('region', { name: '확인 필요 공고' })
@@ -118,7 +122,7 @@ describe('App navigation', () => {
     renderApp(createAppStore())
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(input, { target: { value: '사업화' } })
-    fireEvent.submit(input.closest('form')!)
+    await submitConfirmedSearch(input)
     await screen.findByRole('region', { name: '확인 필요 공고' })
     const card = getProgramCard(program.title)
     expect(card.querySelector('blockquote')?.textContent).toBe(quote)
@@ -149,7 +153,7 @@ describe('App navigation', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(searchInput, { target: { value: '지원금' } })
-    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    await submitConfirmedSearch(searchInput)
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
       query: '지원금', acceptingOnly: true,
       companyConditions: { region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29', supportPurpose: '사업화' },
@@ -160,7 +164,7 @@ describe('App navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: '업종 조건 해제' }))
     fireEvent.change(screen.getByRole('combobox', { name: '접수 상태' }), { target: { value: 'all' } })
     fireEvent.change(searchInput, { target: { value: '서울 지원금' } })
-    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    await submitConfirmedSearch(searchInput)
     expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
       query: '서울 지원금', acceptingOnly: false,
       companyConditions: { region: '부산', establishedOn: '2024-02-29', supportPurpose: '사업화' },
@@ -172,7 +176,7 @@ describe('App navigation', () => {
     expect(region.value).toBe('')
     expect(industry.value).toBe('')
     fireEvent.change(searchInput, { target: { value: '지원금' } })
-    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    await submitConfirmedSearch(searchInput)
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)))
       .toEqual({ query: '지원금', acceptingOnly: true })
     expect(store.getState().chat.searchStatus).toBe('idle')
@@ -201,7 +205,7 @@ describe('App navigation', () => {
     expect(screen.getByRole('button', { name: '검색 전송' }).parentElement).toBe(inputGroup)
 
     fireEvent.change(input, { target: { value: '서울 AI' } })
-    fireEvent.submit(input.closest('form')!)
+    await submitConfirmedSearch(input)
     expect(screen.getByRole('button', { name: '취소' }).parentElement).toBe(inputGroup)
 
     await act(async () => rejectSearch(new Error('network failure')))
@@ -318,7 +322,7 @@ describe('App navigation', () => {
 
     const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
     fireEvent.change(chatInput, { target: { value: '서울 AI' } })
-    fireEvent.submit(chatInput.closest('form')!)
+    await submitConfirmedSearch(chatInput)
 
     const detailLink = await screen.findByRole('link', { name: '상세 조건 보기' })
     fireEvent.click(detailLink)
@@ -644,7 +648,7 @@ describe('App navigation', () => {
 
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(searchInput, { target: { value: '서울 AI' } })
-    fireEvent.submit(searchInput.closest('form')!)
+    await submitConfirmedSearch(searchInput)
     expect((await screen.findByText(message)).closest('[role="alert"]')).toBeTruthy()
     expect((searchInput as HTMLTextAreaElement).value).toBe('서울 AI')
     expect(screen.queryByText('private server detail')).toBeNull()
@@ -691,7 +695,7 @@ describe('App navigation', () => {
 
     const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
     fireEvent.change(chatInput, { target: { value: '동일 ID' } })
-    fireEvent.submit(chatInput.closest('form')!)
+    await submitConfirmedSearch(chatInput)
 
     await screen.findByRole('heading', { name: bizInfoProgram.title, level: 2 })
     await screen.findByRole('heading', { name: otherProgram.title, level: 2 })
@@ -743,6 +747,7 @@ describe('App navigation', () => {
 
     fireEvent.compositionEnd(chatInput)
     fireEvent.keyDown(chatInput, { key: 'Enter' })
+    await confirmLatestProposal()
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
   })
@@ -762,7 +767,7 @@ describe('App navigation', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('500자를 넘는 검색어는 API를 호출하지 않고 이유를 안내한다', () => {
+  it('500자를 넘는 검색어는 API를 호출하지 않고 이유를 안내한다', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
@@ -771,7 +776,7 @@ describe('App navigation', () => {
     const overlongQuery = '가'.repeat(501)
     const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
     fireEvent.change(chatInput, { target: { value: overlongQuery } })
-    fireEvent.submit(chatInput.closest('form')!)
+    await submitConfirmedSearch(chatInput)
 
     expect(fetchMock).not.toHaveBeenCalled()
     expect((chatInput as HTMLTextAreaElement).value).toBe(overlongQuery)
@@ -793,7 +798,7 @@ describe('App navigation', () => {
 
     const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '서울 AI' } })
-    fireEvent.submit(chatInput.closest('form')!)
+    await submitConfirmedSearch(chatInput)
 
     await screen.findByRole('alert')
     expect((chatInput as HTMLTextAreaElement).value).toBe('서울 AI')
@@ -805,7 +810,7 @@ describe('App navigation', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('초기 공고 데이터 준비 중에는 검색을 막고 준비 완료를 안내한다', () => {
+  it('초기 공고 데이터 준비 중에는 해석을 허용하고 검색 확인은 막는다', async () => {
     readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
       createReadinessHook({
         canSearch: false,
@@ -826,11 +831,11 @@ describe('App navigation', () => {
     expect(screen.getByText('초기 공고 데이터를 준비하고 있습니다.')).toBeTruthy()
     expect(screen.getByText('준비가 완료되면 자동으로 검색할 수 있습니다.')).toBeTruthy()
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
-    expect((searchInput as HTMLTextAreaElement).disabled).toBe(true)
+    expect((searchInput as HTMLTextAreaElement).disabled).toBe(false)
     expect((screen.getByRole('button', { name: '검색 전송' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getAllByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })[0] as HTMLButtonElement).disabled)
-      .toBe(true)
-    fireEvent.submit(searchInput.closest('form')!)
+      .toBe(false)
+    await submitConfirmedSearch(searchInput)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -847,7 +852,7 @@ describe('App navigation', () => {
 
     expect(screen.getByText('공고 데이터 상태를 확인하고 있습니다.')).toBeTruthy()
     expect((screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement).disabled)
-      .toBe(true)
+      .toBe(false)
   })
 
   it('최신 동기화가 실패해도 이전 공고 검색은 유지하고 동기화 시각을 보여 준다', async () => {
@@ -880,7 +885,7 @@ describe('App navigation', () => {
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     expect((searchInput as HTMLTextAreaElement).disabled).toBe(false)
     fireEvent.change(searchInput, { target: { value: '서울 AI' } })
-    fireEvent.submit(searchInput.closest('form')!)
+    await submitConfirmedSearch(searchInput)
     await screen.findByRole('heading', { name: supportPrograms[0].title, level: 2 })
     expect(fetchMock).toHaveBeenCalledOnce()
   })
@@ -905,7 +910,7 @@ describe('App navigation', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('현재 공고 데이터를 검색할 수 없습니다.')
     expect((screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement).disabled)
-      .toBe(true)
+      .toBe(false)
     fireEvent.click(screen.getByRole('button', { name: '상태 다시 확인' }))
     expect(refetch).toHaveBeenCalledOnce()
   })
@@ -954,7 +959,7 @@ describe('App navigation', () => {
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     expect((searchInput as HTMLTextAreaElement).disabled).toBe(false)
     fireEvent.change(searchInput, { target: { value: '창업' } })
-    fireEvent.submit(searchInput.closest('form')!)
+    await submitConfirmedSearch(searchInput)
     await screen.findByRole('heading', { name: supportPrograms[0].title, level: 2 })
     expect(fetchMock).toHaveBeenCalledOnce()
   })
@@ -983,12 +988,12 @@ describe('App navigation', () => {
 
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(searchInput, { target: { value: '서울 AI' } })
-    fireEvent.submit(searchInput.closest('form')!)
+    await submitConfirmedSearch(searchInput)
 
     await screen.findByText('지원사업을 검색하지 못했습니다. 잠시 후 다시 시도해 주세요.')
     expect(screen.queryByRole('button', { name: '다시 검색' })).toBeNull()
     expect((screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement).disabled)
-      .toBe(true)
+      .toBe(false)
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
@@ -1003,7 +1008,7 @@ describe('App navigation', () => {
 
     const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(searchInput, { target: { value: '존재하지 않는 조건' } })
-    fireEvent.submit(searchInput.closest('form')!)
+    await submitConfirmedSearch(searchInput)
 
     await screen.findByText('현재 일치하는 공고를 찾지 못했습니다. 지역이나 분야를 바꿔 다시 검색해 보세요.')
     expect(screen.getByText('공고 검색이 가능합니다.')).toBeTruthy()
@@ -1025,7 +1030,7 @@ describe('App navigation', () => {
 
     const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '수출' } })
-    fireEvent.submit(chatInput.closest('form')!)
+    await submitConfirmedSearch(chatInput)
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
 
     fireEvent.click(screen.getByRole('button', { name: '취소' }))
@@ -1221,6 +1226,18 @@ function requestRejectedResponse(status: number) {
     status,
     headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '12' },
   })
+}
+
+async function submitConfirmedSearch(input: HTMLElement) {
+  const value = (input as HTMLTextAreaElement).value
+  fireEvent.submit(input.closest('form')!)
+  if (value.length > 500 || !value.trim()) return
+  await confirmLatestProposal()
+}
+
+async function confirmLatestProposal() {
+  const confirm = await screen.findByRole('button', { name: '이 조건으로 검색' }) as HTMLButtonElement
+  if (!confirm.disabled) await act(async () => fireEvent.click(confirm))
 }
 
 function getProgramCard(title: string): HTMLElement {

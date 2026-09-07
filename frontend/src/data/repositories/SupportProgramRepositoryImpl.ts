@@ -2,6 +2,7 @@ import {
   answerSupportProgramEvidenceQuestionApi,
   getSupportProgramDetailApi,
   getSupportProgramSearchReadinessApi,
+  interpretSupportProgramConversationApi,
   searchSupportProgramsApi,
   SupportProgramEvidenceApiError,
   SupportProgramRequestApiError,
@@ -9,6 +10,8 @@ import {
 import { toSupportProgram } from '../models/SupportProgramDto'
 import { toSupportProgramEvidenceAnswer } from '../models/SupportProgramEvidenceAnswerDto'
 import { toSupportProgramSearchReadiness } from '../models/SupportProgramSearchReadinessDto'
+import { toSupportProgramInterpretation } from '../models/SupportProgramConversationDto'
+import type { SupportProgramInterpretRequest } from '../../domain/entities/SupportProgramConversation'
 import type { SupportProgram } from '../../domain/entities/SupportProgram'
 import { SupportProgramRequestError } from '../../domain/errors/SupportProgramRequestError'
 import type { SupportProgramSearchReadiness } from '../../domain/entities/SupportProgramSearchReadiness'
@@ -22,6 +25,14 @@ import type {
 
 /** Core API DTO를 검증된 Domain 공고로 변환하는 Repository adapter입니다. */
 export class SupportProgramRepositoryImpl implements SupportProgramRepository {
+  async interpretConversation(command: SupportProgramInterpretRequest, signal?: AbortSignal) {
+    try {
+      return toSupportProgramInterpretation(await interpretSupportProgramConversationApi(command, signal))
+    } catch (error) {
+      throw toRequestError(error)
+    }
+  }
+
   async search(
     command: SupportProgramSearch,
     signal?: AbortSignal,

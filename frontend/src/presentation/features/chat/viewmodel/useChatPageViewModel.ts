@@ -29,7 +29,13 @@ export function useChatPageViewModel() {
   const shouldRestoreMenuFocusRef = useRef(false)
   const timelineRef = useRef<HTMLDivElement>(null)
   const latestMessage = chat.messages.at(-1)
-  const searchStatusAnnouncement = chat.isSearching
+  const searchStatusAnnouncement = chat.isInterpreting
+    ? '메시지의 조건 변경을 해석하고 있습니다. 아직 검색하지 않았습니다.'
+    : chat.interpretation.status === 'ready'
+      ? '조건 변경안이 준비되었습니다. 확인 버튼을 눌러야 검색합니다.'
+      : chat.interpretation.status === 'clarification'
+        ? `조건 확인이 필요합니다. ${chat.interpretation.result?.clarificationQuestion ?? ''}`
+        : chat.isSearching
     ? '지원사업 공고를 검색하고 있습니다.'
     : latestMessage?.role === 'assistant' && latestMessage.programs
       ? `지원사업 검색 결과 ${latestMessage.programs.length}건: ${formatSupportProgramEligibilityCounts(latestMessage.programs)}을 표시했습니다.`
@@ -43,7 +49,7 @@ export function useChatPageViewModel() {
   useEffect(() => {
     const timeline = timelineRef.current
     if (timeline) timeline.scrollTop = timeline.scrollHeight
-  }, [chat.messages, chat.isSearching])
+  }, [chat.messages, chat.isSearching, chat.interpretation.status])
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -121,7 +127,6 @@ export function useChatPageViewModel() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!readiness.canSearch) return
     void chat.submitMessage()
   }
 
@@ -131,14 +136,22 @@ export function useChatPageViewModel() {
   }
 
   function handleSelectSuggestion(suggestion: string) {
-    if (!readiness.canSearch) return
     chat.selectSuggestion(suggestion)
     closeSidebar()
   }
 
   function handleRetrySearch() {
     if (!readiness.canSearch) return
-    void chat.submitMessage()
+    void chat.retrySearch()
+  }
+
+  function handleConfirmInterpretation() {
+    if (!readiness.canSearch) return
+    void chat.confirmInterpretation()
+  }
+
+  function handleRetryInterpretation() {
+    void chat.retryInterpretation()
   }
 
   function openSidebar() {
@@ -175,6 +188,14 @@ export function useChatPageViewModel() {
   }
 
   return {
+    confirmedContext: chat.confirmedContext,
+    interpretation: chat.interpretation,
+    pendingClarification: chat.pendingClarification,
+    isInterpreting: chat.isInterpreting,
+    isBusy: chat.isBusy,
+    cancelInterpretation: chat.cancelInterpretation,
+    handleConfirmInterpretation,
+    handleRetryInterpretation,
     searchOptions: chat.searchOptions,
     companyConditionsDraft: chat.companyConditionsDraft,
     conditionsError: chat.conditionsError,
@@ -185,7 +206,7 @@ export function useChatPageViewModel() {
     updateAcceptingOnly: chat.updateAcceptingOnly,
     canSearch: readiness.canSearch,
     canRetrySearch: readiness.canSearch && chat.canRetrySearch,
-    isReadyToSubmit: readiness.canSearch && chat.isReadyToSubmit,
+    isReadyToSubmit: chat.isReadyToSubmit,
     conversationCount: chat.conversationCount,
     draft: chat.draft,
     isSearching: chat.isSearching,

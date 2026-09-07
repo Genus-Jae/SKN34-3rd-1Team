@@ -1,0 +1,210 @@
+package ai.govbiz.core.supportprogram.service.conversation
+
+import ai.govbiz.core._common.exception.AiServiceCallException
+import ai.govbiz.core._common.exception.AiServiceFailure
+import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramConversationClient
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationPayload
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationContextRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationCompanyConditionsRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationUpdatePayload
+import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
+import ai.govbiz.core.supportprogram.domain.SupportProgramConversationContext
+import ai.govbiz.core.supportprogram.domain.SupportProgramConversationField
+import ai.govbiz.core.supportprogram.domain.SupportProgramConversationStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramPendingClarification
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
+import org.mockito.Mockito
+
+class SupportProgramConversationServiceTest {
+    private val client = Mockito.mock(AiSupportProgramConversationClient::class.java)
+    private val clock = Clock.fixed(Instant.parse("2026-09-06T15:00:00Z"), ZoneId.of("Asia/Seoul"))
+    private val service = SupportProgramConversationService(client, clock)
+    private val context = SupportProgramConversationContext(
+        "사업화 지원", false, SupportProgramCompanyConditions("서울", "SW", LocalDate.parse("2024-02-29"), "사업화"),
+    )
+    private var sent: AiSupportProgramConversationRequest? = null
+    private val matcherFallback = AiSupportProgramConversationRequest(
+        SupportProgramConversationService.SCHEMA_VERSION, "2026-09-07", "부산",
+        AiSupportProgramConversationContextRequest(null, true, AiSupportProgramConversationCompanyConditionsRequest(null, null, null, null)), null,
+    )
+
+    // Java Mockito matchers return null; supply a value only for Kotlin's non-null argument check.
+    private fun anyRequest() = Mockito.any(AiSupportProgramConversationRequest::class.java) ?: matcherFallback
+
+    private fun response(
+        updates: List<AiSupportProgramConversationUpdatePayload?>? = emptyList(),
+        status: String? = "READY",
+        question: String? = null,
+        version: String? = SupportProgramConversationService.SCHEMA_VERSION,
+    ) = AiSupportProgramConversationPayload(version, status, updates, question)
+
+    private fun update(field: String = "REGION", value: String? = "부산", evidence: String? = "부산", operation: String? = "SET") =
+        AiSupportProgramConversationUpdatePayload(field, operation, value, evidence)
+
+    private fun stub(payload: AiSupportProgramConversationPayload) {
+        Mockito.doAnswer { sent = it.getArgument(0); payload }.`when`(client).interpret(anyRequest())
+    }
+
+    private fun rejects(payload: AiSupportProgramConversationPayload, message: String = "부산으로 변경", initial: SupportProgramConversationContext = context) {
+        stub(payload)
+        val error = assertThrows(AiServiceCallException::class.java) { service.interpret(message, initial, null) }
+        assertEquals(AiServiceFailure.INVALID_RESPONSE, error.failure)
+    }
+
+    @Test
+    fun changesOnlyTheMentionedRegionAndSendsOnlySmallCurrentStateWithSeoulReferenceDate() {
+        stub(response(listOf(update())))
+        val result = service.interpret("부산으로 변경", context, null)
+        assertEquals(context.copy(companyConditions = context.companyConditions.copy(region = "부산")), result.proposedContext)
+        assertEquals(listOf(SupportProgramConversationField.REGION), result.changedFields)
+        assertEquals(SupportProgramConversationStatus.READY, result.status)
+        assertNull(result.clarificationQuestion)
+        assertEquals("서울", context.companyConditions.region)
+        assertEquals("2026-09-07", sent!!.referenceDate)
+        assertEquals("부산으로 변경", sent!!.message)
+        assertEquals("2024-02-29", sent!!.context.companyConditions.establishedOn)
+        assertEquals(false, sent!!.context.acceptingOnly)
+        assertNull(sent!!.pendingClarification)
+        Mockito.verify(client, Mockito.times(1)).interpret(sent!!)
+    }
+
+    @Test
+    fun supportPurposeAndQueryChangesKeepAllOtherCompanyFields() {
+        stub(response(listOf(update("SUPPORT_PURPOSE", "지원금", "지원금"), update("QUERY", "지원금 지원", "지원금"))))
+        val result = service.interpret("지원금 위주", context, null)
+        assertEquals(context.copy(query = "지원금 지원", companyConditions = context.companyConditions.copy(supportPurpose = "지원금")), result.proposedContext)
+        assertEquals(listOf(SupportProgramConversationField.QUERY, SupportProgramConversationField.SUPPORT_PURPOSE), result.changedFields)
+    }
+
+    @Test
+    fun mergesIntoPendingDraftButComputesChangesAgainstConfirmedContext() {
+        val draft = context.copy(query = "시제품 지원", companyConditions = context.companyConditions.copy(region = "부산", establishedOn = null))
+        val pending = SupportProgramPendingClarification("정확한 설립일은?", draft)
+        stub(response(listOf(update("ESTABLISHED_ON", "2024-01-01", "2024년 1월 1일"))))
+        val result = service.interpret("2024년 1월 1일입니다", context, pending)
+        assertEquals(draft.copy(companyConditions = draft.companyConditions.copy(establishedOn = LocalDate.parse("2024-01-01"))), result.proposedContext)
+        assertEquals(listOf(SupportProgramConversationField.QUERY, SupportProgramConversationField.REGION, SupportProgramConversationField.ESTABLISHED_ON), result.changedFields)
+        assertEquals("정확한 설립일은?", sent!!.pendingClarification!!.question)
+        assertEquals("부산", sent!!.pendingClarification!!.draftContext.companyConditions.region)
+        assertEquals("서울", sent!!.context.companyConditions.region)
+    }
+
+    @Test
+    fun clarificationReturnsAnUnconfirmedPartialDraftWithoutInventingRelativeEstablishmentDate() {
+        stub(response(listOf(update()), "CLARIFICATION_REQUIRED", "정확한 설립일은?"))
+        val initial = context.copy(query = null, companyConditions = context.companyConditions.copy(establishedOn = null))
+        val result = service.interpret("부산이고 설립 2년", initial, null)
+        assertEquals(SupportProgramConversationStatus.CLARIFICATION_REQUIRED, result.status)
+        assertNull(result.proposedContext.query)
+        assertNull(result.proposedContext.companyConditions.establishedOn)
+        assertEquals(listOf(SupportProgramConversationField.REGION), result.changedFields)
+        assertEquals("서울", initial.companyConditions.region)
+    }
+
+    @Test
+    fun clearResetsAllStringsToNullAndAcceptingOnlyToTrueInCanonicalChangedFieldOrder() {
+        stub(response(SupportProgramConversationField.entries.reversed().map { update(it.name, null, "초기화", "CLEAR") }, "CLARIFICATION_REQUIRED", "어떤 지원을 원하시나요?"))
+        val result = service.interpret("초기화", context, null)
+        assertEquals(SupportProgramConversationContext(null, true, SupportProgramCompanyConditions()), result.proposedContext)
+        assertEquals(SupportProgramConversationField.entries, result.changedFields)
+    }
+
+    @Test
+    fun noOpChangesDoNotAppearAndRawTextIsNotTrimmed() {
+        stub(response(listOf(update(value = "서울", evidence = "서울"))))
+        assertEquals(emptyList<SupportProgramConversationField>(), service.interpret("서울 유지", context, null).changedFields)
+        stub(response(listOf(update(value = " 부산 ", evidence = "부산"))))
+        assertEquals(" 부산 ", service.interpret("부산", context, null).proposedContext.companyConditions.region)
+    }
+
+    @Test
+    fun acceptingOnlyAcceptsOnlyExactBooleanStringsAndClearResetsTrue() {
+        for ((value, expected) in listOf("true" to true, "false" to false, null to true)) {
+            stub(response(listOf(update("ACCEPTING_ONLY", value, "접수", if (value == null) "CLEAR" else "SET"))))
+            assertEquals(expected, service.interpret("접수", context, null).proposedContext.acceptingOnly)
+        }
+        for (value in listOf("TRUE", "False", "1", " false ")) rejects(response(listOf(update("ACCEPTING_ONLY", value))))
+    }
+
+    @Test
+    fun rejectsUnsupportedDuplicateMissingOrOversizedPatchListsAndWrongOperations() {
+        for (updates in listOf(null, listOf(null), List(7) { update() }, listOf(update(), update()), listOf(update("UNKNOWN")), listOf(update(operation = "KEEP")), listOf(update(operation = null)), listOf(update(value = null)), listOf(update(value = " ")), listOf(update(operation = "CLEAR")))) {
+            rejects(response(updates))
+        }
+    }
+
+    @Test
+    fun rejectsEvidenceNotExactlyQuotedFromTheCurrentMessageIncludingOldContextOrQuestion() {
+        for (evidence in listOf(null, "", " ", "서울", "부 산", "정확한 설립일은?")) rejects(response(listOf(update(evidence = evidence))))
+        for (evidence in listOf("가".repeat(161), "😀".repeat(81), "부산\n", "부산\r", "부산\t", "부산\u0000", "부산\u200b")) {
+            rejects(response(listOf(update(evidence = evidence))), evidence)
+        }
+    }
+
+    @Test
+    fun appliesUtf16BoundariesAndAllowsMultilineOnlyForQuery() {
+        for ((field, limit) in listOf("QUERY" to 500, "REGION" to 50, "INDUSTRY" to 100, "SUPPORT_PURPOSE" to 100)) {
+            stub(response(listOf(update(field, "😀".repeat(limit / 2)))))
+            assertNotNull(service.interpret("부산", context, null))
+            rejects(response(listOf(update(field, "가".repeat(limit + 1)))))
+            rejects(response(listOf(update(field, "😀".repeat(limit / 2 + 1)))))
+            rejects(response(listOf(update(field, "가\u200b"))))
+            if (field != "QUERY") rejects(response(listOf(update(field, "가\n"))))
+        }
+        stub(response(listOf(update("QUERY", "AI\n지원\t사업\r"))))
+        assertEquals("AI\n지원\t사업\r", service.interpret("부산", context, null).proposedContext.query)
+        val evidence = "😀".repeat(80)
+        stub(response(listOf(update(evidence = evidence))))
+        assertNotNull(service.interpret(evidence, context, null))
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["1900-01-01", "2024-02-29", "2026-09-07"])
+    fun acceptsExactRealIsoDatesThroughSeoulToday(value: String) {
+        stub(response(listOf(update("ESTABLISHED_ON", value, value))))
+        assertEquals(LocalDate.parse(value), service.interpret("설립일 $value", context, null).proposedContext.companyConditions.establishedOn)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["2024년1월1일", "2024년 01월 01일", "2024년\u00a01월\u00a01일"])
+    fun acceptsCompleteKoreanDatesWithOptionalUnicodeSpacing(evidence: String) {
+        stub(response(listOf(update("ESTABLISHED_ON", "2024-01-01", evidence))))
+        assertEquals(LocalDate.parse("2024-01-01"), service.interpret(evidence, context, null).proposedContext.companyConditions.establishedOn)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["1899-12-31", "2026-09-08", "2025-02-29", "2026-02-30", "2026-9-07", " 2024-01-01", "2024-01-01 ", "2024-01-01T00:00:00"])
+    fun rejectsInventedOutOfRangeAndNonIsoDates(value: String) {
+        rejects(response(listOf(update("ESTABLISHED_ON", value, value))), value)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["설립 2년", "2023-01-01", "2024년 2월 30일", "2024년 01월 01일 설립", " 2024-01-01", "2024-01-01 "])
+    fun rejectsRelativeMismatchedOrNonDateEvidence(evidence: String) {
+        rejects(response(listOf(update("ESTABLISHED_ON", "2024-01-01", evidence))), evidence)
+    }
+
+    @Test
+    fun rejectsWrongSchemaStatusAndInvalidReadyOrClarificationStates() {
+        for (payload in listOf(response(version = null), response(version = "v2"), response(status = null), response(status = "SEARCH"), response(question = "질문"), response(status = "CLARIFICATION_REQUIRED"), response(listOf(update("QUERY", null, "부산", "CLEAR"))))) rejects(payload)
+        rejects(response(), initial = context.copy(query = null))
+        for (question in listOf("", " ", "가".repeat(161), "😀".repeat(81), "질문\n", "질문\u200b")) rejects(response(status = "CLARIFICATION_REQUIRED", question = question))
+        stub(response(status = "CLARIFICATION_REQUIRED", question = "😀".repeat(80)))
+        assertNotNull(service.interpret("부산", context, null))
+    }
+
+    @Test
+    fun propagatesAnUpstreamFailureWithoutSearchingOrReturningAClarificationFallback() {
+        val failure = AiServiceCallException.timeout(null)
+        Mockito.doThrow(failure).`when`(client).interpret(anyRequest())
+        assertSame(failure, assertThrows(AiServiceCallException::class.java) { service.interpret("부산", context, null) })
+    }
+}

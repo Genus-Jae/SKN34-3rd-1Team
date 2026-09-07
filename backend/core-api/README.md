@@ -93,7 +93,7 @@ capture의 기준 날짜가 다르면 점수 계산을 거부합니다. 실제 �
 
 ## 공개 API
 
-검색과 공고별 근거 답변은 한 Core 프로세스에서 요청량·동시 실행 한도를 공유합니다.
+검색, 대화 조건 해석, 공고별 근거 답변은 한 Core 프로세스에서 요청량·동시 실행 한도를 공유합니다.
 기본값은 접속 주소별 최근 60초 6건, 전체 60건, 동시 4건이며, 초과 시 DB·AI 호출 전에
 `429 SUPPORT_PROGRAM_RATE_LIMITED` 또는 `503 SUPPORT_PROGRAM_BUSY`로 거절합니다.
 `Retry-After`·`retryAfterSeconds`를 반환하고 실제 작업 종료 시 동시 슬롯을 해제합니다.
@@ -109,9 +109,31 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `GET /api/v1/support-programs/readiness` | 공개 공고 스냅샷·검색 색인·최근 동기화 결과 상태 |
 | `GET /api/v1/support-programs/search` | 현재 MySQL 공고 카탈로그의 검색 또는 최신 목록 |
 | `POST /api/v1/support-programs/search` | 이번 검색에만 기업 조건을 반영한 자연어 검색 |
+| `POST /api/v1/support-programs/conversation/interpret` | 현재 발화로 조건 변경 초안을 만들며 사용자 확인 전에는 검색하지 않음 |
 | `GET /api/v1/support-programs/detail` | 제공처 코드와 원본 ID로 현재 공고 상세 조회 |
 | `POST /api/v1/support-programs/detail/answers` | 특정 공고의 공식 원문 근거 질문·답변 |
 | `POST /api/v1/sample-items/prepare` | 계층 연결 학습용 예제 |
+
+### 후속 대화 조건 해석
+
+`SupportProgramConversationController → SupportProgramConversationService → AiSupportProgramConversationClient`
+흐름으로 내부 `/internal/v1/support-program-conversation/interpret`를 한 번 호출합니다.
+대화 상태는 브라우저 메모리에만 두며 Core는 DB·검색·색인을 호출하거나 상태를 저장하지 않습니다.
+새 메시지와 전체 키를 갖춘 현재 context, 선택적인 마지막 질문·미확정 draftContext만 전달합니다.
+nullable 조건도 키 자체는 필수이며 미입력은 명시적 null입니다. boolean은 JSON boolean만 허용합니다.
+
+Core가 서울 기준일과 `govbiz-support-program-conversation-v1`을 보내고, 응답의 최대 6개 SET/CLEAR 변경에서
+중복 필드·현재 메시지의 정확한 근거 인용·실제 날짜·문자 및 길이 제한을 검증합니다. 새 계약은 UTF-16 기준으로
+message/query 500, region 50, industry/supportPurpose 100, 날짜 10, 질문/근거 160입니다. 상대 업력으로 설립일을
+생성할 수 없습니다. 미변경 필드는 유지하고, 직전 초안이 있으면 여기에 병합하되 changedFields는 확정 context와
+비교해 계산합니다. 공개 DTO·내부 AI DTO·도메인·검증 결과는 각 경계의 타입으로 분리합니다.
+
+READY도 제안일 뿐이며 사용자가 확인한 뒤 기존 POST 검색을 별도로 호출합니다. 정보가 부족하면
+CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI 응답은 명시적 502 오류이며 질문이나
+단문 검색으로 우회하지 않습니다. 해석과 확인 검색은 공유 요청 제한에서 각각 한 건입니다.
+상세 계약과 상태 흐름은 [C02 안내](../../docs/conversation-condition-update.md)를 참고하세요.
+
+### 검색·상세·근거 질문
 
 - GET 검색: 필수 `query`는 최대 500 UTF-16 코드 단위이며 빈 문자열을 허용합니다. 탭·줄바꿈·캐리지 리턴을 제외한
   Unicode C 범주 문자(예: NUL·제로폭 문자·단독 surrogate)는 DB·AI 호출 전에 400으로 거부합니다.
@@ -136,7 +158,7 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
   `AiSupportProgramRankingFacade`는 원질의를 바꾸지 않고 별도의 `companyConditions`와 ISO `referenceDate`를
   점수화 요청에 전달합니다. 지역 정보가 없거나 다르다는 이유만으로 Core에서 후보를 제외하지 않습니다.
   조건은 저장·응답 메타데이터에 포함하지 않으며, 공개 `query`는 trim한 원질의 그대로입니다.
-  GET 검색·POST 검색·원문 근거 질문은 같은 요청 제한을 공유합니다.
+  GET 검색·POST 검색·대화 조건 해석·원문 근거 질문은 같은 요청 제한을 공유합니다.
 - 자격 검토: 조건 유무와 관계없이 점수화 계약은 `govbiz-support-program-ranking-v4`입니다.
   저장된 공식 API 본문 `summary` 최대 6,000, 지원대상 `targetDescription` 최대 2,000 Unicode code point를
   AI에 전달합니다. 둘 중 하나라도 잘리면 `sourceTextTruncated=true`이며 대상·지역 모두 `UNKNOWN`만 허용합니다.
@@ -192,7 +214,7 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `SPRING_DATASOURCE_URL` | `jdbc:mysql://127.0.0.1:3306/govbiz` | MySQL JDBC 주소 |
 | `SPRING_DATASOURCE_USERNAME` | `govbiz` | MySQL 사용자 |
 | `SPRING_DATASOURCE_PASSWORD` | `govbiz-local` | 로컬 개발용 MySQL 비밀번호 |
-| `SUPPORT_PROGRAM_REQUEST_PER_CLIENT_PER_MINUTE` | `6` | 검색·근거 답변의 접속 주소별 최근 60초 한도 |
+| `SUPPORT_PROGRAM_REQUEST_PER_CLIENT_PER_MINUTE` | `6` | 검색·대화 조건 해석·근거 답변의 접속 주소별 최근 60초 한도 |
 | `SUPPORT_PROGRAM_REQUEST_GLOBAL_PER_MINUTE` | `60` | 한 Core 프로세스의 검색·근거 답변 최근 60초 한도 |
 | `SUPPORT_PROGRAM_REQUEST_MAX_CONCURRENT` | `4` | 검색·근거 답변 동시 처리 한도 |
 | `DATA_GO_KR_SERVICE_KEY` | 빈 값 | 기업마당 수집용 공공데이터포털 키 |
@@ -235,9 +257,10 @@ Core API가 아닌 AI Service에만 설정합니다.
 ```text
 supportprogram/
 ├── controller            # 공개 HTTP 진입점
-│   └── dto               # 공개 응답 계약
+│   └── dto               # 공개 요청·응답 계약
 ├── service/
 │   ├── search             # DB 조회 → 의미·키워드 순위 결합 → AI 점수화
+│   ├── conversation       # 대화 변경 인용 검증·초안 병합·확정 조건 대비 변경 계산
 │   ├── detail             # 현재 공고 상세 조회
 │   ├── readiness          # 제공처별 준비 상태와 전체 검색 범위 집계
 │   ├── evidence           # 공식 원문 캐시·청킹 → 근거 검색·답변
@@ -247,7 +270,7 @@ supportprogram/
 ├── facade                 # 기업마당 수집·공식 원문·AI 응답 검증·도메인 변환
 ├── client/
 │   ├── bizinfo            # 기업마당 HTTP·목록/공식 HTML 검증·외부 DTO 정규화
-│   └── ai                 # AI 내부 HTTP 계약·공고/원문 청크 색인과 답변
+│   └── ai                 # AI 내부 HTTP 계약·조건 해석·공고/원문 청크 색인과 답변
 ├── repository            # 도메인↔DB 행 변환·트랜잭션·저장·조회
 │   └── mapper            # MyBatis Mapper, DbRow
 ├── domain                 # 업무 모델·서울 날짜 기준 접수 상태 규칙
@@ -310,7 +333,7 @@ AI 경계의 실패는 `application/problem+json`으로 변환합니다. 내부 
 | AI 호출에서 관측한 상황 | 공개 HTTP | `code` |
 |---|---:|---|
 | 내부 503 또는 연결 불가 | 503 | `AI_SERVICE_UNAVAILABLE` |
-| 점수화·색인 API의 내부 408·504 또는 연결·읽기 시간 초과 | 504 | `AI_SERVICE_TIMEOUT` |
+| 조건 해석·점수화·색인 API의 내부 408·504 또는 연결·읽기 시간 초과 | 504 | `AI_SERVICE_TIMEOUT` |
 | 예상하지 않은 HTTP 상태 | 502 | `AI_SERVICE_UPSTREAM_ERROR` |
 | 잘못된 JSON·빈 body·응답 계약 위반 | 502 | `AI_SERVICE_INVALID_RESPONSE` |
 | 공식 원문 제공처 수집·HTML 검증 실패 | 503 | `SUPPORT_PROGRAM_EVIDENCE_UNAVAILABLE` |
@@ -332,6 +355,15 @@ AI Service는 LLM 실행 실패와 색인 미준비·Qdrant 실패를 내부 503
 테스트는 Controller 계약·Client/Facade 응답 검증·상태 계산·동기화 순서·공식 원문 HTML 검증·근거 청크/인용 계약과
 MySQL의 JSON, 복합 식별자, UPSERT, rollback, 시작 세대에 따른 공개 제어, 공개 스냅샷 준비 상태 전이를 검증합니다. 전체 서비스 연결 검증은
 [인프라 README](../../infrastructure/README.md)의 Compose 검증 절차를 참고하세요.
+
+C02 회귀는 공개 HTTP의 nullable 필수 키·엄격한 타입·문자/날짜 경계, 내부 AI JSON의 누락 필드·오류 변환,
+현재 발화 인용·미변경 조건 보존·직전 초안 병합·CLEAR 기본값·변경 목록 순서·기존 검색과의 공유 요청 제한을
+검증합니다. `SupportProgramConversationServiceTest`, `SupportProgramConversationControllerTest`,
+`AiSupportProgramConversationClientTest`는 외부 모델과 DB를 사용하지 않습니다.
+
+2026-09-07 C02 검증은 Temurin JDK 21.0.12와 실제 MySQL 8.4.11(Testcontainers `mysql:8.4`)에서 전체
+`clean test`를 실행해 47개 스위트·508개 테스트가 통과했습니다(실패·오류·건너뜀 0). 신규 C02 75개와
+기존 433개를 모두 포함하며, 테스트 필터나 대체 DB·유료 모델 호출은 사용하지 않았습니다.
 
 `SupportProgramEvidenceIntegrationTest`는 실제 Core HTTP·MySQL과 고정한 공식 HTML 2건으로 RAG 경계를
 통합 검증합니다. 기본 실행에서 원문/AI 외부 HTTP는 스텁이며 API 키를 사용하지 않습니다.

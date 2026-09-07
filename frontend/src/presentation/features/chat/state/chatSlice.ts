@@ -2,7 +2,8 @@ import { createSelector, createSlice, nanoid, type PayloadAction } from '@reduxj
 
 import type { RootState } from '../../../../app/store'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
-import type { SupportProgramCompanyConditions } from '../../../../domain/repositories/SupportProgramRepository'
+import type { SupportProgramCompanyConditions, SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
+import type { SupportProgramConversationContext, SupportProgramInterpretation, SupportProgramInterpretRequest, SupportProgramPendingClarification } from '../../../../domain/entities/SupportProgramConversation'
 import { emptyCompanyConditionsDraft, type CompanyConditionsDraft } from '../validation/companyConditionsForm'
 import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
 
@@ -17,9 +18,19 @@ export type SupportProgramChatMessage = {
   text: string
   programs?: SupportProgram[]
   searchOptions?: ChatSearchOptions
+  searchQuery?: string
 }
 
 type ChatSearchStatus = 'idle' | 'pending' | 'failed'
+
+type ChatInterpretation = {
+  status: 'idle' | 'pending' | 'ready' | 'clarification' | 'failed'
+  requestId?: string
+  messageId?: string
+  request?: SupportProgramInterpretRequest
+  result?: SupportProgramInterpretation
+  error?: string
+}
 
 type ChatState = {
   activeRequestId: string | null
@@ -29,6 +40,10 @@ type ChatState = {
   searchStatus: ChatSearchStatus
   searchOptions: ChatSearchOptions
   companyConditionsDraft: CompanyConditionsDraft
+  conversationQuery: string | null
+  interpretation: ChatInterpretation
+  pendingClarification: SupportProgramPendingClarification | null
+  confirmedSearch: SupportProgramSearch | null
 }
 
 /** Core API의 query 최대 길이 계약과 일치합니다. */
@@ -49,20 +64,27 @@ const chatSlice = createSlice({
       },
     },
     draftChanged(state, action: PayloadAction<string>) {
+      if (state.interpretation.status === 'pending') return
       state.draft = action.payload
       state.searchError = null
+      if (state.interpretation.status === 'ready' || state.interpretation.status === 'failed') {
+        state.interpretation = { status: 'idle' }
+      }
     },
     companyConditionDraftChanged(state, action: PayloadAction<{ field: keyof CompanyConditionsDraft; value: string }>) {
-      if (state.searchStatus === 'pending') return
+      if (isBusy(state)) return
+      invalidateProposal(state)
       state.companyConditionsDraft[action.payload.field] = action.payload.value
     },
     companyConditionsApplied(state, action: PayloadAction<SupportProgramCompanyConditions>) {
-      if (state.searchStatus === 'pending') return
+      if (isBusy(state)) return
+      invalidateProposal(state)
       state.searchOptions.companyConditions = Object.keys(action.payload).length ? action.payload : undefined
       state.companyConditionsDraft = { ...emptyCompanyConditionsDraft(), ...action.payload }
     },
     companyConditionRemoved(state, action: PayloadAction<keyof CompanyConditionsDraft>) {
-      if (state.searchStatus === 'pending') return
+      if (isBusy(state)) return
+      invalidateProposal(state)
       delete state.searchOptions.companyConditions?.[action.payload]
       if (Object.keys(state.searchOptions.companyConditions ?? {}).length === 0) {
         state.searchOptions.companyConditions = undefined
@@ -70,13 +92,63 @@ const chatSlice = createSlice({
       state.companyConditionsDraft[action.payload] = ''
     },
     companyConditionsCleared(state) {
-      if (state.searchStatus === 'pending') return
+      if (isBusy(state)) return
+      invalidateProposal(state)
       state.searchOptions = { acceptingOnly: true }
       state.companyConditionsDraft = emptyCompanyConditionsDraft()
     },
     acceptingOnlyChanged(state, action: PayloadAction<boolean>) {
-      if (state.searchStatus === 'pending') return
+      if (isBusy(state)) return
+      invalidateProposal(state)
       state.searchOptions.acceptingOnly = action.payload
+    },
+    interpretationStarted: {
+      reducer(state, action: PayloadAction<{ requestId: string; messageId: string; request: SupportProgramInterpretRequest }>) {
+        if (isBusy(state)) return
+        state.interpretation = { status: 'pending', ...action.payload }
+        state.draft = ''
+        state.searchError = null
+        state.searchStatus = 'idle'
+        if (!state.messages.some((message) => message.id === action.payload.messageId)) {
+          state.messages.push({ id: action.payload.messageId, role: 'user', text: action.payload.request.message })
+        }
+      },
+      prepare(request: SupportProgramInterpretRequest, messageId = nanoid()) {
+        return { payload: { requestId: nanoid(), messageId, request } }
+      },
+    },
+    interpretationSucceeded(state, action: PayloadAction<{ requestId: string; result: SupportProgramInterpretation }>) {
+      if (state.interpretation.status !== 'pending' || state.interpretation.requestId !== action.payload.requestId) return
+      state.interpretation.status = action.payload.result.status === 'READY' ? 'ready' : 'clarification'
+      state.interpretation.result = action.payload.result
+      if (action.payload.result.status === 'CLARIFICATION_REQUIRED') {
+        state.pendingClarification = {
+          question: action.payload.result.clarificationQuestion!,
+          draftContext: action.payload.result.proposedContext,
+        }
+      } else state.pendingClarification = null
+    },
+    interpretationFailed(state, action: PayloadAction<{ requestId: string; message: string }>) {
+      if (state.interpretation.status !== 'pending' || state.interpretation.requestId !== action.payload.requestId) return
+      state.interpretation.status = 'failed'
+      state.interpretation.error = action.payload.message
+      if (!state.draft.trim()) state.draft = state.interpretation.request?.message ?? ''
+    },
+    interpretationDismissed(state) {
+      if (!state.draft.trim()) state.draft = state.interpretation.request?.message ?? ''
+      state.interpretation = { status: 'idle' }
+      state.pendingClarification = null
+    },
+    proposalConfirmed(state, action: PayloadAction<string>) {
+      const proposal = state.interpretation
+      if (proposal.status !== 'ready' || proposal.requestId !== action.payload || !proposal.result?.proposedContext.query) return
+      const context = proposal.result.proposedContext
+      state.conversationQuery = context.query!.trim()
+      state.searchOptions = conversationContextToSearchOptions(context)
+      state.companyConditionsDraft = { ...emptyCompanyConditionsDraft(), ...state.searchOptions.companyConditions }
+      state.confirmedSearch = { query: state.conversationQuery, ...copySearchOptions(state.searchOptions) }
+      state.pendingClarification = null
+      state.interpretation = { status: 'idle' }
     },
     searchCancelled(state, action: PayloadAction<{ query: string; requestId: string }>) {
       if (state.activeRequestId !== action.payload.requestId) return
@@ -113,26 +185,28 @@ const chatSlice = createSlice({
     searchStarted: {
       reducer(
         state,
-        action: PayloadAction<{ messageId: string; query: string; requestId: string }>,
+        action: PayloadAction<{ messageId: string; query: string; requestId: string; searchOptions?: ChatSearchOptions }>,
       ) {
         if (state.searchStatus === 'pending') return
         state.activeRequestId = action.payload.requestId
         state.draft = ''
-        state.messages.push({
-          id: action.payload.messageId,
-          role: 'user',
-          text: action.payload.query,
-          searchOptions: copySearchOptions(state.searchOptions),
-        })
+        const existingMessage = state.messages.find((message) => message.id === action.payload.messageId)
+        const snapshot = copySearchOptions(action.payload.searchOptions ?? state.searchOptions)
+        if (existingMessage) {
+          existingMessage.searchOptions = snapshot
+          existingMessage.searchQuery = action.payload.query
+        } else state.messages.push({ id: action.payload.messageId, role: 'user', text: action.payload.query,
+          searchOptions: snapshot, searchQuery: action.payload.query })
         state.searchError = null
         state.searchStatus = 'pending'
       },
-      prepare(query: string) {
+      prepare(query: string, searchOptions?: ChatSearchOptions, messageId = nanoid()) {
         return {
           payload: {
-            messageId: nanoid(),
+            messageId,
             query,
             requestId: nanoid(),
+            searchOptions,
           },
         }
       },
@@ -154,6 +228,7 @@ const chatSlice = createSlice({
           text: createSearchResponseText(action.payload.programs, state.searchOptions.acceptingOnly),
           programs: action.payload.programs,
           searchOptions: copySearchOptions(state.searchOptions),
+          searchQuery: state.conversationQuery ?? undefined,
         })
         state.searchError = null
         state.searchStatus = 'idle'
@@ -178,6 +253,11 @@ export const {
   companyConditionsCleared,
   conversationReset,
   draftChanged,
+  interpretationStarted,
+  interpretationSucceeded,
+  interpretationFailed,
+  interpretationDismissed,
+  proposalConfirmed,
   searchCancelled,
   searchFailed,
   searchStarted,
@@ -190,15 +270,15 @@ export const selectChatState = (state: RootState) => state.chat
 export const selectChatDraft = (state: RootState) => state.chat.draft
 export const selectChatMessages = (state: RootState) => state.chat.messages
 export const selectChatSearchError = (state: RootState) => state.chat.searchError
-export const selectCanRetryChatSearch = (state: RootState) => state.chat.searchStatus === 'failed'
+export const selectCanRetryChatSearch = (state: RootState) => state.chat.searchStatus === 'failed' && state.chat.confirmedSearch !== null
 export const selectIsChatSearching = (state: RootState) => state.chat.searchStatus === 'pending'
 export const selectConversationCount = createSelector(
   [selectChatMessages],
   (messages) => messages.filter((message) => message.role === 'user').length,
 )
 export const selectIsReadyToSubmit = createSelector(
-  [selectChatDraft, selectIsChatSearching],
-  (draft, isSearching) => draft.trim().length > 0 && !isSearching,
+  [selectChatDraft, selectChatState],
+  (draft, state) => draft.trim().length > 0 && !isBusy(state),
 )
 
 export default chatSlice.reducer
@@ -212,6 +292,10 @@ function createInitialState(welcomeMessage = createWelcomeMessage()): ChatState 
     searchStatus: 'idle',
     searchOptions: { acceptingOnly: true },
     companyConditionsDraft: emptyCompanyConditionsDraft(),
+    conversationQuery: null,
+    interpretation: { status: 'idle' },
+    pendingClarification: null,
+    confirmedSearch: null,
   }
 }
 
@@ -234,4 +318,32 @@ function copySearchOptions(options: ChatSearchOptions): ChatSearchOptions {
     acceptingOnly: options.acceptingOnly,
     ...(options.companyConditions ? { companyConditions: { ...options.companyConditions } } : {}),
   }
+}
+
+export function conversationContextToSearchOptions(context: SupportProgramConversationContext): ChatSearchOptions {
+  const companyConditions = Object.fromEntries(Object.entries(context.companyConditions).filter(([, value]) => value !== null))
+  return { acceptingOnly: context.acceptingOnly,
+    ...(Object.keys(companyConditions).length ? { companyConditions } : {}) }
+}
+
+export function selectConversationContext(state: RootState): SupportProgramConversationContext {
+  const conditions = state.chat.searchOptions.companyConditions
+  return {
+    query: state.chat.conversationQuery,
+    acceptingOnly: state.chat.searchOptions.acceptingOnly,
+    companyConditions: { region: conditions?.region ?? null, industry: conditions?.industry ?? null,
+      establishedOn: conditions?.establishedOn ?? null, supportPurpose: conditions?.supportPurpose ?? null },
+  }
+}
+
+function isBusy(state: ChatState) {
+  return state.searchStatus === 'pending' || state.interpretation.status === 'pending'
+}
+
+function invalidateProposal(state: ChatState) {
+  state.interpretation = { status: 'idle' }
+  state.pendingClarification = null
+  state.confirmedSearch = null
+  state.searchError = null
+  if (state.searchStatus === 'failed') state.searchStatus = 'idle'
 }

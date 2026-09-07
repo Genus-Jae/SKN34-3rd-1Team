@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 
 import type { SupportProgram, SupportProgramEligibilityAxis } from '../../../../domain/entities/SupportProgram'
+import type { SupportProgramConversationContext, SupportProgramInterpretation } from '../../../../domain/entities/SupportProgramConversation'
 import type {
   SupportProgramSearchReadiness,
   SupportProgramSourceSearchState,
@@ -25,6 +26,14 @@ const syncTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
 
 export function ChatPage() {
   const {
+    confirmedContext,
+    interpretation,
+    pendingClarification,
+    isInterpreting,
+    isBusy,
+    cancelInterpretation,
+    handleConfirmInterpretation,
+    handleRetryInterpretation,
     searchOptions,
     companyConditionsDraft,
     conditionsError,
@@ -48,7 +57,6 @@ export function ChatPage() {
     handleStartNewConversation,
     handleSubmit,
     isReadyToSubmit,
-    isSearching,
     isSidebarOpen,
     menuButtonRef,
     messages,
@@ -129,7 +137,7 @@ export function ChatPage() {
               type="button"
               className={chatPageStyles.popularQuestionButton}
               onClick={() => handleSelectSuggestion(suggestion)}
-              disabled={!canSearch}
+              disabled={isBusy}
             >
               {suggestion}
             </button>
@@ -149,7 +157,7 @@ export function ChatPage() {
           <div className={chatPageStyles.dataSummaryCard}>
             <strong className={chatPageStyles.dataSummaryValue}>{conversationCount}</strong>
             <span className={chatPageStyles.dataSummaryLabel}>
-              이번 대화 검색
+              보낸 메시지
             </span>
           </div>
         </div>
@@ -189,7 +197,7 @@ export function ChatPage() {
           <details>
             <summary className={chatPageStyles.conditionsSummary}>기업 조건 입력·수정 (선택)</summary>
             <form onSubmit={(event) => { event.preventDefault(); applyCompanyConditions() }} noValidate>
-              <fieldset className={chatPageStyles.conditionsFields} disabled={isSearching}>
+              <fieldset className={chatPageStyles.conditionsFields} disabled={isBusy}>
                 <legend className="sr-only">기업 조건 입력</legend>
                 {companyConditionFields.map((field) => (
                   <label key={field.key} className={chatPageStyles.conditionsLabel}>
@@ -228,7 +236,7 @@ export function ChatPage() {
               <select
                 className={chatPageStyles.conditionsInput}
                 value={searchOptions.acceptingOnly ? 'accepting' : 'all'}
-                disabled={isSearching}
+                disabled={isBusy}
                 onChange={(event) => updateAcceptingOnly(event.target.value === 'accepting')}
               >
                 <option value="accepting">접수 중만</option>
@@ -241,7 +249,7 @@ export function ChatPage() {
                 return value ? (
                   <li key={field.key} className={chatPageStyles.conditionsChip}>
                     {field.label}: {value}{' '}
-                    <button type="button" disabled={isSearching} aria-label={`${field.label} 조건 해제`} onClick={() => removeCompanyCondition(field.key)}>×</button>
+                    <button type="button" disabled={isBusy} aria-label={`${field.label} 조건 해제`} onClick={() => removeCompanyCondition(field.key)}>×</button>
                   </li>
                 ) : null
               })}
@@ -249,7 +257,7 @@ export function ChatPage() {
           </div>
           <p className={chatPageStyles.conditionsHint}>
             미입력은 자격 충족을 뜻하지 않습니다. AI 판단은 원문 확인이 필요합니다. 검색어와 충돌하면 적용한 기업 조건을 우선합니다.
-            이전 대화 내용에서 조건을 자동으로 추출하거나 변경하지 않습니다.
+            새 메시지의 변경안은 확인 후 적용됩니다. 수동 폼을 수정하면 기존 제안과 미확정 초안은 취소됩니다.
           </p>
           <p className={chatPageStyles.conditionsHint}>
             조건을 바꾸면 다시 검색해 주세요. 아래 각 검색에는 당시 조건을 표시합니다.
@@ -286,7 +294,10 @@ export function ChatPage() {
                     {message.text}
                   </div>
                   {message.searchOptions && isUser ? (
-                    <p className={chatPageStyles.searchSnapshot}>검색 당시 조건: {formatSearchOptions(message.searchOptions)}</p>
+                    <div>
+                      <p className={chatPageStyles.searchSnapshot}>검색 당시 조건: {formatSearchOptions(message.searchOptions)}</p>
+                      {message.searchQuery ? <p className={chatPageStyles.searchSnapshot}>확인한 검색 의도: {message.searchQuery}</p> : null}
+                    </div>
                   ) : null}
                   {message.id === messages[0]?.id ? (
                     <div className={chatPageStyles.suggestedQuestions}>
@@ -296,7 +307,7 @@ export function ChatPage() {
                           type="button"
                           className={chatPageStyles.suggestedQuestionButton}
                           onClick={() => handleSelectSuggestion(suggestion)}
-                          disabled={!canSearch}
+                          disabled={isBusy}
                         >
                           {suggestion}
                         </button>
@@ -310,15 +321,25 @@ export function ChatPage() {
               </article>
             )
           })}
-          {isSearching ? (
+          {isBusy ? (
             <div className={chatPageStyles.messageRow}>
               <span className={chatPageStyles.assistantAvatar}>
                 G
               </span>
               <div className={chatPageStyles.searchingBubble}>
-                공고를 찾아보고 있어요…
+                {isInterpreting ? '조건 변경안을 해석하고 있어요. 아직 검색하지 않았습니다…' : '공고를 찾아보고 있어요…'}
               </div>
             </div>
+          ) : null}
+          {interpretation.result && !isBusy ? (
+            <ConversationProposal current={interpretation.request?.context ?? confirmedContext}
+              proposal={interpretation.result} canConfirm={canSearch}
+              onConfirm={handleConfirmInterpretation} onCancel={cancelInterpretation} />
+          ) : pendingClarification && !isBusy ? (
+            <ConversationProposal current={confirmedContext} canConfirm={false}
+              proposal={{ status: 'CLARIFICATION_REQUIRED', proposedContext: pendingClarification.draftContext,
+                clarificationQuestion: pendingClarification.question, changedFields: [] }}
+              onConfirm={handleConfirmInterpretation} onCancel={cancelInterpretation} />
           ) : null}
         </div>
 
@@ -333,6 +354,13 @@ export function ChatPage() {
             isRefreshing={readiness.isRefreshing}
             onRetry={refetchReadiness}
           />
+          {interpretation.error ? (
+            <div className={chatPageStyles.searchError} role="alert">
+              <span>{interpretation.error}</span>
+              {interpretation.request ? <button type="button" className={chatPageStyles.searchRetryButton}
+                onClick={handleRetryInterpretation}>다시 해석</button> : null}
+            </div>
+          ) : null}
           {searchError ? (
             <div className={chatPageStyles.searchError} role="alert">
               <span>{searchError}</span>
@@ -353,7 +381,7 @@ export function ChatPage() {
               aria-label="지원사업 검색어"
               aria-describedby="support-program-search-readiness"
               value={draft}
-              disabled={!canSearch}
+              disabled={isInterpreting}
               onChange={handleDraftChange}
               onCompositionStart={handleCompositionStart}
               onCompositionEnd={handleCompositionEnd}
@@ -361,7 +389,7 @@ export function ChatPage() {
               placeholder="예: 서울에서 AI 창업지원 사업을 찾아줘"
               rows={1}
             />
-            {isSearching ? (
+            {isBusy ? (
               <button
                 type="button"
                 className={chatPageStyles.cancelSearchButton}
@@ -381,7 +409,7 @@ export function ChatPage() {
             )}
           </div>
           <small className={chatPageStyles.composerHint}>
-            Enter로 전송 · Shift+Enter로 줄바꿈
+            Enter로 조건 해석 · 확인 버튼을 눌러야 검색 · Shift+Enter로 줄바꿈
           </small>
         </form>
       </section>
@@ -395,6 +423,52 @@ type SupportProgramSearchReadinessNoticeProps = {
   isInitialLoading: boolean
   isRefreshing: boolean
   onRetry: () => void
+}
+
+function ConversationProposal({ current, proposal, canConfirm, onConfirm, onCancel }: {
+  current: SupportProgramConversationContext
+  proposal: SupportProgramInterpretation
+  canConfirm: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const ready = proposal.status === 'READY'
+  const proposed = proposal.proposedContext
+  const rows = [
+    { label: '검색 의도', before: current.query, after: proposed.query },
+    ...companyConditionFields.map((field) => ({ label: field.label,
+      before: current.companyConditions[field.key], after: proposed.companyConditions[field.key] })),
+    { label: '접수 상태', before: current.acceptingOnly ? '접수 중만' : '전체', after: proposed.acceptingOnly ? '접수 중만' : '전체' },
+  ]
+  return (
+    <section className={chatPageStyles.proposalPanel} aria-label={ready ? '조건 변경 제안' : '조건 추가 확인'}>
+      <h2 className={chatPageStyles.resultSectionTitle}>{ready ? '이 조건으로 검색할까요?' : '추가 확인이 필요합니다'}</h2>
+      <p className={chatPageStyles.conditionsHint}>
+        {ready ? '아직 적용하거나 검색하지 않았습니다. 변경 전·후와 검색 의도를 확인해 주세요.'
+          : '아래는 미확정 초안입니다. 현재 적용 조건은 바뀌지 않았으며 공고를 검색하지 않았습니다.'}
+      </p>
+      {proposal.clarificationQuestion ? <p className={chatPageStyles.proposalQuestion}>{proposal.clarificationQuestion}</p> : null}
+      <dl className={chatPageStyles.proposalRows}>
+        {rows.map((row) => <div key={row.label} className={chatPageStyles.proposalRow}>
+          <dt className={chatPageStyles.conditionsLabel}>{row.label} · {row.before === row.after ? '유지' : row.after === null ? '해제' : '변경'}</dt>
+          <dd className={chatPageStyles.proposalValue}>
+            <span>현재: {row.before ?? '미입력'}</span>
+            <span>{ready ? '제안' : '미확정'}: {row.after ?? '미입력'}</span>
+          </dd>
+        </div>)}
+      </dl>
+      <p className={chatPageStyles.conditionsHint}>
+        미입력은 자격 충족이 아닙니다. AI 해석의 정확성을 직접 확인해 주세요. 해석과 검색은 각각 한 번의 요청입니다.
+      </p>
+      <div className={chatPageStyles.conditionsActions}>
+        {ready ? <button type="button" className={chatPageStyles.conditionsButton} disabled={!canConfirm}
+          onClick={onConfirm}>이 조건으로 검색</button> : null}
+        <button type="button" className={chatPageStyles.conditionsButton} onClick={onCancel}>제안 취소</button>
+      </div>
+      {ready && !canConfirm ? <p className={chatPageStyles.conditionsHint}>공고 검색 준비가 완료되면 확인한 조건으로 검색할 수 있습니다.</p> : null}
+      {!ready ? <p className={chatPageStyles.conditionsHint}>아래 입력창에 답해 주세요. 마지막 질문과 이 미확정 초안만 이어서 해석합니다.</p> : null}
+    </section>
+  )
 }
 
 function SupportProgramSearchReadinessNotice({

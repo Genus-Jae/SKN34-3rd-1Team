@@ -11,6 +11,8 @@ from app.support_program_ranking.router import router as support_program_ranking
 from app.bootstrap import build_application_container
 from app.config import Settings
 from app.support_program_index.router import router as support_program_index_router
+from app.support_program_conversation.agent import SupportProgramConversationAgent
+from app.support_program_conversation.router import router as support_program_conversation_router
 
 
 def create_app(
@@ -18,12 +20,14 @@ def create_app(
     settings: Settings | None = None,
     support_program_recommendation_agent: SupportProgramRecommendationAgent | None = None,
     support_program_evidence_answer_agent: SupportProgramEvidenceAnswerAgent | None = None,
+    support_program_conversation_agent: SupportProgramConversationAgent | None = None,
 ) -> FastAPI:
     """FastAPI 객체를 조립하는 애플리케이션 팩토리다."""
     container = build_application_container(
         settings or Settings.from_environment(),
         support_program_recommendation_agent=support_program_recommendation_agent,
         support_program_evidence_answer_agent=support_program_evidence_answer_agent,
+        support_program_conversation_agent=support_program_conversation_agent,
     )
 
     @asynccontextmanager
@@ -44,4 +48,5 @@ def create_app(
     application.include_router(support_program_rankings_router)
     application.include_router(support_program_index_router)
     application.include_router(support_program_evidence_router)
+    application.include_router(support_program_conversation_router)
     return application

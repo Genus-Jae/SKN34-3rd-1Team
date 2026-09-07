@@ -5,6 +5,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
+import { emptyConversationContext } from '../../../../data/fixtures/supportProgramConversation'
 import type { useSupportProgramChat } from '../hooks/useSupportProgramChat'
 import { useChatPageViewModel } from './useChatPageViewModel'
 import type { useSupportProgramSearchReadiness } from '../hooks/useSupportProgramSearchReadiness'
@@ -46,7 +47,7 @@ afterEach(() => {
 })
 
 describe('useChatPageViewModel', () => {
-  it('검색 불가 상태에서 직접 호출해도 제출·재시도·추천 선택을 위임하지 않는다', () => {
+  it('검색 불가 상태에서도 해석은 허용하고 확인 검색·검색 재시도는 차단한다', () => {
     const chat = createChatHook({
       canRetrySearch: true,
       isReadyToSubmit: true,
@@ -60,17 +61,20 @@ describe('useChatPageViewModel', () => {
     act(() => {
       result.current.handleSubmit(submitEvent.event)
       result.current.handleRetrySearch()
+      result.current.handleConfirmInterpretation()
       result.current.handleSelectSuggestion('서울 AI')
     })
 
     expect(submitEvent.preventDefault).toHaveBeenCalledOnce()
-    expect(chat.submitMessage).not.toHaveBeenCalled()
-    expect(chat.selectSuggestion).not.toHaveBeenCalled()
+    expect(chat.submitMessage).toHaveBeenCalledOnce()
+    expect(chat.selectSuggestion).toHaveBeenCalledOnce()
+    expect(chat.retrySearch).not.toHaveBeenCalled()
+    expect(chat.confirmInterpretation).not.toHaveBeenCalled()
     expect(result.current).toMatchObject({
       canSearch: false,
       canRetrySearch: false,
-      isReadyToSubmit: false,
-      isSidebarOpen: true,
+      isReadyToSubmit: true,
+      isSidebarOpen: false,
     })
   })
 
@@ -90,7 +94,8 @@ describe('useChatPageViewModel', () => {
       result.current.handleRetrySearch()
     })
     expect(submitEvent.preventDefault).toHaveBeenCalledOnce()
-    expect(chat.submitMessage).toHaveBeenCalledTimes(2)
+    expect(chat.submitMessage).toHaveBeenCalledOnce()
+    expect(chat.retrySearch).toHaveBeenCalledOnce()
 
     act(() => result.current.openSidebar())
     expect(result.current.isSidebarOpen).toBe(true)
@@ -115,7 +120,7 @@ describe('useChatPageViewModel', () => {
     expect(result.current).toMatchObject({
       canSearch: false,
       canRetrySearch: false,
-      isReadyToSubmit: false,
+      isReadyToSubmit: true,
     })
 
     readiness = createReadinessHook({ canSearch: true })
@@ -178,6 +183,16 @@ describe('useChatPageViewModel', () => {
 
 function createChatHook(overrides: Partial<ChatHook> = {}): ChatHook {
   return {
+    confirmedContext: emptyConversationContext,
+    conversationQuery: null,
+    interpretation: { status: 'idle' },
+    pendingClarification: null,
+    isInterpreting: false,
+    isBusy: false,
+    cancelInterpretation: vi.fn(),
+    confirmInterpretation: vi.fn(),
+    retryInterpretation: vi.fn(),
+    retrySearch: vi.fn(),
     searchOptions: { acceptingOnly: true },
     companyConditionsDraft: { region: '', industry: '', establishedOn: '', supportPurpose: '' },
     conditionsError: null,

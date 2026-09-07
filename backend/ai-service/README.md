@@ -19,6 +19,7 @@ AI Service가 하는 일:
 - AI가 자격 판정·세부 점수·추천 이유를 strict structured output으로 생성하고 Service가 총점을 합산해 반환
 - Core가 준비한 공고 상세 원문 청크를 별도 Qdrant collection에 색인하고, 지정된 현재 청크 안에서 근거를 최대 5개 검색
 - 검색된 공고 상세 근거만 사용해 한국어 답변과 인용 청크 ID를 strict structured output으로 반환
+- 새 메시지와 작은 검색 상태를 해석해 사용자 확인 전 조건 변경 패치 또는 확인 질문을 반환
 
 AI Service가 하지 않는 일:
 
@@ -40,6 +41,7 @@ POST /internal/v1/support-program-index/search
 PUT /internal/v1/support-program-evidence/chunks
 POST /internal/v1/support-program-evidence/search
 POST /internal/v1/support-program-evidence/answers
+POST /internal/v1/support-program-conversation/interpret
 ```
 
 점수화 요청은 최대 20개 후보와 상위 결과 개수 1~5개를 받습니다. 응답 `rankings`는 적격 공고가
@@ -63,6 +65,38 @@ POST /internal/v1/support-program-evidence/answers
 Health 응답은 프로세스의 HTTP 응답 여부만 확인합니다. OpenAI 모델 호출 성공이나 Qdrant 연결·색인
 완료 여부를 검사하는 readiness 검사는 아닙니다. `/internal` 경로 자체에 인증 기능은 없으며,
 기본 Compose에서는 AI Service 포트를 호스트에 공개하지 않습니다.
+
+## 확인 전 조건 변경 해석 (C02)
+
+`POST /internal/v1/support-program-conversation/interpret`는
+`govbiz-support-program-conversation-v1` 계약을 사용합니다.
+입력은 `schemaVersion`, `message`, `context`, 선택적 `pendingClarification`, Core 서울 날짜 `referenceDate`입니다.
+context의 query·acceptingOnly·companyConditions 및 네 조건 필드는 모두 필수이고 미입력은 null입니다.
+응답은 `schemaVersion`, `status`, `updates`, `clarificationQuestion`이며 전체 상태를 재작성하지 않습니다.
+정확한 공개/내부 예시는 [C02 계약](../../docs/conversation-condition-update.md)을 참고하세요.
+
+`HTTP API → SupportProgramConversationService → SupportProgramConversationAgent → OpenAI → Response`로
+한 번의 typed structured 호출만 실행합니다. 기존 client/model, store=false, tracing 비활성, 모델/실행 timeout을
+공유하며 이 역할의 최대 출력은 2,000 tokens입니다. 세션·전체 대화 이력·영속성·추가 provider는 없습니다.
+모델은 상태·패치·질문만 출력하고 Service가 검증 후 계약 버전을 붙입니다. 검색/임베딩/랭킹은 호출하지 않습니다.
+
+Service는 현재 message의 exact substring evidence, 중복 없는 0~6개 SET/CLEAR, 명시된 완전한 설립일을
+검증합니다. 날짜 evidence는 ISO 또는 `YYYY년 M월 D일` 날짜 자체만 인용하며 ISO로 정규화한 value와
+같아야 합니다. 상대 업력에서 날짜를 계산하지 않습니다. pendingClarification이 있으면 draftContext에서,
+없으면 context에서 패치를 병합하고 부재 필드는 그대로 보존합니다. READY는 병합 후 query가 필수입니다.
+CLEAR는 문자열을 null, acceptingOnly를 true로 복원합니다. 모호한 값은 유지하고 확인 질문을 제안합니다.
+
+새 계약만 길이를 UTF-16 코드 단위로 검증합니다(message/query 500, region 50, industry/supportPurpose 100,
+날짜 10, question/evidence 160). null 외 텍스트는 원본을 보존하고 공백뿐인 값을 거부합니다.
+message/query는 LF/CR/tab을 허용하지만 그 외 Unicode C는 거부하며 조건·질문·인용은 모든 C를 거부합니다.
+boolean 강제 변환은 하지 않습니다. 날짜는 실제 달력 날짜이고 설립일은 1900-01-01~referenceDate입니다.
+내부 입력 오류는 기존 FastAPI 422, 모델 장애·잘못된 패치·허위 인용·잘못된 READY는 안전한 503입니다.
+공개 API는 Core의 400/상위 오류 정책을 따릅니다. 오류를 확인 질문이나 검색 0건으로 숨기지 않습니다.
+
+사용자 확인 전에는 적용 조건을 바꾸거나 검색하지 않습니다. 인용의 문자 일치는 value의 의미 정확도까지
+보증하지 않으므로 모든 READY 결과에 확인이 필요합니다. 기존 query에서 옛 지역을 제거하고 구조 조건 중복을
+줄이는 것은 프롬프트 지시이며, ScriptedModel 회귀는 실제 한국어 모델의 의미 정확도 평가가 아닙니다.
+Compose OpenAI 대역도 정해진 C02 smoke 문구만 처리하고 미지원 문구는 오류를 반환합니다.
 
 ## 전체 공고 의미 검색
 
@@ -428,3 +462,8 @@ prune 차단, 다른 제공처 보존, 비정상 임베딩 거부를 검증합�
 오류의 503 변환을 포함합니다. 이는 코드 회귀 검증이며 실제 검색 품질 평가 완료를 뜻하지 않습니다.
 
 Agent 확장 원칙은 [AI Agent 모듈 구조](docs/agent-structure.md)를 참고하세요.
+
+C02 구현 후 Windows Python 3.12.13 환경에서 전체 `python -m pytest` **459개**가 통과했습니다
+(2026-09-07, 기존 319 + 신규 140). 현재 메시지 인용·날짜 창작 거부·UTF-16 경계·초안 병합·부재 필드 보존,
+실제 SDK strict schema와 Compose 대역 8개 시나리오를 포함합니다. 유료 모델 호출이나 실제 의미 품질 평가가
+아니며, 테스트의 OpenAI HTTP 통신은 모두 mock transport입니다.

@@ -11,6 +11,8 @@ from app.support_program_ranking.agent import SupportProgramRecommendationAgent
 from app.support_program_ranking.service import SupportProgramRankingService
 from app.config import Settings
 from app.support_program_index.service import SupportProgramIndexService
+from app.support_program_conversation.agent import SupportProgramConversationAgent
+from app.support_program_conversation.service import SupportProgramConversationService
 
 
 @dataclass(slots=True)
@@ -22,6 +24,7 @@ class ApplicationContainer:
     support_program_index_service: SupportProgramIndexService | None = None
     support_program_evidence_service: SupportProgramEvidenceService | None = None
     support_program_evidence_answer_service: SupportProgramEvidenceAnswerService | None = None
+    support_program_conversation_service: SupportProgramConversationService | None = None
     qdrant_client: AsyncQdrantClient | None = None
 
     async def close(self) -> None:
@@ -38,6 +41,7 @@ def build_application_container(
     *,
     support_program_recommendation_agent: SupportProgramRecommendationAgent | None = None,
     support_program_evidence_answer_agent: SupportProgramEvidenceAnswerAgent | None = None,
+    support_program_conversation_agent: SupportProgramConversationAgent | None = None,
 ) -> ApplicationContainer:
     """환경설정과 선택적 테스트 대역을 실제 애플리케이션 객체로 조립한다."""
 
@@ -48,8 +52,9 @@ def build_application_container(
     )
     ranking_agent = support_program_recommendation_agent
     evidence_answer_agent = support_program_evidence_answer_agent
+    conversation_agent = support_program_conversation_agent
     model = None
-    if ranking_agent is None or evidence_answer_agent is None:
+    if ranking_agent is None or evidence_answer_agent is None or conversation_agent is None:
         model = OpenAIResponsesModel(
             model=settings.openai_model,
             openai_client=openai_client,
@@ -69,6 +74,14 @@ def build_application_container(
             run_timeout_seconds=settings.llm_run_timeout_seconds,
         )
 
+    if conversation_agent is None:
+        assert model is not None
+        conversation_agent = SupportProgramConversationAgent(
+            model=model,
+            model_timeout_seconds=settings.llm_model_timeout_seconds,
+            run_timeout_seconds=settings.llm_run_timeout_seconds,
+        )
+
     qdrant_client = AsyncQdrantClient(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key,
@@ -77,6 +90,7 @@ def build_application_container(
     )
     return ApplicationContainer(
         support_program_ranking_service=SupportProgramRankingService(ranking_agent),
+        support_program_conversation_service=SupportProgramConversationService(conversation_agent),
         openai_client=openai_client,
         qdrant_client=qdrant_client,
         support_program_index_service=SupportProgramIndexService(

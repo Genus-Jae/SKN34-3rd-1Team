@@ -8,11 +8,13 @@ import type { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSu
 import type { GetSupportProgramSearchReadinessUseCase } from '../../domain/usecases/GetSupportProgramSearchReadinessUseCase'
 import type { PrepareSampleItemUseCase } from '../../domain/usecases/PrepareSampleItemUseCase'
 import type { SearchSupportProgramsUseCase } from '../../domain/usecases/SearchSupportProgramsUseCase'
+import type { InterpretSupportProgramConversationUseCase } from '../../domain/usecases/InterpretSupportProgramConversationUseCase'
 
 export type FetchCoreApiHealth = (signal?: AbortSignal) => Promise<CoreApiHealth>
 
 /** Awilix가 생성·연결할 수 있는 전체 의존성 목록입니다. */
 export type AppCradle = {
+  interpretSupportProgramConversationUseCase: InterpretSupportProgramConversationUseCase
   askSupportProgramEvidenceQuestionUseCase: AskSupportProgramEvidenceQuestionUseCase
   fetchCoreApiHealth: FetchCoreApiHealth
   getSupportProgramDetailUseCase: GetSupportProgramDetailUseCase
