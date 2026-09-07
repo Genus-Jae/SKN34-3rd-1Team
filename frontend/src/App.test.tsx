@@ -52,16 +52,26 @@ describe('App navigation', () => {
     expect(within(header).getByText('상태관리 비교 예제', { selector: 'p' })).toBeTruthy()
   })
 
-  it('로그인을 누르면 안내 문구 없이 입력창이 아래에 있는 작업 채팅 화면으로 이동한다', () => {
+  it('헤더의 로그인을 누르면 헤더 없는 로그인 화면으로 이동한다', () => {
     renderApp(createAppStore())
     expect(screen.getByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('link', { name: '로그인' }))
 
+    expect(screen.getByRole('heading', { name: '다시 오셨군요' })).toBeTruthy()
+    expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
+    expect(screen.getByRole('link', { name: '기업 계정 만들기' })).toBeTruthy()
+  })
+
+  it('로그인하면 헤더 대신 사이드바가 있는 작업 채팅 화면으로 이동한다', () => {
+    renderApp(createAppStore(), '/login')
+
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+
+    expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
+    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeNull()
-    expect(within(screen.getByRole('banner', { name: '앱 헤더' })).getByText('AI 채팅')).toBeTruthy()
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
-    expect(screen.queryByRole('region', { name: '기업 검색 조건' })).toBeNull()
     expect(screen.getByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })).toBeTruthy()
   })
 

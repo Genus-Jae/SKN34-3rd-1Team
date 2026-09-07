@@ -17,9 +17,18 @@ export const chatPageStyles = {
   page: 'min-h-screen bg-app-canvas text-app-ink',
   workspace:
     'flex min-h-[calc(100vh-3.75rem)] min-w-0 flex-col max-chat:min-h-[calc(100svh-3.75rem)]',
+  // 로그인 뒤 작업 화면은 사이드바 껍데기가 정한 높이를 그대로 채웁니다.
+  // 대화만 안에서 스크롤되고 입력창은 화면 아래에 붙어 있게 하려면 높이가 늘어나면 안 됩니다.
+  workspacePage: 'flex min-h-0 flex-1 flex-col bg-app-canvas text-app-ink max-chat:min-h-svh',
+  workspaceShell: 'flex min-h-0 min-w-0 flex-1 flex-col',
   timeline: classes(
     'mx-auto min-h-0 w-[min(860px,calc(100%_-_2rem))] flex-1 overflow-y-auto pt-2 pb-6',
     'max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-4',
+  ),
+  // 작업 화면에는 머리말이 없으므로 첫 메시지가 화면 맨 위에 붙지 않도록 위쪽 여백을 넉넉히 둡니다.
+  workspaceTimeline: classes(
+    'mx-auto min-h-0 w-[min(860px,calc(100%_-_2rem))] flex-1 overflow-y-auto pt-16 pb-6',
+    'max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-10',
   ),
   messageRow: 'mb-[1.8rem] flex gap-3',
   userMessageRow: 'justify-end',

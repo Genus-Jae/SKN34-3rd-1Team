@@ -4,7 +4,7 @@ import { appHeaderStyles } from './AppHeader.styles'
 
 /** 경로별 현재 화면 이름입니다. 등록되지 않은 경로는 이름을 표시하지 않습니다. */
 const pageTitles: Array<{ matches: (pathname: string) => boolean; title: string }> = [
-  { matches: (pathname) => pathname === '/' || pathname === '/chat', title: 'AI 채팅' },
+  { matches: (pathname) => pathname === '/', title: 'AI 채팅' },
   { matches: (pathname) => pathname === '/support-programs/detail', title: '공고 상세' },
   { matches: (pathname) => pathname === '/support-programs/detail/question', title: '원문 질문' },
   { matches: (pathname) => pathname.startsWith('/examples/sample-item'), title: '상태관리 비교 예제' },
@@ -36,8 +36,11 @@ export function AppHeader() {
         <Link className={appHeaderStyles.navLink} to="/examples/sample-item/hook">
           상태관리 비교 예제
         </Link>
-        {/* 로그인 화면과 세션 연결은 다음 단계입니다. 지금은 로그인 뒤 보게 될 작업 화면(/chat)으로만 이동합니다. */}
-        <Link className={appHeaderStyles.loginButton} to="/chat">
+        <Link className={appHeaderStyles.navLink} to="/signup">
+          회원가입
+        </Link>
+        {/* 세션 연결은 다음 단계입니다. 지금은 로그인 화면까지만 이동합니다. */}
+        <Link className={appHeaderStyles.loginButton} to="/login">
           로그인
         </Link>
       </nav>
