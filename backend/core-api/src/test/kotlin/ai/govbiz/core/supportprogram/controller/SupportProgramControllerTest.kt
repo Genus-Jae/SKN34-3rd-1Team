@@ -4,7 +4,14 @@ import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.ApiExceptionHandler
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgram
+import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReview
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReviewStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityAssessment
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityEvidence
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityEvidenceField
 import ai.govbiz.core.supportprogram.facade.SupportProgramRankingFacade
 import ai.govbiz.core.supportprogram.facade.AiSupportProgramRetrievalFacade
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
@@ -23,6 +30,11 @@ import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchReadinessRe
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchState
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSourceReadinessResult
 import java.time.OffsetDateTime
+import java.time.Clock
+import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
+import org.junit.jupiter.api.Assertions.assertEquals
 import java.util.stream.Stream
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
@@ -72,6 +84,7 @@ class SupportProgramControllerTest {
             supportProgramRepository,
             ranking,
             retrieval,
+            Clock.fixed(Instant.parse("2026-09-06T15:00:00Z"), ZoneId.of("Asia/Seoul")),
         )
         mockMvc = MockMvcBuilders
             .standaloneSetup(
@@ -492,6 +505,91 @@ class SupportProgramControllerTest {
             .andExpect(content().string(not(containsString(PRIVATE_DETAIL))))
     }
 
+    @Test
+    fun postSearchNormalizesConditionsAndPreservesThePublicQueryWithoutEchoingCompanyData() {
+        val programs = listOf(catalogProgram())
+        val enriched = "사업화\n사용자가 입력한 기업 조건:\n소재지: 부산\n업종: 제조업\n설립일: 2024-02-29\n지원 목적: 시제품\n기준일(서울): 2026-09-07"
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve(enriched, programs)
+        ranking.response = { it.map(CatalogSupportProgram::program) }
+
+        mockMvc.perform(post(PATH).contentType(MediaType.APPLICATION_JSON).content(
+            """{"query":"  사업화  ","companyConditions":{"region":" 부산 ","industry":" 제조업 ","establishedOn":"2024-02-29","supportPurpose":" 시제품 "}}""",
+        ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.query").value("사업화"))
+            .andExpect(jsonPath("$.companyConditions").doesNotExist())
+            .andExpect(jsonPath("$.programs[0].id").value("PBLN_TEST"))
+        assertEquals(SupportProgramCompanyConditions("부산", "제조업", LocalDate.of(2024, 2, 29), "시제품"), ranking.conditions)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["{}", "{\"region\":\"  \",\"industry\":\"\",\"establishedOn\":\"\",\"supportPurpose\":null}", "null"])
+    fun postSearchWithoutEffectiveConditionsUsesTheOriginalQuery(value: String) {
+        val programs = listOf(catalogProgram())
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve("서울 AI", programs)
+        mockMvc.perform(post(PATH).contentType(MediaType.APPLICATION_JSON).content(
+            """{"query":"서울 AI","companyConditions":$value}""",
+        )).andExpect(status().isOk())
+        assertEquals(null, ranking.conditions)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["{}", "{\"query\":\" \"}", "{\"query\":\"AI\",\"companyConditions\":{\"establishedOn\":\"2025-02-29\"}}", "{\"query\":\"AI\",\"companyConditions\":{\"region\":\"서울\\n\"}}"])
+    fun invalidPostSearchDoesNotCallTheCatalogOrAi(value: String) {
+        mockMvc.perform(post(PATH).contentType(MediaType.APPLICATION_JSON).content(value))
+            .andExpect(status().isBadRequest())
+        Mockito.verifyNoInteractions(supportProgramRepository, retrieval)
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun searchExposesOfficialApiEligibilitySeparatelyFromRecommendationReasons(matches: Boolean) {
+        val programs = listOf(catalogProgram())
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve("서울 AI", programs)
+        val assessment = SupportProgramEligibilityAssessment(
+            if (matches) SupportProgramEligibilityStatus.MATCH else SupportProgramEligibilityStatus.UNKNOWN,
+            if (matches) "공식 API 본문에서 확인했습니다." else "추가 기업 정보 확인이 필요합니다.",
+            if (matches) listOf(SupportProgramEligibilityEvidence(SupportProgramEligibilityEvidenceField.TARGET_DESCRIPTION, "중소기업")) else emptyList(),
+        )
+        ranking.response = { candidates -> candidates.map { it.program.copy(
+            recommendationScore = 85,
+            matchedReasons = listOf("AI 지원사업"),
+            eligibilityReview = SupportProgramEligibilityReview(
+                if (matches) SupportProgramEligibilityReviewStatus.MATCH else SupportProgramEligibilityReviewStatus.REVIEW_REQUIRED,
+                assessment,
+                assessment,
+            ),
+        ) } }
+        for (request in listOf(get(PATH).queryParam("query", "서울 AI"), post(PATH).contentType(MediaType.APPLICATION_JSON).content("""{"query":"서울 AI"}"""))) {
+            val result = mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.programs[0].eligibilityReview.status").value(if (matches) "MATCH" else "REVIEW_REQUIRED"))
+                .andExpect(jsonPath("$.programs[0].eligibilityReview.basis").value("OFFICIAL_API_TEXT"))
+                .andExpect(jsonPath("$.programs[0].eligibilityReview.target.status").value(if (matches) "MATCH" else "UNKNOWN"))
+                .andExpect(jsonPath("$.programs[0].eligibilityReview.region.explanation").value(assessment.explanation))
+                .andExpect(jsonPath("$.programs[0].matchedReasons[0]").value("AI 지원사업"))
+            if (matches) {
+                result.andExpect(jsonPath("$.programs[0].eligibilityReview.target.evidence[0].field").value("TARGET_DESCRIPTION"))
+                    .andExpect(jsonPath("$.programs[0].eligibilityReview.target.evidence[0].quote").value("중소기업"))
+            } else result.andExpect(jsonPath("$.programs[0].eligibilityReview.target.evidence").isEmpty())
+        }
+    }
+
+    @Test
+    fun latestAndDetailDoNotClaimToHaveReviewedEligibility() {
+        Mockito.doReturn(listOf(catalogProgram())).`when`(supportProgramRepository).findPublishedPresent()
+        Mockito.doReturn(catalogProgram()).`when`(supportProgramRepository).findPresentBySourceAndProgramId("BIZINFO", "PBLN_TEST")
+        mockMvc.perform(get(PATH).queryParam("query", ""))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.programs[0].eligibilityReview").value(nullValue()))
+        mockMvc.perform(get(DETAIL_PATH).queryParam("sourceCode", "BIZINFO").queryParam("sourceProgramId", "PBLN_TEST"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eligibilityReview").value(nullValue()))
+    }
+
     private fun catalogProgram() = CatalogSupportProgram(
         program = SupportProgram(
             id = "PBLN_TEST",
@@ -517,13 +615,17 @@ class SupportProgramControllerTest {
     private class StubSupportProgramRankingFacade : SupportProgramRankingFacade {
         var response: (List<CatalogSupportProgram>) -> List<SupportProgram> = { emptyList() }
         var failure: RuntimeException? = null
+        var conditions: SupportProgramCompanyConditions? = null
 
         override fun rank(
             query: String,
             candidates: List<CatalogSupportProgram>,
             limit: Int,
+            companyConditions: SupportProgramCompanyConditions?,
+            referenceDate: LocalDate?,
         ): List<SupportProgram> {
             failure?.let { throw it }
+            conditions = companyConditions
             return response(candidates)
         }
     }

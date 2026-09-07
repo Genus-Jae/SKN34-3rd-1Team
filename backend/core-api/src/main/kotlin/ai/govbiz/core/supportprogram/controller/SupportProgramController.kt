@@ -1,6 +1,7 @@
 package ai.govbiz.core.supportprogram.controller
 
 import ai.govbiz.core.supportprogram.controller.dto.SupportProgramSearchResponse
+import ai.govbiz.core.supportprogram.controller.dto.SupportProgramSearchRequest
 import ai.govbiz.core.supportprogram.controller.dto.SupportProgramSearchReadinessResponse
 import ai.govbiz.core.supportprogram.controller.dto.SupportProgramResponse
 import ai.govbiz.core.supportprogram.controller.dto.SupportProgramEvidenceAnswerResponse
@@ -42,6 +43,16 @@ class SupportProgramController(
         httpRequest: HttpServletRequest,
     ): SupportProgramSearchResponse = requestAdmissionService.execute(httpRequest.remoteAddr) {
         SupportProgramSearchResponse.from(searchService.search(query, acceptingOnly))
+    }
+
+    @PostMapping("/search")
+    fun searchWithCompanyConditions(
+        @RequestBody @jakarta.validation.Valid request: SupportProgramSearchRequest,
+        httpRequest: HttpServletRequest,
+    ): SupportProgramSearchResponse = requestAdmissionService.execute(httpRequest.remoteAddr) {
+        SupportProgramSearchResponse.from(
+            searchService.search(request.query, request.acceptingOnly, request.companyConditions?.toDomain()),
+        )
     }
 
     @GetMapping("/readiness")

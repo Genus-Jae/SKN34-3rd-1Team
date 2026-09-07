@@ -19,6 +19,7 @@ data class SupportProgram(
     val sourceUrl: String,
     val matchedReasons: List<String>,
     val recommendationScore: Int? = null,
+    val eligibilityReview: SupportProgramEligibilityReview? = null,
 ) {
     init {
         require(SOURCE_CODE_PATTERN.matches(sourceCode)) {

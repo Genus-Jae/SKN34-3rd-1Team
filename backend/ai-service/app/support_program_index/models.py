@@ -80,7 +80,7 @@ class SupportProgramIndexPruneResponse(BaseModel):
 class SupportProgramIndexSearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
-    query: str = Field(min_length=1, max_length=500)
+    query: str = Field(min_length=1, max_length=1_000)
     eligible_documents: list[IndexedDocumentIdentity] = Field(alias="eligibleDocuments", max_length=20_000)
     limit: int = Field(ge=1, le=20, strict=True)
 

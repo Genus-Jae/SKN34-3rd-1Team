@@ -75,14 +75,12 @@ export async function searchSupportProgramsApi(
   command: SupportProgramSearch,
   signal?: AbortSignal,
 ): Promise<SupportProgramSearchResponseDto> {
-  const searchParams = new URLSearchParams({
-    query: command.query,
-    acceptingOnly: String(command.acceptingOnly ?? true),
-  })
   const response = await fetch(
-    `${getCoreApiBaseUrl()}${SEARCH_SUPPORT_PROGRAMS_PATH}?${searchParams.toString()}`,
+    `${getCoreApiBaseUrl()}${SEARCH_SUPPORT_PROGRAMS_PATH}`,
     {
-      headers: { Accept: 'application/json' },
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...command, acceptingOnly: command.acceptingOnly ?? true }),
       signal,
     },
   )

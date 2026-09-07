@@ -24,4 +24,15 @@ data class AiScoredSupportProgramPayload(
     val supportTypeFit: Int?,
     val totalScore: Int?,
     val recommendationReasons: List<String?>?,
+    val targetEvidence: List<AiSupportProgramEligibilityEvidencePayload?>? = null,
+    val targetExplanation: String? = null,
+    val regionEvidence: List<AiSupportProgramEligibilityEvidencePayload?>? = null,
+    val regionExplanation: String? = null,
+)
+
+enum class AiSupportProgramEligibilityEvidenceField { SUMMARY, TARGET_DESCRIPTION }
+
+data class AiSupportProgramEligibilityEvidencePayload(
+    val field: AiSupportProgramEligibilityEvidenceField?,
+    val quote: String?,
 )

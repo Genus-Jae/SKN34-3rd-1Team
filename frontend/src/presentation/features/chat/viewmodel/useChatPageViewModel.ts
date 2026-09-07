@@ -13,6 +13,7 @@ import {
   useSupportProgramChat,
 } from '../hooks/useSupportProgramChat'
 import { useSupportProgramSearchReadiness } from '../hooks/useSupportProgramSearchReadiness'
+import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
 
 const chatMobileMediaQuery = '(max-width: 47.5rem)'
 
@@ -31,7 +32,7 @@ export function useChatPageViewModel() {
   const searchStatusAnnouncement = chat.isSearching
     ? '지원사업 공고를 검색하고 있습니다.'
     : latestMessage?.role === 'assistant' && latestMessage.programs
-      ? `지원사업 검색 결과 ${latestMessage.programs.length}건을 표시했습니다.`
+      ? `지원사업 검색 결과 ${latestMessage.programs.length}건: ${formatSupportProgramEligibilityCounts(latestMessage.programs)}을 표시했습니다.`
       : ''
 
   const closeSidebar = useCallback(() => {
@@ -174,6 +175,14 @@ export function useChatPageViewModel() {
   }
 
   return {
+    searchOptions: chat.searchOptions,
+    companyConditionsDraft: chat.companyConditionsDraft,
+    conditionsError: chat.conditionsError,
+    updateCompanyCondition: chat.updateCompanyCondition,
+    applyCompanyConditions: chat.applyCompanyConditions,
+    removeCompanyCondition: chat.removeCompanyCondition,
+    clearCompanyConditions: chat.clearCompanyConditions,
+    updateAcceptingOnly: chat.updateAcceptingOnly,
     canSearch: readiness.canSearch,
     canRetrySearch: readiness.canSearch && chat.canRetrySearch,
     isReadyToSubmit: readiness.canSearch && chat.isReadyToSubmit,

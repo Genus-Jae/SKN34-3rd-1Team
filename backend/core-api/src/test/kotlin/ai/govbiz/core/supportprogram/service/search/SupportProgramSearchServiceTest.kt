@@ -2,11 +2,15 @@ package ai.govbiz.core.supportprogram.service.search
 
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgram
+import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.facade.SupportProgramRankingFacade
 import ai.govbiz.core.supportprogram.facade.AiSupportProgramRetrievalFacade
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
 import java.time.LocalDate
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -285,10 +289,68 @@ class SupportProgramSearchServiceTest {
         assertEquals(listOf("OTHER", "BIZINFO"), trace.result.programs.map(SupportProgram::sourceCode))
     }
 
+    @Test
+    fun appliesCompanyConditionsToRetrievalAndRankingWithoutFilteringUnknownRegions() {
+        val query = "사업화 지원"
+        val conditions = SupportProgramCompanyConditions("부산", "제조업", LocalDate.of(2024, 2, 29), "시제품 제작")
+        val unknownRegion = catalogProgram("unknown-region").let { it.copy(program = it.program.copy(regions = emptyList())) }
+        val programs = listOf(unknownRegion, catalogProgram("seoul"))
+        val retrievalQuery = "$query\n사용자가 입력한 기업 조건:\n소재지: 부산\n업종: 제조업\n설립일: 2024-02-29\n지원 목적: 시제품 제작\n기준일(서울): 2026-09-07"
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve(retrievalQuery, programs)
+
+        val result = service().search("  $query  ", true, conditions)
+
+        assertEquals(query, result.query)
+        assertEquals(RankingCall(query, programs, 5, conditions, LocalDate.of(2026, 9, 7)), ranking.calls.single())
+        Mockito.verify(retrieval).retrieve(retrievalQuery, programs)
+    }
+
+    @Test
+    fun keepsMaximumLengthQueryUnchangedForRankingWhileBoundingEnrichedRetrieval() {
+        val query = "가".repeat(500)
+        val conditions = SupportProgramCompanyConditions("나".repeat(50), "다".repeat(100), LocalDate.of(1900, 1, 1), "라".repeat(100))
+        val programs = listOf(catalogProgram("open"))
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doAnswer { invocation ->
+            val enriched = invocation.getArgument<String>(0)
+            assertTrue(enriched.length <= 1000)
+            assertTrue(enriched.startsWith(query))
+            assertTrue(enriched.contains(conditions.region!!))
+            assertTrue(enriched.contains(conditions.industry!!))
+            assertTrue(enriched.contains(conditions.supportPurpose!!))
+            assertTrue(enriched.contains("1900-01-01"))
+            programs
+        }.`when`(retrieval).retrieve(Mockito.anyString(), Mockito.anyList())
+
+        assertEquals(query, service().search(query, false, conditions).query)
+        assertEquals(query, ranking.calls.single().query)
+        assertEquals(conditions, ranking.calls.single().companyConditions)
+    }
+
+    @Test
+    fun changingAndClearingConditionsDoesNotLeakThePreviousRequest() {
+        val programs = listOf(catalogProgram("open"))
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve(Mockito.anyString(), Mockito.anyList())
+        val service = service()
+        val seoul = SupportProgramCompanyConditions(region = "서울")
+        val busan = SupportProgramCompanyConditions(region = "부산")
+
+        service.search("사업화", false, seoul)
+        service.search("사업화", false, busan)
+        service.search("사업화", false)
+
+        assertEquals(listOf(seoul, busan, null), ranking.calls.map { it.companyConditions })
+        assertNull(ranking.calls.last().referenceDate)
+        Mockito.verify(retrieval).retrieve("사업화", programs)
+    }
+
     private fun service() = SupportProgramSearchService(
         supportProgramRepository,
         ranking,
         retrieval,
+        Clock.fixed(Instant.parse("2026-09-06T15:00:00Z"), ZoneId.of("Asia/Seoul")),
     )
 
     private fun catalogProgram(
@@ -327,6 +389,8 @@ class SupportProgramSearchServiceTest {
         val query: String,
         val candidates: List<CatalogSupportProgram>,
         val limit: Int,
+        val companyConditions: SupportProgramCompanyConditions? = null,
+        val referenceDate: LocalDate? = null,
     )
 
     private class RecordingSupportProgramRankingFacade : SupportProgramRankingFacade {
@@ -337,8 +401,10 @@ class SupportProgramSearchServiceTest {
             query: String,
             candidates: List<CatalogSupportProgram>,
             limit: Int,
+            companyConditions: SupportProgramCompanyConditions?,
+            referenceDate: LocalDate?,
         ): List<SupportProgram> {
-            calls += RankingCall(query, candidates, limit)
+            calls += RankingCall(query, candidates, limit, companyConditions, referenceDate)
             return response(candidates)
         }
     }

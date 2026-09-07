@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
-import { supportPrograms } from './data/fixtures/supportPrograms'
+import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from './data/fixtures/supportPrograms'
 import type { SupportProgramSearchReadiness } from './domain/entities/SupportProgramSearchReadiness'
 import { supportProgramEvidenceQuestionTimeoutMilliseconds } from './presentation/features/support-program-detail/viewmodel/useSupportProgramEvidenceQuestionViewModel'
 
@@ -38,6 +38,153 @@ afterEach(() => {
 })
 
 describe('App navigation', () => {
+  it('서울 조건 검색에서 전국 태그·경북 이전 확인 필요 공고를 조건 확인과 분리하고 상세 복귀 시 판정을 보존한다', async () => {
+    const latest = { ...supportPrograms[3], recommendationScore: null }
+    const programs = [relocationReviewRequiredProgram, conditionMatchedProgram, supportPrograms[1], latest]
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ query: '사업화', programs }))
+      .mockResolvedValueOnce(jsonResponse({ ...conditionMatchedProgram, eligibilityReview: null, recommendationScore: null, matchedReasons: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const store = createAppStore()
+    renderApp(store)
+    fireEvent.click(screen.getByText('기업 조건 입력·수정 (선택)'))
+    fireEvent.change(screen.getByLabelText('현재 소재지'), { target: { value: '서울' } })
+    fireEvent.change(screen.getByLabelText('업종'), { target: { value: '소프트웨어 개발업' } })
+    fireEvent.change(screen.getByLabelText('설립일'), { target: { value: '2024-02-29' } })
+    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    fireEvent.change(input, { target: { value: '사업화' } })
+    fireEvent.submit(input.closest('form')!)
+
+    const matchedSection = await screen.findByRole('region', { name: '조건 확인 공고' })
+    const reviewSection = screen.getByRole('region', { name: '확인 필요 공고' })
+    expect(within(matchedSection).getByRole('heading', { name: conditionMatchedProgram.title })).toBeTruthy()
+    expect(within(matchedSection).queryByRole('heading', { name: relocationReviewRequiredProgram.title })).toBeNull()
+    expect(within(reviewSection).getByRole('heading', { name: relocationReviewRequiredProgram.title })).toBeTruthy()
+    expect(within(reviewSection).getByRole('heading', { name: supportPrograms[1].title })).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '최신 공고' })).getByRole('heading', { name: latest.title })).toBeTruthy()
+    const relocationCard = getProgramCard(relocationReviewRequiredProgram.title)
+    expect(within(relocationCard).getByText('지역 · 확인 필요')).toBeTruthy()
+    expect(within(relocationCard).getByText('서울 소재지만 확인되었으며 경북 이전 의향은 확인되지 않았습니다.')).toBeTruthy()
+    expect(relocationCard.querySelector('blockquote')?.textContent).toBe('소프트웨어 개발업 창업 7년 이내 중소기업')
+    expect(Array.from(relocationCard.querySelectorAll('blockquote')).map((quote) => quote.textContent))
+      .toContain('선정 후 경북으로 본사를 이전하는 창업기업을 지원합니다.')
+    expect(within(relocationCard).getByText('관련도 99점 · 자격 충족 확률이 아닙니다.')).toBeTruthy()
+    expect(within(relocationCard).getByText('전국 사업')).toBeTruthy()
+    expect(relocationCard.textContent).not.toContain('✓')
+    expect(relocationCard.textContent).not.toContain('AI 추천')
+    expect(within(relocationCard).getByText(/기업마당 등 공식 API 본문 기준 · 첨부파일 미검증/)).toBeTruthy()
+    expect(within(getProgramCard(supportPrograms[1].title)).getByText('자격 판정 없음 · 확인 필요')).toBeTruthy()
+    expect(screen.getByRole('status').textContent)
+      .toBe('지원사업 검색 결과 4건: 조건 확인 공고 1건, 확인 필요 공고 2건, 최신 공고 1건(자격 미평가)을 표시했습니다.')
+    expect(store.getState().chat.messages.at(-1)?.text).toContain('조건 확인 공고 1건, 확인 필요 공고 2건')
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      query: '사업화', acceptingOnly: true,
+      companyConditions: { region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29' },
+    })
+
+    fireEvent.change(screen.getByLabelText('현재 소재지'), { target: { value: '부산' } })
+    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
+    expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(getProgramCard(conditionMatchedProgram.title)).getByRole('link', { name: '상세 조건 보기' }))
+    await screen.findByText('자격 미평가 · 공고 상세 정보')
+    expect(screen.getByText(/상세 조회는 검색 당시 기업 조건으로 자격을 다시 평가하지 않습니다/)).toBeTruthy()
+    expect(screen.queryByText('조건 확인 · API 본문 기준')).toBeNull()
+    fireEvent.click(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }))
+    expect(within(screen.getByRole('region', { name: '조건 확인 공고' })).getByRole('heading', { name: conditionMatchedProgram.title })).toBeTruthy()
+    expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
+    expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('부산')
+    expect(store.getState().chat.messages.at(-1)?.programs?.[1]?.eligibilityReview)
+      .toEqual(conditionMatchedProgram.eligibilityReview)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('근거가 없는 UNKNOWN을 표시하고 API 본문 인용의 HTML을 실행하지 않는다', async () => {
+    const quote = '<img src=x onerror=alert(1)>'
+    const program = {
+      ...relocationReviewRequiredProgram,
+      summary: quote,
+      eligibilityReview: {
+        ...relocationReviewRequiredProgram.eligibilityReview!,
+        target: {
+          ...relocationReviewRequiredProgram.eligibilityReview!.target,
+          evidence: [{ field: 'SUMMARY', quote }],
+        },
+        region: { status: 'UNKNOWN', explanation: '현재 소재지에 적용할 지역 조건의 근거가 없습니다.', evidence: [] },
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ query: '사업화', programs: [program] })))
+    renderApp(createAppStore())
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    fireEvent.change(input, { target: { value: '사업화' } })
+    fireEvent.submit(input.closest('form')!)
+    await screen.findByRole('region', { name: '확인 필요 공고' })
+    const card = getProgramCard(program.title)
+    expect(card.querySelector('blockquote')?.textContent).toBe(quote)
+    expect(card.querySelector('img')).toBeNull()
+    expect(within(card).getByText('확인 가능한 본문 인용 없음')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '조건 확인 공고' })).toBeNull()
+  })
+
+  it('기업 조건을 명시적으로 적용·수정·해제하고 접수 상태와 함께 검색 JSON에 보낸다', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse({ query: '지원금', programs: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const store = createAppStore()
+    renderApp(store)
+    fireEvent.click(screen.getByText('기업 조건 입력·수정 (선택)'))
+    expect(screen.getByText(/입력한 조건은 AI 추천에 사용되므로 개인정보·비밀정보는 입력하지 마세요/)).toBeTruthy()
+    const region = screen.getByLabelText('현재 소재지') as HTMLInputElement
+    const industry = screen.getByLabelText('업종') as HTMLInputElement
+    const establishedOn = screen.getByLabelText('설립일')
+    const purpose = screen.getByLabelText('지원 목적')
+    fireEvent.change(region, { target: { value: ' 서울 ' } })
+    fireEvent.change(industry, { target: { value: '소프트웨어 개발업' } })
+    fireEvent.change(establishedOn, { target: { value: '2024-02-29' } })
+    fireEvent.change(purpose, { target: { value: '사업화' } })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: '현재 소재지 조건 해제' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
+    expect(screen.getByRole('button', { name: '현재 소재지 조건 해제' })).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+    const searchInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    fireEvent.change(searchInput, { target: { value: '지원금' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      query: '지원금', acceptingOnly: true,
+      companyConditions: { region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29', supportPurpose: '사업화' },
+    })
+
+    fireEvent.change(region, { target: { value: '부산' } })
+    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
+    fireEvent.click(screen.getByRole('button', { name: '업종 조건 해제' }))
+    fireEvent.change(screen.getByRole('combobox', { name: '접수 상태' }), { target: { value: 'all' } })
+    fireEvent.change(searchInput, { target: { value: '서울 지원금' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      query: '서울 지원금', acceptingOnly: false,
+      companyConditions: { region: '부산', establishedOn: '2024-02-29', supportPurpose: '사업화' },
+    })
+    expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
+    expect(screen.getByText(/검색 당시 조건: 접수 상태 전체 · 현재 소재지 부산/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '조건 전체 초기화' }))
+    expect(region.value).toBe('')
+    expect(industry.value).toBe('')
+    fireEvent.change(searchInput, { target: { value: '지원금' } })
+    await act(async () => fireEvent.submit(searchInput.closest('form')!))
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body)))
+      .toEqual({ query: '지원금', acceptingOnly: true })
+    expect(store.getState().chat.searchStatus).toBe('idle')
+
+    fireEvent.change(region, { target: { value: '제주' } })
+    fireEvent.click(screen.getByRole('button', { name: '조건 적용' }))
+    fireEvent.click(screen.getByRole('button', { name: /새 대화 시작/ }))
+    expect(region.value).toBe('')
+    expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+  })
+
   it('준비 상태와 오류 안내가 있어도 검색·취소 버튼을 입력창 안에 배치한다', async () => {
     let rejectSearch!: (reason: Error) => void
     const fetchMock = vi.fn().mockReturnValue(new Promise<Response>((_resolve, reject) => {
@@ -653,8 +800,8 @@ describe('App navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '다시 검색' }))
 
-    await screen.findByText('현재 접수 중인 관련 공고 1건을 찾았습니다. 공고를 선택하면 자세한 조건과 원문을 확인할 수 있어요.')
-    expect(screen.getByRole('status').textContent).toBe('지원사업 검색 결과 1건을 표시했습니다.')
+    await screen.findByText('현재 접수 중인 공고에서 조건 확인 공고 0건, 확인 필요 공고 1건을 찾았습니다. 조건 확인은 공식 API 본문 기준이며 최종 신청 자격을 보장하지 않습니다. 확인 필요 공고는 원문 조건을 추가로 확인해 주세요.')
+    expect(screen.getByRole('status').textContent).toBe('지원사업 검색 결과 1건: 조건 확인 공고 0건, 확인 필요 공고 1건을 표시했습니다.')
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 

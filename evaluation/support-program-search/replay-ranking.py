@@ -54,6 +54,7 @@ async def execute(args, envelope, prompts):
     usage = []
     current = {}
     call_count = 0
+    max_output_tokens = None
     max_calls = 2 * len(requests)
     started = datetime.now(timezone.utc).isoformat()
     succeeded = False
@@ -100,6 +101,10 @@ async def execute(args, envelope, prompts):
                 app = create_app(settings=settings)
                 apps[variant] = app
                 agent = app.state.container.support_program_ranking_service._agent
+                configured_max_tokens = agent._agent.model_settings.max_tokens
+                if max_output_tokens is not None and configured_max_tokens != max_output_tokens:
+                    raise ValueError("Replay variants must use the same output token limit")
+                max_output_tokens = configured_max_tokens
                 # Evaluation-only clone: same production agent and output contract, different instructions.
                 agent._agent = agent._agent.clone(instructions=prompt)
                 hooks = app.state.container.openai_client._client.event_hooks
@@ -166,7 +171,7 @@ async def execute(args, envelope, prompts):
                 "apiUsageSha256": sha256_file(args.output_dir / "api-usage.jsonl"),
                 "queryCount": len(requests), "plannedCalls": max_calls, "actualCalls": call_count,
                 "completedRankings": len(observations), "embeddingCalls": 0, "sdkMaxRetries": 0,
-                "agentMaxTurns": 1, "maxOutputTokens": 4000, "reasoningEffort": "none", "store": False,
+                "agentMaxTurns": 1, "maxOutputTokens": max_output_tokens, "reasoningEffort": "none", "store": False,
                 "tracing": False, "timeoutsSeconds": {"model": 25, "agent": 30},
                 "measurement": "Fixed candidate HTTP replay using in-process ASGI; not a new full search or browser latency measurement.",
                 "variants": {},

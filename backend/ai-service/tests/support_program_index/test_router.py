@@ -51,7 +51,7 @@ def test_invalid_batches_are_rejected_before_external_calls(client, monkeypatch,
 
 @pytest.mark.parametrize("mutation", [
     lambda body: body.update(query="   "),
-    lambda body: body.update(query="x" * 501),
+    lambda body: body.update(query="x" * 1_001),
     lambda body: body.update(limit=0),
     lambda body: body.update(limit=21),
     lambda body: body.update(limit=True),
@@ -96,3 +96,14 @@ def test_empty_search_returns_contract_without_network(client):
     response = client.post("/internal/v1/support-program-index/search", json={"query": " 서울 AI ", "eligibleDocuments": [], "limit": 20})
     assert response.status_code == 200
     assert response.json() == {"query": "서울 AI", "matches": []}
+
+
+@pytest.mark.parametrize("length", [501, 1_000])
+def test_internal_query_accepts_company_condition_context_without_network(client, length):
+    query = "가" * length
+    response = client.post(
+        "/internal/v1/support-program-index/search",
+        json={"query": query, "eligibleDocuments": [], "limit": 20},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"query": query, "matches": []}

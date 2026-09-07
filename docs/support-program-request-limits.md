@@ -5,7 +5,8 @@
 
 ## 적용 범위와 기본값
 
-`GET /api/v1/support-programs/search`와 `POST /api/v1/support-programs/detail/answers`가
+`GET /api/v1/support-programs/search`, `POST /api/v1/support-programs/search`와
+`POST /api/v1/support-programs/detail/answers`가
 한 Core 프로세스의 같은 한도를 공유한다. 검색 GET에 대한 HEAD 요청도 동일하게 처리한다.
 
 | 설정 환경변수 | 기본값 | 허용 범위 |

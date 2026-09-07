@@ -2,12 +2,21 @@ import { createSelector, createSlice, nanoid, type PayloadAction } from '@reduxj
 
 import type { RootState } from '../../../../app/store'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
+import type { SupportProgramCompanyConditions } from '../../../../domain/repositories/SupportProgramRepository'
+import { emptyCompanyConditionsDraft, type CompanyConditionsDraft } from '../validation/companyConditionsForm'
+import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
+
+export type ChatSearchOptions = {
+  acceptingOnly: boolean
+  companyConditions?: SupportProgramCompanyConditions
+}
 
 export type SupportProgramChatMessage = {
   id: string
   role: 'assistant' | 'user'
   text: string
   programs?: SupportProgram[]
+  searchOptions?: ChatSearchOptions
 }
 
 type ChatSearchStatus = 'idle' | 'pending' | 'failed'
@@ -18,6 +27,8 @@ type ChatState = {
   messages: SupportProgramChatMessage[]
   searchError: string | null
   searchStatus: ChatSearchStatus
+  searchOptions: ChatSearchOptions
+  companyConditionsDraft: CompanyConditionsDraft
 }
 
 /** Core API의 query 최대 길이 계약과 일치합니다. */
@@ -40,6 +51,32 @@ const chatSlice = createSlice({
     draftChanged(state, action: PayloadAction<string>) {
       state.draft = action.payload
       state.searchError = null
+    },
+    companyConditionDraftChanged(state, action: PayloadAction<{ field: keyof CompanyConditionsDraft; value: string }>) {
+      if (state.searchStatus === 'pending') return
+      state.companyConditionsDraft[action.payload.field] = action.payload.value
+    },
+    companyConditionsApplied(state, action: PayloadAction<SupportProgramCompanyConditions>) {
+      if (state.searchStatus === 'pending') return
+      state.searchOptions.companyConditions = Object.keys(action.payload).length ? action.payload : undefined
+      state.companyConditionsDraft = { ...emptyCompanyConditionsDraft(), ...action.payload }
+    },
+    companyConditionRemoved(state, action: PayloadAction<keyof CompanyConditionsDraft>) {
+      if (state.searchStatus === 'pending') return
+      delete state.searchOptions.companyConditions?.[action.payload]
+      if (Object.keys(state.searchOptions.companyConditions ?? {}).length === 0) {
+        state.searchOptions.companyConditions = undefined
+      }
+      state.companyConditionsDraft[action.payload] = ''
+    },
+    companyConditionsCleared(state) {
+      if (state.searchStatus === 'pending') return
+      state.searchOptions = { acceptingOnly: true }
+      state.companyConditionsDraft = emptyCompanyConditionsDraft()
+    },
+    acceptingOnlyChanged(state, action: PayloadAction<boolean>) {
+      if (state.searchStatus === 'pending') return
+      state.searchOptions.acceptingOnly = action.payload
     },
     searchCancelled(state, action: PayloadAction<{ query: string; requestId: string }>) {
       if (state.activeRequestId !== action.payload.requestId) return
@@ -85,6 +122,7 @@ const chatSlice = createSlice({
           id: action.payload.messageId,
           role: 'user',
           text: action.payload.query,
+          searchOptions: copySearchOptions(state.searchOptions),
         })
         state.searchError = null
         state.searchStatus = 'pending'
@@ -113,8 +151,9 @@ const chatSlice = createSlice({
         state.messages.push({
           id: action.payload.messageId,
           role: 'assistant',
-          text: createSearchResponseText(action.payload.programs.length),
+          text: createSearchResponseText(action.payload.programs, state.searchOptions.acceptingOnly),
           programs: action.payload.programs,
+          searchOptions: copySearchOptions(state.searchOptions),
         })
         state.searchError = null
         state.searchStatus = 'idle'
@@ -132,6 +171,11 @@ const chatSlice = createSlice({
 })
 
 export const {
+  acceptingOnlyChanged,
+  companyConditionDraftChanged,
+  companyConditionRemoved,
+  companyConditionsApplied,
+  companyConditionsCleared,
   conversationReset,
   draftChanged,
   searchCancelled,
@@ -166,6 +210,8 @@ function createInitialState(welcomeMessage = createWelcomeMessage()): ChatState 
     messages: [welcomeMessage],
     searchError: null,
     searchStatus: 'idle',
+    searchOptions: { acceptingOnly: true },
+    companyConditionsDraft: emptyCompanyConditionsDraft(),
   }
 }
 
@@ -177,8 +223,15 @@ function createWelcomeMessage(): SupportProgramChatMessage {
   }
 }
 
-function createSearchResponseText(programCount: number) {
-  return programCount > 0
-    ? `현재 접수 중인 관련 공고 ${programCount}건을 찾았습니다. 공고를 선택하면 자세한 조건과 원문을 확인할 수 있어요.`
+function createSearchResponseText(programs: SupportProgram[], acceptingOnly: boolean) {
+  return programs.length > 0
+    ? `${acceptingOnly ? '현재 접수 중인 공고에서' : '접수 상태 전체에서'} ${formatSupportProgramEligibilityCounts(programs)}을 찾았습니다. 조건 확인은 공식 API 본문 기준이며 최종 신청 자격을 보장하지 않습니다. 확인 필요 공고는 원문 조건을 추가로 확인해 주세요.`
     : '현재 일치하는 공고를 찾지 못했습니다. 지역이나 분야를 바꿔 다시 검색해 보세요.'
+}
+
+function copySearchOptions(options: ChatSearchOptions): ChatSearchOptions {
+  return {
+    acceptingOnly: options.acceptingOnly,
+    ...(options.companyConditions ? { companyConditions: { ...options.companyConditions } } : {}),
+  }
 }

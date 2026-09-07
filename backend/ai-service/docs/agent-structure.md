@@ -24,16 +24,18 @@ HTTP router
 → SupportProgramRecommendationAgent
 → Runner.run(max_turns=1)
 → SupportProgramRankingOutput
-→ exact candidate ID 검증
+→ exact candidate ID·공식 API 본문 인용·본문 절단 시 UNKNOWN 검증
 → 지원대상·지역 INCOMPATIBLE 제외
-→ 의미 관련성 20점·총점 60점 기준 필터 후 점수순 SupportProgramRankingResponse (0~5개)
+→ 의미 관련성 20점·총점 60점 기준 필터 후 MATCH 그룹 우선·그룹별 점수순 Response (합계 0~5개)
 ```
 
-현재 계약 버전은 `govbiz-support-program-ranking-v3`입니다. 후보 `id`와 응답 `programId`는
+현재 계약 버전은 `govbiz-support-program-ranking-v4`입니다. 후보 `id`와 응답 `programId`는
 `sourceCode:sourceProgramId` 형태의 정규 식별자이며, 서로 다른 제공처가 같은 원본 ID를 사용해도
 별개 후보로 검증합니다. `targetEligibility`와 `regionEligibility`는
 `MATCH`, `INCOMPATIBLE`, `UNKNOWN` 중 하나이며, 정보 부족을 뜻하는 `UNKNOWN`은 자동 제외하지 않습니다.
-이 순위화 Agent는 공고 단위 점수와 추천 이유만 반환합니다. 상세 원문 검색과 근거 문단 인용 답변은
+순위화 Agent는 공고 단위 점수·추천 이유와 SUMMARY/TARGET_DESCRIPTION 자격 인용·판정 설명을 반환합니다.
+두 자격 모두 MATCH인 후보를 먼저, UNKNOWN이 있는 확인 필요 후보를 다음으로 반환합니다.
+공식 API 요약의 자격 인용이며 첨부 PDF/HWP를 읽은 최종 자격 판정은 아닙니다. 상세 원문 검색과 근거 문단 인용 답변은
 아래 `support_program_evidence` 수직 기능이 담당합니다.
 
 ## 상세 공고 근거 답변 Agent

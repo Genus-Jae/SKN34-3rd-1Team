@@ -1,11 +1,14 @@
 import { Link } from 'react-router'
 
-import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
+import type { SupportProgram, SupportProgramEligibilityAxis } from '../../../../domain/entities/SupportProgram'
 import type {
   SupportProgramSearchReadiness,
   SupportProgramSourceSearchState,
 } from '../../../../domain/entities/SupportProgramSearchReadiness'
 import { useChatPageViewModel } from '../viewmodel/useChatPageViewModel'
+import type { ChatSearchOptions } from '../state/chatSlice'
+import { companyConditionFields, seoulToday } from '../validation/companyConditionsForm'
+import { groupSupportProgramsByEligibility } from '../supportProgramEligibility'
 import {
   chatBackdropClassName,
   chatMessageBubbleClassName,
@@ -22,6 +25,14 @@ const syncTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
 
 export function ChatPage() {
   const {
+    searchOptions,
+    companyConditionsDraft,
+    conditionsError,
+    updateCompanyCondition,
+    applyCompanyConditions,
+    removeCompanyCondition,
+    clearCompanyConditions,
+    updateAcceptingOnly,
     canSearch,
     canRetrySearch,
     conversationCount,
@@ -174,6 +185,77 @@ export function ChatPage() {
           </span>
         </header>
 
+        <section className={chatPageStyles.conditionsPanel} aria-label="기업 검색 조건">
+          <details>
+            <summary className={chatPageStyles.conditionsSummary}>기업 조건 입력·수정 (선택)</summary>
+            <form onSubmit={(event) => { event.preventDefault(); applyCompanyConditions() }} noValidate>
+              <fieldset className={chatPageStyles.conditionsFields} disabled={isSearching}>
+                <legend className="sr-only">기업 조건 입력</legend>
+                {companyConditionFields.map((field) => (
+                  <label key={field.key} className={chatPageStyles.conditionsLabel}>
+                    {field.label}
+                    <input
+                      className={chatPageStyles.conditionsInput}
+                      type={field.key === 'establishedOn' ? 'date' : 'text'}
+                      value={companyConditionsDraft[field.key]}
+                      onChange={(event) => updateCompanyCondition(field.key, event.target.value)}
+                      placeholder={field.placeholder}
+                      maxLength={field.maxLength}
+                      min={field.key === 'establishedOn' ? '1900-01-01' : undefined}
+                      max={field.key === 'establishedOn' ? seoulToday() : undefined}
+                      aria-describedby="company-conditions-hint"
+                    />
+                  </label>
+                ))}
+                <div className={chatPageStyles.conditionsActions}>
+                  <button className={chatPageStyles.conditionsButton} type="submit">조건 적용</button>
+                  <button className={chatPageStyles.conditionsButton} type="button" onClick={clearCompanyConditions}>
+                    조건 전체 초기화
+                  </button>
+                </div>
+              </fieldset>
+            </form>
+            <p id="company-conditions-hint" className={chatPageStyles.conditionsHint}>
+              현재 소재지를 입력해 주세요. 이전 예정 지역은 추정하지 않습니다. 편집한 값은 ‘조건 적용’ 후 다음 검색부터 사용합니다.
+              조건은 이번 대화에서만 유지되며 새 대화·새로고침 시 초기화됩니다.
+              입력한 조건은 AI 추천에 사용되므로 개인정보·비밀정보는 입력하지 마세요.
+            </p>
+          </details>
+          {conditionsError ? <p className={chatPageStyles.searchError} role="alert">{conditionsError}</p> : null}
+          <div className={chatPageStyles.conditionsActions}>
+            <label className={chatPageStyles.conditionsLabel}>
+              접수 상태
+              <select
+                className={chatPageStyles.conditionsInput}
+                value={searchOptions.acceptingOnly ? 'accepting' : 'all'}
+                disabled={isSearching}
+                onChange={(event) => updateAcceptingOnly(event.target.value === 'accepting')}
+              >
+                <option value="accepting">접수 중만</option>
+                <option value="all">전체 (예정·마감·상태 미확인 포함)</option>
+              </select>
+            </label>
+            <ul className={chatPageStyles.conditionsChips} aria-label="적용된 기업 조건">
+              {companyConditionFields.map((field) => {
+                const value = searchOptions.companyConditions?.[field.key]
+                return value ? (
+                  <li key={field.key} className={chatPageStyles.conditionsChip}>
+                    {field.label}: {value}{' '}
+                    <button type="button" disabled={isSearching} aria-label={`${field.label} 조건 해제`} onClick={() => removeCompanyCondition(field.key)}>×</button>
+                  </li>
+                ) : null
+              })}
+            </ul>
+          </div>
+          <p className={chatPageStyles.conditionsHint}>
+            미입력은 자격 충족을 뜻하지 않습니다. AI 판단은 원문 확인이 필요합니다. 검색어와 충돌하면 적용한 기업 조건을 우선합니다.
+            이전 대화 내용에서 조건을 자동으로 추출하거나 변경하지 않습니다.
+          </p>
+          <p className={chatPageStyles.conditionsHint}>
+            조건을 바꾸면 다시 검색해 주세요. 아래 각 검색에는 당시 조건을 표시합니다.
+          </p>
+        </section>
+
         <div
           className={chatPageStyles.timeline}
           ref={timelineRef}
@@ -203,6 +285,9 @@ export function ChatPage() {
                   <div className={chatMessageBubbleClassName(isUser)}>
                     {message.text}
                   </div>
+                  {message.searchOptions && isUser ? (
+                    <p className={chatPageStyles.searchSnapshot}>검색 당시 조건: {formatSearchOptions(message.searchOptions)}</p>
+                  ) : null}
                   {message.id === messages[0]?.id ? (
                     <div className={chatPageStyles.suggestedQuestions}>
                       {suggestions.map((suggestion) => (
@@ -219,11 +304,7 @@ export function ChatPage() {
                     </div>
                   ) : null}
                   {message.programs?.length ? (
-                    <div className={chatPageStyles.programList}>
-                      {message.programs.map((program) => (
-                        <ProgramCard key={`${program.sourceCode}:${program.id}`} program={program} />
-                      ))}
-                    </div>
+                    <ProgramResults programs={message.programs} />
                   ) : null}
                 </div>
               </article>
@@ -493,16 +574,51 @@ function formatSyncTime(value: string | null) {
   return syncTimeFormatter.format(date)
 }
 
+function ProgramResults({ programs }: { programs: SupportProgram[] }) {
+  const groups = groupSupportProgramsByEligibility(programs)
+  return (
+    <div className={chatPageStyles.programList}>
+      <ProgramResultSection title="조건 확인 공고" programs={groups.matched}
+        description="지원 대상과 지역을 공식 API 본문에서 확인했습니다. 최종 신청 자격 확정은 아닙니다." />
+      <ProgramResultSection title="확인 필요 공고" programs={groups.reviewRequired}
+        description="지원 대상·지역이 불명확하거나 자격 판정이 제공되지 않았습니다. 조건 확인 공고와 구분해 확인하세요." />
+      <ProgramResultSection title="최신 공고" programs={groups.latest}
+        description="자격을 평가하지 않은 최신 목록입니다. 입력한 기업 조건에 맞는다는 뜻이 아닙니다." />
+    </div>
+  )
+}
+
+function ProgramResultSection({ title, description, programs }: {
+  title: string
+  description: string
+  programs: SupportProgram[]
+}) {
+  if (!programs.length) return null
+  return (
+    <section aria-label={title}>
+      <h2 className={chatPageStyles.resultSectionTitle}>{title} · {programs.length}건</h2>
+      <p className={chatPageStyles.conditionsHint}>{description}</p>
+      <div className={chatPageStyles.programList}>
+        {programs.map((program) => (
+          <ProgramCard key={`${program.sourceCode}:${program.id}`} program={program} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function ProgramCard({ program }: { program: SupportProgram }) {
+  const review = program.eligibilityReview
   return (
     <article className={chatPageStyles.programCard}>
       <div className={chatPageStyles.programCardHeader}>
-        <span className={chatPageStyles.programTag}>
-          {program.recommendationScore === null
-            ? '최신 공고'
-            : `AI 추천 ${program.recommendationScore}점`}
+        <span className={review?.status === 'MATCH' ? chatPageStyles.programTag : chatPageStyles.reviewRequiredTag}>
+          {review?.status === 'MATCH' ? '조건 확인 · API 본문 기준'
+            : review ? '확인 필요'
+              : program.recommendationScore === null ? '자격 미평가' : '자격 판정 없음 · 확인 필요'}
         </span>
         <span className={chatPageStyles.programDeadline}>
+          {{ OPEN: '접수 중', UPCOMING: '접수 예정', CLOSED: '접수 마감', UNKNOWN: '상태 확인 필요' }[program.status]} ·{' '}
           {formatApplicationDeadline(program)}
         </span>
       </div>
@@ -514,13 +630,29 @@ function ProgramCard({ program }: { program: SupportProgram }) {
       <div className={chatPageStyles.programDetails}>
         <span>{program.targetDescription}</span>
       </div>
-      <div className={chatPageStyles.matchedReasons}>
-        {program.matchedReasons.map((reason) => (
-          <span key={reason} className={chatPageStyles.matchedReason}>
-            ✓ {reason}
-          </span>
-        ))}
+      <div className={chatPageStyles.eligibilityReview}>
+        {review ? (
+          <>
+            <EligibilityAxis label="지원 대상" axis={review.target} />
+            <EligibilityAxis label="지역" axis={review.region} />
+          </>
+        ) : <p className={chatPageStyles.conditionsHint}>지원 대상·지역의 자격 판정이 제공되지 않았습니다.</p>}
+        <p className={chatPageStyles.conditionsHint}>
+          기업마당 등 공식 API 본문 기준 · 첨부파일 미검증<br />
+          최종 신청 자격을 보장하지 않습니다. 미입력 조건·이전 의향 등은 원문에서 추가 확인하세요.
+        </p>
       </div>
+      {program.recommendationScore !== null ? (
+        <p className={chatPageStyles.conditionsHint}>관련도 {program.recommendationScore}점 · 자격 충족 확률이 아닙니다.</p>
+      ) : null}
+      {program.matchedReasons.length ? (
+        <div className={chatPageStyles.matchedReasons}>
+          <span className={chatPageStyles.matchedReason}>관련 검색 정보 (자격 근거 아님):</span>
+          {program.matchedReasons.map((reason) => (
+            <span key={reason} className={chatPageStyles.matchedReason}>{reason}</span>
+          ))}
+        </div>
+      ) : null}
       <div className={chatPageStyles.programActions}>
         <Link
           className={chatPageStyles.programDetailsButton}
@@ -539,6 +671,35 @@ function ProgramCard({ program }: { program: SupportProgram }) {
       </div>
     </article>
   )
+}
+
+function EligibilityAxis({ label, axis }: { label: string; axis: SupportProgramEligibilityAxis }) {
+  return (
+    <div>
+      <h3 className={chatPageStyles.eligibilityAxisTitle}>
+        {label} · {axis.status === 'MATCH' ? '본문 조건 확인' : '확인 필요'}
+      </h3>
+      <p className={chatPageStyles.conditionsHint}>{axis.explanation}</p>
+      {axis.evidence.map((evidence) => (
+        <div key={evidence.field}>
+          <span className={chatPageStyles.matchedReason}>
+            공식 API {evidence.field === 'SUMMARY' ? '사업 요약' : '지원 대상'} 인용
+          </span>
+          <blockquote className={chatPageStyles.eligibilityQuote}>{evidence.quote}</blockquote>
+        </div>
+      ))}
+      {!axis.evidence.length ? <p className={chatPageStyles.conditionsHint}>확인 가능한 본문 인용 없음</p> : null}
+    </div>
+  )
+}
+
+function formatSearchOptions(options: ChatSearchOptions) {
+  const conditions = companyConditionFields.flatMap((field) => {
+    const value = options.companyConditions?.[field.key]
+    return value ? [`${field.label} ${value}`] : []
+  })
+  return [options.acceptingOnly ? '접수 중만' : '접수 상태 전체', ...conditions,
+    ...(conditions.length ? [] : ['기업 조건 미입력'])].join(' · ')
 }
 
 function createSupportProgramDetailPath(program: SupportProgram) {

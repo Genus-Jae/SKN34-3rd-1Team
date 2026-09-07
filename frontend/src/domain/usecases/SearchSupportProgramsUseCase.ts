@@ -1,5 +1,5 @@
 import type { SupportProgram } from '../entities/SupportProgram'
-import type { SupportProgramRepository } from '../repositories/SupportProgramRepository'
+import type { SupportProgramRepository, SupportProgramSearch } from '../repositories/SupportProgramRepository'
 
 type SupportProgramSearchRepository = Pick<SupportProgramRepository, 'search'>
 
@@ -15,12 +15,12 @@ export class SearchSupportProgramsUseCase {
     this.repository = repository
   }
 
-  async execute(query: string, signal?: AbortSignal): Promise<SearchSupportProgramsResult> {
-    const normalizedQuery = query.trim()
+  async execute(command: SupportProgramSearch, signal?: AbortSignal): Promise<SearchSupportProgramsResult> {
+    const normalizedQuery = command.query.trim()
     return {
       query: normalizedQuery,
       programs: await this.repository.search(
-        { query: normalizedQuery, acceptingOnly: true },
+        { ...command, query: normalizedQuery, acceptingOnly: command.acceptingOnly ?? true },
         signal,
       ),
     }

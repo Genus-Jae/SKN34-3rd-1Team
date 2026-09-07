@@ -27,6 +27,33 @@ export function isOfficialSupportProgramSourceUrl(sourceCode: string, value: str
   }
 }
 
+const eligibilityAxisDtoSchema = z.object({
+  status: z.enum(['MATCH', 'UNKNOWN']),
+  explanation: z.string().refine((value) => value.trim().length > 0
+    && Array.from(value).length <= 160 && !/\p{C}/u.test(value)),
+  evidence: z.array(z.object({
+    field: z.enum(['SUMMARY', 'TARGET_DESCRIPTION']),
+    quote: z.string().refine((value) => value.trim().length > 0
+      && Array.from(value).length <= 240 && !/\p{C}/u.test(value)),
+  })).max(1),
+}).superRefine((axis, context) => {
+  if (axis.status === 'MATCH' && axis.evidence.length !== 1) {
+    context.addIssue({ code: 'custom', path: ['evidence'], message: '조건 확인에는 공식 본문 인용이 필요합니다.' })
+  }
+})
+
+const eligibilityReviewDtoSchema = z.object({
+  status: z.enum(['MATCH', 'REVIEW_REQUIRED']),
+  basis: z.literal('OFFICIAL_API_TEXT'),
+  target: eligibilityAxisDtoSchema,
+  region: eligibilityAxisDtoSchema,
+}).superRefine((review, context) => {
+  const bothAxesMatch = review.target.status === 'MATCH' && review.region.status === 'MATCH'
+  if ((review.status === 'MATCH') !== bothAxesMatch) {
+    context.addIssue({ code: 'custom', path: ['status'], message: '전체 판정과 지원 대상·지역 판정이 일치해야 합니다.' })
+  }
+})
+
 export const supportProgramDtoSchema = z.object({
   sourceCode: sourceCodeSchema,
   id: z.string().min(1),
@@ -44,6 +71,7 @@ export const supportProgramDtoSchema = z.object({
   sourceUrl: z.string().url(),
   matchedReasons: z.array(z.string()),
   recommendationScore: z.number().int().min(0).max(100).nullable(),
+  eligibilityReview: eligibilityReviewDtoSchema.nullable().default(null),
 }).superRefine((program, context) => {
   if (isOfficialSupportProgramSourceUrl(program.sourceCode, program.sourceUrl)) return
 
@@ -83,5 +111,17 @@ export function toSupportProgram(dto: SupportProgramDto): SupportProgram {
     sourceUrl: dto.sourceUrl,
     matchedReasons: [...dto.matchedReasons],
     recommendationScore: dto.recommendationScore,
+    eligibilityReview: dto.eligibilityReview ? {
+      status: dto.eligibilityReview.status,
+      basis: dto.eligibilityReview.basis,
+      target: {
+        ...dto.eligibilityReview.target,
+        evidence: dto.eligibilityReview.target.evidence.map((evidence) => ({ ...evidence })),
+      },
+      region: {
+        ...dto.eligibilityReview.region,
+        evidence: dto.eligibilityReview.region.evidence.map((evidence) => ({ ...evidence })),
+      },
+    } : null,
   }
 }

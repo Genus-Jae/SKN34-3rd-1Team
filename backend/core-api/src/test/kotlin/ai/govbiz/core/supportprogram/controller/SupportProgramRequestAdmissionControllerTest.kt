@@ -53,6 +53,11 @@ class SupportProgramRequestAdmissionControllerTest {
     private fun searchRequest(address: String = "192.0.2.1"): MockHttpServletRequestBuilder =
         get(SEARCH).param("query", "서울 AI").with { it.remoteAddr = address; it }
 
+    private fun postSearchRequest(): MockHttpServletRequestBuilder = post(SEARCH)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""{"query":"서울 AI"}""")
+        .with { it.remoteAddr = "192.0.2.1"; it }
+
     private fun answerRequest(): MockHttpServletRequestBuilder = post(ANSWERS)
         .contentType(MediaType.APPLICATION_JSON)
         .content("""{"sourceCode":"BIZINFO","sourceProgramId":"PBLN_TEST","question":"신청 대상은?"}""")
@@ -74,6 +79,26 @@ class SupportProgramRequestAdmissionControllerTest {
             .andExpect(jsonPath("$.type").value("urn:govbiz:problem:support-program-rate-limited"))
             .andExpect(jsonPath("$.instance").value(ANSWERS))
         Mockito.verifyNoInteractions(evidence)
+        Mockito.verify(search, Mockito.times(1)).search("서울 AI", true)
+    }
+
+    @Test
+    fun postSearchSharesTheSameQuotaWithGetSearchAndEvidence() {
+        val mvc = mvc()
+        Mockito.`when`(search.search("서울 AI", true)).thenReturn(result)
+        mvc.perform(postSearchRequest()).andExpect(status().isOk())
+        mvc.perform(searchRequest()).andExpect(status().isTooManyRequests())
+        mvc.perform(answerRequest()).andExpect(status().isTooManyRequests())
+        Mockito.verify(search, Mockito.times(1)).search("서울 AI", true)
+        Mockito.verifyNoInteractions(evidence)
+    }
+
+    @Test
+    fun getSearchCannotBypassTheQuotaByChangingToPost() {
+        val mvc = mvc()
+        Mockito.`when`(search.search("서울 AI", true)).thenReturn(result)
+        mvc.perform(searchRequest()).andExpect(status().isOk())
+        mvc.perform(postSearchRequest()).andExpect(status().isTooManyRequests())
         Mockito.verify(search, Mockito.times(1)).search("서울 AI", true)
     }
 
@@ -118,6 +143,8 @@ class SupportProgramRequestAdmissionControllerTest {
         Mockito.`when`(search.search("서울 AI", true)).thenReturn(result)
         mvc.perform(get(SEARCH)).andExpect(status().isBadRequest())
         mvc.perform(get(SEARCH).param("query", "가".repeat(501))).andExpect(status().isBadRequest())
+        mvc.perform(postSearchRequest().content("""{"query":" "}"""))
+            .andExpect(status().isBadRequest())
         mvc.perform(post(ANSWERS).contentType(MediaType.APPLICATION_JSON).content("{}"))
             .andExpect(status().isBadRequest())
         mvc.perform(options(SEARCH)).andExpect(status().isOk())

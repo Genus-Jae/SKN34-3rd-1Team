@@ -99,12 +99,16 @@ function SupportProgramDetail({ program }: { program: SupportProgram }) {
             {formatStatus(program.status)}
           </strong>
           <span className={supportProgramDetailStyles.score}>
-            {program.recommendationScore === null
-              ? '공고 상세 정보'
-              : `AI 추천 ${program.recommendationScore}점`}
+            자격 미평가 · 공고 상세 정보
           </span>
         </div>
       </section>
+
+      <p className={supportProgramDetailStyles.sourceDescription}>
+        상세 조회는 검색 당시 기업 조건으로 자격을 다시 평가하지 않습니다.
+        검색 결과의 조건 확인 상태와 인용은 검색 화면에서 확인하세요.
+        지역·분야 태그만으로 신청 자격을 판단하지 마세요.
+      </p>
 
       <section className={supportProgramDetailStyles.details} aria-label="공고 조건">
         <DetailItem label="신청 기간">
@@ -131,12 +135,12 @@ function SupportProgramDetail({ program }: { program: SupportProgram }) {
         <section className={supportProgramDetailStyles.reasonSection} aria-labelledby="recommendation-reasons">
           <p className={supportProgramDetailStyles.sectionEyebrow}>검색 결과</p>
           <h2 id="recommendation-reasons" className={supportProgramDetailStyles.sectionTitle}>
-            이 공고를 추천한 이유
+            관련 검색 정보 (자격 근거 아님)
           </h2>
           <ul className={supportProgramDetailStyles.reasonList}>
             {program.matchedReasons.map((reason) => (
               <li key={reason} className={supportProgramDetailStyles.reason}>
-                ✓ {reason}
+                {reason}
               </li>
             ))}
           </ul>

@@ -5,6 +5,17 @@ function classes(...groups: string[]) {
 // 색상이나 CSS 속성이 아니라 ChatPage에서 맡는 UI 역할을 이름으로 사용합니다.
 // open/closed, user/assistant처럼 화면 상태가 달라지는 경우에는 base 스타일과 variant를 분리합니다.
 export const chatPageStyles = {
+  conditionsPanel: 'mx-6 mb-3 rounded-xl border border-[#dfe4f2] bg-white px-4 py-3 max-chat:mx-3',
+  conditionsSummary: 'cursor-pointer text-sm font-bold text-[#43527a]',
+  conditionsFields: 'mt-3 grid grid-cols-2 gap-3 border-0 p-0 disabled:opacity-60 max-chat:grid-cols-1',
+  conditionsLabel: 'grid gap-1 text-xs font-bold text-[#536087]',
+  conditionsInput: 'w-full rounded-lg border border-[#d8e0f3] bg-white px-3 py-2 text-sm font-normal text-app-ink',
+  conditionsActions: 'col-span-full flex flex-wrap items-center gap-2',
+  conditionsButton: 'rounded-lg border border-[#d8e0f3] bg-[#f0f2ff] px-3 py-2 text-xs font-bold text-[#43527a] disabled:opacity-50',
+  conditionsHint: 'my-2 text-xs leading-relaxed text-[#6471a0]',
+  conditionsChips: 'm-0 flex list-none flex-wrap gap-2 p-0 text-xs text-[#43527a]',
+  conditionsChip: 'rounded-lg bg-[#f0f2ff] px-2 py-1',
+  searchSnapshot: 'mt-2 text-xs leading-relaxed text-[#6471a0]',
   page: 'grid min-h-screen grid-cols-[278px_minmax(0,1fr)] bg-app-canvas text-app-ink max-chat:block',
   backdrop: 'hidden',
   backdropOpen:
@@ -94,6 +105,11 @@ export const chatPageStyles = {
     'disabled:cursor-not-allowed disabled:opacity-50',
   ),
   programList: 'mt-[0.9rem] grid gap-[0.8rem]',
+  resultSectionTitle: 'mt-3 mb-1 text-sm font-bold text-[#293454]',
+  eligibilityReview: 'mt-3 grid gap-2 rounded-lg border border-[#dfe4f2] bg-[#f7f8fc] p-3',
+  eligibilityAxisTitle: 'm-0 text-xs font-bold text-[#43527a]',
+  eligibilityQuote: 'mx-0 my-2 break-words border-l-2 border-[#9aa7cb] pl-3 text-xs leading-relaxed text-[#4d597c]',
+  reviewRequiredTag: 'rounded-[0.35rem] bg-[#fff4df] px-[0.48rem] py-1 text-[0.68rem] font-extrabold text-[#805a20]',
   searchingBubble: classes(
     'rounded-[1rem_1rem_1rem_0.25rem] bg-white px-[1.1rem] py-4 leading-[1.65]',
     'text-[#6d7898] shadow-[0_10px_30px_rgb(47_67_129_/_7%)]',
@@ -143,7 +159,7 @@ export const chatPageStyles = {
   composerHint: 'mt-[0.45rem] ml-[0.35rem] block text-[0.68rem] text-[#8a94ae]',
   programCard:
     'rounded-2xl border border-[#e4e8f5] bg-white p-[1.1rem] shadow-[0_12px_30px_rgb(47_67_129_/_7%)]',
-  programCardHeader: 'flex items-center justify-between gap-3',
+  programCardHeader: 'flex flex-wrap items-center justify-between gap-3',
   programTag:
     'rounded-[0.35rem] bg-[#f0f9e9] px-[0.48rem] py-1 text-[0.68rem] font-extrabold text-[#536d37]',
   programDeadline: 'text-[0.74rem] font-extrabold text-[#b75561]',

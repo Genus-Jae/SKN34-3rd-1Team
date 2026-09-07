@@ -32,6 +32,14 @@ class JsonDeserializationConfig {
             )
             reject(
                 builder,
+                LogicalType.Boolean,
+                CoercionInputShape.String,
+                CoercionInputShape.Integer,
+                CoercionInputShape.Float,
+                CoercionInputShape.EmptyString,
+            )
+            reject(
+                builder,
                 LogicalType.Enum,
                 CoercionInputShape.Integer,
                 CoercionInputShape.Float,

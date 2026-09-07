@@ -128,6 +128,30 @@ docker compose --env-file .env --file infrastructure/compose.yaml up --build
 AI Service의 `/internal/v1/support-program-rankings/rank`와 `/internal/v1/support-program-index/*`는
 Compose 네트워크 내부에서 Core API만 호출합니다. Host나 브라우저에 AI Service 포트를 공개하지 않습니다.
 
+### 백엔드 변경 반영과 검색 405 오류
+
+Web은 소스 디렉터리를 bind mount하여 Vite가 변경을 바로 반영하지만, Core·AI는 이미지 안의 JAR/Python 코드를
+실행합니다. 소스 수정이나 `docker compose restart`만으로 백엔드 코드가 갱신되지는 않습니다.
+C01처럼 공개 POST 검색과 내부 기업 조건 계약을 함께 변경했다면 **Core와 AI를 함께 재빌드**해야 합니다.
+화면의 POST 검색에 `405 Method Not Allowed`가 나오고 `OPTIONS /api/v1/support-programs/search`의 `Allow`에
+GET만 있다면 실행 중인 Core가 구버전인지 확인합니다. Core만 갱신하고 AI를 그대로 두는 것도 계약 불일치를 만듭니다.
+
+기존 `govbiz` 프로젝트의 환경 파일과 설정을 유지하며 백엔드만 교체하는 예시입니다. 다른 프로젝트 이름으로
+실행했다면 먼저 실제 프로젝트를 확인합니다. MySQL·Qdrant·Web을 재생성하거나 volume을 삭제하지 않습니다.
+Core 시작 시 기존 설정에 따라 자동 수집·색인이 동작할 수 있고 OpenAI 임베딩 비용이 발생할 수 있습니다.
+
+```bash
+docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml build core-api ai-service
+docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml up --detach --no-deps --no-build ai-service
+# AI가 준비된 뒤 Core를 교체합니다.
+docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml up --detach --no-deps --no-build core-api
+```
+
+교체 후 Web 프록시 경유 `/api/v1/health`, `/api/v1/health/ai-service`를 확인합니다. 검색 경로에 빈 JSON `{}`를
+POST하면 새 서버는 입력 오류 400을 반환해야 하며, 이 검증 요청은 실제 검색·모델 호출을 시작하지 않습니다.
+AI의 내부 `/openapi.json`에서는 랭킹 요청의 `companyConditions`와 내부 검색문 최대 길이 1,000을 확인할 수 있습니다.
+Health·계약 검증은 실제 모델의 검색 품질 검증과 구분합니다.
+
 ### 중지와 데이터 초기화
 
 일반 중지는 named volume의 MySQL·Qdrant 데이터를 유지합니다.

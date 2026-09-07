@@ -48,15 +48,20 @@ class Handler(BaseHTTPRequestHandler):
             rankings = {}
             for candidate in payload["candidates"]:
                 relevant = topic(candidate["title"] + " " + candidate["summary"]) == topic(payload["originalQuery"])
+                confirmed = relevant and not candidate.get("sourceTextTruncated", False)
                 rankings[candidate["id"]] = {
                     "semanticRelevance": 40 if relevant else 0,
                     "targetAssessment": {
-                        "eligibility": "MATCH" if relevant else "UNKNOWN",
+                        "eligibility": "MATCH" if confirmed else "UNKNOWN",
                         "score": 25 if relevant else 0,
+                        "evidence": [{"field": "TARGET_DESCRIPTION", "quote": candidate["targetDescription"][:240]}] if confirmed else [],
+                        "explanation": "테스트 대역의 본문 인용이며 실제 자격 판정이 아닙니다." if confirmed else "지원 대상 조건을 확인해야 합니다.",
                     },
                     "regionAssessment": {
-                        "eligibility": "MATCH" if relevant else "UNKNOWN",
+                        "eligibility": "MATCH" if confirmed else "UNKNOWN",
                         "score": 15 if relevant else 0,
+                        "evidence": [{"field": "SUMMARY", "quote": candidate["summary"][:240]}] if confirmed else [],
+                        "explanation": "테스트 대역의 본문 인용이며 실제 자격 판정이 아닙니다." if confirmed else "지역 조건을 확인해야 합니다.",
                     },
                     "applicationStatusFit": 10 if relevant else 0, "supportTypeFit": 10 if relevant else 0,
                     "recommendationReasons": [candidate["title"][:100]],

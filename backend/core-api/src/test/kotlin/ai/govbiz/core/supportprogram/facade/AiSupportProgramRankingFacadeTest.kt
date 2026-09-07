@@ -7,8 +7,16 @@ import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramEligibility
 import ai.govbiz.core.supportprogram.client.ai.dto.AiScoredSupportProgramPayload
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramRankingPayload
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramRankingRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramEligibilityEvidencePayload
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramEligibilityEvidenceField
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReviewStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityStatus
+import org.junit.jupiter.api.Assertions.assertTrue
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgram
+import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramCompanyConditionsRequest
+import java.time.LocalDate
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -29,12 +37,15 @@ class AiSupportProgramRankingFacadeTest {
         val programs = facade().rank(QUERY, candidates, 5)
 
         val request = client.requests.single()
+        assertEquals(null, request.companyConditions)
         assertEquals(AiSupportProgramRankingFacade.SCORING_VERSION, request.scoringVersion)
         assertEquals(2, request.resultLimit)
         assertEquals(listOf("BIZINFO:first", "BIZINFO:second"), request.candidates.map { it.id })
         assertEquals(listOf("second", "first"), programs.map { it.id })
         assertEquals(85, programs.first().recommendationScore)
         assertEquals(listOf("질의와 직접 관련"), programs.first().matchedReasons)
+        assertEquals(SupportProgramEligibilityReviewStatus.MATCH, programs.first().eligibilityReview?.status)
+        assertEquals("중소기업", programs.first().eligibilityReview?.target?.evidence?.single()?.quote)
     }
 
     @Test
@@ -82,8 +93,8 @@ class AiSupportProgramRankingFacadeTest {
                 program = candidate.program.copy(
                     title = "가".repeat(299) + "🚀추가",
                     organization = "가".repeat(199) + "🚀추가",
-                    summary = "가".repeat(999) + "🚀추가",
-                    targetDescription = "가".repeat(499) + "🚀추가",
+                    summary = "가".repeat(5999) + "🚀추가",
+                    targetDescription = "가".repeat(1999) + "🚀추가",
                     applicationPeriod = "가".repeat(199) + "🚀추가",
                     categories = listOf("가".repeat(99) + "🚀추가"),
                     regions = listOf("가".repeat(99) + "🚀추가"),
@@ -97,8 +108,9 @@ class AiSupportProgramRankingFacadeTest {
         val sent = client.requests.single().candidates.single()
         assertEquals("가".repeat(299) + "🚀", sent.title)
         assertEquals("가".repeat(199) + "🚀", sent.organization)
-        assertEquals("가".repeat(999) + "🚀", sent.summary)
-        assertEquals("가".repeat(499) + "🚀", sent.targetDescription)
+        assertEquals("가".repeat(5999) + "🚀", sent.summary)
+        assertEquals("가".repeat(1999) + "🚀", sent.targetDescription)
+        assertTrue(sent.sourceTextTruncated)
         assertEquals("가".repeat(199) + "🚀", sent.applicationPeriod)
         assertEquals(listOf("가".repeat(99) + "🚀"), sent.categories)
         assertEquals(listOf("가".repeat(99) + "🚀"), sent.regions)
@@ -226,7 +238,11 @@ class AiSupportProgramRankingFacadeTest {
             ),
         )
 
-        assertEquals(listOf("first"), facade().rank(QUERY, candidates(), 5).map { it.id })
+        val result = facade().rank(QUERY, candidates(), 5).single()
+        assertEquals("first", result.id)
+        assertEquals(SupportProgramEligibilityReviewStatus.REVIEW_REQUIRED, result.eligibilityReview?.status)
+        assertEquals(SupportProgramEligibilityStatus.UNKNOWN, result.eligibilityReview?.target?.status)
+        assertEquals(emptyList<Any>(), result.eligibilityReview?.target?.evidence)
     }
 
     @Test
@@ -255,6 +271,130 @@ class AiSupportProgramRankingFacadeTest {
         }
     }
 
+    @Test
+    fun rejectsMissingFabricatedWrongFieldAndMalformedEvidence() {
+        val valid = score("first", 40, 85, "공식 본문 근거")
+        val targetEvidence = valid.targetEvidence!!
+        val regionEvidence = valid.regionEvidence!!.single()!!
+        val invalid = listOf(
+            valid.copy(targetEvidence = null),
+            valid.copy(targetEvidence = emptyList()),
+            valid.copy(targetEvidence = listOf(null)),
+            valid.copy(targetEvidence = targetEvidence + targetEvidence),
+            valid.copy(targetExplanation = null),
+            valid.copy(targetExplanation = " "),
+            valid.copy(targetExplanation = "가".repeat(161)),
+            valid.copy(targetExplanation = "본문\n근거"),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(field = null))),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(quote = null))),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(quote = "경북 소재 기업만 신청 가능"))),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(quote = "서울  소재 중소기업 대상."))),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(field = AiSupportProgramEligibilityEvidenceField.TARGET_DESCRIPTION))),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(quote = "first 지원사업"))),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(quote = "AI"))),
+            valid.copy(regionEvidence = listOf(regionEvidence.copy(quote = "\t"))),
+        )
+        for (ranking in invalid) {
+            client.reset(response(ranking))
+            assertInvalidResponse()
+        }
+    }
+
+    @Test
+    fun preservesExactQuotesAndCountsSupplementaryCharactersAsOneCodePoint() {
+        val quote = "가".repeat(239) + "🚀"
+        val explanation = "가".repeat(159) + "🚀"
+        val candidate = candidates().first().let { it.copy(program = it.program.copy(summary = quote + "추가")) }
+        val valid = score("first", 40, 85, "근거").copy(
+            regionEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.SUMMARY, quote)),
+            regionExplanation = explanation,
+        )
+        client.reset(response(valid))
+        val result = facade().rank(QUERY, listOf(candidate), 5).single()
+        assertEquals(quote, result.eligibilityReview?.region?.evidence?.single()?.quote)
+        assertEquals(explanation, result.eligibilityReview?.region?.explanation)
+
+        client.reset(response(valid.copy(regionEvidence = listOf(valid.regionEvidence!!.single()!!.copy(quote = quote + "추")))))
+        assertThrows(AiServiceCallException::class.java) { facade().rank(QUERY, listOf(candidate), 5) }
+    }
+
+    @Test
+    fun truncatedSourceCanOnlyProduceUnknownReviewsAndCannotCiteOmittedText() {
+        val candidate = candidates().first().let { it.copy(program = it.program.copy(summary = "가".repeat(6000) + "숨겨진 요건")) }
+        client.reset(response(score("first", 40, 85, "근거")))
+        assertThrows(AiServiceCallException::class.java) { facade().rank(QUERY, listOf(candidate), 5) }
+
+        val unknown = score("first", 40, 85, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN, regionEligibility = AiSupportProgramEligibility.UNKNOWN)
+        client.reset(response(unknown))
+        assertEquals(SupportProgramEligibilityReviewStatus.REVIEW_REQUIRED, facade().rank(QUERY, listOf(candidate), 5).single().eligibilityReview?.status)
+        client.reset(response(unknown.copy(regionEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.SUMMARY, "숨겨진 요건")))))
+        assertThrows(AiServiceCallException::class.java) { facade().rank(QUERY, listOf(candidate), 5) }
+    }
+
+    @Test
+    fun keepsCompleteSourceAtTheExactLimitsAndDoesNotTreatTruncatedTagsAsSourceLoss() {
+        val candidate = candidates().first().let { it.copy(program = it.program.copy(
+            summary = "가".repeat(5999) + "🚀",
+            targetDescription = "나".repeat(1999) + "🚀",
+            title = "제목".repeat(300),
+            regions = listOf("태그".repeat(100)),
+        )) }
+        client.reset(response())
+        facade().rank(QUERY, listOf(candidate), 5)
+        assertEquals(false, client.requests.single().candidates.single().sourceTextTruncated)
+    }
+
+    @Test
+    fun unknownReviewsCanQuoteAvailableRequirementsWithoutClaimingAMatch() {
+        val unknown = score("first", 40, 85, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
+            .copy(targetEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.TARGET_DESCRIPTION, "중소기업")))
+        client.reset(response(unknown))
+        val review = facade().rank(QUERY, candidates(), 5).single().eligibilityReview!!
+        assertEquals(SupportProgramEligibilityReviewStatus.REVIEW_REQUIRED, review.status)
+        assertEquals("중소기업", review.target.evidence.single().quote)
+    }
+
+    @Test
+    fun matchBucketPrecedesUnknownEvenWhenUnknownHasAHigherScore() {
+        val match = score("first", 20, 65, "충족")
+        val unknown = score("second", 40, 85, "미확인", regionEligibility = AiSupportProgramEligibility.UNKNOWN)
+        client.reset(response(match, unknown))
+        assertEquals(listOf("first", "second"), facade().rank(QUERY, candidates(), 5).map { it.id })
+        client.reset(response(unknown, match))
+        assertInvalidResponse()
+    }
+
+    @Test
+    fun unknownBucketStillRequiresDescendingScores() {
+        val lower = score("first", 20, 65, "미확인", regionEligibility = AiSupportProgramEligibility.UNKNOWN)
+        val higher = score("second", 40, 85, "미확인", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
+        client.reset(response(lower, higher))
+        assertInvalidResponse()
+        client.reset(response(higher, lower))
+        assertEquals(listOf("second", "first"), facade().rank(QUERY, candidates(), 5).map { it.id })
+    }
+
+    @Test
+    fun rejectsControlCharactersEvenWhenTheQuoteExistsExactlyInTheSource() {
+        for (control in listOf("\n", "\r", "\t", "\u0000", "\u200b")) {
+            val quote = "서울${control}소재 기업"
+            val candidate = candidates().first().let { it.copy(program = it.program.copy(summary = quote)) }
+            client.reset(response(score("first", 40, 85, "근거").copy(
+                regionEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.SUMMARY, quote)),
+            )))
+            assertThrows(AiServiceCallException::class.java) { facade().rank(QUERY, listOf(candidate), 5) }
+        }
+    }
+
+    @Test
+    fun unknownStillRequiresAnExplanationAndAnExplicitEvidenceList() {
+        val unknown = score("first", 40, 85, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
+        for (invalid in listOf(unknown.copy(targetExplanation = null), unknown.copy(targetEvidence = null))) {
+            client.reset(response(invalid))
+            assertInvalidResponse()
+        }
+    }
+
     private fun assertInvalidResponse() {
         val exception = assertThrows(AiServiceCallException::class.java) {
             facade().rank(QUERY, candidates(), 5)
@@ -263,6 +403,26 @@ class AiSupportProgramRankingFacadeTest {
     }
 
     private fun facade() = AiSupportProgramRankingFacade(client)
+
+    @Test
+    fun passesExplicitConditionsAndCoreReferenceDateWithoutChangingTheOriginalQuery() {
+        client.reset(response())
+        val conditions = SupportProgramCompanyConditions("부산", "제조업", LocalDate.of(2024, 2, 29), "시제품")
+
+        facade().rank(QUERY, candidates(), 5, conditions, LocalDate.of(2026, 9, 7))
+
+        val request = client.requests.single()
+        assertEquals(QUERY, request.originalQuery)
+        assertEquals(AiSupportProgramCompanyConditionsRequest("부산", "제조업", "2024-02-29", "시제품", "2026-09-07"), request.companyConditions)
+    }
+
+    @Test
+    fun refusesConditionsWithoutAReferenceDateBeforeCallingAi() {
+        assertThrows(IllegalArgumentException::class.java) {
+            facade().rank(QUERY, candidates(), 5, SupportProgramCompanyConditions(region = "서울"))
+        }
+        assertEquals(emptyList<AiSupportProgramRankingRequest>(), client.requests)
+    }
 
     private fun candidates() = listOf(
         CatalogSupportProgram(program("first"), "2026-08-20"),
@@ -274,7 +434,7 @@ class AiSupportProgramRankingFacadeTest {
         sourceCode = sourceCode,
         title = "$id 지원사업",
         organization = "기관",
-        summary = "$id 기업을 지원합니다.",
+        summary = "$id 기업을 지원합니다. 서울 소재 중소기업 대상.",
         categories = listOf("AI"),
         regions = listOf("서울"),
         targetDescription = "중소기업",
@@ -340,6 +500,14 @@ class AiSupportProgramRankingFacadeTest {
         supportTypeFit = supportType,
         totalScore = total,
         recommendationReasons = listOf(reason),
+        targetEvidence = if (targetEligibility == AiSupportProgramEligibility.UNKNOWN) emptyList() else listOf(
+            AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.TARGET_DESCRIPTION, "중소기업"),
+        ),
+        targetExplanation = if (targetEligibility == AiSupportProgramEligibility.UNKNOWN) "추가 기업 정보가 없어 지원대상을 확인할 수 없습니다." else "공식 API 지원대상에 중소기업이 명시되어 있습니다.",
+        regionEvidence = if (regionEligibility == AiSupportProgramEligibility.UNKNOWN) emptyList() else listOf(
+            AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.SUMMARY, "서울 소재 중소기업 대상."),
+        ),
+        regionExplanation = if (regionEligibility == AiSupportProgramEligibility.UNKNOWN) "소재지 조건을 확인할 추가 정보가 필요합니다." else "공식 API 본문에 서울 소재 요건이 명시되어 있습니다.",
     )
 
     private companion object {

@@ -23,7 +23,7 @@ from .models import (
     SupportProgramRankingOutput,
     SupportProgramRankingRequest,
 )
-from .prompt import SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+from .prompt import SUPPORT_PROGRAM_COMPANY_CONDITIONS_INSTRUCTIONS, SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
 
 
 class SupportProgramRecommendationAgent:
@@ -42,7 +42,7 @@ class SupportProgramRecommendationAgent:
             instructions=SUPPORT_PROGRAM_RANKING_INSTRUCTIONS,
             model=model,
             model_settings=ModelSettings(
-                max_tokens=4_000,
+                max_tokens=10_000,
                 reasoning=Reasoning(effort="none"),
                 store=False,
                 timeout=model_timeout_seconds,
@@ -73,7 +73,10 @@ class SupportProgramRecommendationAgent:
             rankings=(rankings_type, ...),
         )
         # 모든 후보 ID를 필수 속성 키로 고정해 배열의 ID 누락·중복·추가 생성을 막는다.
-        agent = self._agent.clone(output_type=output_type)
+        instructions = self._agent.instructions
+        if request.company_conditions is not None:
+            instructions = f"{instructions}\n\n{SUPPORT_PROGRAM_COMPANY_CONDITIONS_INSTRUCTIONS}"
+        agent = self._agent.clone(output_type=output_type, instructions=instructions)
         try:
             async with asyncio.timeout(self._run_timeout_seconds):
                 result = await Runner.run(

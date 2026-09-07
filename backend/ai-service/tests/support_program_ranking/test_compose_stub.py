@@ -16,10 +16,12 @@ from app.support_program_ranking.service import SupportProgramRankingService
 @pytest.mark.anyio
 @pytest.mark.parametrize("candidate_count", [1, 20])
 @pytest.mark.parametrize("has_relevant_candidate", [True, False])
+@pytest.mark.parametrize("source_text_truncated", [False, True])
 async def test_compose_stub_matches_the_production_ranking_contract(
     monkeypatch: pytest.MonkeyPatch,
     candidate_count: int,
     has_relevant_candidate: bool,
+    source_text_truncated: bool,
 ) -> None:
     stub_path = Path(__file__).resolve().parents[4] / "infrastructure/stubs/openai/server.py"
     spec = importlib.util.spec_from_file_location("compose_openai_stub", stub_path)
@@ -41,6 +43,7 @@ async def test_compose_stub_matches_the_production_ranking_contract(
                 "targetDescription": "중소기업",
                 "applicationPeriod": "상시 접수",
                 "status": "OPEN",
+                "sourceTextTruncated": source_text_truncated,
             }
             for index in range(candidate_count)
         ],
@@ -87,6 +90,11 @@ async def test_compose_stub_matches_the_production_ranking_contract(
         assert "programId" not in assessment
         assert "totalScore" not in assessment
         assert "targetAssessment" in assessment and "regionAssessment" in assessment
+        for dimension in ("targetAssessment", "regionAssessment"):
+            assert "evidence" in assessment[dimension] and "explanation" in assessment[dimension]
+            if source_text_truncated:
+                assert assessment[dimension]["eligibility"] == "UNKNOWN"
+                assert assessment[dimension]["evidence"] == []
     assert result.original_query == request.original_query
     expected_ids = [request.candidates[-1].id] if has_relevant_candidate else []
     assert [ranking.program_id for ranking in result.rankings] == expected_ids
