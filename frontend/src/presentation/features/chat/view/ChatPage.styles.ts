@@ -5,6 +5,11 @@ function classes(...groups: string[]) {
 // 색상이나 CSS 속성이 아니라 ChatPage에서 맡는 UI 역할을 이름으로 사용합니다.
 // open/closed, user/assistant처럼 화면 상태가 달라지는 경우에는 base 스타일과 variant를 분리합니다.
 export const chatPageStyles = {
+  proposalPanel: 'ml-11 rounded-xl border border-[#bfc8eb] bg-white p-4 max-chat:ml-0',
+  proposalQuestion: 'text-sm font-bold leading-relaxed text-[#43527a]',
+  proposalRows: 'grid gap-3',
+  proposalRow: 'grid gap-1 border-b border-[#e8ecf7] pb-2',
+  proposalValue: 'm-0 grid gap-1 break-words text-xs leading-relaxed text-[#4d597c]',
   conditionsPanel: 'mx-6 mb-3 rounded-xl border border-[#dfe4f2] bg-white px-4 py-3 max-chat:mx-3',
   conditionsSummary: 'cursor-pointer text-sm font-bold text-[#43527a]',
   conditionsFields: 'mt-3 grid grid-cols-2 gap-3 border-0 p-0 disabled:opacity-60 max-chat:grid-cols-1',

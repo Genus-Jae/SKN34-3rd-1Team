@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import type { SupportProgramInterpretRequest } from '../../domain/entities/SupportProgramConversation'
+import { supportProgramInterpretationDtoSchema } from '../models/SupportProgramConversationDto'
 
 import type {
   SupportProgramEvidenceQuestion,
@@ -25,6 +27,21 @@ const SEARCH_SUPPORT_PROGRAMS_PATH = '/api/v1/support-programs/search'
 const SUPPORT_PROGRAM_SEARCH_READINESS_PATH = '/api/v1/support-programs/readiness'
 const SUPPORT_PROGRAM_DETAIL_PATH = '/api/v1/support-programs/detail'
 const SUPPORT_PROGRAM_EVIDENCE_ANSWER_PATH = '/api/v1/support-programs/detail/answers'
+
+export async function interpretSupportProgramConversationApi(command: SupportProgramInterpretRequest, signal?: AbortSignal) {
+  const response = await fetch(`${getCoreApiBaseUrl()}/api/v1/support-programs/conversation/interpret`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(command),
+    signal,
+  })
+  if (!response.ok) {
+    const rejection = await readRequestRejection(response)
+    if (rejection) throw rejection
+    throw new SupportProgramApiError('Core API could not interpret the conversation message.')
+  }
+  return supportProgramInterpretationDtoSchema.parse(await response.json())
+}
 
 export class SupportProgramApiError extends Error {
   constructor(message: string) {

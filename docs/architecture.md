@@ -15,7 +15,7 @@
                        ├→ 공공데이터포털: 기업마당 전체 공고 수집
                        ├→ 기업마당 공식 HTTPS 상세 페이지: 명시적 원문 질문 시 HTML 수집
                        └→ AI Service
-                           ├→ OpenAI: 문서·질의 임베딩, 후보 점수화·근거 답변
+                           ├→ OpenAI: 문서·질의 임베딩, 조건 변경 해석·후보 점수화·근거 답변
                            └→ Qdrant: 공고 검색·원문 근거 청크의 분리된 벡터 컬렉션
 ```
 
@@ -29,13 +29,28 @@ AI Service는 호스트에 포트를 게시하지 않습니다. MySQL·Qdrant·C
 
 ## 검색·상세 조회·원문 근거 질문
 
-공개 검색·근거 질문은 입력 검증 뒤 Controller에서 `SupportProgramRequestAdmissionService`를 거쳐
+공개 대화 해석·검색·근거 질문은 입력 검증 뒤 Controller에서 `SupportProgramRequestAdmissionService`를 거쳐
 기존 업무 Service를 실행합니다. 하나의 Bean이 접속 주소별/전체 최근 60초 및 동시 작업 한도를 공유하며,
 거절 시 하위 Service를 호출하지 않고 429 또는 503을 반환합니다. 잠금은 입장 판단·카운터 갱신에만 사용하고
 외부 호출 중에는 유지하지 않습니다. `finally`로 정상·예외 종료 모두 동시 슬롯을 반환합니다.
 준비 상태·상세 GET·Health·백그라운드 동기화·비웹 평가는 이 공개 제한과 분리합니다.
 전달 헤더를 기본 신뢰하지 않으며 Compose 프록시/NAT 뒤에서는 주소별 한도를 공유할 수 있습니다.
 단일 프로세스 보호이며 분산 한도·전역 비용 상한은 아닙니다. [설정·경계·검증](support-program-request-limits.md)을 참고하세요.
+
+### 후속 대화의 조건 변경 해석
+
+`POST /api/v1/support-programs/conversation/interpret`는 작은 현재 상태·새 메시지·선택적인 미확정 초안과
+마지막 질문 하나만 처리합니다. Core의 전용 Service와 AI Client를 통해 AI Service의 조건 해석 Agent를 호출하고,
+변경 목록을 검증·병합해 제안 또는 보완 질문을 반환합니다. 전체 상태 재작성으로 조건이 누락되지 않도록
+변경 목록에 없는 필드는 코드로 유지합니다. 변경 전후 필드 목록은 Core가 계산합니다.
+
+이 단계는 Search Service·Repository·MySQL·Qdrant를 호출하지 않습니다. Web은 미확정 제안을 별도로 보관하고
+사용자가 확인했을 때만 조건을 적용해 아래 기존 POST 검색을 실행합니다. 해석과 확인 검색은 별개의 공개 요청입니다.
+질문·오류·취소는 확정 조건을 바꾸지 않으며, 사용자가 확인한 검색 실패의 재시도는 다시 해석하지 않습니다.
+서버 대화 세션·영구 프로필·무제한 이력·Agent graph는 추가하지 않습니다.
+[C02 계약·검증 기록](conversation-condition-update.md)에 상태·문자·날짜·실패 경계를 명시합니다.
+
+### 확인된 조건의 검색
 
 ```text
 POST /api/v1/support-programs/search (조건 검색)
@@ -115,7 +130,8 @@ nested `anyOf` 스키마가 `INCOMPATIBLE`의 점수를 0으로 제한하고, `M
 검증하며 실제 전달된 해당 필드의 정확한 부분 문자열만 인정합니다. 인용 존재 검증이 의미 판단을 보증하지는 않습니다.
 `UNKNOWN`은 확인 필요 묶음으로 분리하고 두 축 MATCH 묶음 뒤에 정렬합니다. 각 묶음 안에서는 점수순입니다.
 검색당 최대 5개이며 공개 DTO의 `eligibilityReview`로 판정·설명·근거와 `OFFICIAL_API_TEXT` 범위를 노출합니다.
-첨부파일을 자동 판독하거나 신청 자격을 확정하는 기능은 아닙니다. DB·색인 구조와 외부 호출 횟수는 바꾸지 않습니다.
+첨부파일을 자동 판독하거나 신청 자격을 확정하는 기능은 아닙니다. v4 점수화는 기존 DB·색인 구조와 호출 횟수를
+유지합니다. C02 대화 해석은 사용자 확인 검색에 앞서는 별도 모델 호출입니다.
 AI Service가 부적격 항목을 최종 응답에 넣으면 Core는 이를 응답 계약 위반으로 거부합니다.
 결과가 0개인 것은 정상일 수 있으며 관련 없는 공고로 5개를 채우지 않습니다.
 
@@ -343,13 +359,15 @@ Awilix의 `app/di`에서 Repository·UseCase·외부 함수를 구성하고 `app
 `useSupportProgramEvidenceQuestionViewModel`을 각각 사용하고 URL의 복합 식별자로 이동합니다.
 
 채팅 메시지·검색 조건은 Redux Toolkit으로 관리하고 검색 요청 흐름은 내부 채팅 Hook의 thunk에 둡니다.
-기업 조건은 사용자가 폼에서 명시적으로 적용하며 현재 대화의 메모리에만 보관합니다. 검색 요청마다
-그 시점의 적용 조건을 사용하고, 새 대화·브라우저 새로고침으로 초기화됩니다. 이전 메시지가 화면에
-남아 있어도 그 메시지에서 조건을 자동 추출하지 않습니다. 로그인·프로필 영속 저장과 C02 대화 갱신은 후속 범위입니다.
+기업 조건은 폼에서 직접 적용하거나 C02 변경 제안을 확인해 적용하며 현재 대화의 메모리에만 보관합니다.
+검색 요청마다 그 시점의 적용 조건을 사용하고, 새 대화·브라우저 새로고침으로 초기화됩니다.
+C02는 작은 현재 상태와 새 발화만 해석하며 화면의 전체 메시지를 다시 전송하지 않습니다.
+미확정 초안·질문·검색 의도와 적용 조건을 구분합니다. 로그인·프로필 영속 저장은 후속 범위입니다.
 `ChatPage`는 페이지 ViewModel인 `viewmodel/useChatPageViewModel` 하나를 사용합니다. 이 ViewModel은
 `hooks/useSupportProgramChat`의 Redux 상태·검색 요청 수명과 `hooks/useSupportProgramSearchReadiness`의
 준비 상태 조회·polling을 조합합니다. 페이지 ViewModel은
-검색 가능 여부에 따른 제출·재시도·추천 질문 처리와 사이드바 상태를 소유하고, DOM 참조·입력 조합·
+검색 확인·검색 재시도만 준비 상태에 따라 제한하며 메시지 제출·추천 질문·다시 해석은 이와 독립적으로 처리합니다.
+페이지 ViewModel은 사이드바 상태를 소유하고, DOM 참조·입력 조합·
 포커스·스크롤도 Hook 로컬로 관리합니다. View는 렌더링·이벤트 연결·순수 표시용 포맷을 담당합니다.
 React Router는 검색 화면,
 지원사업 상세와 두 SampleItem 예제 화면을 연결합니다. SampleItem은 업무 기능이 아니라 같은 UseCase의
@@ -360,8 +378,8 @@ Core의 공개 계약은 기능별 `controller/dto`, 외부 계약은 시스템�
 `DbRow`를 Repository 밖으로 노출하지 않습니다. 같은 필드가 있어도 외부 입력과 공개 응답을 하나의
 타입으로 합치지 않습니다. 상세 배치 규칙은 [Core API README](../backend/core-api/README.md)에 있습니다.
 
-AI Service는 점수화와 원문 근거 답변에서 각각 `HTTP API → Service → Agent → OpenAI → Response` 흐름으로
-실행합니다. `bootstrap.py`가 클라이언트와 서비스 수명주기를 구성하고, 두 typed Agent를 각각
+AI Service는 조건 변경 해석·점수화·원문 근거 답변에서 각각 `HTTP API → Service → Agent → OpenAI → Response` 흐름으로
+실행합니다. `bootstrap.py`가 클라이언트와 서비스 수명주기를 구성하고, 역할이 다른 typed Agent를 각각
 `max_turns=1`로 실행합니다. 현재 tool·handoff·multi-agent orchestration은 없습니다. 일반 공고 색인·검색은
 `support_program_index`, 원문 청크 색인·검색은 `support_program_evidence`가 OpenAI 임베딩과 분리된 Qdrant
 컬렉션을 직접 사용합니다.
@@ -370,9 +388,10 @@ AI Service는 점수화와 원문 근거 답변에서 각각 `HTTP API → Servi
 유지합니다. 토크나이저 준비·인코딩·잘라내기를 작업 스레드에서 실행해 HTTP 이벤트 루프를 막지 않으며,
 OpenAI 호출·응답 검증·오류 처리는 각 Service에 남겨 둡니다.
 
-추천 점수화와 근거 답변의 기본 제한시간은 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`입니다.
+조건 해석·추천 점수화·근거 답변의 기본 제한시간은 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`입니다.
 AI Health도 Core의 같은 읽기 설정을 사용합니다. 공고 의미 검색 전체는 AI에서 `25s`, Core 읽기는
 `30s`이며, 검색 화면은 의미 검색과 점수화의 순차 호출을 고려해 `70s` 후 요청을 취소합니다.
+C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 70초 검색 요청에 해석을 합치지 않습니다.
 
 ## 오류 경계
 

@@ -19,6 +19,7 @@ from app.support_program_evidence.answer_service import SupportProgramEvidenceAn
 from app.support_program_evidence.service import SupportProgramEvidenceService
 from app.bootstrap import ApplicationContainer, build_application_container
 from app.config import Settings
+from app.support_program_conversation.service import SupportProgramConversationService
 
 
 OPENAI_SETTINGS = Settings(
@@ -116,6 +117,10 @@ async def test_builds_and_wires_agent_in_the_composition_root(
         SupportProgramEvidenceAnswerService,
     )
     assert container.openai_client is client
+    assert isinstance(container.support_program_conversation_service, SupportProgramConversationService)
+    assert container.support_program_conversation_service._agent._agent.model is model
+    assert container.support_program_conversation_service._agent._agent.model_settings.timeout == 1.25
+    assert container.support_program_conversation_service._agent._run_timeout_seconds == 1.75
     assert captured_client_arguments == {
         "api_key": "private-key",
         "timeout": 1.25,

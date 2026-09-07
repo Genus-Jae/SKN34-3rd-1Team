@@ -1,6 +1,8 @@
 """Deterministic HTTP test double; never a production AI fallback or quality benchmark."""
 
 import json
+import re
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -10,6 +12,40 @@ def topic(text: str) -> int:
     if "수출" in text or "해외 진출" in text:
         return 0
     return 2
+
+
+def conversation_output(payload: dict) -> dict | None:
+    """C02의 정해진 smoke 사례만 응답한다. 자연어 해석 품질 대역이 아니다."""
+    message = payload["message"]
+    updates = []
+    question = None
+    if message == "부산으로 변경":
+        updates = [{"field": "REGION", "operation": "SET", "value": "부산", "evidence": "부산"}]
+    elif message == "지원금 위주":
+        updates = [
+            {"field": field, "operation": "SET", "value": "지원금", "evidence": "지원금"}
+            for field in ("QUERY", "SUPPORT_PURPOSE")
+        ]
+    elif message == "사업화 지원을 찾고 싶어요":
+        updates = [{"field": "QUERY", "operation": "SET", "value": "사업화 지원", "evidence": "사업화 지원"}]
+    elif message == "지역 조건 삭제":
+        updates = [{"field": "REGION", "operation": "CLEAR", "value": None, "evidence": message}]
+    elif message == "전체 초기화":
+        updates = [{"field": field, "operation": "CLEAR", "value": None, "evidence": message}
+                   for field in ("QUERY", "REGION", "INDUSTRY", "ESTABLISHED_ON", "SUPPORT_PURPOSE", "ACCEPTING_ONLY")]
+        question = "어떤 지원사업을 찾으시나요?"
+    elif message in ("설립 2년", "부산이나 대구로"):
+        question = "정확한 설립일을 YYYY-MM-DD 형식으로 알려주세요." if message == "설립 2년" else "현재 소재지가 부산인가요, 대구인가요?"
+    elif payload.get("pendingClarification") and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", message):
+        updates = [{"field": "ESTABLISHED_ON", "operation": "SET", "value": date.fromisoformat(message).isoformat(), "evidence": message}]
+    else:
+        return None
+    base = payload["pendingClarification"]["draftContext"] if payload.get("pendingClarification") else payload["context"]
+    query = next((update["value"] for update in updates if update["field"] == "QUERY"), base["query"])
+    if query is None and question is None:
+        question = "어떤 지원사업을 찾으시나요?"
+    return {"status": "READY" if question is None else "CLARIFICATION_REQUIRED",
+            "updates": updates, "clarificationQuestion": question}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -43,6 +79,13 @@ class Handler(BaseHTTPRequestHandler):
                 content = user["content"]
                 text = content if isinstance(content, str) else "".join(part.get("text", "") for part in content)
                 payload = json.loads(text)
+            if payload.get("schemaVersion") == "govbiz-support-program-conversation-v1":
+                output = conversation_output(payload)
+                if output is None:
+                    self.respond(400, {"error": {"message": "unsupported conversation fixture message"}})
+                    return
+                self.respond_model_output(request, output)
+                return
             # Match the Agent's keyed assessment contract. The production Service
             # attaches program IDs and calculates totals; the model does neither.
             rankings = {}
@@ -66,15 +109,18 @@ class Handler(BaseHTTPRequestHandler):
                     "applicationStatusFit": 10 if relevant else 0, "supportTypeFit": 10 if relevant else 0,
                     "recommendationReasons": [candidate["title"][:100]],
                 }
-            self.respond(200, {
+            self.respond_model_output(request, {"rankings": rankings})
+            return
+        self.respond(404, {"error": {"message": "unexpected fixture path"}})
+
+    def respond_model_output(self, request: dict, output: dict) -> None:
+        self.respond(200, {
                 "id": "resp_fixture", "created_at": 0, "object": "response", "model": request["model"],
                 "error": None, "incomplete_details": None, "status": "completed", "parallel_tool_calls": False,
                 "tool_choice": "none", "tools": [], "output": [{"id": "msg_fixture", "type": "message",
                     "role": "assistant", "status": "completed", "content": [{"type": "output_text",
-                    "annotations": [], "text": json.dumps({"rankings": rankings}, ensure_ascii=False)}]}],
+                    "annotations": [], "text": json.dumps(output, ensure_ascii=False)}]}],
             })
-            return
-        self.respond(404, {"error": {"message": "unexpected fixture path"}})
 
     def respond(self, status: int, value: dict) -> None:
         data = json.dumps(value, ensure_ascii=False).encode()

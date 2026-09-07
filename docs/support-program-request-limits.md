@@ -6,8 +6,10 @@
 ## 적용 범위와 기본값
 
 `GET /api/v1/support-programs/search`, `POST /api/v1/support-programs/search`와
-`POST /api/v1/support-programs/detail/answers`가
+`POST /api/v1/support-programs/detail/answers`, `POST /api/v1/support-programs/conversation/interpret`가
 한 Core 프로세스의 같은 한도를 공유한다. 검색 GET에 대한 HEAD 요청도 동일하게 처리한다.
+C02 해석과 사용자 확인 후 검색은 서로 다른 HTTP 요청이므로 각각 한도를 사용한다.
+기본 주소별 한도에서는 다른 요청이 없을 때 해석+검색 쌍을 최근 60초에 최대 3회 허용한다.
 
 | 설정 환경변수 | 기본값 | 허용 범위 |
 |---|---:|---:|
@@ -31,12 +33,12 @@
 
 ```text
 HTTP 요청 및 입력 검증
-  → SupportProgramController
+  → 해당 기능의 Controller
   → SupportProgramRequestAdmissionService.execute(접속 주소)
       ├→ 최근 60초 한도 초과: 429, 하위 Service 호출 없음
       ├→ 동시 처리 한도 초과: 503, 대기열 없이 즉시 거절
       └→ 입장 허용
-          → 기존 SearchService 또는 EvidenceService
+          → SearchService, EvidenceService 또는 ConversationService
           → 기존 Repository / Facade / Client 호출
           → 응답 또는 예외 발생 시 finally에서 동시 처리 슬롯 반환
 ```

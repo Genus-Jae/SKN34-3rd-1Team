@@ -2,7 +2,7 @@
 
 ## 현재 구조
 
-GovBiz AI Service에는 현재 실제 업무 Agent가 두 개 있습니다. 공고 임베딩·Qdrant 색인·후보 검색과
+GovBiz AI Service에는 현재 실제 업무 Agent가 세 개 있습니다. 공고 임베딩·Qdrant 색인·후보 검색과
 상세 원문 청크 색인·근거 검색은 Service가 직접 처리하며 별도 Agent가 아닙니다.
 
 ```text
@@ -64,6 +64,21 @@ Answer Agent는 한 번의 typed structured output 호출만 사용하며 tool·
 `INSUFFICIENT_EVIDENCE`에는 인용이 없어야 합니다. Service는 상태 규칙 외에도 Agent가 입력에 없던
 청크 ID를 인용하지 않았는지 확인합니다.
 
+## 확인 전 검색 조건 해석 Agent
+
+`support_program_conversation`의 구체 `SupportProgramConversationAgent`는 순위화나 상세 근거 답변과
+구분되는 역할입니다. router/models/prompt/agent/service/errors 배치는 기존 기능과 같습니다.
+
+`HTTP API → SupportProgramConversationService → SupportProgramConversationAgent → OpenAI → Response`
+
+현재 메시지·작은 context·선택적인 마지막 질문과 draftContext·Core 기준일만 입력합니다.
+단일 Runner(max_turns=1)는 최대 6개 SET/CLEAR 패치와 READY/CLARIFICATION_REQUIRED를 선택합니다.
+Service는 현재 메시지 exact evidence·명시적 전체 날짜·패치 중복·병합 후 날짜 및 READY query를 검증합니다.
+부재 필드는 코드로 보존하며 보류 중인 초안이 있으면 그 상태에서 이어갑니다. 모델이 전체 상태를 다시 쓰거나
+다른 Agent·임베딩·검색을 호출하지 않습니다. 사용자 확인 후 기존 검색 API를 별도로 호출하는 책임은 Web/Core에 있습니다.
+같은 client/model·timeout을 사용하고 store=false/tracing 비활성입니다. 대화 세션·graph·handoff·provider는 없습니다.
+패치 인용 검증은 의미 정확도를 보증하지 않으며 옛 지역 query 제거 등의 의미 회귀는 별도 실제 모델 평가가 필요합니다.
+
 ## 계층 규칙
 
 - `router`는 HTTP와 안전한 오류 변환만 담당합니다.
@@ -111,6 +126,12 @@ tests/
 │   ├── test_agent.py
 │   ├── test_router.py
 │   └── test_service.py
+├── support_program_conversation/
+│   ├── test_models.py
+│   ├── test_agent.py
+│   ├── test_service.py
+│   ├── test_router.py
+│   └── test_compose_stub.py
 ├── test_bootstrap.py
 ├── test_config.py
 ├── test_support_program_embedding.py
@@ -121,6 +142,7 @@ tests/
 - 순위화 API 테스트: 요청 검증, 정렬, 후보 ID 위조·누락 거부, 자격 불일치 제외, 안전한 503
 - 색인 테스트: 고정 임베딩 HTTP 응답과 Qdrant로 색인·현재 해시 필터·누락 및 장애 처리 검증
 - 상세 근거 테스트: 별도 collection, 현재 청크 전량 색인, 교차 문서 ID 재사용 차단, strict Agent 출력·인용 집합 검증
+- 조건 변경 테스트: UTF-16·날짜·필수 nullable 키, 실제 SDK strict schema, 현재 메시지 인용, 부재 필드 보존·초안 병합, 안전한 오류·대역 계약
 - bootstrap 테스트: 단일 client/model/Agent/Service 객체 그래프와 종료 시 client close
 - 공유 임베딩 전처리 테스트: 두 Service의 토큰화가 이벤트 루프 밖에서 실행되고 입력 순서·토큰 상한을 유지하는지 확인
 

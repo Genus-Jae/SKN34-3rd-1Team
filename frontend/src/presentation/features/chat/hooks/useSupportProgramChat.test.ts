@@ -12,11 +12,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppStore } from '../../../../app/store'
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
+import { readyConversationProposal } from '../../../../data/fixtures/supportProgramConversation'
 import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
 import type { SearchSupportProgramsUseCase } from '../../../../domain/usecases/SearchSupportProgramsUseCase'
 import {
   draftChanged,
   maximumSupportProgramSearchQueryLength,
+  interpretationStarted,
+  interpretationSucceeded,
+  selectConversationContext,
 } from '../state/chatSlice'
 import { useSupportProgramChat } from './useSupportProgramChat'
 
@@ -375,7 +379,24 @@ function renderChatHook(
   store: ReturnType<typeof createAppStore>,
   searchUseCase: Pick<SearchSupportProgramsUseCase, 'execute'>,
 ) {
-  return renderHook(() => useSupportProgramChat(searchUseCase), {
+  // 기존 70초 검색·취소 회귀는 READY를 준비한 뒤 사용자의 명시적 확인으로 시작합니다.
+  // 실제 해석→확인 흐름은 useSupportProgramConversation.test.ts에서 별도로 검증합니다.
+  return renderHook(() => {
+    const chat = useSupportProgramChat(searchUseCase, { execute: vi.fn() })
+    return { ...chat, submitMessage: () => {
+      const state = store.getState()
+      if (state.chat.searchStatus === 'pending' || state.chat.draft.length > maximumSupportProgramSearchQueryLength || !state.chat.draft.trim()) {
+        return chat.submitMessage()
+      }
+      if (state.chat.searchStatus === 'failed') return chat.retrySearch()
+      const request = { message: state.chat.draft, context: selectConversationContext(state) }
+      const started = interpretationStarted(request)
+      store.dispatch(started)
+      store.dispatch(interpretationSucceeded({ requestId: started.payload.requestId,
+        result: readyConversationProposal({ ...request.context, query: request.message.trim() }) }))
+      return chat.confirmInterpretation()
+    } }
+  }, {
     wrapper: createWrapper(store),
   })
 }
