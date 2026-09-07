@@ -13,6 +13,7 @@
 | [기술 스택과 데이터 구성](technology.md) | 사용 기술·버전, MySQL·Qdrant 저장 역할과 점수 정책 |
 | [구현 현황](implementation-status.md) | 현재 완료 단계, 검증 범위, 제한 사항과 다음 작업 |
 | [코드 검수·최적화 기록](code-audit-20260907.md) | 학습 코드 보존, 미사용 항목 제거, 장애·화면·평가 오류 수정과 전체 검증 결과 |
+| [기획 대조 추가 검수](project-review-20260907.md) | 추가 발견 버그의 재현·수정, 이번 실행 검증과 환경 제약 |
 
 ## 실행과 API
 
@@ -29,6 +30,7 @@
 
 | 문서 | 확인할 내용 |
 |---|---|
+| [기획 정합성·국내 경쟁 전략·개발 백로그](development-strategy-20260907.md) | 기획서 요구별 현재 차이, 국내 경쟁군 근거, P0/P1 작업·선행 조건·완료 기준·출시 게이트 |
 | [실데이터 평가 결과·이어받기](../evaluation/support-program-search/runs/support-program-catalog-20260906-v1/README.md) | 고정 스냅샷·판정 원표·3단계 기준선·4단계 전후 비교와 API 없는 재현 |
 | [검색 평가 도구](../evaluation/support-program-search/README.md) | 가상 공고 회귀 평가, 실제 후보·최종 추천 캡처와 지표 계산 |
 | [RAG 검수·답변 평가](../evaluation/support-program-evidence/README.md) | 5단계 인용 오류 수정, 가상 근거 평가·공식 HTML 전체 경로 검증, API 없는 기록 재검사 |

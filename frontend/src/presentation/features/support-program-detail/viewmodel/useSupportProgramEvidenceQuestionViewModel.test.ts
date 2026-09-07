@@ -13,6 +13,7 @@ import type {
 import type { AskSupportProgramEvidenceQuestionUseCase } from '../../../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
 import {
   maximumSupportProgramEvidenceQuestionLength,
+  supportProgramEvidenceQuestionTimeoutMilliseconds,
   useSupportProgramEvidenceQuestionViewModel,
 } from './useSupportProgramEvidenceQuestionViewModel'
 
@@ -22,6 +23,60 @@ afterEach(() => {
 })
 
 describe('useSupportProgramEvidenceQuestionViewModel', () => {
+  it('times out a stalled question, preserves its input, and ignores the old answer after a manual retry', async () => {
+    vi.useFakeTimers()
+    const pending = deferredEvidenceResult()
+    let requestSignal: AbortSignal | undefined
+    const execute = vi.fn()
+      .mockImplementationOnce((_command: unknown, signal?: AbortSignal) => {
+        requestSignal = signal
+        return pending.promise
+      })
+      .mockResolvedValueOnce(answerResult())
+    const useCase = createEvidenceQuestionUseCase(execute)
+    const { result } = renderHook(() => useSupportProgramEvidenceQuestionViewModel(getIdentity(), useCase))
+    act(() => result.current.updateQuestion('신청 대상은 누구인가요?'))
+    let firstRequest!: Promise<void>
+    act(() => { firstRequest = result.current.submitQuestion() })
+
+    await act(async () => vi.advanceTimersByTimeAsync(supportProgramEvidenceQuestionTimeoutMilliseconds - 1))
+    expect(result.current.isAnswering).toBe(true)
+    expect(requestSignal?.aborted).toBe(false)
+
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(requestSignal?.aborted).toBe(true)
+    expect(result.current.state).toEqual({ status: 'timed-out' })
+    expect(result.current.question).toBe('신청 대상은 누구인가요?')
+    expect(result.current.canSubmit).toBe(true)
+    expect(execute).toHaveBeenCalledOnce()
+
+    await act(async () => result.current.submitQuestion())
+    expect(result.current.state).toEqual({ status: 'answered', answer: evidenceAnswer() })
+    await act(async () => {
+      pending.resolve({ outcome: 'unavailable' })
+      await firstRequest
+    })
+    expect(result.current.state).toEqual({ status: 'answered', answer: evidenceAnswer() })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('clears question request timers on cancellation and unmount', () => {
+    vi.useFakeTimers()
+    const pending = deferredEvidenceResult()
+    const useCase = createEvidenceQuestionUseCase(vi.fn().mockReturnValue(pending.promise))
+    const { result, unmount } = renderHook(() => useSupportProgramEvidenceQuestionViewModel(getIdentity(), useCase))
+    act(() => result.current.updateQuestion('신청 대상은 누구인가요?'))
+    act(() => { void result.current.submitQuestion() })
+    expect(vi.getTimerCount()).toBe(1)
+    act(() => result.current.cancelQuestion())
+    expect(vi.getTimerCount()).toBe(0)
+
+    act(() => { void result.current.submitQuestion() })
+    expect(vi.getTimerCount()).toBe(1)
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it.each(['KSTARTUP', 'OTHERSOURCE'])('blocks %s questions before executing the use case', async (sourceCode) => {
     const execute = vi.fn()
     const { result } = renderHook(() => useSupportProgramEvidenceQuestionViewModel(

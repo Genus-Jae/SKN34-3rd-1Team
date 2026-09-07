@@ -48,7 +48,7 @@ def build_evaluation_app(output_dir: Path, qdrant_url: str, max_api_calls: int):
 
     def save():
         temporary = output_dir / "api-capture.partial.json"
-        temporary.write_text(json.dumps(trace, ensure_ascii=False, indent=2) + "\n")
+        temporary.write_text(json.dumps(trace, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
         temporary.replace(output_dir / "api-capture.json")
 
     async def before_request(request):

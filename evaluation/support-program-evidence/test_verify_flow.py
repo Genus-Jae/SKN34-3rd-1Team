@@ -18,8 +18,8 @@ spec.loader.exec_module(verify_flow)
 
 @pytest.fixture
 def records():
-    return (json.loads((RUN / "core/capture.json").read_text()),
-            json.loads((RUN / "api/api-capture.json").read_text()))
+    return (json.loads((RUN / "core/capture.json").read_text(encoding="utf-8")),
+            json.loads((RUN / "api/api-capture.json").read_text(encoding="utf-8")))
 
 
 def test_recalculates_the_saved_official_flow_without_semantic_quality_claims(records):
@@ -38,8 +38,8 @@ def test_recalculates_the_saved_official_flow_without_semantic_quality_claims(re
 
 @pytest.mark.parametrize("capture_path", sorted((HERE / "runs").glob("official-flow-*/core/capture.json")))
 def test_all_shared_official_runs_recalculate_without_api(capture_path):
-    core = json.loads(capture_path.read_text())
-    api = json.loads((capture_path.parent.parent / "api/api-capture.json").read_text())
+    core = json.loads(capture_path.read_text(encoding="utf-8"))
+    api = json.loads((capture_path.parent.parent / "api/api-capture.json").read_text(encoding="utf-8"))
     result = verify_flow.verify(core, api)
     assert result["integrityVerified"] and result["completed"]
     assert result["caseCount"] == 6
@@ -132,7 +132,7 @@ def test_detects_html_changes_even_when_the_capture_has_valid_document_hashes(re
     (tmp_path / fixture.name).write_bytes(fixture.read_bytes())
     for source in fixture.parent.glob("*.html"):
         (tmp_path / source.name).write_bytes(source.read_bytes())
-    (tmp_path / "smart-factory.html").write_text("<div>변조한 공식 문서</div>")
+    (tmp_path / "smart-factory.html").write_text("<div>변조한 공식 문서</div>", encoding="utf-8")
     with pytest.raises(ValueError, match="HTML fixture hash"):
         verify_flow.verify(core, api, tmp_path / fixture.name)
 
@@ -158,7 +158,7 @@ def test_cli_refuses_incomplete_capture_without_publishing_accuracy(records, tmp
     core["completed"] = False
     for directory, filename, value in [("core", "capture.json", core), ("api", "api-capture.json", api)]:
         (tmp_path / directory).mkdir()
-        (tmp_path / directory / filename).write_text(json.dumps(value))
+        (tmp_path / directory / filename).write_text(json.dumps(value), encoding="utf-8")
     assert verify_flow.main(["--run-dir", str(tmp_path)]) == 1
     output = capsys.readouterr()
     assert output.out == "" and "incomplete" in output.err

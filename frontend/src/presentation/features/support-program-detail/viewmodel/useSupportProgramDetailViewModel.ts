@@ -7,6 +7,9 @@ import type { GetSupportProgramDetailUseCase } from '../../../../domain/usecases
 
 type SupportProgramDetailUseCase = Pick<GetSupportProgramDetailUseCase, 'execute'>
 
+/** DB 상세 조회가 응답하지 않아 화면이 무기한 로딩되는 것을 막습니다. */
+export const supportProgramDetailTimeoutMilliseconds = 10_000
+
 export type SupportProgramDetailLoadState =
   | { status: 'loading'; program: null }
   | { status: 'ready'; program: SupportProgram }
@@ -31,6 +34,11 @@ export function useSupportProgramDetailViewModel(
     let isCurrentRequest = true
 
     setState({ status: 'loading', program: null })
+    const timeoutId = setTimeout(() => {
+      if (!isCurrentRequest) return
+      controller.abort()
+      setState({ status: 'failed', program: null })
+    }, supportProgramDetailTimeoutMilliseconds)
 
     void getSupportProgramDetailUseCase
       .execute({ sourceCode, sourceProgramId }, controller.signal)
@@ -48,9 +56,11 @@ export function useSupportProgramDetailViewModel(
           program: null,
         })
       })
+      .finally(() => clearTimeout(timeoutId))
 
     return () => {
       isCurrentRequest = false
+      clearTimeout(timeoutId)
       controller.abort()
     }
   }, [

@@ -26,7 +26,7 @@ Accept: application/json
 
 | Query parameter | 필수 | 설명 |
 |---|---|---|
-| `query` | 예 | 사용자의 검색 문장. 요청값 최대 500자. 탭·줄바꿈·CR을 제외한 Unicode `C` 범주 문자는 400으로 거부. 앞뒤 공백 제거 후 비어 있으면 임베딩·Qdrant·LLM을 호출하지 않고 최신 공고 최대 5개를 반환 |
+| `query` | 예 | 사용자의 검색 문장. 요청값 최대 500 UTF-16 코드 단위. 탭·줄바꿈·CR을 제외한 Unicode `C` 범주 문자는 400으로 거부. 앞뒤 공백 제거 후 비어 있으면 임베딩·Qdrant·LLM을 호출하지 않고 최신 공고 최대 5개를 반환 |
 | `acceptingOnly` | 아니요 | `true`이면 Core가 `OPEN` 공고만 AI 후보로 전달. 기본값 `true` |
 
 ## 공개 검색 준비 상태
@@ -167,7 +167,7 @@ Core는 다음 불변식을 다시 검사합니다.
 - `totalScore`가 다섯 세부 점수의 합과 정확히 일치
 - 결과가 총점 내림차순이며 0~5개
 - 반환한 공고마다 `semanticRelevance >= 20`, `totalScore >= 60`을 충족
-- 추천 이유가 1~3개이고 각 1~120자
+- 추천 이유가 1~3개이고 각 1~120 Unicode code point. Core와 AI가 같은 기준으로 검사하며 보조 평면 문자도 하나로 셈
 
 하나라도 위반하면 성공 결과를 만들지 않고 `AI_SERVICE_INVALID_RESPONSE`로 거부합니다.
 
@@ -267,7 +267,7 @@ Accept: application/json
 |---|---|---|
 | `sourceCode` | 예 | 상세 조회와 같은 제공처 코드. 현재 공식 원문 질문은 `BIZINFO`만 지원 |
 | `sourceProgramId` | 예 | 상세 조회와 같은 최대 255자 원본 공고 ID |
-| `question` | 예 | 앞뒤 공백을 제거한 질문. 비어 있을 수 없고 최대 500자 |
+| `question` | 예 | 요청값 최대 500 UTF-16 코드 단위. 앞뒤 공백을 제거해 처리하며 비어 있을 수 없음 |
 
 성공 응답은 다음 형태입니다. 예시의 문장은 형식 설명용이며, 실제 `answer`는 해당 요청에서 검색된 공식 원문
 청크에만 근거합니다.

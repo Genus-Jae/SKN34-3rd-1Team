@@ -123,7 +123,7 @@ class AiSupportProgramRankingFacade(
         val reasons = LinkedHashSet<String>()
         for (value in values) {
             val reason = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
-            if (reason.length > MAX_REASON_LENGTH ||
+            if (reason.codePointCount(0, reason.length) > MAX_REASON_LENGTH ||
                 reason.codePoints().anyMatch(Character::isISOControl)
             ) {
                 return null
@@ -137,13 +137,13 @@ class AiSupportProgramRankingFacade(
         val program = candidate.program
         return AiSupportProgramCandidateRequest(
             id = program.sourceQualifiedId,
-            title = program.title.take(MAX_TITLE_LENGTH),
-            organization = program.organization.take(MAX_ORGANIZATION_LENGTH),
-            summary = program.summary.take(MAX_SUMMARY_LENGTH),
+            title = program.title.takeCodePoints(MAX_TITLE_LENGTH),
+            organization = program.organization.takeCodePoints(MAX_ORGANIZATION_LENGTH),
+            summary = program.summary.takeCodePoints(MAX_SUMMARY_LENGTH),
             categories = limitedTerms(program.categories),
             regions = limitedTerms(program.regions),
-            targetDescription = program.targetDescription.take(MAX_TARGET_LENGTH),
-            applicationPeriod = program.applicationPeriod.take(MAX_PERIOD_LENGTH),
+            targetDescription = program.targetDescription.takeCodePoints(MAX_TARGET_LENGTH),
+            applicationPeriod = program.applicationPeriod.takeCodePoints(MAX_PERIOD_LENGTH),
             status = program.status.name,
         )
     }
@@ -152,10 +152,14 @@ class AiSupportProgramRankingFacade(
         java.util.List.copyOf(
             values.asSequence()
                 .take(MAX_TERMS)
-                .map { it.take(MAX_TERM_LENGTH) }
+                .map { it.takeCodePoints(MAX_TERM_LENGTH) }
                 .filter(String::isNotBlank)
                 .toList(),
         )
+
+    /** AI Service의 문자 수 계약과 동일하게 세고 UTF-16 surrogate 쌍을 보존합니다. */
+    private fun String.takeCodePoints(maximum: Int): String =
+        if (codePointCount(0, length) <= maximum) this else substring(0, offsetByCodePoints(0, maximum))
 
     companion object {
         const val SCORING_VERSION = "govbiz-support-program-ranking-v3"

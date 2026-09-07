@@ -150,6 +150,9 @@ Docker Engine·Compose v2·Bash·curl이 필요합니다. 다음 스크립트는
 `govbiz-verify`를 사용해 이미지를 빌드하고 다음을 확인합니다. 첫 실행의 이미지·의존 패키지
 다운로드에는 네트워크가 필요합니다.
 
+Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattributes`가 shell script를 LF로
+유지하여 `core.autocrlf=true` 체크아웃에서도 Bash의 CRLF 구문 오류를 방지합니다.
+
 ```bash
 ./infrastructure/scripts/verify-compose.sh
 ```

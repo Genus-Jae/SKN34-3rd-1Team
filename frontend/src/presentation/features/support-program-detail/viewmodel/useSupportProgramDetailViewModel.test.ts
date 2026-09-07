@@ -6,11 +6,58 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import type { GetSupportProgramDetailUseCase } from '../../../../domain/usecases/GetSupportProgramDetailUseCase'
-import { useSupportProgramDetailViewModel } from './useSupportProgramDetailViewModel'
+import {
+  supportProgramDetailTimeoutMilliseconds,
+  useSupportProgramDetailViewModel,
+} from './useSupportProgramDetailViewModel'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 describe('useSupportProgramDetailViewModel', () => {
+  it('leaves loading after ten seconds and ignores a timed-out detail response', async () => {
+    vi.useFakeTimers()
+    const pending = deferredProgram()
+    let requestSignal: AbortSignal | undefined
+    const execute = vi.fn((_identity: SupportProgramIdentity, signal?: AbortSignal) => {
+      requestSignal = signal
+      return pending.promise
+    })
+    const detailUseCase = createDetailUseCase(execute)
+    const { result } = renderHook(() => useSupportProgramDetailViewModel(getIdentity(), detailUseCase))
+
+    await act(async () => vi.advanceTimersByTimeAsync(supportProgramDetailTimeoutMilliseconds - 1))
+    expect(result.current.status).toBe('loading')
+    expect(requestSignal?.aborted).toBe(false)
+
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(requestSignal?.aborted).toBe(true)
+    expect(result.current).toEqual({ status: 'failed', program: null })
+
+    await act(async () => pending.resolve(supportPrograms[0]))
+    expect(result.current).toEqual({ status: 'failed', program: null })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('clears its request timer after success and on unmount', async () => {
+    vi.useFakeTimers()
+    const completedUseCase = createDetailUseCase(vi.fn().mockResolvedValue(supportPrograms[0]))
+    const completed = renderHook(() => useSupportProgramDetailViewModel(getIdentity(), completedUseCase))
+    await act(async () => { await Promise.resolve() })
+    expect(completed.result.current.status).toBe('ready')
+    expect(vi.getTimerCount()).toBe(0)
+    completed.unmount()
+
+    const pending = deferredProgram()
+    const pendingUseCase = createDetailUseCase(vi.fn().mockReturnValue(pending.promise))
+    const waiting = renderHook(() => useSupportProgramDetailViewModel(getIdentity(), pendingUseCase))
+    expect(vi.getTimerCount()).toBe(1)
+    waiting.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('loads the current program with its complete source identity', async () => {
     const execute = vi.fn().mockResolvedValue(supportPrograms[0])
     const identity = getIdentity()

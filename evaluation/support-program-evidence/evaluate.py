@@ -262,7 +262,7 @@ async def execute(prepared: list, fixture_hash: str, output_dir: Path) -> dict:
 
     def save_capture() -> None:
         temporary = output_dir / "capture.partial.json"
-        temporary.write_text(json.dumps(capture, ensure_ascii=False, indent=2) + "\n")
+        temporary.write_text(json.dumps(capture, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
         temporary.replace(output_dir / "capture.json")
 
     async def record_usage(response: httpx2.Response) -> None:
@@ -332,12 +332,14 @@ def main() -> int:
         fixture, prepared, fixture_hash = load_fixture(args.fixture)
         if args.case_id:
             prepared = select_cases(prepared, args.case_id)
-        capture = json.loads(args.capture.read_text()) if args.capture else None
+        capture = json.loads(args.capture.read_text(encoding="utf-8")) if args.capture else None
         if args.execute:
             capture = asyncio.run(execute(prepared, fixture_hash, args.output_dir))
         result = report(fixture, prepared, fixture_hash, capture)
         if args.execute:
-            (args.output_dir / "report.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+            (args.output_dir / "report.json").write_text(
+                json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n",
+            )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1 if capture is not None and not result["completed"] else 0
     except (ValueError, OSError) as error:

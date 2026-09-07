@@ -70,7 +70,9 @@ class AiServiceClientConfigIntegrationTest {
         }
         server.start()
 
-        val response = createClient(Duration.ofSeconds(1)).getHealth()
+        // 프로토콜 검증에 최초 JSON 클래스 로딩의 1초 제한을 섞지 않고 운영 기본 상한을 사용합니다.
+        // 실제 read timeout 동작은 아래의 150ms 지연 응답 테스트가 별도로 검증합니다.
+        val response = createClient(Duration.ofSeconds(35)).getHealth()
 
         assertAll(
             { assertEquals("up", response.status) },

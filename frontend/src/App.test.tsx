@@ -10,6 +10,7 @@ import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
 import { supportPrograms } from './data/fixtures/supportPrograms'
 import type { SupportProgramSearchReadiness } from './domain/entities/SupportProgramSearchReadiness'
+import { supportProgramEvidenceQuestionTimeoutMilliseconds } from './presentation/features/support-program-detail/viewmodel/useSupportProgramEvidenceQuestionViewModel'
 
 vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => ({
   CoreApiConnectionStatus: () => null,
@@ -33,6 +34,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('App navigation', () => {
@@ -413,6 +415,32 @@ describe('App navigation', () => {
     expect((screen.getByRole('button', { name: '질문하고 근거 받기' }) as HTMLButtonElement).disabled)
       .toBe(false)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('원문 질문이 응답하지 않으면 시간 초과를 알리고 같은 질문의 재전송을 허용한다', async () => {
+    vi.useFakeTimers()
+    const detail = supportPrograms[0]
+    const fetchMock = vi.fn().mockReturnValue(new Promise<Response>(() => {}))
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp(
+      createAppStore(),
+      `/support-programs/detail/question?sourceCode=${detail.sourceCode}&sourceProgramId=${detail.id}`,
+    )
+    const question = screen.getByRole('textbox', { name: '공고 원문에 질문하기' }) as HTMLTextAreaElement
+    fireEvent.change(question, { target: { value: '신청 대상은 누구인가요?' } })
+    fireEvent.submit(question.closest('form')!)
+    expect(question.disabled).toBe(true)
+
+    await act(async () => vi.advanceTimersByTimeAsync(supportProgramEvidenceQuestionTimeoutMilliseconds))
+    expect(screen.getByRole('alert').textContent)
+      .toBe('답변 시간이 초과되었습니다. 입력한 질문을 다시 전송해 주세요.')
+    expect(question.disabled).toBe(false)
+    expect(question.value).toBe('신청 대상은 누구인가요?')
+    expect((screen.getByRole('button', { name: '질문하고 근거 받기' }) as HTMLButtonElement).disabled)
+      .toBe(false)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const signal = fetchMock.mock.calls[0]?.[1]?.signal as AbortSignal
+    expect(signal.aborted).toBe(true)
   })
 
   it.each([
