@@ -1,5 +1,9 @@
 # 지원사업 후보 검색 회귀 평가
 
+최신 v5 실데이터 **고정 후보의 목적·모델 비교**는
+[2026-09-07~08 진단 기록](runs/search-precision-v5-20260907-v1/README.md)을 참고한다.
+사전 AI 초안, 채택하지 않은 설정, 전체 응답과 사용량을 함께 보존하며 아래 가상 fixture의 평가와 구분한다.
+
 이 자료는 **실제 운영 공고가 아닌 수작업 가상 공고 40개와 질문 30개**다. 최신순 20개 제한 때문에 오래된 관련 공고가 누락되는 문제를 재현하고, 같은 자료에서 후보 검색 방식을 비교하는 데 사용한다. 실제 사용자의 추천 정확도, 신청 자격, 운영 데이터 성능을 입증하는 자료가 아니다.
 
 ## 실행
@@ -258,11 +262,21 @@ python3 evaluation/support-program-search/evaluate.py \
 
 ## 실데이터 라벨링 기준
 
-현재 production 랭킹은 원문 인용·자격 확인 상태를 포함하는 `govbiz-support-program-ranking-v4`입니다.
-`runs/`의 v3 요청·응답·평가 결과는 당시 기록으로 보존합니다. 저장 결과의 API 없는 재계산은 계속 가능하지만,
-v3 요청을 현재 v4 모델 계약으로 실제 재실행하지 않습니다. 과거 호출 재현에는 해당 실행의 코드 버전이 필요하며,
-v4 평가는 새 요청·캡처를 만들어 별도 실행 폴더에 기록해야 합니다. replay 실행 기록의 출력 토큰 상한도
+현재 production 랭킹은 검색 관련성과 자격 확인 상태를 분리한 `govbiz-support-program-ranking-v5`입니다.
+`runs/`의 v3/v4 요청·응답·평가 결과는 당시 기록으로 보존합니다. 저장 결과의 API 없는 재계산은 계속 가능하지만,
+구버전 요청을 현재 v5 모델 계약으로 실제 재실행하지 않습니다. 과거 호출 재현에는 해당 실행의 코드 버전이 필요하며,
+v5 평가는 새 요청·캡처를 만들어 별도 실행 폴더에 기록해야 합니다. replay 실행 기록의 출력 토큰 상한도
 하드코딩한 과거 값이 아니라 실행한 Agent 설정에서 읽습니다.
+`replay-ranking.py`는 실제 적용되는 랭킹 모델·추론 수준을 확인해 Luna/none 이외에는 유료 호출 전에
+중단합니다. production에 Sol/low를 설정했다면 재현 프로세스에서만
+`OPENAI_RANKING_MODEL=gpt-5.6-luna`, `OPENAI_RANKING_REASONING_EFFORT=none`을 명시해야 합니다.
+기존 25/30초 제한과 코드 버전 조건도 그대로 지켜야 합니다. `run-region-eligibility.py`는
+비교 조건 보존을 위해 Luna/none을 직접 고정하며 production의 랭킹 전용 설정을 따르지 않습니다.
+
+`searchWithTrace` 서비스 진입점은 선택적 `companyConditions`를 받아 실제 조건 검색과 같은 경로를 검증할 수 있습니다.
+그러나 현재 `evaluation-capture` CLI의 query-set/capture-v2 파일은 여전히 단문 질의만 다룹니다.
+기존 Recall/MRR 보고서는 대화 해석이나 기업 조건 검색까지 평가한 것으로 해석하지 않습니다.
+조건 포함 실데이터 평가는 조건·기준일·후보·새 v5 결과를 함께 고정해 별도로 기록해야 합니다.
 
 라벨은 fixture의 `docs[].text`에 적힌 내용만 근거로 만든다. 상세 원문, RAG 답변, 외부 지식으로
 공고의 적합성을 보완하지 않는다.
@@ -305,7 +319,8 @@ v4 평가는 새 요청·캡처를 만들어 별도 실행 폴더에 기록해�
 | 전국 신청 가능하나 서울 소재 제외 | INCOMPATIBLE | INCOMPATIBLE | MATCH |
 
 `evaluate-region-eligibility.py`는 **외부 호출 기능이 없는 오프라인 평가기**다. `build_requests(fixture)`는
-기대값과 해설을 제외한 production v4 요청만 반환한다. 인자 없이 실행하면 이 요청 3개와
+기대값과 해설을 제외한 production v5 요청만 반환한다. 신규 capture에 `scoringVersion`을 기록하며,
+해당 필드가 없는 과거 v4 capture는 당시 버전으로 요청 해시를 재검증한다. 인자 없이 실행하면 이 요청 3개와
 `actualApiCalls: 0`을 출력한다. 각 지역 상태를 비교하고, known 판정은 인용문이 해당 후보의
 원문과 정확히 일치할 뿐 아니라 라벨의 지역 자격 구절도 포함하는지 확인한다. 예를 들어 원문에 실제로
 있는 `AI 분야 기업`을 인용하더라도 서울 소재 자격을 증명하는 것으로 통과시키지 않는다.

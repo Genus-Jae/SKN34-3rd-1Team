@@ -76,7 +76,7 @@ class SupportProgramSearchEvaluationCaptureCommandLineRunnerTest {
         assertEquals(FINGERPRINT, capture.get("catalog").get("eligibleCatalogFingerprint").stringValue())
         assertEquals(20, capture.get("search").get("candidateLimit").intValue())
         assertEquals(5, capture.get("search").get("finalResultLimit").intValue())
-        assertEquals("govbiz-support-program-ranking-v4", capture.get("search").get("scoringVersion").stringValue())
+        assertEquals("govbiz-support-program-ranking-v5", capture.get("search").get("scoringVersion").stringValue())
         assertEquals(2, capture.get("observations").size())
         assertEquals("Q01", capture.get("observations").get(0).get("id").stringValue())
         assertEquals("BIZINFO:A", capture.get("observations").get(0).get("candidateIds").get(0).stringValue())

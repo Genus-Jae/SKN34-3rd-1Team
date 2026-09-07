@@ -53,31 +53,34 @@ def build_application_container(
     ranking_agent = support_program_recommendation_agent
     evidence_answer_agent = support_program_evidence_answer_agent
     conversation_agent = support_program_conversation_agent
-    model = None
-    if ranking_agent is None or evidence_answer_agent is None or conversation_agent is None:
-        model = OpenAIResponsesModel(
+    general_model = None
+    if evidence_answer_agent is None or conversation_agent is None:
+        general_model = OpenAIResponsesModel(
             model=settings.openai_model,
             openai_client=openai_client,
         )
     if ranking_agent is None:
-        assert model is not None
         ranking_agent = SupportProgramRecommendationAgent(
-            model=model,
+            model=OpenAIResponsesModel(
+                model=settings.openai_ranking_model or settings.openai_model,
+                openai_client=openai_client,
+            ),
             model_timeout_seconds=settings.llm_ranking_model_timeout_seconds,
             run_timeout_seconds=settings.llm_ranking_run_timeout_seconds,
+            reasoning_effort=settings.openai_ranking_reasoning_effort,
         )
     if evidence_answer_agent is None:
-        assert model is not None
+        assert general_model is not None
         evidence_answer_agent = SupportProgramEvidenceAnswerAgent(
-            model=model,
+            model=general_model,
             model_timeout_seconds=settings.llm_model_timeout_seconds,
             run_timeout_seconds=settings.llm_run_timeout_seconds,
         )
 
     if conversation_agent is None:
-        assert model is not None
+        assert general_model is not None
         conversation_agent = SupportProgramConversationAgent(
-            model=model,
+            model=general_model,
             model_timeout_seconds=settings.llm_model_timeout_seconds,
             run_timeout_seconds=settings.llm_run_timeout_seconds,
         )

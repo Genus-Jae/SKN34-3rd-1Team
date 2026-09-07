@@ -55,6 +55,9 @@ export const chatPageStyles = {
   composerWorkspace:
     'mx-auto mt-auto w-[min(860px,calc(100%_-_2rem))] pt-2 pb-6 max-chat:w-[calc(100%_-_1.2rem)]',
   composerInputGroup: 'relative',
+  searchContextControls: 'mb-2 flex flex-wrap items-center justify-end gap-2',
+  currentConditions: 'm-0 min-w-0 flex-1 text-xs leading-relaxed text-[#536087] [overflow-wrap:anywhere]',
+  newSearchButton: 'shrink-0 cursor-pointer rounded-lg border border-[#d8e0f3] bg-white px-3 py-2 text-xs font-bold text-[#43527a] hover:border-[#7774d7] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7774d7]',
   searchStatus: 'sr-only',
   searchError: classes(
     'mt-0 mb-[0.55rem] flex items-center justify-between gap-3 rounded-[0.7rem] border px-[0.8rem] py-[0.65rem] text-[0.76rem]',

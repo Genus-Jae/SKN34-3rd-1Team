@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
-import { conversationReset } from './presentation/features/chat/state/chatSlice'
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from './data/fixtures/supportPrograms'
 import { emptyConversationContext, readyConversationProposal } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramSearchReadiness } from './domain/entities/SupportProgramSearchReadiness'
@@ -110,7 +109,7 @@ describe('App navigation', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('서울 조건 검색에서 전국 태그·경북 이전 확인 필요 공고를 조건 확인과 분리하고 상세 복귀 시 판정을 보존한다', async () => {
+  it('고관련도 확인 필요 공고를 낮은 관련도 MATCH보다 앞에 표시하며 서버 순서와 상세 복귀 시 판정을 보존한다', async () => {
     const latest = { ...supportPrograms[3], recommendationScore: null }
     const programs = [relocationReviewRequiredProgram, conditionMatchedProgram, supportPrograms[1], latest]
     const fetchMock = vi.fn()
@@ -132,13 +131,12 @@ describe('App navigation', () => {
     fireEvent.change(input, { target: { value: '서울 소프트웨어 개발업 2024-02-29 설립 사업화' } })
     await submitConfirmedSearch(input)
 
-    const matchedSection = await screen.findByRole('region', { name: '조건 확인 공고' })
-    const reviewSection = screen.getByRole('region', { name: '확인 필요 공고' })
-    expect(within(matchedSection).getByRole('heading', { name: conditionMatchedProgram.title })).toBeTruthy()
-    expect(within(matchedSection).queryByRole('heading', { name: relocationReviewRequiredProgram.title })).toBeNull()
-    expect(within(reviewSection).getByRole('heading', { name: relocationReviewRequiredProgram.title })).toBeTruthy()
-    expect(within(reviewSection).getByRole('heading', { name: supportPrograms[1].title })).toBeTruthy()
-    expect(within(screen.getByRole('region', { name: '최신 공고' })).getByRole('heading', { name: latest.title })).toBeTruthy()
+    const resultSection = await screen.findByRole('region', { name: '지원사업 검색 결과' })
+    expect(relocationReviewRequiredProgram.recommendationScore).toBeGreaterThan(conditionMatchedProgram.recommendationScore!)
+    expect(within(resultSection).getAllByRole('article').map((card) => within(card).getByRole('heading', { level: 2 }).textContent))
+      .toEqual(programs.map((program) => program.title))
+    expect(within(getProgramCard(conditionMatchedProgram.title)).getByText('조건 확인 · API 본문 기준')).toBeTruthy()
+    expect(within(getProgramCard(latest.title)).getByText('자격 미평가')).toBeTruthy()
     const relocationCard = getProgramCard(relocationReviewRequiredProgram.title)
     expect(within(relocationCard).getByText('지역 · 확인 필요')).toBeTruthy()
     expect(within(relocationCard).getByText('서울 소재지만 확인되었으며 경북 이전 의향은 확인되지 않았습니다.')).toBeTruthy()
@@ -168,7 +166,9 @@ describe('App navigation', () => {
     expect(screen.getByText(/상세 조회는 검색 당시 기업 조건으로 자격을 다시 평가하지 않습니다/)).toBeTruthy()
     expect(screen.queryByText('조건 확인 · API 본문 기준')).toBeNull()
     fireEvent.click(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }))
-    expect(within(screen.getByRole('region', { name: '조건 확인 공고' })).getByRole('heading', { name: conditionMatchedProgram.title })).toBeTruthy()
+    expect(within(getProgramCard(conditionMatchedProgram.title)).getByText('조건 확인 · API 본문 기준')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '지원사업 검색 결과' })).getAllByRole('article')
+      .map((card) => within(card).getByRole('heading', { level: 2 }).textContent)).toEqual(programs.map((program) => program.title))
     expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
     expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('부산')
     expect(store.getState().chat.messages.find((message) => message.programs?.length === 4)?.programs?.[1]?.eligibilityReview)
@@ -195,7 +195,7 @@ describe('App navigation', () => {
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(input, { target: { value: '사업화' } })
     await submitConfirmedSearch(input)
-    await screen.findByRole('region', { name: '확인 필요 공고' })
+    await screen.findByRole('region', { name: '지원사업 검색 결과' })
     const card = getProgramCard(program.title)
     expect(card.querySelector('blockquote')?.textContent).toBe(quote)
     expect(card.querySelector('img')).toBeNull()
@@ -258,7 +258,7 @@ describe('App navigation', () => {
     fireEvent.change(searchInput, { target: { value: '제주 소프트웨어 개발업 2024-02-29 설립 사업화 지원금' } })
     await submitConfirmedSearch(searchInput)
     expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('제주')
-    act(() => { store.dispatch(conversationReset()) })
+    fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
     expect((searchInput as HTMLTextAreaElement).value).toBe('')
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
@@ -1157,7 +1157,7 @@ describe('App navigation', () => {
 
     await screen.findByText('현재 일치하는 공고를 찾지 못했습니다. 지역이나 분야를 바꿔 다시 검색해 보세요.')
     expect(document.getElementById('support-program-search-readiness')).toBeNull()
-    expect(searchInput.getAttribute('aria-describedby')).toBeNull()
+    expect(searchInput.getAttribute('aria-describedby')).toBe('support-program-current-conditions')
   })
 
   it('진행 중인 검색은 취소할 수 있고 검색어를 유지한다', async () => {

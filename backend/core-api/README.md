@@ -154,12 +154,13 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI �
   설립일은 실제 달력의 `YYYY-MM-DD`로 `1900-01-01`부터 서울 기준 오늘까지이며, 빈 문자열·ASCII 공백만
   있는 값은 미입력입니다. 공백이 붙은 날짜·timestamp·존재하지 않는 날짜는 400입니다.
   모든 조건이 미입력이면 기존 질의만 전송합니다. 조건이 있으면 `SupportProgramSearchService`가
-  질의와 레이블된 조건·서울 기준일을 최대 1,000자 내부 검색문으로 만들어 후보 조회에 반영하고,
+  질의와 지역·업종·지원 목적의 값만 최대 1,000자 내부 검색문으로 만들어 후보 조회에 반영하고,
   `AiSupportProgramRankingFacade`는 원질의를 바꾸지 않고 별도의 `companyConditions`와 ISO `referenceDate`를
-  점수화 요청에 전달합니다. 지역 정보가 없거나 다르다는 이유만으로 Core에서 후보를 제외하지 않습니다.
+  점수화 요청에 전달합니다. 설립일·서울 기준일·표제는 후보 검색어에 넣지 않으며 사용자 질의의 날짜는 보존합니다.
+  지역 정보가 없거나 다르다는 이유만으로 Core에서 후보를 제외하지 않습니다.
   조건은 저장·응답 메타데이터에 포함하지 않으며, 공개 `query`는 trim한 원질의 그대로입니다.
   GET 검색·POST 검색·대화 조건 해석·원문 근거 질문은 같은 요청 제한을 공유합니다.
-- 자격 검토: 조건 유무와 관계없이 점수화 계약은 `govbiz-support-program-ranking-v4`입니다.
+- 자격 검토: 조건 유무와 관계없이 점수화 계약은 `govbiz-support-program-ranking-v5`입니다.
   저장된 공식 API 본문 `summary` 최대 6,000, 지원대상 `targetDescription` 최대 2,000 Unicode code point를
   AI에 전달합니다. 둘 중 하나라도 잘리면 `sourceTextTruncated=true`이며 대상·지역 모두 `UNKNOWN`만 허용합니다.
   태그의 지역·분야는 후보 검색 보조 정보이고 자격 충족 근거로 인용할 수 없습니다.
@@ -167,8 +168,8 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI �
   근거는 `SUMMARY` 또는 `TARGET_DESCRIPTION`에서 실제 전송된 문장의 정확한 부분 문자열(1~240자)만 인정합니다.
   설명·인용의 상한은 Unicode code point이고 제어·제로폭 문자 등 Unicode C 범주는 거부합니다.
   원문에 없는 인용·누락된 검토·불충족 `INCOMPATIBLE`·잘못된 정렬은 정상 추천으로 숨기지 않고 내부 계약 오류로 반환합니다.
-  대상·지역 모두 충족한 공고를 먼저, 하나라도 `UNKNOWN`인 공고는 그 뒤에 두며 각 묶음은 점수 내림차순,
-  합계 최대 5개입니다. 기존 관련성·총점 최소 기준은 유지합니다.
+  관련도는 `2 × (semanticRelevance + supportTypeFit)`로 계산하며 자격 `UNKNOWN`을 감점하지 않습니다.
+  의미 관련성 20/40점 이상, 명백한 자격 불일치 제외 후 관련도순으로 최대 5개입니다. 기존 총점 60점 컷과 MATCH 우선은 제거했습니다.
   자연어 검색 결과의 `eligibilityReview`는 전체 상태 `MATCH`/`REVIEW_REQUIRED`, 기준 `OFFICIAL_API_TEXT`,
   대상·지역별 `status`, `explanation`, `evidence[{field,quote}]`를 추천 이유와 별도로 반환합니다.
   이는 HTML을 정리한 **공식 API 본문 기준**의 검토이며 상세 페이지 전체·첨부 PDF/HWP를 확인했다는 뜻이 아닙니다.

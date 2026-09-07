@@ -12,6 +12,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -295,7 +296,7 @@ class SupportProgramSearchServiceTest {
         val conditions = SupportProgramCompanyConditions("부산", "제조업", LocalDate.of(2024, 2, 29), "시제품 제작")
         val unknownRegion = catalogProgram("unknown-region").let { it.copy(program = it.program.copy(regions = emptyList())) }
         val programs = listOf(unknownRegion, catalogProgram("seoul"))
-        val retrievalQuery = "$query\n사용자가 입력한 기업 조건:\n소재지: 부산\n업종: 제조업\n설립일: 2024-02-29\n지원 목적: 시제품 제작\n기준일(서울): 2026-09-07"
+        val retrievalQuery = "$query\n부산\n제조업\n시제품 제작"
         Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
         Mockito.doReturn(programs).`when`(retrieval).retrieve(retrievalQuery, programs)
 
@@ -319,13 +320,111 @@ class SupportProgramSearchServiceTest {
             assertTrue(enriched.contains(conditions.region!!))
             assertTrue(enriched.contains(conditions.industry!!))
             assertTrue(enriched.contains(conditions.supportPurpose!!))
-            assertTrue(enriched.contains("1900-01-01"))
+            assertFalse(enriched.contains("1900-01-01"))
             programs
         }.`when`(retrieval).retrieve(Mockito.anyString(), Mockito.anyList())
 
         assertEquals(query, service().search(query, false, conditions).query)
         assertEquals(query, ranking.calls.single().query)
         assertEquals(conditions, ranking.calls.single().companyConditions)
+    }
+
+    @Test
+    fun keepsUserRequestedDatesButDoesNotAddSystemDatesToRetrieval() {
+        val query = "2026-10-15까지 신청 가능한 지원"
+        val conditions = SupportProgramCompanyConditions(
+            region = "대전",
+            industry = "인공지능",
+            establishedOn = LocalDate.of(2024, 2, 29),
+        )
+        val programs = listOf(catalogProgram("open"))
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doAnswer { invocation ->
+            assertEquals("$query\n대전\n인공지능", invocation.getArgument<String>(0))
+            programs
+        }.`when`(retrieval).retrieve(Mockito.anyString(), Mockito.anyList())
+
+        service().search(query, true, conditions)
+
+        assertEquals(conditions, ranking.calls.single().companyConditions)
+        assertEquals(LocalDate.of(2026, 9, 7), ranking.calls.single().referenceDate)
+    }
+
+    @Test
+    fun keepsRetrievalQueryUnchangedWhenOnlyEstablishmentDateIsProvided() {
+        val query = "사업화 지원"
+        val conditions = SupportProgramCompanyConditions(establishedOn = LocalDate.of(2024, 2, 29))
+        val programs = listOf(catalogProgram("open"))
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doAnswer { invocation ->
+            assertEquals(query, invocation.getArgument<String>(0))
+            programs
+        }.`when`(retrieval).retrieve(Mockito.anyString(), Mockito.anyList())
+
+        service().search(query, true, conditions)
+
+        assertEquals(conditions, ranking.calls.single().companyConditions)
+        assertEquals(LocalDate.of(2026, 9, 7), ranking.calls.single().referenceDate)
+    }
+
+    @Test
+    fun capturesTheSameConditionAwareSearchPathAsThePublicSearch() {
+        val query = "사업화 지원"
+        val conditions = SupportProgramCompanyConditions(
+            region = "부산",
+            establishedOn = LocalDate.of(2024, 2, 29),
+            supportPurpose = "시제품 제작",
+        )
+        val programs = listOf(catalogProgram("open"))
+        val retrievalQuery = "$query\n부산\n시제품 제작"
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve(retrievalQuery, programs)
+        ranking.response = { it.map(CatalogSupportProgram::program) }
+        val service = service()
+
+        val publicResult = service.search(query, true, conditions)
+        val trace = service.searchWithTrace(query, true, companyConditions = conditions)
+
+        assertEquals(publicResult, trace.result)
+        assertEquals(listOf("BIZINFO:open"), trace.candidateIds)
+        assertEquals(listOf("BIZINFO:open"), trace.finalProgramIds)
+        assertEquals(1, trace.presentProgramCount)
+        assertEquals(1, trace.eligibleProgramCount)
+        assertEquals(ranking.calls.first(), ranking.calls.last())
+        assertEquals(conditions, ranking.calls.last().companyConditions)
+        assertEquals(LocalDate.of(2026, 9, 7), ranking.calls.last().referenceDate)
+        Mockito.verify(retrieval, Mockito.times(2)).retrieve(retrievalQuery, programs)
+    }
+
+    @Test
+    fun usesTheFixedEvaluationDateForConditionReviewWithoutPuttingDatesIntoRetrieval() {
+        val query = "시제품 제작"
+        val referenceDate = LocalDate.of(2026, 9, 5)
+        val conditions = SupportProgramCompanyConditions(
+            region = "부산",
+            establishedOn = LocalDate.of(2024, 2, 29),
+        )
+        val closedToday = catalogProgram(
+            id = "open-at-evaluation",
+            status = SupportProgramStatus.CLOSED,
+            applicationPeriod = "2026-09-01 ~ 2026-09-06",
+            applicationStartDate = LocalDate.of(2026, 9, 1),
+            applicationEndDate = LocalDate.of(2026, 9, 6),
+        )
+        val openAtEvaluation = closedToday.copy(program = closedToday.program.copy(status = SupportProgramStatus.OPEN))
+        Mockito.doReturn(listOf(closedToday)).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(listOf(openAtEvaluation)).`when`(retrieval).retrieve("$query\n부산", listOf(openAtEvaluation))
+        ranking.response = { it.map(CatalogSupportProgram::program) }
+
+        val trace = service().searchWithTrace(query, true, referenceDate, conditions)
+
+        assertEquals(listOf("BIZINFO:open-at-evaluation"), trace.candidateIds)
+        assertEquals(listOf("BIZINFO:open-at-evaluation"), trace.finalProgramIds)
+        assertEquals(1, trace.eligibleProgramCount)
+        assertEquals(SupportProgramStatus.OPEN, trace.result.programs.single().status)
+        assertEquals(conditions, ranking.calls.single().companyConditions)
+        assertEquals(referenceDate, ranking.calls.single().referenceDate)
+        Mockito.verify(retrieval).retrieve("$query\n부산", listOf(openAtEvaluation))
     }
 
     @Test

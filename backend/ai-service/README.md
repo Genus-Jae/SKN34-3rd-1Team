@@ -14,9 +14,9 @@ AI Service가 하는 일:
 - 사용자의 자연어 질문과 Core가 검증한 공고 후보를 함께 읽음
 - Core가 보낸 공고 검색 문서를 OpenAI로 임베딩하고 Qdrant에 색인
 - 현재 MySQL 공고 ID·내용 해시 목록 안에서 의미가 가까운 후보를 최대 20개 검색
-- 버전된 100점 평가 기준으로 모든 후보를 점수화
-- 지원대상·지역의 명백한 자격 불일치를 제외하고 의미 관련성·총점 최소 기준을 통과한 공고만 0~5개로 반환
-- AI가 자격 판정·세부 점수·추천 이유를 strict structured output으로 생성하고 Service가 총점을 합산해 반환
+- 버전된 검색 관련도 100점 기준으로 모든 후보를 점수화하고 자격 판정은 별도로 표시
+- 지원대상·지역의 명백한 자격 불일치를 제외하고 의미 관련성 최소 기준을 통과한 공고만 0~5개로 반환
+- AI가 자격 판정·관련도 항목·추천 이유를 strict structured output으로 생성하고 Service가 관련도를 정규화해 반환
 - Core가 준비한 공고 상세 원문 청크를 별도 Qdrant collection에 색인하고, 지정된 현재 청크 안에서 근거를 최대 5개 검색
 - 검색된 공고 상세 근거만 사용해 한국어 답변과 인용 청크 ID를 strict structured output으로 반환
 - 새 메시지와 작은 검색 상태를 해석해 사용자 확인 전 조건 변경 패치 또는 확인 질문을 반환
@@ -60,7 +60,8 @@ POST /internal/v1/support-program-conversation/interpret
 명시적 적용 조건이 `originalQuery`와 충돌하면 조건을 우선하며, null·미입력은 확인 안 됨이지
 자격 충족이 아닙니다. 현재 소재지를 이전 예정지로 추정하거나 설립일만으로 공고별 업력 기준일·예외를
 확정하지 않습니다. 조건이 없거나 `companyConditions: null`이면 Agent 입력에서 필드를 생략하고
-회사 조건 전용 프롬프트를 추가하지 않습니다. 원문 우선 자격 검증(v4)은 회사 조건 유무와 관계없이 적용합니다.
+회사 조건 전용 프롬프트를 추가하지 않습니다. 원문 우선 자격 검증은 회사 조건 유무와 관계없이 적용하며,
+v5에서는 자격 확인 여부와 검색 관련도 점수를 분리합니다.
 
 Health 응답은 프로세스의 HTTP 응답 여부만 확인합니다. OpenAI 모델 호출 성공이나 Qdrant 연결·색인
 완료 여부를 검사하는 readiness 검사는 아닙니다. `/internal` 경로 자체에 인증 기능은 없으며,
@@ -98,6 +99,12 @@ boolean 강제 변환은 하지 않습니다. 날짜는 실제 달력 날짜이�
 보증하지 않으므로 모든 READY 결과에 확인이 필요합니다. 기존 query에서 옛 지역을 제거하고 구조 조건 중복을
 줄이는 것은 프롬프트 지시이며, ScriptedModel 회귀는 실제 한국어 모델의 의미 정확도 평가가 아닙니다.
 Compose OpenAI 대역도 정해진 C02 smoke 문구만 처리하고 미지원 문구는 오류를 반환합니다.
+
+기존 검색이 `사업화 지원`일 때 `지원금 위주`는 `사업화 지원금`으로 지원 형태만 좁히며 핵심 활동을
+보존하도록 지시합니다. `사업화 말고 수출 지원으로 바꿔줘`는 명시적 활동 전환으로 처리하고,
+SUPPORT_PURPOSE에 옛 활동이 남아 있으면 함께 정리합니다. 명시적 전체 초기화는 별도 CLEAR 흐름입니다.
+이 예시의 일반/pending 두 경로·병합·입력 불변성은 고정 모델 응답으로 검증하며, 실제 모델의 의미 보존
+성능은 별도 실측이 필요합니다. 특정 단어를 찾아 production에서 query를 강제 교체하는 규칙은 추가하지 않습니다.
 
 ## 전체 공고 의미 검색
 
@@ -224,24 +231,28 @@ payload 불일치, 검증 실패는 `EVIDENCE_UNAVAILABLE`입니다. 부분 검�
 
 ## 평가 기준
 
-`govbiz-support-program-ranking-v4`는 기존 v3의 다음 배점을 유지합니다.
+`govbiz-support-program-ranking-v5`는 검색 관련성을 두 항목으로 판단합니다.
 
 | 항목 | 배점 |
 |---|---:|
 | 질문과 공고의 의미적 관련성 | 40 |
-| 기업 유형·업종·업력과 지원 대상 적합성 | 25 |
-| 지역 적합성 | 15 |
-| 신청 시점과 접수 상태 적합성 | 10 |
 | 원하는 지원 유형 적합성 | 10 |
+
+`totalScore = 2 × (semanticRelevance + supportTypeFit)`로 0~100점에 정규화합니다.
+이 점수는 검색 관련도이며 신청 가능성·선정 확률이 아닙니다. 기업 정보 부족으로 인한 `UNKNOWN`은
+관련도 감점이나 후순위 정렬 사유가 아닙니다. 대상·지역 자격은 상태·본문 인용·설명으로 별도 반환합니다.
+접수 상태는 Core의 기존 접수 필터와 공고 표시로 유지하며 AI 총점에 다시 가산하지 않습니다.
 
 LLM에 전달할 평가 지시는 [prompt.py](app/support_program_ranking/prompt.py)에 둡니다.
 [models.py](app/support_program_ranking/models.py)는 복원된 평가 값 `SupportProgramAssessment`, Agent가 검증된 ID를 붙인
 내부 항목 `AssessedSupportProgram`, 검증된 HTTP 응답 `ScoredSupportProgram`을 구분합니다.
-AI는 의미·자격·항목별 점수를 판단하되 `totalScore`와 값 안의 `programId`는 출력하지 않습니다.
-[service.py](app/support_program_ranking/service.py)가 모든 후보의 본문 인용을 검증하고 다섯 점수를 합산한 뒤
+AI는 관련도 두 항목과 자격·근거를 판단하되 `totalScore`와 값 안의 `programId`는 출력하지 않습니다.
+[service.py](app/support_program_ranking/service.py)가 모든 후보의 본문 인용을 검증하고 관련도를 계산한 뒤
 최소 추천 기준을 적용합니다. 지역·업종 사전이나 규칙 기반 LLM fallback은 추가하지 않습니다.
-Core도 같은 HTTP 계약을 재검증합니다. 배점·추천 임계치는 유지하지만 근거 필드와 자격 그룹 정렬이 추가되어
-`scoringVersion`을 v4로 분리했습니다. 과거 v3 평가 캡처는 변경하지 않으며 현행 품질 검증으로 재해석하지 않습니다.
+Core도 같은 HTTP 계약을 재검증합니다. 새 계약에서는 `targetFit`, `regionFit`, `applicationStatusFit`과
+assessment의 `score`를 제거하고, 총점 60점 컷과 MATCH 그룹 절대 우선 정렬도 제거했습니다.
+`scoringVersion`을 v5로 분리하며 과거 v3·v4 평가 캡처·실행 기록은 변경하지 않습니다.
+과거 총점은 다른 산식이므로 현재 관련도와 직접 비교하거나 현행 품질 검증으로 재해석하지 않습니다.
 
 후보 `summary`는 최대 6,000자, `targetDescription`은 최대 2,000자입니다. Core가 실제 본문을 잘랐으면
 `sourceTextTruncated: true`를 보내며 기본값은 false입니다. true인 후보는 잘린 부분의 제한·예외를 알 수 없어
@@ -253,11 +264,10 @@ Core도 같은 HTTP 계약을 재검증합니다. 배점·추천 임계치는 �
 
 ### 추천 반환 최소 기준
 
-Agent는 후보를 빠짐없이 점수화하고 각 후보의 `targetAssessment`·`regionAssessment`에 `eligibility`와
-`score`, `evidence`, `explanation`을 함께 반환합니다. 두 항목의 nested `anyOf` 스키마는 `MATCH`·`UNKNOWN`이면 각각 0~25점·0~15점,
-`INCOMPATIBLE`이면 0점만 허용해 부적합 판정과 양수 점수의 모순을 차단합니다.
-Service는 이를 기존 HTTP의 `targetEligibility`·`targetFit`, `regionEligibility`·`regionFit`으로 옮깁니다.
-추가 응답 필드는 `targetEvidence`, `targetExplanation`, `regionEvidence`, `regionExplanation`입니다.
+Agent는 후보를 빠짐없이 점수화하고 각 후보의 `targetAssessment`·`regionAssessment`에는
+`eligibility`, `evidence`, `explanation`만 반환합니다. 자격별 점수는 생성하지 않습니다.
+Service는 이를 HTTP의 `targetEligibility`, `regionEligibility`, `targetEvidence`, `targetExplanation`,
+`regionEvidence`, `regionExplanation`으로 옮깁니다.
 각 evidence는 `[{field: "SUMMARY" | "TARGET_DESCRIPTION", quote: "..."}]` 형태로 최대 1개이며,
 quote는 원문 그대로 1~240 Unicode code point, explanation은 1~160자입니다. 둘 다 원본 길이를 검사하고
 공백뿐인 값과 Unicode 제어·형식 문자를 거부하며 trim 등으로 변형하지 않습니다. MATCH·INCOMPATIBLE에는
@@ -284,7 +294,7 @@ LLM 내부에서는 인용 문구를 생성하지 않고 후보별 `evidenceOpti
 Agent가 전체 `summary`·`targetDescription`을 그대로 전달하면서 두 필드의 원문 조각을
 `[{index: 0, field: "SUMMARY", quote: "..."}, ...]`로 추가합니다. 모델의 assessment.evidence는 `[0]`처럼
 번호 배열이며 최대 1개입니다. 후보별 동적 스키마가 `0..선택지 수-1`의 정수만 허용하고 Agent가 다시
-범위를 검증한 뒤 해당 후보의 원래 field/quote를 복원합니다. 외부·내부 HTTP v4 계약은 변경하지 않습니다.
+범위를 검증한 뒤 해당 후보의 원래 field/quote를 복원합니다. 이 원문 복원 방식은 v5에서도 유지합니다.
 원본 식별자를 분해하지 않으며 서로 다른 후보의 같은 번호는 각자의 원문에만 대응합니다.
 
 조각은 Unicode code point 기준 최대 240자이며 긴 연속 구간 안에서 최소 60자 겹침으로 끝까지 만듭니다. 가능한 경우
@@ -310,15 +320,21 @@ Service에서 제외합니다. Agent가 검증된 키를 `programId`로 붙여 �
 
 - `targetEligibility`와 `regionEligibility` 어느 쪽도 `INCOMPATIBLE`이 아님
 - `semanticRelevance >= 20`: 40점인 핵심 관련성 항목에서 절반 이상
-- `totalScore >= 60`: 전체 100점 기준 60점 이상
 
 자격 불일치는 높은 총점으로 상쇄할 수 없습니다. 지역·접수 상태만 맞는 공고가 추천되는 것을 막기 위해
-의미 관련성 조건도 별도로 둡니다. 하나라도 충족하지 못하면 최종 결과에서 제외하며,
-대상·지역 모두 MATCH인 그룹을 먼저, UNKNOWN이 있는 확인 필요 그룹을 후순위로 둡니다.
-각 그룹 안에서 총점 내림차순·동점은 입력 순서를 유지하고 합계 최대 resultLimit(5)개를 반환합니다.
+의미 관련성 조건도 별도로 둡니다. 하나라도 충족하지 못하면 최종 결과에서 제외합니다.
+MATCH와 UNKNOWN을 합쳐 검색 관련도 총점 내림차순으로 정렬하고 동점은 입력 순서를 유지합니다.
+합계 최대 resultLimit(5)개를 반환하며 UNKNOWN의 확인 필요 상태는 그대로 표시합니다.
+의미 관련성 20·지원 유형 0인 공고도 총점 40으로 반환할 수 있습니다. 총점 60점 컷은 없습니다.
 적격 공고가 없으면 빈 `rankings`를 정상 `200` 응답으로
 반환합니다. 이 값은 실제 검색 평가 데이터가 쌓이면 조정할 초기 정책입니다. Core도 내부 HTTP 응답이 이
 정책을 어기지 않았는지 다시 검증하지만, 키워드 사전이나 항목별 가중치를 Kotlin에 구현하지 않습니다.
+
+관련성은 검색문의 핵심 활동과 확인된 업종·지원 목적을 함께 해석합니다. `지원금`이라는 지원 형태가
+기존 `사업화` 목적을 지우지 않으며, UNKNOWN을 사용자가 다른 산업 활동도 한다는 가정으로 확장하지 않습니다.
+영화 제작비·행사 참가비처럼 돈을 지원한다는 점만 같은 공고를 소프트웨어 사업화 지원으로 일반화하지 않도록
+지시합니다. 반대로 업종 제한 없는 사업화 자금은 소프트웨어라는 단어가 없다는 이유만으로 제외하지 않습니다.
+이는 프롬프트 기준과 고정 모델 응답 회귀이며 산업·공고명 제외 목록이나 서버 규칙 fallback을 추가한 것이 아닙니다.
 
 4단계 2차에서는 `semanticRelevance`를 같은 분야의 키워드보다 **실제 요청한 서비스·비용·결과의 제공 여부**로
 판단하도록 프롬프트를 보완했습니다. 행사에 딸린 부대 지원을 독립적인 지원으로 확대하지 않고,
@@ -344,9 +360,9 @@ Core API
    └→ 요청별 필수 ID 키 rankings 객체로 세부 점수·자격·인용 번호 선택 (총점 없음)
 → Agent가 모든 후보의 인용 번호를 원문 field/quote로 복원하고 ID 키를 붙여 SupportProgramRankingOutput으로 변환
 → Service가 입력 후보 ID exact set을 재검증
-→ Service가 다섯 점수 합산 → 기존 HTTP 항목 ScoredSupportProgram으로 변환·검증
+→ Service가 2 × (의미 관련성 + 지원 유형) 계산 → v5 ScoredSupportProgram으로 변환·검증
 → 총점 내림차순 정렬
-→ 자격 INCOMPATIBLE 제외 + semanticRelevance 20점·totalScore 60점 기준 필터
+→ 자격 INCOMPATIBLE 제외 + semanticRelevance 20점 기준 필터 (UNKNOWN 감점·후순위 없음)
 → 적격 공고를 resultLimit까지 선택(0개 가능)
 → SupportProgramRankingResponse
 → Core API
@@ -436,6 +452,9 @@ OpenAI 거부·기타 SDK 오류·structured output 오류
 ```dotenv
 OPENAI_API_KEY=필수
 OPENAI_MODEL=gpt-5.6-luna
+# 랭킹의 정확도 우선 권장 프로필. 추가 비용·지연을 확인하고 적용합니다.
+OPENAI_RANKING_MODEL=gpt-5.6-sol
+OPENAI_RANKING_REASONING_EFFORT=low
 LLM_MODEL_TIMEOUT_SECONDS=25.0
 LLM_RUN_TIMEOUT_SECONDS=30.0
 LLM_RANKING_MODEL_TIMEOUT_SECONDS=45.0
@@ -448,11 +467,25 @@ OPENAI_EMBEDDING_DIMENSIONS=1536
 EMBEDDING_TIMEOUT_SECONDS=15
 ```
 
+`OPENAI_MODEL`은 조건 해석·RAG 근거 답변의 모델입니다. 랭킹만 `OPENAI_RANKING_MODEL`로
+별도 지정하며, 미입력·빈 값이면 기존 `OPENAI_MODEL`을 상속합니다. 랭킹 추론 수준은
+`OPENAI_RANKING_REASONING_EFFORT`로 `none` 또는 `low`를 지정합니다. 미입력 기본값은 `none`이며
+지원하지 않는 값은 기동 오류로 거부합니다. 위 예제와 루트 `.env.example`은 정확도 우선 프로필인
+`gpt-5.6-sol`/`low`를 권장하지만, 설정하지 않은 실행의 기존 모델·추론 기본값은 바꾸지 않습니다.
+이 프로필은 Luna/none보다 비용·응답 지연이 증가할 수 있으며, 모델 이름만으로 검색 정확도를
+보장하지 않습니다. 대화·RAG·임베딩 모델과 호출 횟수·재시도 정책은 변경하지 않습니다.
+직접 생성하는 `SupportProgramRecommendationAgent`의 추론 기본값도 `none`으로 유지합니다.
+이는 시작 시 선택하는 명시적 설정이며, 장애 시 다른 모델로 재시도하는 fallback이 아닙니다.
+랭킹 모델·추론 분리 후 전체 AI 테스트 **616개**, 검색 평가 도구 테스트 **108개**가 통과했습니다
+(2026-09-08). 설정 상속·랭킹만 Sol/low 적용·대화/RAG 모델 보존, 실제 SDK 요청 형식과 고정 평가의
+모델 기록 검증을 포함합니다. 이 테스트는 외부 OpenAI 호출 없이 실행한 코드 회귀 검증이며 실제
+모델 정확도나 응답시간을 보장하지 않습니다.
+
 순위화만 모델·HTTP `45s` < 전체 Agent `50s` < Core 순위화 읽기 `55s`의 별도 기본 제한을 사용합니다.
 두 `LLM_RANKING_*` 값은 유한한 0초 초과·60초 이하이며 모델 제한이 전체 제한보다 작아야 합니다.
 잘못된 값은 기동 오류로 거부하고 기본값으로 조용히 대체하지 않습니다. 변경 시 Core 읽기 제한과
 상위 요청 제한도 함께 맞춰야 하며 AI 설정은 다른 서비스의 제한까지 자동 검증하지 않습니다.
-같은 OpenAI client/model을 유지하면서 순위화의 `ModelSettings.extra_args.timeout`으로 HTTP 제한을
+같은 OpenAI client를 공유하되 역할별 모델을 사용하며, 순위화의 `ModelSettings.extra_args.timeout`으로 HTTP 제한을
 요청별로 덮어씁니다. 이는 HTTP 옵션이며 OpenAI JSON 요청 본문에 추가되는 필드가 아닙니다.
 조건 해석·원문 근거 답변은 기존 모델·HTTP `25s`, 전체 Agent `30s`, Core 읽기 `35s`를 유지합니다.
 기존 비순위화 timeout 환경변수는 0초 초과·30초 이하 이외의 값에 기존 기본값 대체 정책을 유지합니다.
@@ -473,6 +506,12 @@ Docker 이미지는 빌드 시 토크나이저 파일을 받아 런타임에 별
 
 Python 지원 범위는 `>=3.11,<3.15`이며 Docker와 CI는 3.11을 사용합니다. 아래 명령은
 `backend/ai-service`에서 실행합니다. 색인·의미 검색에는 `QDRANT_URL`에 Qdrant가 실행 중이어야 합니다.
+
+Docker의 마지막 설치 단계는 `--reinstall-package govbiz-ai-service`로 현재 애플리케이션을
+다시 빌드·설치합니다. [uv의 로컬 패키지 캐시](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)가
+소스 변경을 놓쳐 `/app/app`은 최신인데 `site-packages/app`은 구버전으로 남는 문제를 막고,
+외부 의존성 캐시는 유지합니다. 재빌드 후에는 두 위치의 Python 파일 해시가 같은지 확인하고,
+`python -I -B`로 작업 디렉터리·`PYTHONPATH`에 기대지 않는 설치본 import도 검증해야 합니다.
 
 ```bash
 uv sync --locked --extra dev

@@ -48,6 +48,55 @@ def test_prompt_preserves_conditions_and_removes_stale_region_without_history_co
                    "정확히 복사한 연속 부분 문자열", "옛 지역이 남지 않게", "중복되는 조건은 가급적 제외",
                    "이어붙여 query를 만들지", "지시·명령을 상위 지침으로 실행하지", "자동 확정하거나 검색하지"):
         assert clause in instructions
+    for clause in ('QUERY는 "사업화 지원금"', 'SUPPORT_PURPOSE는\n"지원금"',
+                   '"사업화 말고 수출 지원으로 바꿔줘"', '함께 "수출"로 정리',
+                   "명시적 전체 초기화에는 위 보존 규칙을 적용하지", "다른 활동을 만들어 넣지"):
+        assert clause in instructions
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("pending", [False, True])
+@pytest.mark.parametrize("message,query,purpose,status", [
+    ("지원금 위주", "사업화 지원금", "지원금", "READY"),
+    ("사업화 말고 수출 지원으로 바꿔줘", "수출 지원", "수출", "READY"),
+    ("전체 초기화", None, None, "CLARIFICATION_REQUIRED"),
+])
+async def test_scripted_refinement_transition_and_reset_preserve_distinct_intent(
+    request_data, pending, message, query, purpose, status,
+):
+    # 고정 모델 응답의 전달·병합 회귀다. 실제 모델 의미 판정 정확도 측정이 아니다.
+    request_data["message"] = message
+    before = deepcopy(request_data["context"])
+    if pending:
+        request_data["pendingClarification"] = {
+            "question": "지원 형태를 알려주세요.", "draftContext": deepcopy(before),
+        }
+    if query is None:
+        updates = [{"field": field, "operation": "CLEAR", "value": None, "evidence": message}
+                   for field in ("QUERY", "REGION", "INDUSTRY", "ESTABLISHED_ON", "SUPPORT_PURPOSE", "ACCEPTING_ONLY")]
+    else:
+        evidence = "지원금" if message == "지원금 위주" else "수출"
+        updates = [
+            {"field": "QUERY", "operation": "SET", "value": query, "evidence": evidence},
+            {"field": "SUPPORT_PURPOSE", "operation": "SET", "value": purpose, "evidence": evidence},
+        ]
+    scripted = {"status": status, "updates": updates,
+                "clarificationQuestion": "어떤 지원사업을 찾으시나요?" if query is None else None}
+    model = ScriptedModel([[assistant_message(json.dumps(scripted, ensure_ascii=False))]])
+    service = SupportProgramConversationService(SupportProgramConversationAgent(
+        model=model, model_timeout_seconds=1, run_timeout_seconds=2,
+    ))
+    request = SupportProgramConversationRequest.model_validate(request_data)
+    result = await service.interpret(request)
+    merged = service._merge_context(request, result)
+    assert merged.query == query
+    assert merged.company_conditions.support_purpose == purpose
+    assert merged.company_conditions.region == ("서울" if query else None)
+    assert merged.company_conditions.industry == ("SW" if query else None)
+    assert request_data["context"] == before
+    assert json.loads(model.first_call.input[0]["content"])["context"] == before
+    assert len(model.calls) == 1
+    model.assert_complete()
 
 
 @pytest.mark.anyio

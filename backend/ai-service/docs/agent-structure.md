@@ -26,10 +26,11 @@ HTTP router
 → SupportProgramRankingOutput
 → exact candidate ID·공식 API 본문 인용·본문 절단 시 UNKNOWN 검증
 → 지원대상·지역 INCOMPATIBLE 제외
-→ 의미 관련성 20점·총점 60점 기준 필터 후 MATCH 그룹 우선·그룹별 점수순 Response (합계 0~5개)
+→ 의미 관련성 20점 기준 필터 후 관련도순 Response (합계 0~5개, UNKNOWN은 확인 필요 표시)
 ```
 
-현재 계약 버전은 `govbiz-support-program-ranking-v4`입니다. 후보 `id`와 응답 `programId`는
+현재 계약 버전은 `govbiz-support-program-ranking-v5`입니다. 관련도는 `2 × (semanticRelevance + supportTypeFit)`로
+계산하며 자격 미확인은 관련도 감점 사유가 아닙니다. 후보 `id`와 응답 `programId`는
 `sourceCode:sourceProgramId` 형태의 정규 식별자이며, 서로 다른 제공처가 같은 원본 ID를 사용해도
 별개 후보로 검증합니다. `targetEligibility`와 `regionEligibility`는
 `MATCH`, `INCOMPATIBLE`, `UNKNOWN` 중 하나이며, 정보 부족을 뜻하는 `UNKNOWN`은 자동 제외하지 않습니다.
@@ -38,7 +39,7 @@ HTTP router
 `agent.py`의 `build_evidence_options`는 제어문자를 경계로 나누고 긴 연속 구간을 최대 240자·최소 60자 겹침의
 원문 조각을 끝까지 생성합니다. `_assessment_selection_type`은 후보의 선택지 수로 번호 범위를
 제한합니다. Agent가 모든 후보의 번호를 해당 후보의 정확한 field/quote로 복원한 뒤 기존 Service의
-원문 검증을 수행하므로 HTTP v4 계약은 그대로입니다. 잘못된 번호는 후보를 버리거나 보정하지 않고 오류로 반환합니다.
+원문 검증을 수행하므로 기존 인용 형식은 HTTP v5에서도 그대로입니다. 잘못된 번호는 후보를 버리거나 보정하지 않고 오류로 반환합니다.
 두 자격 모두 MATCH인 후보를 먼저, UNKNOWN이 있는 확인 필요 후보를 다음으로 반환합니다.
 공식 API 요약의 자격 인용이며 첨부 PDF/HWP를 읽은 최종 자격 판정은 아닙니다. 상세 원문 검색과 근거 문단 인용 답변은
 아래 `support_program_evidence` 수직 기능이 담당합니다.

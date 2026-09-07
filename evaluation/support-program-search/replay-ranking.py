@@ -32,13 +32,17 @@ async def execute(args, envelope, prompts):
     from app.support_program_ranking.models import SupportProgramRankingRequest, SupportProgramRankingResponse
     from app.support_program_ranking.prompt import SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
 
-    # Historical prompt experiment: explicitly freeze ranking at 25/30 seconds,
-    # even though production ranking now defaults to 45/50 seconds.
+    # Historical prompt experiment: freeze effective ranking at Luna/none and
+    # 25/30 seconds, independently of production's ranking-specific settings.
     settings = Settings.from_environment()
     if os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") != "https://api.openai.com/v1":
         raise ValueError("Replay permits only the official OpenAI endpoint")
-    if settings.openai_model != "gpt-5.6-luna":
+    ranking_model = settings.openai_ranking_model or settings.openai_model
+    ranking_reasoning_effort = settings.openai_ranking_reasoning_effort
+    if ranking_model != "gpt-5.6-luna":
         raise ValueError("Replay preserves the measured gpt-5.6-luna model")
+    if ranking_reasoning_effort != "none":
+        raise ValueError("Replay requires the frozen none ranking reasoning effort")
     ranking_timeouts = (settings.llm_ranking_model_timeout_seconds, settings.llm_ranking_run_timeout_seconds)
     if ranking_timeouts != (25.0, 30.0):
         raise ValueError("Replay requires the frozen 25/30 second ranking timeouts")
@@ -177,7 +181,7 @@ async def execute(args, envelope, prompts):
                 "schemaVersion": "support-program-ranking-replay-execution-v1",
                 "status": "succeeded" if succeeded else "failed", "startedAt": started,
                 "cleanupErrors": cleanup_errors,
-                "finishedAt": datetime.now(timezone.utc).isoformat(), "model": settings.openai_model,
+                "finishedAt": datetime.now(timezone.utc).isoformat(), "model": ranking_model,
                 "sourceSha256": source_hashes, "sourceCaptureSha256": sha256_file(args.source_capture),
                 "requestFileSha256": sha256_file(args.requests), "exportMetadataSha256": sha256_file(args.export_metadata),
                 "promptSha256": {variant: hashlib.sha256(prompt.encode()).hexdigest() for variant, prompt in prompts.items()},
@@ -185,7 +189,8 @@ async def execute(args, envelope, prompts):
                 "apiUsageSha256": sha256_file(args.output_dir / "api-usage.jsonl"),
                 "queryCount": len(requests), "plannedCalls": max_calls, "actualCalls": call_count,
                 "completedRankings": len(observations), "embeddingCalls": 0, "sdkMaxRetries": 0,
-                "agentMaxTurns": 1, "maxOutputTokens": max_output_tokens, "reasoningEffort": "none", "store": False,
+                "agentMaxTurns": 1, "maxOutputTokens": max_output_tokens,
+                "reasoningEffort": ranking_reasoning_effort, "store": False,
                 "tracing": False, "timeoutsSeconds": {"model": ranking_timeouts[0], "agent": ranking_timeouts[1]},
                 "measurement": "Fixed candidate HTTP replay using in-process ASGI; not a new full search or browser latency measurement.",
                 "variants": {},

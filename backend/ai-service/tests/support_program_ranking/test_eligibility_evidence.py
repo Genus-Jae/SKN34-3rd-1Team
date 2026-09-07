@@ -44,16 +44,16 @@ def assessment(index=1, *, target="MATCH", region="MATCH", semantic=40, **change
     return AssessedSupportProgram.model_validate({
         "programId": f"BIZINFO:program-{index}", "semanticRelevance": semantic,
         "targetAssessment": {
-            "eligibility": target, "score": 0 if target == "INCOMPATIBLE" else 25,
+            "eligibility": target,
             "evidence": [] if target == "UNKNOWN" else [{"field": "TARGET_DESCRIPTION", "quote": "중소기업"}],
             "explanation": "기업 요건 확인 필요" if target == "UNKNOWN" else "중소기업 대상 본문을 확인했습니다.",
         },
         "regionAssessment": {
-            "eligibility": region, "score": 0 if region == "INCOMPATIBLE" else 15,
+            "eligibility": region,
             "evidence": [] if region == "UNKNOWN" else [{"field": "SUMMARY", "quote": "서울 소재 중소기업"}],
             "explanation": "소재지 요건 확인 필요" if region == "UNKNOWN" else "서울 소재지 조건을 확인했습니다.",
         },
-        "applicationStatusFit": 10, "supportTypeFit": 10,
+        "supportTypeFit": 10,
         "recommendationReasons": ["사업화를 지원합니다."], **changes,
     })
 
@@ -82,7 +82,7 @@ def selection_json(expected, request):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("company_conditions", [False, True])
-async def test_confirmed_bucket_precedes_higher_unknown_scores_and_combined_limit(company_conditions):
+async def test_relevance_precedes_eligibility_status_and_applies_combined_limit(company_conditions):
     values = [assessment(1, region="UNKNOWN"), assessment(2, semantic=20),
               assessment(3, target="UNKNOWN", semantic=39), assessment(4, semantic=25),
               assessment(5, region="INCOMPATIBLE"), assessment(6, semantic=19)]
@@ -91,12 +91,95 @@ async def test_confirmed_bucket_precedes_higher_unknown_scores_and_combined_limi
         [candidate(index) for index in range(1, 7)], company_conditions=company_conditions, limit=3,
     ))
     assert [item.program_id for item in result.rankings] == [
-        "BIZINFO:program-4", "BIZINFO:program-2", "BIZINFO:program-1",
+        "BIZINFO:program-1", "BIZINFO:program-3", "BIZINFO:program-4",
     ]
-    assert [item.total_score for item in result.rankings] == [85, 80, 100]
-    assert result.rankings[-1].region_evidence == []
-    assert result.rankings[-1].region_explanation == "소재지 요건 확인 필요"
+    assert [item.total_score for item in result.rankings] == [100, 98, 70]
+    assert result.rankings[0].region_evidence == []
+    assert result.rankings[0].region_explanation == "소재지 요건 확인 필요"
     assert agent.calls == 1
+
+
+@pytest.mark.anyio
+async def test_strongly_related_unknown_is_not_displaced_by_five_lower_relevance_matches():
+    values = [assessment(index, semantic=20) for index in range(1, 6)]
+    values.append(assessment(6, target="UNKNOWN", region="UNKNOWN", semantic=40))
+    agent = FixedAgent(values)
+    result = await SupportProgramRankingService(agent).rank(request_for(
+        [candidate(index) for index in range(1, 7)],
+    ))
+    assert [item.program_id for item in result.rankings] == [
+        "BIZINFO:program-6", "BIZINFO:program-1", "BIZINFO:program-2",
+        "BIZINFO:program-3", "BIZINFO:program-4",
+    ]
+    assert result.rankings[0].total_score == 100
+    assert result.rankings[0].target_eligibility.value == "UNKNOWN"
+    assert result.rankings[0].region_eligibility.value == "UNKNOWN"
+    assert agent.calls == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("target,region", [
+    ("MATCH", "MATCH"), ("UNKNOWN", "MATCH"), ("MATCH", "UNKNOWN"), ("UNKNOWN", "UNKNOWN"),
+])
+async def test_eligibility_uncertainty_does_not_change_relevance_or_impose_a_total_cutoff(target, region):
+    result = await SupportProgramRankingService(FixedAgent([
+        assessment(target=target, region=region, semantic=20, supportTypeFit=0),
+    ])).rank(request_for([candidate()]))
+    assert len(result.rankings) == 1
+    assert result.rankings[0].total_score == 40
+    assert result.rankings[0].target_eligibility.value == target
+    assert result.rankings[0].region_eligibility.value == region
+
+
+@pytest.mark.anyio
+async def test_equal_relevance_preserves_candidate_order_regardless_of_eligibility():
+    result = await SupportProgramRankingService(FixedAgent([
+        assessment(2), assessment(1, target="UNKNOWN", region="UNKNOWN"),
+    ])).rank(request_for([candidate(1), candidate(2)]))
+    assert [item.program_id for item in result.rankings] == ["BIZINFO:program-1", "BIZINFO:program-2"]
+    assert [item.total_score for item in result.rankings] == [100, 100]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("unrequested_title,unrequested_summary", [
+    ("영화 로케이션 제작지원", "영화 제작사의 로케이션 촬영 비용을 지원합니다."),
+    ("영화 후반작업 제작지원", "영화 제작사의 편집과 색보정 등 후반작업 제작비를 지원합니다."),
+    ("해외 전시회 참가 지원", "지정 해외 전시회 참가 기업의 부스 임차료를 지원합니다."),
+])
+async def test_scripted_funding_type_does_not_override_unrequested_activity_with_unknown_eligibility(
+    unrequested_title, unrequested_summary,
+):
+    # 합성 입력·고정 판정으로 프롬프트 전달과 기존 의미 컷/UNKNOWN 보존을 검증한다.
+    # 실제 모델이 영화·행사 공고를 올바르게 판정하는지 측정하는 테스트가 아니다.
+    request = SupportProgramRankingRequest.model_validate({
+        "originalQuery": "사업화 지원금", "scoringVersion": SCORING_VERSION, "resultLimit": 5,
+        "companyConditions": {"region": "서울", "industry": "SW", "supportPurpose": "지원금", "referenceDate": "2026-09-07"},
+        "candidates": [
+            candidate(1, title=unrequested_title, summary=unrequested_summary, targetDescription="신청 요건 별도 확인"),
+            candidate(2, title="중소기업 사업화 자금", summary="업종 제한 없이 중소기업 제품·서비스 사업화 비용을 지원합니다.", targetDescription="세부 신청 요건 별도 확인"),
+        ],
+    })
+    selections = {}
+    for index, semantic in ((1, 19), (2, 30)):
+        value = assessment(index, target="UNKNOWN", region="UNKNOWN", semantic=semantic)
+        selections[value.program_id] = value.model_dump(by_alias=True, exclude={"program_id"})
+    model = ScriptedModel([[assistant_message(json.dumps({"rankings": selections}, ensure_ascii=False))]])
+    result = await SupportProgramRankingService(SupportProgramRecommendationAgent(
+        model=model, model_timeout_seconds=3, run_timeout_seconds=4,
+    )).rank(request)
+    assert [item.program_id for item in result.rankings] == ["BIZINFO:program-2"]
+    assert result.rankings[0].total_score == 80
+    assert result.rankings[0].target_eligibility.value == "UNKNOWN"
+    assert result.rankings[0].region_eligibility.value == "UNKNOWN"
+    payload = json.loads(model.first_call.input[0]["content"])
+    assert payload["originalQuery"] == "사업화 지원금"
+    assert payload["companyConditions"]["industry"] == "SW"
+    assert payload["companyConditions"]["supportPurpose"] == "지원금"
+    assert "업종 제한 없이" in payload["candidates"][1]["summary"]
+    assert "industry와 supportPurpose는 자격 검토뿐 아니라 검색 관련성 해석의 맥락" in model.first_call.system_instructions
+    assert "UNKNOWN은 검색 관련도 감점 사유가 아닙니다" in model.first_call.system_instructions
+    assert len(model.calls) == 1
+    model.assert_complete()
 
 
 @pytest.mark.anyio
@@ -106,7 +189,7 @@ async def test_nationwide_tag_does_not_override_gyeongbuk_relocation_uncertainty
     request = request_for([candidate(summary=source, regions=["전국"], targetDescription="중소기업")],
                           company_conditions=company_conditions)
     expected = assessment(regionAssessment={
-        "eligibility": "UNKNOWN", "score": 0,
+        "eligibility": "UNKNOWN",
         "evidence": [{"field": "SUMMARY", "quote": "경북 소재 중소기업 또는 선정 후 경북 이전 확약 기업"}],
         "explanation": "서울 기업이므로 선정 후 경북 이전 확약 가능 여부를 확인해야 합니다.",
     })
@@ -126,7 +209,7 @@ async def test_nationwide_tag_does_not_override_gyeongbuk_relocation_uncertainty
 async def test_explicit_regional_conflict_remains_excluded_despite_nationwide_tag_and_high_score():
     source = "경북 소재 중소기업만 지원합니다."
     value = assessment(regionAssessment={
-        "eligibility": "INCOMPATIBLE", "score": 0,
+        "eligibility": "INCOMPATIBLE",
         "evidence": [{"field": "SUMMARY", "quote": source}],
         "explanation": "서울 소재 조건이 경북 소재 기업 한정 조건과 충돌합니다.",
     })
@@ -146,11 +229,11 @@ async def test_actual_conditional_relocation_or_expansion_phrase_preserves_both_
     request = request_for([candidate(summary=source, regions=["전국"], targetDescription="중소기업")],
                           company_conditions=company_conditions)
     expected = assessment(targetAssessment={
-        "eligibility": "UNKNOWN", "score": 0,
+        "eligibility": "UNKNOWN",
         "evidence": [{"field": "SUMMARY", "quote": industry_clause}],
         "explanation": "첨단소재부품산업 관련 기업인지 확인해야 합니다.",
     }, regionAssessment={
-        "eligibility": "UNKNOWN", "score": 0,
+        "eligibility": "UNKNOWN",
         "evidence": [{"field": "SUMMARY", "quote": conditional_clause}],
         "explanation": "지원기간 내 경상북도 사업장 이전 또는 확장 확약 가능 여부와 적용 조건을 확인해야 합니다.",
     })
@@ -160,7 +243,7 @@ async def test_actual_conditional_relocation_or_expansion_phrase_preserves_both_
     assert len(result.rankings) == 1
     ranking = result.rankings[0]
     assert ranking.target_eligibility.value == ranking.region_eligibility.value == "UNKNOWN"
-    assert ranking.total_score == 60
+    assert ranking.total_score == 100
     assert industry_clause in ranking.target_evidence[0].quote
     assert conditional_clause in ranking.region_evidence[0].quote
     assert ranking.target_evidence[0].quote in source
@@ -184,7 +267,7 @@ async def test_actual_conditional_relocation_or_expansion_phrase_preserves_both_
 @pytest.mark.parametrize("semantic", [0, 40])
 async def test_every_candidate_quote_is_checked_even_when_excluded_or_below_minimum(eligibility, semantic):
     value = assessment(semantic=semantic, regionAssessment={
-        "eligibility": eligibility, "score": 0,
+        "eligibility": eligibility,
         "evidence": [{"field": "SUMMARY", "quote": "존재하지 않는 경북 지역 제한"}],
         "explanation": "지역 제한을 확인해야 합니다.",
     })
@@ -201,7 +284,7 @@ async def test_every_candidate_quote_is_checked_even_when_excluded_or_below_mini
 ])
 async def test_cannot_quote_metadata_other_field_other_candidate_or_modified_source(field, quote):
     value = assessment(regionAssessment={
-        "eligibility": "MATCH", "score": 15,
+        "eligibility": "MATCH",
         "evidence": [{"field": field, "quote": quote}], "explanation": "지역 근거",
     })
     with pytest.raises(AgentExecutionError, match="exact quote"):
@@ -252,7 +335,7 @@ async def test_truncated_source_allows_only_unknown_with_confirmation_explanatio
 @pytest.mark.parametrize("eligibility", ["MATCH", "INCOMPATIBLE"])
 def test_known_eligibility_requires_one_source_quote(dimension, eligibility):
     payload = assessment().model_dump(by_alias=True)
-    payload[dimension].update(eligibility=eligibility, score=0, evidence=[])
+    payload[dimension].update(eligibility=eligibility, evidence=[])
     with pytest.raises(ValidationError):
         AssessedSupportProgram.model_validate(payload)
 
@@ -280,7 +363,7 @@ def test_unknown_explanation_rejects_blank_controls_and_overlong_values(value):
 def test_evidence_and_explanation_preserve_raw_text_and_count_code_points():
     evidence = SupportProgramEligibilityEvidence(field="SUMMARY", quote=" " + "😀" * 238 + " ")
     assert evidence.quote == " " + "😀" * 238 + " "
-    value = assessment(regionAssessment={"eligibility": "UNKNOWN", "score": 0, "evidence": [],
+    value = assessment(regionAssessment={"eligibility": "UNKNOWN", "evidence": [],
                                          "explanation": " " + "😀" * 158 + " "})
     assert len(value.region_assessment.explanation) == 160
 
@@ -314,7 +397,7 @@ def test_v3_is_not_silently_reinterpreted_as_v4():
 
 
 def test_invalid_quote_is_an_http_error_not_a_normal_empty_recommendation():
-    value = assessment(regionAssessment={"eligibility": "INCOMPATIBLE", "score": 0,
+    value = assessment(regionAssessment={"eligibility": "INCOMPATIBLE",
                                          "evidence": [{"field": "SUMMARY", "quote": "없는 본문"}],
                                          "explanation": "확인된 제한"})
     settings = Settings(openai_api_key="test-key", openai_model="unused-model",

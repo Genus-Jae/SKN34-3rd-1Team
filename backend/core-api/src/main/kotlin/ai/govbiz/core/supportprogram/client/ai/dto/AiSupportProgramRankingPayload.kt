@@ -16,11 +16,8 @@ enum class AiSupportProgramEligibility {
 data class AiScoredSupportProgramPayload(
     val programId: String?,
     val semanticRelevance: Int?,
-    val targetFit: Int?,
     val targetEligibility: AiSupportProgramEligibility?,
-    val regionFit: Int?,
     val regionEligibility: AiSupportProgramEligibility?,
-    val applicationStatusFit: Int?,
     val supportTypeFit: Int?,
     val totalScore: Int?,
     val recommendationReasons: List<String?>?,

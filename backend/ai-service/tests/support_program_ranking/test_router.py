@@ -32,11 +32,8 @@ def score(
     program_id: str,
     semantic: int,
     *,
-    target: int = 20,
     target_eligibility: SupportProgramEligibility = SupportProgramEligibility.MATCH,
-    region: int = 10,
     region_eligibility: SupportProgramEligibility = SupportProgramEligibility.MATCH,
-    application_status: int = 10,
     support_type: int = 5,
     target_quote: str = "기업",
     region_quote: str = "지원",
@@ -45,16 +42,15 @@ def score(
         programId=program_id,
         semanticRelevance=semantic,
         targetAssessment={
-            "eligibility": target_eligibility, "score": target,
+            "eligibility": target_eligibility,
             "evidence": [] if target_eligibility is SupportProgramEligibility.UNKNOWN else [{"field": "SUMMARY", "quote": target_quote}],
             "explanation": "기업 유형 확인 필요" if target_eligibility is SupportProgramEligibility.UNKNOWN else "본문의 기업 조건을 비교했습니다.",
         },
         regionAssessment={
-            "eligibility": region_eligibility, "score": region,
+            "eligibility": region_eligibility,
             "evidence": [] if region_eligibility is SupportProgramEligibility.UNKNOWN else [{"field": "SUMMARY", "quote": region_quote}],
             "explanation": "소재지 조건 확인 필요" if region_eligibility is SupportProgramEligibility.UNKNOWN else "본문의 지역 조건을 비교했습니다.",
         },
-        applicationStatusFit=application_status,
         supportTypeFit=support_type,
         recommendationReasons=["공고 원문 근거"],
     )
@@ -98,7 +94,7 @@ class BelowSemanticMinimumAgent(SupportProgramRecommendationAgent):
         )
 
 
-class BelowTotalMinimumAgent(SupportProgramRecommendationAgent):
+class RelevantLowTotalAgent(SupportProgramRecommendationAgent):
     def __init__(self) -> None:
         pass
 
@@ -111,9 +107,6 @@ class BelowTotalMinimumAgent(SupportProgramRecommendationAgent):
                 score(
                     "BIZINFO:program-low",
                     20,
-                    target=10,
-                    region=10,
-                    application_status=10,
                     support_type=9,
                 ),
                 score("BIZINFO:program-high", 40),
@@ -230,7 +223,8 @@ def test_returns_llm_scores_sorted_by_total_score() -> None:
         "BIZINFO:program-high",
         "BIZINFO:program-low",
     ]
-    assert body["rankings"][0]["totalScore"] == 85
+    assert body["rankings"][0]["totalScore"] == 90
+    assert not {"targetFit", "regionFit", "applicationStatusFit"} & body["rankings"][0].keys()
     assert body["rankings"][0]["targetEligibility"] == "MATCH"
     assert body["rankings"][0]["regionEligibility"] == "MATCH"
     assert "targetAssessment" not in body["rankings"][0]
@@ -238,26 +232,20 @@ def test_returns_llm_scores_sorted_by_total_score() -> None:
     assert len(agent.requests) == 1
 
 
-def test_computes_the_failed_capture_sum_in_service_and_keeps_http_contract() -> None:
-    # 실제 캡처에서 24 + 25 + 15 + 10 + 7을 80으로 응답했던 회귀 사례.
+def test_computes_relevance_total_in_service_and_keeps_v5_http_contract() -> None:
+    # 모델이 총점을 계산하지 않는 기존 회귀를 v5 관련도 산식으로 유지한다.
     output = SupportProgramRankingOutput(
         rankings=[
             score(
                 "BIZINFO:program-low",
                 24,
-                target=25,
-                region=15,
-                application_status=10,
                 support_type=7,
             ),
-            # 실제 캡처에서 10 + 8 + 15 + 3 + 2를 28로 응답했던 저관련성 사례.
+            # 자격 상태와 무관하게 의미 관련성 20 미만은 제외한다.
             score(
                 "BIZINFO:program-high",
                 10,
-                target=8,
                 target_eligibility=SupportProgramEligibility.UNKNOWN,
-                region=15,
-                application_status=3,
                 support_type=2,
             ),
         ]
@@ -294,17 +282,14 @@ def test_computes_the_failed_capture_sum_in_service_and_keeps_http_contract() ->
         "rankings": [{
             "programId": "BIZINFO:program-low",
             "semanticRelevance": 24,
-            "targetFit": 25,
             "targetEligibility": "MATCH",
             "targetEvidence": [{"field": "SUMMARY", "quote": "창업기업 지원"}],
             "targetExplanation": "본문의 기업 조건을 비교했습니다.",
-            "regionFit": 15,
             "regionEligibility": "MATCH",
             "regionEvidence": [{"field": "SUMMARY", "quote": "창업기업 지원"}],
             "regionExplanation": "본문의 지역 조건을 비교했습니다.",
-            "applicationStatusFit": 10,
             "supportTypeFit": 7,
-            "totalScore": 81,
+            "totalScore": 62,
             "recommendationReasons": ["공고 원문 근거"],
         }],
     }
@@ -433,11 +418,11 @@ def test_filters_a_candidate_below_the_semantic_relevance_minimum() -> None:
     ]
 
 
-def test_filters_a_candidate_below_the_total_score_minimum() -> None:
+def test_keeps_relevant_candidate_below_the_former_total_score_minimum() -> None:
     client = TestClient(
         create_app(
             settings=TEST_SETTINGS,
-            support_program_recommendation_agent=BelowTotalMinimumAgent(),
+            support_program_recommendation_agent=RelevantLowTotalAgent(),
         )
     )
 
@@ -448,8 +433,9 @@ def test_filters_a_candidate_below_the_total_score_minimum() -> None:
 
     assert response.status_code == 200
     assert [item["programId"] for item in response.json()["rankings"]] == [
-        "BIZINFO:program-high"
+        "BIZINFO:program-high", "BIZINFO:program-low"
     ]
+    assert response.json()["rankings"][1]["totalScore"] == 58
 
 
 def test_returns_an_empty_ranking_when_no_candidate_meets_the_minimum() -> None:
@@ -478,10 +464,7 @@ def test_excludes_explicit_busan_region_mismatch_despite_high_score() -> None:
                     score(
                         "BIZINFO:program-busan",
                         40,
-                        target=25,
-                        region=0,
                         region_eligibility=SupportProgramEligibility.INCOMPATIBLE,
-                        application_status=10,
                         support_type=10,
                     )
                 ]
@@ -515,11 +498,8 @@ def test_excludes_explicit_pre_startup_target_mismatch_despite_high_score() -> N
                     score(
                         "BIZINFO:program-pre-startup",
                         40,
-                        target=0,
                         target_eligibility=SupportProgramEligibility.INCOMPATIBLE,
                         target_quote="예비창업자",
-                        region=15,
-                        application_status=10,
                         support_type=10,
                     )
                 ]
@@ -553,11 +533,8 @@ def test_keeps_a_candidate_when_target_and_region_information_are_unknown() -> N
                     score(
                         "BIZINFO:program-unknown",
                         40,
-                        target=0,
                         target_eligibility=SupportProgramEligibility.UNKNOWN,
-                        region=0,
                         region_eligibility=SupportProgramEligibility.UNKNOWN,
-                        application_status=10,
                         support_type=10,
                     )
                 ]
@@ -695,7 +672,7 @@ def test_forwards_normalized_confirmed_company_conditions_to_the_existing_agent(
 
 
 @pytest.mark.parametrize("include_null", [False, True])
-def test_absent_company_conditions_do_not_add_a_field_to_the_v4_serialized_request(include_null) -> None:
+def test_absent_company_conditions_do_not_add_a_field_to_the_v5_serialized_request(include_null) -> None:
     body = request_body()
     original_json = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     if include_null:
@@ -777,20 +754,17 @@ def test_invalid_company_conditions_are_rejected_before_agent_execution(conditio
     assert not agent.requests
 
 
-def test_score_schema_requires_the_total_to_equal_all_dimensions() -> None:
+def test_score_schema_requires_the_total_to_equal_normalized_relevance() -> None:
     with pytest.raises(ValidationError, match="totalScore"):
         ScoredSupportProgram(
             programId="BIZINFO:program-1",
             semanticRelevance=40,
-            targetFit=25,
             targetEligibility=SupportProgramEligibility.MATCH,
             targetEvidence=[{"field": "SUMMARY", "quote": "기업"}],
             targetExplanation="기업 조건 근거",
-            regionFit=15,
             regionEligibility=SupportProgramEligibility.MATCH,
             regionEvidence=[{"field": "SUMMARY", "quote": "지원"}],
             regionExplanation="지역 조건 근거",
-            applicationStatusFit=10,
             supportTypeFit=10,
             totalScore=99,
             recommendationReasons=["근거"],
@@ -813,46 +787,20 @@ def test_score_schema_requires_a_canonical_program_id(program_id: str) -> None:
         score(program_id, 40)
 
 
-@pytest.mark.parametrize(
-    ("target", "target_eligibility", "region", "region_eligibility", "message"),
-    [
-        (
-            1,
-            SupportProgramEligibility.INCOMPATIBLE,
-            15,
-            SupportProgramEligibility.MATCH,
-            "incompatible target eligibility",
-        ),
-        (
-            25,
-            SupportProgramEligibility.MATCH,
-            1,
-            SupportProgramEligibility.INCOMPATIBLE,
-            "incompatible region eligibility",
-        ),
-    ],
-)
-def test_score_schema_requires_zero_fit_for_explicit_incompatibility(
-    target: int,
-    target_eligibility: SupportProgramEligibility,
-    region: int,
-    region_eligibility: SupportProgramEligibility,
-    message: str,
-) -> None:
-    with pytest.raises(ValidationError, match=message):
+@pytest.mark.parametrize("legacy_field", ["targetFit", "regionFit", "applicationStatusFit"])
+def test_v5_score_schema_rejects_removed_eligibility_score_fields(legacy_field: str) -> None:
+    with pytest.raises(ValidationError, match=legacy_field):
         ScoredSupportProgram(
             programId="BIZINFO:program-1",
             semanticRelevance=40,
-            targetFit=target,
-            targetEligibility=target_eligibility,
+            targetEligibility=SupportProgramEligibility.MATCH,
             targetEvidence=[{"field": "SUMMARY", "quote": "기업"}],
             targetExplanation="기업 조건 근거",
-            regionFit=region,
-            regionEligibility=region_eligibility,
+            regionEligibility=SupportProgramEligibility.MATCH,
             regionEvidence=[{"field": "SUMMARY", "quote": "지원"}],
             regionExplanation="지역 조건 근거",
-            applicationStatusFit=10,
             supportTypeFit=5,
-            totalScore=40 + target + region + 10 + 5,
+            totalScore=90,
             recommendationReasons=["공고 원문 근거"],
+            **{legacy_field: 1},
         )

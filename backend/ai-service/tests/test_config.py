@@ -14,6 +14,8 @@ def configure_required_openai_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.delenv("LLM_RANKING_MODEL_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("LLM_RANKING_RUN_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("OPENAI_RANKING_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_RANKING_REASONING_EFFORT", raising=False)
 
 
 def test_reads_trimmed_openai_settings(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -115,6 +117,43 @@ def test_uses_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
 
     assert Settings.from_environment().openai_model == DEFAULT_OPENAI_MODEL
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_absent_ranking_model_preserves_the_general_model(monkeypatch, value):
+    monkeypatch.setenv("OPENAI_MODEL", "custom-existing-model")
+    if value is not None:
+        monkeypatch.setenv("OPENAI_RANKING_MODEL", value)
+    settings = Settings.from_environment()
+    assert settings.openai_ranking_model is None
+    assert settings.openai_model == "custom-existing-model"
+    assert settings.openai_ranking_reasoning_effort == "none"
+
+
+def test_reads_independent_trimmed_ranking_model_and_reasoning(monkeypatch):
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-luna")
+    monkeypatch.setenv("OPENAI_RANKING_MODEL", " gpt-5.6-sol ")
+    monkeypatch.setenv("OPENAI_RANKING_REASONING_EFFORT", " low ")
+    settings = Settings.from_environment()
+    assert settings.openai_ranking_model == "gpt-5.6-sol"
+    assert settings.openai_ranking_reasoning_effort == "low"
+    assert settings.openai_model == "gpt-5.6-luna"
+    assert settings.openai_embedding_model == "text-embedding-3-small"
+
+
+@pytest.mark.parametrize("value", ["", " ", "medium", "LOW", "private-invalid-setting"])
+def test_invalid_ranking_reasoning_fails_startup_without_silent_replacement(monkeypatch, value):
+    monkeypatch.setenv("OPENAI_RANKING_REASONING_EFFORT", value)
+    with pytest.raises(SettingsConfigurationError, match="OPENAI_RANKING_REASONING_EFFORT") as captured:
+        Settings.from_environment()
+    assert "private-invalid-setting" not in str(captured.value)
+
+
+@pytest.mark.parametrize("value", [None, True, "medium", ""])
+def test_direct_settings_also_reject_invalid_ranking_reasoning(value):
+    with pytest.raises(SettingsConfigurationError, match="OPENAI_RANKING_REASONING_EFFORT"):
+        Settings(openai_api_key="test-key", openai_model="test-model", llm_model_timeout_seconds=25,
+                 llm_run_timeout_seconds=30, openai_ranking_reasoning_effort=value)
 
 
 def test_reads_vector_search_settings(monkeypatch: pytest.MonkeyPatch) -> None:

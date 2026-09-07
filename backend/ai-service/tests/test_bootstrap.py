@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import pytest
 from agents.testing import ScriptedModel, assistant_message
@@ -61,13 +62,12 @@ async def test_builds_and_wires_agent_in_the_composition_root(
             AssessedSupportProgram(
                 programId="BIZINFO:program-1",
                 semanticRelevance=40,
-                targetAssessment={"eligibility": "MATCH", "score": 25,
+                targetAssessment={"eligibility": "MATCH",
                                   "evidence": [{"field": "TARGET_DESCRIPTION", "quote": "중소기업"}],
                                   "explanation": "기업 대상 근거"},
-                regionAssessment={"eligibility": "MATCH", "score": 15,
+                regionAssessment={"eligibility": "MATCH",
                                   "evidence": [{"field": "SUMMARY", "quote": "반도체 지원"}],
                                   "explanation": "지역 조건 근거"},
-                applicationStatusFit=10,
                 supportTypeFit=10,
                 recommendationReasons=["질의와 직접 관련"],
             )
@@ -163,6 +163,50 @@ async def test_builds_and_wires_agent_in_the_composition_root(
     model.assert_complete()
     await container.close()
     assert client.closed is True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("ranking_model,reasoning", [(None, "none"), ("gpt-5.6-sol", "low")])
+async def test_ranking_model_and_reasoning_do_not_change_conversation_or_evidence(
+    monkeypatch, ranking_model, reasoning,
+):
+    client = FakeOpenAIClient()
+    captured = []
+
+    def fake_responses_model(**arguments):
+        model = ScriptedModel([])
+        captured.append((arguments, model))
+        return model
+
+    monkeypatch.setattr(bootstrap_module, "AsyncOpenAI", lambda **kwargs: client)
+    monkeypatch.setattr(bootstrap_module, "OpenAIResponsesModel", fake_responses_model)
+    settings = replace(OPENAI_SETTINGS, openai_ranking_model=ranking_model,
+                       openai_ranking_reasoning_effort=reasoning)
+    container = build_application_container(settings)
+    try:
+        general_arguments, general_model = captured[0]
+        ranking_arguments, selected_ranking_model = captured[1]
+        assert general_arguments == {"model": "test-model", "openai_client": client}
+        assert ranking_arguments == {"model": ranking_model or "test-model", "openai_client": client}
+        ranking = container.support_program_ranking_service._agent._agent
+        conversation = container.support_program_conversation_service._agent._agent
+        evidence = container.support_program_evidence_answer_service._agent._agent
+        assert ranking.model is selected_ranking_model
+        assert ranking.model_settings.reasoning.effort == reasoning
+        assert ranking.model_settings.timeout == 45
+        for agent in (conversation, evidence):
+            assert agent.model is general_model
+            assert agent.model_settings.reasoning.effort == "none"
+            assert agent.model_settings.timeout == 1.25
+        assert container.openai_client is client
+        assert container.support_program_index_service.openai_client is client
+        assert container.support_program_evidence_service.openai_client is client
+        assert len(captured) == 2
+        general_model.assert_complete()
+        selected_ranking_model.assert_complete()
+    finally:
+        await container.close()
+    assert client.closed
 
 
 def test_application_lifespan_closes_container_owned_client(

@@ -109,7 +109,10 @@ class SupportProgramRecommendationAgent:
         model: Model,
         model_timeout_seconds: float,
         run_timeout_seconds: float,
+        reasoning_effort: Literal["none", "low"] = "none",
     ) -> None:
+        if reasoning_effort not in ("none", "low"):
+            raise ValueError("ranking reasoning effort must be none or low")
         self._run_timeout_seconds = run_timeout_seconds
         self._agent: Agent[None] = Agent(
             name="GovBiz Support Program Recommendation Scorer",
@@ -117,7 +120,7 @@ class SupportProgramRecommendationAgent:
             model=model,
             model_settings=ModelSettings(
                 max_tokens=10_000,
-                reasoning=Reasoning(effort="none"),
+                reasoning=Reasoning(effort=reasoning_effort),
                 store=False,
                 timeout=model_timeout_seconds,
                 # The SDK model deadline and the OpenAI HTTP timeout are separate.

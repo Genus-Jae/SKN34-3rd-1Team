@@ -82,10 +82,11 @@ class AiSupportProgramRankingFacade(
         if (rankings.size > request.resultLimit) return null
 
         val candidatesById = candidates.associateBy { it.program.sourceQualifiedId }
+        val candidateOrder = candidates.mapIndexed { index, candidate -> candidate.program.sourceQualifiedId to index }.toMap()
         val transmittedCandidatesById = request.candidates.associateBy { it.id }
         val seenIds = HashSet<String>()
         var previousScore = MAX_TOTAL_SCORE + 1
-        var previousReviewBucket = -1
+        var previousCandidateOrder = -1
         val programs = ArrayList<SupportProgram>(rankings.size)
         for (nullableRanking in rankings) {
             val ranking = nullableRanking ?: return null
@@ -94,13 +95,13 @@ class AiSupportProgramRankingFacade(
             if (!seenIds.add(programId)) return null
 
             val score = validatedScore(ranking) ?: return null
-            if (!meetsRecommendationMinimum(ranking, score)) return null
+            if (!meetsRecommendationMinimum(ranking)) return null
             if (!hasCompatibleEligibility(ranking)) return null
             val review = validatedReview(ranking, transmittedCandidatesById.getValue(programId)) ?: return null
-            val reviewBucket = if (review.status == SupportProgramEligibilityReviewStatus.MATCH) 0 else 1
-            if (reviewBucket < previousReviewBucket || (reviewBucket == previousReviewBucket && score > previousScore)) return null
-            previousReviewBucket = reviewBucket
+            val order = candidateOrder.getValue(programId)
+            if (score > previousScore || (score == previousScore && order < previousCandidateOrder)) return null
             previousScore = score
+            previousCandidateOrder = order
             val reasons = validatedReasons(ranking.recommendationReasons) ?: return null
             programs += candidate.program.copy(
                 matchedReasons = reasons,
@@ -113,25 +114,21 @@ class AiSupportProgramRankingFacade(
 
     private fun validatedScore(ranking: AiScoredSupportProgramPayload): Int? {
         val semantic = ranking.semanticRelevance?.takeIf { it in 0..40 } ?: return null
-        val target = ranking.targetFit?.takeIf { it in 0..25 } ?: return null
-        val region = ranking.regionFit?.takeIf { it in 0..15 } ?: return null
-        val status = ranking.applicationStatusFit?.takeIf { it in 0..10 } ?: return null
         val supportType = ranking.supportTypeFit?.takeIf { it in 0..10 } ?: return null
         val total = ranking.totalScore?.takeIf { it in 0..MAX_TOTAL_SCORE } ?: return null
-        return total.takeIf { it == semantic + target + region + status + supportType }
+        return total.takeIf { it == 2 * (semantic + supportType) }
     }
 
     /**
      * AI Service가 모든 후보를 점수화한 뒤 적용하는 추천 최소 기준을 내부 HTTP 경계에서도 다시 검증한다.
-     * 의미 관련성만 40점 중 절반 이상이고, 전체 적합성도 100점 중 60점 이상인 공고만 추천한다.
+     * 실제 요청한 지원을 일부라도 직접 제공하는 의미 관련성 20/40 이상만 추천한다.
+     * 자격 확인 여부는 관련도와 별개이며, UNKNOWN이라는 이유만으로 감점하거나 제외하지 않는다.
      */
     private fun meetsRecommendationMinimum(
         ranking: AiScoredSupportProgramPayload,
-        totalScore: Int,
     ): Boolean =
         ranking.semanticRelevance != null &&
-            ranking.semanticRelevance >= MIN_SEMANTIC_RELEVANCE_SCORE &&
-            totalScore >= MIN_TOTAL_RECOMMENDATION_SCORE
+            ranking.semanticRelevance >= MIN_SEMANTIC_RELEVANCE_SCORE
 
     /**
      * AI Service는 명백히 불일치한 공고를 이미 제외해야 합니다. Core도 같은 계약을 검증해
@@ -140,8 +137,6 @@ class AiSupportProgramRankingFacade(
     private fun hasCompatibleEligibility(ranking: AiScoredSupportProgramPayload): Boolean {
         val targetEligibility = ranking.targetEligibility ?: return false
         val regionEligibility = ranking.regionEligibility ?: return false
-        if (targetEligibility == AiSupportProgramEligibility.INCOMPATIBLE && ranking.targetFit != 0) return false
-        if (regionEligibility == AiSupportProgramEligibility.INCOMPATIBLE && ranking.regionFit != 0) return false
         return targetEligibility != AiSupportProgramEligibility.INCOMPATIBLE &&
             regionEligibility != AiSupportProgramEligibility.INCOMPATIBLE
     }
@@ -248,10 +243,9 @@ class AiSupportProgramRankingFacade(
         if (codePointCount(0, length) <= maximum) this else substring(0, offsetByCodePoints(0, maximum))
 
     companion object {
-        const val SCORING_VERSION = "govbiz-support-program-ranking-v4"
+        const val SCORING_VERSION = "govbiz-support-program-ranking-v5"
         private const val MAX_TOTAL_SCORE = 100
         private const val MIN_SEMANTIC_RELEVANCE_SCORE = 20
-        private const val MIN_TOTAL_RECOMMENDATION_SCORE = 60
         private const val MAX_REASONS = 3
         private const val MAX_REASON_LENGTH = 120
         private const val MAX_TITLE_LENGTH = 300

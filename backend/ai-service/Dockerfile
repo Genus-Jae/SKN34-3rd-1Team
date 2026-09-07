@@ -18,7 +18,7 @@ RUN .venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
 COPY app ./app
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --locked --no-dev --no-editable --reinstall-package govbiz-ai-service
 
 FROM python:3.11-slim-bookworm AS runtime
 

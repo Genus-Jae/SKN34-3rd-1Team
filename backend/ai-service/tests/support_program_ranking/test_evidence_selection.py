@@ -46,17 +46,14 @@ def assessment(*, target="MATCH", region="MATCH", target_evidence=None, region_e
         "semanticRelevance": semantic,
         "targetAssessment": {
             "eligibility": target,
-            "score": 0 if target == "INCOMPATIBLE" else 25,
             "evidence": ([0] if target != "UNKNOWN" else []) if target_evidence is None else target_evidence,
             "explanation": "공식 본문의 기업 요건을 확인했습니다.",
         },
         "regionAssessment": {
             "eligibility": region,
-            "score": 0 if region == "INCOMPATIBLE" else 15,
             "evidence": ([1] if region != "UNKNOWN" else []) if region_evidence is None else region_evidence,
             "explanation": "공식 본문의 지역 요건을 확인했습니다.",
         },
-        "applicationStatusFit": 10,
         "supportTypeFit": 10,
         "recommendationReasons": ["기업의 사업화 지원을 확인했습니다."],
     }
