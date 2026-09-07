@@ -247,8 +247,9 @@ Accept: application/json
 목록 검색이나 상세 GET은 기업마당 상세 페이지를 수집하지 않습니다. 사용자가 특정 공고에 질문을 제출할 때만
 다음 endpoint가 기업마당 공식 HTML 원문을 사용합니다. 현재 지원 제공처는 `BIZINFO`뿐이며, 현재 공개된
 공고가 아닌 경우에는 원문 수집 전에 상세 조회와 같은 404를 반환합니다.
-Frontend는 `KSTARTUP`을 포함한 비 `BIZINFO` 상세에서 질문 입력 대신 미지원 설명과 기존 원문 링크를
-표시하고 근거 질문 HTTP 요청을 보내지 않습니다. 서버의 미지원 제공처 422 계약도 유지합니다.
+Frontend는 기업마당 상세에서 별도 `/support-programs/detail/question` 페이지로 이동해 명시적으로 질문을 제출합니다.
+`KSTARTUP`을 포함한 비 `BIZINFO` 상세에서는 질문 링크 대신 미지원 설명과 기존 원문 링크를 표시하며,
+질문 페이지에 직접 접속해도 근거 질문 HTTP 요청을 보내지 않습니다. 서버의 미지원 제공처 422 계약도 유지합니다.
 
 ```http
 POST /api/v1/support-programs/detail/answers

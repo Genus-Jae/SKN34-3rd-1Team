@@ -24,7 +24,7 @@ flowchart LR
     Sync[Core 백그라운드 동기화] --> Source[기업마당 공고 API]
     Sync --> AI
     Sync --> DB
-    EvidenceQuestion[상세 공고 명시적 질문] --> Core
+    EvidenceQuestion[공고 질문 페이지의 명시적 질문] --> Core
     Core --> DetailSource[기업마당 공식 HTTPS 상세 HTML]
 ```
 
@@ -112,8 +112,13 @@ View는 페이지 ViewModel 하나가 반환한 상태를 렌더링하고 사용
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷만 남깁니다.
 
 상세 조회·원문 근거 질문은 별도 `support-program-detail` feature에 둡니다.
-[SupportProgramDetailPage.tsx](../../frontend/src/presentation/features/support-program-detail/view/SupportProgramDetailPage.tsx)와
-전용 View·스타일·ViewModel·테스트를 함께 배치하고, 채팅 feature의 화면 구현이나 상태에 의존하지 않습니다.
+[SupportProgramDetailPage.tsx](../../frontend/src/presentation/features/support-program-detail/view/SupportProgramDetailPage.tsx)는
+`useSupportProgramDetailViewModel`을, 별도 질문 페이지인
+[SupportProgramEvidenceQuestionPage.tsx](../../frontend/src/presentation/features/support-program-detail/view/SupportProgramEvidenceQuestionPage.tsx)는
+`useSupportProgramEvidenceQuestionViewModel`을 사용합니다. 각 페이지의 View·스타일·ViewModel·테스트를
+함께 배치하고, 채팅 feature의 화면 구현이나 상태에 의존하지 않습니다.
+기업마당 상세의 **이 공고에 질문하기** 링크로 `/support-programs/detail/question`에 제공처·원본 ID를 전달합니다.
+질문 페이지는 URL 식별자를 검증해 직접 접속·새로고침과 상세로 돌아가기를 지원하며, 명시적 질문 제출 때만 API를 호출합니다.
 채팅은 상세 URL의 제공처·원본 공고 ID만 전달합니다. 두 feature가 공유하는 오류 안내 문구는
 `presentation/shared/support-program`에 두며 Domain·UseCase·Repository·DI 경계는 그대로 유지합니다.
 
@@ -149,6 +154,7 @@ Immer로 처리하는 갱신 방식이며 View나 HTTP 코드가 Store 상태를
 |---|---|---|
 | 지원사업 채팅 | Redux `chat` slice + 내부 채팅 Hook | 앱 내 화면 이동 동안 메시지·입력 유지 |
 | 지원사업 상세 | ViewModel Hook의 로컬 상태 | 화면 진입 때 API 재조회, 이탈 시 로컬 상태 해제 |
+| 공고 원문 질문 | 질문 페이지 ViewModel Hook의 로컬 상태 | 명시적 제출 때만 API 호출, 화면 이탈·새로고침 시 질문·답변 초기화 |
 | Hook SampleItem | React Hook Form + Hook 로컬 상태 | 화면 이탈 시 입력·결과 초기화 |
 | Redux SampleItem | Redux `sampleItem` slice + ViewModel Hook | 앱 내 화면 이동 동안 입력·결과 유지 |
 

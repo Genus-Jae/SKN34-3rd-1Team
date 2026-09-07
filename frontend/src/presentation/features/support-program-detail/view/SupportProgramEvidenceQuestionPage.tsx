@@ -1,14 +1,52 @@
 import type { FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router'
 
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import {
   maximumSupportProgramEvidenceQuestionLength,
   useSupportProgramEvidenceQuestionViewModel,
 } from '../viewmodel/useSupportProgramEvidenceQuestionViewModel'
-import { supportProgramDetailStyles } from './SupportProgramDetailPage.styles'
+import { supportProgramEvidenceQuestionStyles } from './SupportProgramEvidenceQuestionPage.styles'
 
-/** 사용자가 요청할 때만 특정 공고 원문을 근거로 질문을 보내는 상세 화면 영역입니다. */
-export function SupportProgramEvidenceQuestionSection({
+/** URL로 지정한 공고의 원문 근거 질문을 담당하는 페이지입니다. */
+export function SupportProgramEvidenceQuestionPage() {
+  const [searchParams] = useSearchParams()
+  const sourceCode = searchParams.get('sourceCode')
+  const sourceProgramId = searchParams.get('sourceProgramId')
+
+  if (!sourceCode?.trim() || !sourceProgramId?.trim()) {
+    return (
+      <main className={supportProgramEvidenceQuestionStyles.page}>
+        <Link className={supportProgramEvidenceQuestionStyles.backLink} to="/">
+          ← 검색 결과로 돌아가기
+        </Link>
+        <section className={supportProgramEvidenceQuestionStyles.evidenceSection}>
+          <h1 className={supportProgramEvidenceQuestionStyles.title}>공고 정보를 찾을 수 없습니다</h1>
+          <p className={supportProgramEvidenceQuestionStyles.evidenceDescription}>
+            공고 주소가 올바르지 않습니다. 검색 결과에서 공고를 다시 선택해 주세요.
+          </p>
+        </section>
+      </main>
+    )
+  }
+
+  const identity = { sourceCode, sourceProgramId }
+  const detailUrl = `/support-programs/detail?${new URLSearchParams(identity)}`
+
+  return (
+    <main className={supportProgramEvidenceQuestionStyles.page}>
+      <Link className={supportProgramEvidenceQuestionStyles.backLink} to={detailUrl}>
+        ← 공고 상세로 돌아가기
+      </Link>
+      <SupportProgramEvidenceQuestionContent
+        key={JSON.stringify([sourceCode, sourceProgramId])}
+        identity={identity}
+      />
+    </main>
+  )
+}
+
+function SupportProgramEvidenceQuestionContent({
   identity,
 }: {
   identity: SupportProgramIdentity
@@ -33,11 +71,11 @@ export function SupportProgramEvidenceQuestionSection({
 
   if (!isSupported) {
     return (
-      <section className={supportProgramDetailStyles.evidenceSection} aria-labelledby="evidence-question-title">
-        <h2 id="evidence-question-title" className={supportProgramDetailStyles.sectionTitle}>
+      <section className={supportProgramEvidenceQuestionStyles.evidenceSection} aria-labelledby="evidence-question-title">
+        <h1 id="evidence-question-title" className={supportProgramEvidenceQuestionStyles.title}>
           공고 원문 기반 질문
-        </h2>
-        <p className={supportProgramDetailStyles.evidenceDescription}>
+        </h1>
+        <p className={supportProgramEvidenceQuestionStyles.evidenceDescription}>
           이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다. 원문 공고에서 확인해 주세요.
         </p>
       </section>
@@ -45,27 +83,27 @@ export function SupportProgramEvidenceQuestionSection({
   }
 
   return (
-    <section className={supportProgramDetailStyles.evidenceSection} aria-labelledby="evidence-question-title">
-      <div className={supportProgramDetailStyles.evidenceHeader}>
+    <section className={supportProgramEvidenceQuestionStyles.evidenceSection} aria-labelledby="evidence-question-title">
+      <div className={supportProgramEvidenceQuestionStyles.evidenceHeader}>
         <div>
-          <p className={supportProgramDetailStyles.sectionEyebrow}>공고 원문 기반</p>
-          <h2 id="evidence-question-title" className={supportProgramDetailStyles.sectionTitle}>
+          <p className={supportProgramEvidenceQuestionStyles.sectionEyebrow}>공고 원문 기반</p>
+          <h1 id="evidence-question-title" className={supportProgramEvidenceQuestionStyles.title}>
             이 공고에 질문하기
-          </h2>
+          </h1>
         </div>
-        <span className={supportProgramDetailStyles.evidenceBadge}>근거 답변</span>
+        <span className={supportProgramEvidenceQuestionStyles.evidenceBadge}>근거 답변</span>
       </div>
-      <p className={supportProgramDetailStyles.evidenceDescription}>
+      <p className={supportProgramEvidenceQuestionStyles.evidenceDescription}>
         공고 원문에 있는 내용만 근거로 답합니다. 최종 신청 조건은 원문 공고에서 다시 확인해 주세요.
       </p>
 
-      <form className={supportProgramDetailStyles.evidenceForm} onSubmit={handleSubmit}>
-        <label className={supportProgramDetailStyles.evidenceLabel} htmlFor="support-program-evidence-question">
+      <form className={supportProgramEvidenceQuestionStyles.evidenceForm} onSubmit={handleSubmit}>
+        <label className={supportProgramEvidenceQuestionStyles.evidenceLabel} htmlFor="support-program-evidence-question">
           공고 원문에 질문하기
         </label>
         <textarea
           id="support-program-evidence-question"
-          className={supportProgramDetailStyles.evidenceInput}
+          className={supportProgramEvidenceQuestionStyles.evidenceInput}
           aria-describedby="support-program-evidence-question-hint support-program-evidence-question-count"
           aria-invalid={isValidationFailed}
           disabled={isAnswering}
@@ -74,14 +112,14 @@ export function SupportProgramEvidenceQuestionSection({
           placeholder="예: 신청 대상과 제출해야 하는 서류를 알려줘"
           rows={3}
         />
-        <div className={supportProgramDetailStyles.evidenceControls}>
-          <span id="support-program-evidence-question-count" className={supportProgramDetailStyles.evidenceCount}>
+        <div className={supportProgramEvidenceQuestionStyles.evidenceControls}>
+          <span id="support-program-evidence-question-count" className={supportProgramEvidenceQuestionStyles.evidenceCount}>
             {questionLength} / {maximumSupportProgramEvidenceQuestionLength}자
           </span>
           {isAnswering ? (
             <button
               type="button"
-              className={supportProgramDetailStyles.evidenceCancelButton}
+              className={supportProgramEvidenceQuestionStyles.evidenceCancelButton}
               onClick={cancelQuestion}
             >
               질문 취소
@@ -89,14 +127,14 @@ export function SupportProgramEvidenceQuestionSection({
           ) : (
             <button
               type="submit"
-              className={supportProgramDetailStyles.evidenceSubmitButton}
+              className={supportProgramEvidenceQuestionStyles.evidenceSubmitButton}
               disabled={!canSubmit}
             >
               질문하고 근거 받기
             </button>
           )}
         </div>
-        <small id="support-program-evidence-question-hint" className={supportProgramDetailStyles.evidenceHint}>
+        <small id="support-program-evidence-question-hint" className={supportProgramEvidenceQuestionStyles.evidenceHint}>
           질문은 최대 {maximumSupportProgramEvidenceQuestionLength}자이며, 자동으로 전송되지 않습니다.
         </small>
       </form>
@@ -115,7 +153,7 @@ function EvidenceQuestionFeedback({
 
   if (state.status === 'loading') {
     return (
-      <p className={supportProgramDetailStyles.evidenceFeedback} role="status" aria-live="polite">
+      <p className={supportProgramEvidenceQuestionStyles.evidenceFeedback} role="status" aria-live="polite">
         공고 원문에서 답변 근거를 찾고 있습니다.
       </p>
     )
@@ -123,21 +161,21 @@ function EvidenceQuestionFeedback({
 
   if (state.status === 'answered') {
     return (
-      <article className={supportProgramDetailStyles.evidenceAnswer} aria-live="polite">
-        <p className={supportProgramDetailStyles.evidenceAnswerEyebrow}>원문 근거 답변</p>
-        <p className={supportProgramDetailStyles.evidenceAnswerText}>{state.answer.answer}</p>
-        <h3 className={supportProgramDetailStyles.evidenceCitationTitle}>답변 근거</h3>
-        <ol className={supportProgramDetailStyles.evidenceCitationList}>
+      <article className={supportProgramEvidenceQuestionStyles.evidenceAnswer} aria-live="polite">
+        <p className={supportProgramEvidenceQuestionStyles.evidenceAnswerEyebrow}>원문 근거 답변</p>
+        <p className={supportProgramEvidenceQuestionStyles.evidenceAnswerText}>{state.answer.answer}</p>
+        <h2 className={supportProgramEvidenceQuestionStyles.evidenceCitationTitle}>답변 근거</h2>
+        <ol className={supportProgramEvidenceQuestionStyles.evidenceCitationList}>
           {state.answer.citations.map((citation, index) => (
             <li
               key={`${citation.chunkOrder}:${citation.sourceUrl}:${citation.excerpt}`}
-              className={supportProgramDetailStyles.evidenceCitation}
+              className={supportProgramEvidenceQuestionStyles.evidenceCitation}
             >
-              <blockquote className={supportProgramDetailStyles.evidenceExcerpt}>
+              <blockquote className={supportProgramEvidenceQuestionStyles.evidenceExcerpt}>
                 {citation.excerpt}
               </blockquote>
               <a
-                className={supportProgramDetailStyles.evidenceSourceLink}
+                className={supportProgramEvidenceQuestionStyles.evidenceSourceLink}
                 href={citation.sourceUrl}
                 target="_blank"
                 rel="noreferrer"
@@ -152,7 +190,7 @@ function EvidenceQuestionFeedback({
   }
 
   if (state.status === 'validation-failed' || state.status === 'rate-limited' || state.status === 'busy') {
-    return <p className={supportProgramDetailStyles.evidenceError} role="alert">{state.message}</p>
+    return <p className={supportProgramEvidenceQuestionStyles.evidenceError} role="alert">{state.message}</p>
   }
 
   const message = evidenceFeedbackMessage(state.status)
@@ -160,8 +198,8 @@ function EvidenceQuestionFeedback({
   return (
     <p
       className={isFailure
-        ? supportProgramDetailStyles.evidenceError
-        : supportProgramDetailStyles.evidenceFeedback}
+        ? supportProgramEvidenceQuestionStyles.evidenceError
+        : supportProgramEvidenceQuestionStyles.evidenceFeedback}
       role={isFailure ? 'alert' : 'status'}
       aria-live="polite"
     >

@@ -121,6 +121,12 @@ GET /api/v1/support-programs/detail
 
 ### 공고별 공식 원문 근거 질문
 
+기업마당 상세 화면의 **이 공고에 질문하기** 링크는
+`/support-programs/detail/question?sourceCode={sourceCode}&sourceProgramId={id}`로 이동합니다.
+질문 페이지는 URL 식별자를 검증하므로 직접 접속·새로고침이 가능하며 상세 화면으로 돌아가는 링크를
+제공합니다. 페이지 진입 시 API를 호출하지 않고, 사용자가 질문을 제출할 때 아래 기존 API를 호출합니다.
+질문 입력·답변·근거 인용·취소 상태는 질문 페이지의 로컬 상태이며 새로고침 시 초기화됩니다.
+
 ```text
 POST /api/v1/support-programs/detail/answers
   → SupportProgramController → SupportProgramEvidenceService
@@ -151,8 +157,9 @@ POST /api/v1/support-programs/detail/answers
 실패하면 503 `SUPPORT_PROGRAM_EVIDENCE_UNAVAILABLE`을 반환합니다. AI 근거 색인·검색·답변의 연결·시간 초과·계약
 오류는 일반 AI 경계와 같은 502/503/504 분류를 사용합니다.
 
-Frontend는 `KSTARTUP`을 포함한 비 `BIZINFO` 상세에서 질문 입력을 숨기고 미지원 안내와 원문 링크를
-표시하며, ViewModel에서도 질문 전송을 차단합니다. K-Startup 공식 URL 표시 허용은 원문 수집·RAG 지원과 별개입니다.
+Frontend는 `KSTARTUP`을 포함한 비 `BIZINFO` 상세에서 질문 페이지 링크 대신 미지원 안내와 원문 링크를
+표시합니다. 미지원 제공처의 질문 페이지에 직접 접속해도 입력을 표시하지 않고 ViewModel에서 전송을 차단합니다.
+K-Startup 공식 URL 표시 허용은 원문 수집·RAG 지원과 별개입니다.
 
 원문은 제목·공식 URL을 포함한 텍스트로 저장하며, 같은 원문은 요청마다 다시 수집하지 않고 최대 6시간
 재사용합니다. 청크는 내용·원문 해시·순서에서 결정적으로 만들며 각 청크는 최대 1,500 UTF-16 코드 단위입니다. AI Service는
@@ -318,6 +325,9 @@ Awilix의 `app/di`에서 Repository·UseCase·외부 함수를 구성하고 `app
 상세 조회·원문 근거 질문으로 나눕니다. 각 feature가 전용 View·스타일·ViewModel·테스트를 소유하고,
 서로의 화면 구현을 import하지 않습니다. 검색 카드와 상세 화면은 기존 상세 URL·복합 식별자로 연결합니다.
 검색과 근거 질문이 함께 쓰는 안전한 오류 문구는 `presentation/shared/support-program`에 둡니다.
+`support-program-detail` 안에서도 상세 조회와 질문은 별도 페이지입니다. `SupportProgramDetailPage`는
+`useSupportProgramDetailViewModel`, `SupportProgramEvidenceQuestionPage`는
+`useSupportProgramEvidenceQuestionViewModel`을 각각 사용하고 URL의 복합 식별자로 이동합니다.
 
 채팅 메시지·검색 조건은 Redux Toolkit으로 관리하고 검색 요청 흐름은 내부 채팅 Hook의 thunk에 둡니다.
 `ChatPage`는 페이지 ViewModel인 `viewmodel/useChatPageViewModel` 하나를 사용합니다. 이 ViewModel은
