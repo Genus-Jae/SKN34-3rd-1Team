@@ -63,7 +63,7 @@ class ReplayRunnerTest(unittest.TestCase):
             "capturedAt": "2026-09-06T01:00:00Z", "referenceDate": "2026-09-06",
             "acceptingOnly": True, "catalog": copy.deepcopy(catalog),
             "search": {"candidateLimit": 20, "finalResultLimit": 5,
-                       "scoringVersion": "govbiz-support-program-ranking-v3"},
+                       "scoringVersion": "govbiz-support-program-ranking-v4"},
             "observations": [
                 {**{key: case[key] for key in ("id", "query", "split")},
                  "candidateIds": [doc["id"] for doc in docs], "finalProgramIds": []}
@@ -77,7 +77,7 @@ class ReplayRunnerTest(unittest.TestCase):
             "catalog": copy.deepcopy(catalog), "sourceCaptureSha256": runner.sha256_file(self.paths["source_capture"]),
             "queries": [
                 {"id": case["id"], "split": case["split"], "request": {
-                    "originalQuery": case["query"], "scoringVersion": "govbiz-support-program-ranking-v3", "resultLimit": 5,
+                    "originalQuery": case["query"], "scoringVersion": "govbiz-support-program-ranking-v4", "resultLimit": 5,
                     "candidates": [
                         {"id": doc["id"], "title": doc["text"], "organization": "테스트 기관",
                          "summary": "오프라인 테스트 전용 내용", "categories": ["기술"], "regions": ["전국"],
@@ -190,7 +190,8 @@ class ReplayRunnerTest(unittest.TestCase):
 
             app.state.container = SimpleNamespace(
                 support_program_ranking_service=SimpleNamespace(_agent=SimpleNamespace(
-                    _agent=SimpleNamespace(clone=lambda **kwargs: SimpleNamespace(**kwargs)))),
+                    _agent=SimpleNamespace(model_settings=SimpleNamespace(max_tokens=10000),
+                                           clone=lambda **kwargs: SimpleNamespace(**kwargs)))),
                 openai_client=SimpleNamespace(_client=upstream_client), close=close,
             )
 
@@ -254,6 +255,7 @@ class ReplayRunnerTest(unittest.TestCase):
         self.assertEqual(32, manifest["plannedCalls"])
         self.assertEqual(32, manifest["actualCalls"])
         self.assertEqual(32, manifest["completedRankings"])
+        self.assertEqual(10000, manifest["maxOutputTokens"])
         attempts, received, closed = self.execution_state
         self.assertEqual(32, len(attempts))
         self.assertEqual(2, len(closed))
@@ -268,6 +270,17 @@ class ReplayRunnerTest(unittest.TestCase):
         self.assertEqual(runner.sha256_file(self.output / "results.jsonl"), manifest["resultsSha256"])
         self.assertEqual(runner.sha256_file(self.output / "api-usage.jsonl"), manifest["apiUsageSha256"])
         self.assert_no_secret_in_artifacts()
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_legacy_scoring_requests_are_not_silently_replayed_with_v4(self):
+        from pydantic import ValidationError
+
+        for row in self.envelope["queries"]:
+            row["request"]["scoringVersion"] = "govbiz-support-program-ranking-v3"
+        with self.assertRaises(ValidationError):
+            asyncio.run(self.execute_offline())
+        self.assertFalse(self.output.exists())
+        self.assertEqual([], self.execution_state[0])
 
 
 if __name__ == "__main__":

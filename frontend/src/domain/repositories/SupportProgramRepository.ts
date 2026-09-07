@@ -5,6 +5,15 @@ import type { SupportProgramSearchReadiness } from '../entities/SupportProgramSe
 export type SupportProgramSearch = {
   query: string
   acceptingOnly?: boolean
+  companyConditions?: SupportProgramCompanyConditions
+}
+
+/** 사용자가 직접 확인한 현재 기업 조건입니다. 미입력 필드는 적합을 의미하지 않습니다. */
+export type SupportProgramCompanyConditions = {
+  region?: string
+  industry?: string
+  establishedOn?: string
+  supportPurpose?: string
 }
 
 /** 서로 다른 제공처의 같은 원본 공고 ID를 구분하는 공개 식별자입니다. */

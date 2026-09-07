@@ -161,7 +161,7 @@ describe('useChatPageViewModel', () => {
       messages: [{ id: 'empty-result', role: 'assistant', text: '결과 없음', programs: [] }],
     })
     rerender()
-    expect(result.current.searchStatusAnnouncement).toBe('지원사업 검색 결과 0건을 표시했습니다.')
+    expect(result.current.searchStatusAnnouncement).toBe('지원사업 검색 결과 0건: 조건 확인 공고 0건, 확인 필요 공고 0건을 표시했습니다.')
 
     chat = createChatHook({
       messages: [{
@@ -172,12 +172,20 @@ describe('useChatPageViewModel', () => {
       }],
     })
     rerender()
-    expect(result.current.searchStatusAnnouncement).toBe('지원사업 검색 결과 2건을 표시했습니다.')
+    expect(result.current.searchStatusAnnouncement).toBe('지원사업 검색 결과 2건: 조건 확인 공고 0건, 확인 필요 공고 2건을 표시했습니다.')
   })
 })
 
 function createChatHook(overrides: Partial<ChatHook> = {}): ChatHook {
   return {
+    searchOptions: { acceptingOnly: true },
+    companyConditionsDraft: { region: '', industry: '', establishedOn: '', supportPurpose: '' },
+    conditionsError: null,
+    updateCompanyCondition: vi.fn(),
+    applyCompanyConditions: vi.fn(),
+    removeCompanyCondition: vi.fn(),
+    clearCompanyConditions: vi.fn(),
+    updateAcceptingOnly: vi.fn(),
     canRetrySearch: false,
     conversationCount: 0,
     cancelSearch: vi.fn(),

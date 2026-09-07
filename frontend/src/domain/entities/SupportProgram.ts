@@ -1,5 +1,18 @@
 export type SupportProgramStatus = 'OPEN' | 'UPCOMING' | 'CLOSED' | 'UNKNOWN'
 
+export type SupportProgramEligibilityAxis = {
+  status: 'MATCH' | 'UNKNOWN'
+  explanation: string
+  evidence: { field: 'SUMMARY' | 'TARGET_DESCRIPTION'; quote: string }[]
+}
+
+export type SupportProgramEligibilityReview = {
+  status: 'MATCH' | 'REVIEW_REQUIRED'
+  basis: 'OFFICIAL_API_TEXT'
+  target: SupportProgramEligibilityAxis
+  region: SupportProgramEligibilityAxis
+}
+
 export type SupportProgram = {
   /** 제공처별 원본 식별자의 제공처 코드입니다. */
   sourceCode: string
@@ -19,4 +32,5 @@ export type SupportProgram = {
   sourceUrl: string
   matchedReasons: string[]
   recommendationScore: number | null
+  eligibilityReview: SupportProgramEligibilityReview | null
 }

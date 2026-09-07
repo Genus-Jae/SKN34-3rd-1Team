@@ -108,11 +108,12 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `GET /api/v1/health/ai-service` | AI Service의 내부 Health 응답 확인 |
 | `GET /api/v1/support-programs/readiness` | 공개 공고 스냅샷·검색 색인·최근 동기화 결과 상태 |
 | `GET /api/v1/support-programs/search` | 현재 MySQL 공고 카탈로그의 검색 또는 최신 목록 |
+| `POST /api/v1/support-programs/search` | 이번 검색에만 기업 조건을 반영한 자연어 검색 |
 | `GET /api/v1/support-programs/detail` | 제공처 코드와 원본 ID로 현재 공고 상세 조회 |
 | `POST /api/v1/support-programs/detail/answers` | 특정 공고의 공식 원문 근거 질문·답변 |
 | `POST /api/v1/sample-items/prepare` | 계층 연결 학습용 예제 |
 
-- 검색: 필수 `query`는 최대 500자이며 빈 문자열을 허용합니다. 탭·줄바꿈·캐리지 리턴을 제외한
+- GET 검색: 필수 `query`는 최대 500 UTF-16 코드 단위이며 빈 문자열을 허용합니다. 탭·줄바꿈·캐리지 리턴을 제외한
   Unicode C 범주 문자(예: NUL·제로폭 문자·단독 surrogate)는 DB·AI 호출 전에 400으로 거부합니다.
   `acceptingOnly`의 기본값은 `true`이고
   이때 `OPEN` 공고만 대상으로 삼습니다. 검색어가 있으면 검증된 의미 검색 상위 20개와 전체 적격 공고의
@@ -123,6 +124,33 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
   자연어 검색은 빈 결과가 아니라 503을 반환합니다. 최초 빈 DB와 준비된 제공처의 정상 0건은 구별합니다.
   빈 검색어는 AI를 호출하지 않고 이미 공개된 DB 스냅샷에서 최신순 최대 5개를 반환하므로 이후 Qdrant 장애에도
   목록을 유지합니다. 아직 공개 세대·지문이 없는 신규/미검증 제공처의 공고는 이 최신 목록에 포함하지 않습니다.
+- POST 검색: JSON의 `query`는 비어 있지 않은 최대 500 UTF-16 코드 단위 문자열이고,
+  `acceptingOnly`는 생략 시 `true`입니다. 명시한 값은 JSON 부울만 허용하며 `null`·문자열·숫자는 거부합니다.
+  선택 객체 `companyConditions`에는 `region`(50), `industry`(100), `supportPurpose`(100),
+  `establishedOn`(10)을 넣을 수 있습니다. 상한은 앞뒤 공백을 포함한 입력의 UTF-16 코드 단위입니다.
+  조건 텍스트는 제어·제로폭 문자 등 Unicode C 범주를 거부한 뒤 trim하고 빈 값은 미입력으로 처리합니다.
+  설립일은 실제 달력의 `YYYY-MM-DD`로 `1900-01-01`부터 서울 기준 오늘까지이며, 빈 문자열·ASCII 공백만
+  있는 값은 미입력입니다. 공백이 붙은 날짜·timestamp·존재하지 않는 날짜는 400입니다.
+  모든 조건이 미입력이면 기존 질의만 전송합니다. 조건이 있으면 `SupportProgramSearchService`가
+  질의와 레이블된 조건·서울 기준일을 최대 1,000자 내부 검색문으로 만들어 후보 조회에 반영하고,
+  `AiSupportProgramRankingFacade`는 원질의를 바꾸지 않고 별도의 `companyConditions`와 ISO `referenceDate`를
+  점수화 요청에 전달합니다. 지역 정보가 없거나 다르다는 이유만으로 Core에서 후보를 제외하지 않습니다.
+  조건은 저장·응답 메타데이터에 포함하지 않으며, 공개 `query`는 trim한 원질의 그대로입니다.
+  GET 검색·POST 검색·원문 근거 질문은 같은 요청 제한을 공유합니다.
+- 자격 검토: 조건 유무와 관계없이 점수화 계약은 `govbiz-support-program-ranking-v4`입니다.
+  저장된 공식 API 본문 `summary` 최대 6,000, 지원대상 `targetDescription` 최대 2,000 Unicode code point를
+  AI에 전달합니다. 둘 중 하나라도 잘리면 `sourceTextTruncated=true`이며 대상·지역 모두 `UNKNOWN`만 허용합니다.
+  태그의 지역·분야는 후보 검색 보조 정보이고 자격 충족 근거로 인용할 수 없습니다.
+  AI 응답의 대상·지역 판정에는 설명(1~160자)과 근거 배열(0~1개)이 필요하며 `MATCH`는 근거 1개가 필수입니다.
+  근거는 `SUMMARY` 또는 `TARGET_DESCRIPTION`에서 실제 전송된 문장의 정확한 부분 문자열(1~240자)만 인정합니다.
+  설명·인용의 상한은 Unicode code point이고 제어·제로폭 문자 등 Unicode C 범주는 거부합니다.
+  원문에 없는 인용·누락된 검토·불충족 `INCOMPATIBLE`·잘못된 정렬은 정상 추천으로 숨기지 않고 내부 계약 오류로 반환합니다.
+  대상·지역 모두 충족한 공고를 먼저, 하나라도 `UNKNOWN`인 공고는 그 뒤에 두며 각 묶음은 점수 내림차순,
+  합계 최대 5개입니다. 기존 관련성·총점 최소 기준은 유지합니다.
+  자연어 검색 결과의 `eligibilityReview`는 전체 상태 `MATCH`/`REVIEW_REQUIRED`, 기준 `OFFICIAL_API_TEXT`,
+  대상·지역별 `status`, `explanation`, `evidence[{field,quote}]`를 추천 이유와 별도로 반환합니다.
+  이는 HTML을 정리한 **공식 API 본문 기준**의 검토이며 상세 페이지 전체·첨부 PDF/HWP를 확인했다는 뜻이 아닙니다.
+  최신 목록·상세의 `eligibilityReview`는 `null`입니다. 자격 검토는 검색 결과에만 존재하며 DB에 저장하지 않습니다.
 - 검색 준비 상태: `readiness`는 필수 `sources` 배열로 제공처별 저장 공고 수·색인 준비·동기화 성공/실패를
   반환합니다. 전체 공고 수는 검색 가능한 제공처의 합계이고 `indexReady`는 한 제공처 이상 준비되었는지입니다.
   `SEARCHABLE_WITH_PARTIAL_SOURCES`는 일부만 준비된 상태이며 검색은 준비된 범위에서 가능합니다.

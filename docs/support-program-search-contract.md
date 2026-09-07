@@ -6,18 +6,66 @@ Core는 정기 동기화된 MySQL 공고 카탈로그에서 후보를 읽어 AI 
 
 ```text
 Browser
-  → GET /api/v1/support-programs/search
+  → POST /api/v1/support-programs/search (Web의 조건 검색)
+    GET /api/v1/support-programs/search (기존 단문·최신 목록 호환)
       → Core API
           → MySQL의 색인 준비된 제공처의 현재 노출 공고 조회·접수 상태 필터
           → 현재 공고 ID·내용 해시로 Qdrant 검색 범위 제한
           → 질의 임베딩에 가까운 후보 최대 20개 선택
           → POST /internal/v1/support-program-rankings/rank
               → LLM이 버전된 평가 기준으로 모든 후보 점수화
-          → 명백한 지원대상·지역 불일치 제외 + 최소 추천 기준 적용
+          → 본문 인용 검증 → 지원대상·지역 불일치 제외 + 최소 추천 기준 적용
+          → 조건 확인 공고 우선, 확인 필요 공고 후순위 (각 묶음 안에서 점수순)
           → 0~5개를 Core가 검증해 반환
 ```
 
 ## 공개 요청
+
+### 기업 조건 검색 — Web 기본 경로
+
+기업 조건을 URL query string에 넣지 않고 JSON body로 전송합니다. 회원가입·기업 조건 DB 저장은 없으며,
+조건은 현재 브라우저 대화의 메모리에서만 유지합니다. POST와 기존 GET은 같은 요청량·동시 실행 한도를 공유합니다.
+
+```http
+POST /api/v1/support-programs/search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "query": "사업화 지원을 찾아주세요",
+  "acceptingOnly": true,
+  "companyConditions": {
+    "region": "서울특별시",
+    "industry": "소프트웨어 개발",
+    "establishedOn": "2024-09-01",
+    "supportPurpose": "사업화 자금"
+  }
+}
+```
+
+| Body field | 필수 | 설명 |
+|---|---|---|
+| `query` | 예 | 최대 500 UTF-16 코드 단위. 앞뒤 공백 제거 후 빈 검색문은 POST에서 400. 기존 제어문자 거부 규칙 유지 |
+| `acceptingOnly` | 아니요 | 기본 `true`. `false`는 전체 접수 상태이며 `UNKNOWN`을 `OPEN`으로 바꾸지 않음 |
+| `companyConditions` | 아니요 | 사용자가 직접 입력·확인한 조건. 생략·`null`·모든 필드 미입력은 조건 없는 검색 |
+| `companyConditions.region` | 아니요 | 현재 소재지, 최대 50 UTF-16 코드 단위. 이전 예정 지역으로 추정하지 않음 |
+| `companyConditions.industry` | 아니요 | 업종, 최대 100 UTF-16 코드 단위 |
+| `companyConditions.establishedOn` | 아니요 | 최대 10자, 실제 달력의 `YYYY-MM-DD`, 1900-01-01부터 서울 기준 오늘까지. 상대 업력을 임의의 설립일로 바꾸지 않음 |
+| `companyConditions.supportPurpose` | 아니요 | 원하는 지원 목적, 최대 100 UTF-16 코드 단위 |
+
+조건 텍스트는 앞뒤 공백을 제거하고 빈 값은 미입력으로 처리합니다. 길이 상한은 공백 제거 전 요청값 기준이고,
+제어문자는 제거 전부터 거부합니다. 설립일은 빈 문자열·ASCII 공백만 미입력으로 처리하며 날짜 주위 공백,
+잘못된 일자·시간 포함 문자열·미래 날짜는 400입니다. `acceptingOnly`는 JSON boolean만 허용하고 `null`은 거부합니다.
+공개 응답의 `programs`에는 아래의 `eligibilityReview`가 추가되며,
+`query`는 원래 검색문입니다. 회사 조건을 붙인 내부 검색문을 공개 응답으로 돌려주지 않습니다.
+
+Core는 입력 조건과 서울 기준 날짜를 원래 검색문에 덧붙여 **의미·키워드 후보 검색**에 사용하고,
+**최종 AI 점수화**에는 원래 검색문과 구조화된 조건을 별도로 전달합니다. 공고의 지역·업종 표기가
+불완전할 수 있으므로 단순 문자열 비교만으로 공고를 제외하지 않습니다. 이는 법적 신청 자격의 확정 필터가 아닙니다.
+빈 조건은 적합을 뜻하지 않습니다. 적용 조건과 검색문이 명백히 충돌하면 사용자가 확인한 적용 조건을 우선하며,
+이번 기능은 대화에서 조건을 자동 추출하거나 갱신하지 않습니다.
+
+### 기존 GET 검색 — 호환 경로
 
 ```http
 GET /api/v1/support-programs/search?query=%EC%88%98%EC%B6%9C&acceptingOnly=true
@@ -100,7 +148,7 @@ Content-Type: application/json
 
 {
   "originalQuery": "서울 AI 창업기업이 받을 사업",
-  "scoringVersion": "govbiz-support-program-ranking-v3",
+  "scoringVersion": "govbiz-support-program-ranking-v4",
   "resultLimit": 5,
   "candidates": [
     {
@@ -112,13 +160,32 @@ Content-Type: application/json
       "regions": ["서울"],
       "targetDescription": "서울 소재 창업기업",
       "applicationPeriod": "상시 접수",
-      "status": "OPEN"
+      "status": "OPEN",
+      "sourceTextTruncated": false
     }
   ]
 }
 ```
 
-AI Service의 버전 `govbiz-support-program-ranking-v3`는 다음 100점 기준을 사용합니다.
+AI Service의 버전 `govbiz-support-program-ranking-v4`는 다음 100점 기준을 사용합니다.
+점수 배점은 v3와 같지만 원문 인용·자격 검증과 결과 정렬 계약이 달라졌으므로 버전을 구분합니다.
+기존 v3 평가 기록은 당시 결과로 보존하며 v4 품질 근거로 재사용하지 않습니다.
+
+조건 검색에서는 위 요청에 선택 필드 `companyConditions`를 추가합니다. 공개 입력의 네 필드와 함께
+Core가 생성한 `referenceDate`(`YYYY-MM-DD`, 서울 기준)를 전달합니다. 조건 없는 요청에서는 이 필드를
+생략합니다. 원문 우선 자격 판정은 조건 유무에 관계없이 모든 비어 있지 않은 검색에 적용합니다.
+조건이 있는 경우에는 기존 Agent에 조건 해석 지침도 보충하며 Agent 수·LLM 호출 횟수·점수 배점은 늘리지 않습니다.
+
+후보의 `summary`는 공식 API의 사업개요 본문(최대 6,000 Unicode code point), `targetDescription`은
+공식 API 지원대상(최대 2,000 code point)입니다. Core는 어느 쪽이든 절단되면 `sourceTextTruncated=true`를
+전달하고, 이 경우 누락된 예외·제한을 확인했다고 간주하지 않도록 대상·지역 모두 `UNKNOWN`만 허용합니다.
+`regions`는 태그에서 가져온 검색 보조 정보이며 자격 근거가 아닙니다. 태그의 `전국`은 본문의 지역 제한이나
+이전·확장 확약 조건을 무효화하지 않습니다. 첨부 PDF/HWP를 자동으로 수집·판독하는 기능은 포함하지 않습니다.
+
+`originalQuery`의 500자 제한은 그대로입니다. 조건을 합친 **내부 색인 검색**의 `query`만 최대
+1,000 Unicode code point를 허용합니다. 전체 대화 이력을 이 문자열에 이어붙이지 않습니다.
+AI는 설립일과 `referenceDate`를 참고하되 공고에 별도 업력 기준일·예외가 있으면 이를 구분하고,
+판단 근거가 부족하면 `UNKNOWN`으로 남겨야 합니다. 입력 조건과 공고 본문은 데이터이지 실행 지시가 아닙니다.
 
 | 평가 항목 | 배점 | 의미 |
 |---|---:|---|
@@ -129,26 +196,36 @@ AI Service의 버전 `govbiz-support-program-ranking-v3`는 다음 100점 기준
 | `supportTypeFit` | 10 | 자금·기술·수출·교육 등 원하는 지원 유형의 적합성 |
 
 LLM은 입력 후보를 정확히 한 번씩 모두 평가합니다. 후보 문장은 데이터일 뿐 지시가 아니며,
-후보에 없는 자격·금액·상태를 만들어서는 안 됩니다. v3는 점수와 별도로 모든 후보의 `targetEligibility`와
+후보에 없는 자격·금액·상태를 만들어서는 안 됩니다. v4는 점수와 별도로 모든 후보의 `targetEligibility`와
 `regionEligibility`를 필수로 반환합니다. `MATCH`는 제공된 정보와 일치, `INCOMPATIBLE`은 명백한 조건
 불일치, `UNKNOWN`은 정보 부족입니다. 하나라도 `INCOMPATIBLE`이면 총점과 관계없이 추천에서 제외합니다.
-`UNKNOWN`은 자동 제외하지 않지만 신청 자격 충족을 확정하는 값도 아닙니다. 여기에 `semanticRelevance`
-20점 이상과 `totalScore` 60점 이상을 모두 통과한 공고만 점수순으로 Core에 반환합니다.
-적격 공고가 없으면 `rankings`는 빈 배열입니다. 자격 판정은 내부 AI 응답의 필수 필드이며 공개 검색 DTO에
-새 필드로 노출하지 않습니다.
+`UNKNOWN`은 일반 조건 확인 공고와 분리합니다. 여기에 `semanticRelevance` 20점 이상과 `totalScore` 60점 이상을
+모두 통과한 공고만 반환합니다. 대상·지역이 모두 `MATCH`인 묶음이 먼저이고, 하나라도 `UNKNOWN`이면 그 뒤입니다.
+각 묶음 안에서는 총점 내림차순(동점은 입력 후보 순서)이며, 두 묶음을 합쳐 최대 `resultLimit`개입니다.
+통과 공고가 없으면 `rankings`는 빈 배열입니다.
+
+각 대상·지역 판정에는 `explanation`(1~160 code point)과 `evidence`(0~1개)가 필수입니다. `MATCH`와
+`INCOMPATIBLE`에는 반드시 인용 1개가 있어야 하며, `UNKNOWN`은 정보 부족·사용자 확인 사항을 설명합니다.
+인용은 `{ "field": "SUMMARY" | "TARGET_DESCRIPTION", "quote": "…" }`이고 `quote`는 1~240 code point입니다.
+AI와 Core가 실제 전달한 해당 후보·해당 본문 필드의 정확한 부분 문자열인지 검사합니다. 다른 후보의 문장이나
+태그·제목·기관명은 인용 원천으로 허용하지 않습니다. 이 검사는 인용의 존재를 검증하며 의미 판정의 정확성을 보장하지 않습니다.
 
 ```json
 {
   "originalQuery": "서울 AI 창업기업이 받을 사업",
-  "scoringVersion": "govbiz-support-program-ranking-v3",
+  "scoringVersion": "govbiz-support-program-ranking-v4",
   "rankings": [
     {
       "programId": "BIZINFO:PBLN_001",
       "semanticRelevance": 38,
       "targetFit": 24,
       "targetEligibility": "MATCH",
+      "targetEvidence": [{ "field": "TARGET_DESCRIPTION", "quote": "서울 소재 창업기업" }],
+      "targetExplanation": "사용자가 밝힌 창업기업 조건과 제공된 지원대상이 일치합니다.",
       "regionFit": 15,
       "regionEligibility": "MATCH",
+      "regionEvidence": [{ "field": "TARGET_DESCRIPTION", "quote": "서울 소재 창업기업" }],
+      "regionExplanation": "본문이 서울 소재 기업을 지원대상으로 명시합니다.",
       "applicationStatusFit": 10,
       "supportTypeFit": 8,
       "totalScore": 95,
@@ -165,7 +242,9 @@ Core는 다음 불변식을 다시 검사합니다.
 - 세부 점수가 각 배점 범위 안에 있음
 - `targetEligibility`·`regionEligibility`가 누락 없이 허용 값이며 어느 쪽도 `INCOMPATIBLE`이 아님
 - `totalScore`가 다섯 세부 점수의 합과 정확히 일치
-- 결과가 총점 내림차순이며 0~5개
+- 결과가 조건 확인 묶음 우선·확인 필요 묶음 후순위이며 각 묶음 안에서 총점 내림차순, 합계 0~5개
+- 판정 설명·인용 개수·문자 상한과 실제 전달한 본문 내 인용의 정확한 존재 여부
+- 절단된 본문 후보는 대상·지역이 모두 `UNKNOWN`
 - 반환한 공고마다 `semanticRelevance >= 20`, `totalScore >= 60`을 충족
 - 추천 이유가 1~3개이고 각 1~120 Unicode code point. Core와 AI가 같은 기준으로 검사하며 보조 평면 문자도 하나로 셈
 
@@ -193,14 +272,35 @@ Core는 다음 불변식을 다시 검사합니다.
       "sourceName": "기업마당",
       "sourceUrl": "https://www.bizinfo.go.kr/web/lay1/bbs/S1T122C128/AS/74/view.do?pblancId=PBLN_001",
       "matchedReasons": ["서울 소재 AI 창업기업의 사업화를 지원"],
-      "recommendationScore": 95
+      "recommendationScore": 95,
+      "eligibilityReview": {
+        "status": "MATCH",
+        "basis": "OFFICIAL_API_TEXT",
+        "target": {
+          "status": "MATCH",
+          "explanation": "사용자가 밝힌 창업기업 조건과 제공된 지원대상이 일치합니다.",
+          "evidence": [{ "field": "TARGET_DESCRIPTION", "quote": "서울 소재 창업기업" }]
+        },
+        "region": {
+          "status": "MATCH",
+          "explanation": "본문이 서울 소재 기업을 지원대상으로 명시합니다.",
+          "evidence": [{ "field": "TARGET_DESCRIPTION", "quote": "서울 소재 창업기업" }]
+        }
+      }
     }
   ]
 }
 ```
 
-빈 검색어는 AI Service를 호출하지 않으므로 `matchedReasons`는 빈 배열이고 `recommendationScore`는
-`null`입니다. 해석할 수 없는 시작·종료일은 각각 `null`입니다. 접수 상태는 파싱된 날짜와 서울 기준
+기존 GET의 빈 검색어 조회는 AI Service를 호출하지 않으므로 `matchedReasons`는 빈 배열이고 `recommendationScore`는
+`null`이며 `eligibilityReview`도 `null`입니다. 상세 GET도 사용자별 판정을 다시 실행하지 않으므로
+`eligibilityReview`는 `null`입니다. 검색 결과의 판정은 DB에 저장하지 않습니다.
+
+`eligibilityReview.status`는 두 축이 모두 `MATCH`일 때만 `MATCH`, 하나라도 `UNKNOWN`이면 `REVIEW_REQUIRED`입니다.
+공개 추천에는 `INCOMPATIBLE`을 포함하지 않습니다. Frontend는 두 묶음을 구분하고 점수보다 자격 확인 상태를 먼저 보여 줍니다.
+`basis=OFFICIAL_API_TEXT`는 수집한 공식 API 본문 기준이라는 뜻이며 첨부파일 검증·법적 신청 자격 확정이 아닙니다.
+
+해석할 수 없는 시작·종료일은 각각 `null`입니다. 접수 상태는 파싱된 날짜와 서울 기준
 오늘 날짜로 먼저 판단하고, 날짜만으로 판단할 수 없으면 접수 예정·종료·상시 접수 등의 문구를 사용합니다.
 따라서 날짜가 `null`이어도 상태가 `OPEN`, `UPCOMING`, `CLOSED`일 수 있으며, 판단 근거가 없을 때 `UNKNOWN`입니다.
 적격 공고가 없으면 `programs`는 빈 배열입니다. 원본에 없는 지원금액은 생성하지 않으며 `sourceUrl`로
@@ -406,6 +506,7 @@ Service가 만든 후보 최대 20개와 최종 추천 최대 5개의 ID를 기�
 | 검색·근거 답변의 동시 처리 한도 초과 | 503 | `SUPPORT_PROGRAM_BUSY` |
 | `query`가 500자를 초과함 | 400 | `REQUEST_VALIDATION_FAILED` |
 | `query`에 NUL·제로폭 문자 등 허용되지 않은 제어·형식 문자가 있음 | 400 | `REQUEST_VALIDATION_FAILED` |
+| POST 검색문이 비어 있거나 회사 조건의 길이·제어문자·설립일 검증을 위반함 | 400 | `REQUEST_VALIDATION_FAILED` |
 | 상세 조회의 `sourceCode`·`sourceProgramId`가 누락·형식·공백·길이 제한을 위반함 | 400 | `REQUEST_VALIDATION_FAILED` |
 | 원문 근거 질문의 `sourceCode`·`sourceProgramId`·`question`이 누락·형식·공백·길이 제한을 위반함 | 400 | `REQUEST_VALIDATION_FAILED` |
 | 상세 조회 대상이 없거나 현재 제공처 목록에서 사라짐 | 404 | `SUPPORT_PROGRAM_NOT_FOUND` |

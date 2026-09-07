@@ -46,6 +46,20 @@ POST /internal/v1/support-program-evidence/answers
 없을 수 있으므로 0개부터 `resultLimit`개까지입니다. 계약 예시는
 [지원사업 검색·추천 HTTP 계약](../../docs/support-program-search-contract.md)에 있습니다.
 
+점수화 요청에는 선택적으로 `companyConditions`를 포함할 수 있습니다.
+`region`(현재 소재지, 최대 50자), `industry`(업종, 최대 100자), `establishedOn`(설립일),
+`supportPurpose`(지원 목적, 최대 100자)는 생략·null을 허용합니다. 텍스트는 제어문자를 원본에서 먼저
+거부하고 앞뒤 공백 제거 후 빈 값은 null입니다. 설립일은 빈 문자열·ASCII 공백뿐인 값만 null이며,
+탭·줄바꿈·NBSP와 입력된 날짜 주변의 공백은 허용하지 않습니다. 조건 객체가 있으면 Core가 서울 기준으로 정한 `referenceDate`가 필수입니다.
+날짜는 실제 존재하는 `YYYY-MM-DD`이며 설립일은 `1900-01-01`부터 `referenceDate`까지입니다. AI Service는 Core 기준일을
+자체 현재 날짜로 바꾸지 않습니다.
+
+회사 조건이 있는 요청에만 기존 Agent의 지침을 보완해 같은 한 번의 모델 호출로 평가합니다.
+명시적 적용 조건이 `originalQuery`와 충돌하면 조건을 우선하며, null·미입력은 확인 안 됨이지
+자격 충족이 아닙니다. 현재 소재지를 이전 예정지로 추정하거나 설립일만으로 공고별 업력 기준일·예외를
+확정하지 않습니다. 조건이 없거나 `companyConditions: null`이면 Agent 입력에서 필드를 생략하고
+회사 조건 전용 프롬프트를 추가하지 않습니다. 원문 우선 자격 검증(v4)은 회사 조건 유무와 관계없이 적용합니다.
+
 Health 응답은 프로세스의 HTTP 응답 여부만 확인합니다. OpenAI 모델 호출 성공이나 Qdrant 연결·색인
 완료 여부를 검사하는 readiness 검사는 아닙니다. `/internal` 경로 자체에 인증 기능은 없으며,
 기본 Compose에서는 AI Service 포트를 호스트에 공개하지 않습니다.
@@ -60,7 +74,10 @@ Qdrant point ID는 이 두 값에서 결정되므로 같은 문서를 반복 처
 |---|---|---|
 | `PUT .../batch` | `documents: [{id, contentHash, text}]`, 1~50개, text 최대 12,000자 | `{indexedCount}`: 기존 색인 포함 요청 건수 |
 | `POST .../prune` | `sourceCode`, `documents: [{id, contentHash}]`, 최대 20,000개 | `{retainedCount}` |
-| `POST .../search` | `query`: 앞뒤 공백 제거 후 1~500자, `eligibleDocuments: [{id, contentHash}]` 최대 20,000개, `limit`: 1~20 | `{query, matches: [{id, contentHash, score}]}` |
+| `POST .../search` | `query`: 앞뒤 공백 제거 후 1~1,000자, `eligibleDocuments: [{id, contentHash}]` 최대 20,000개, `limit`: 1~20 | `{query, matches: [{id, contentHash, score}]}` |
+
+내부 의미 검색의 1,000자 상한은 Core가 원래 질문과 회사 조건을 합성하는 공간입니다.
+공개 검색 질문과 점수화의 `originalQuery`는 기존 500자 상한을 유지합니다.
 
 ```text
 Core의 기업마당 동기화: 시작 세대 발급 → 전체 수집·검증
@@ -172,7 +189,7 @@ payload 불일치, 검증 실패는 `EVIDENCE_UNAVAILABLE`입니다. 부분 검�
 
 ## 평가 기준
 
-`govbiz-support-program-ranking-v3`는 다음 배점을 사용합니다.
+`govbiz-support-program-ranking-v4`는 기존 v3의 다음 배점을 유지합니다.
 
 | 항목 | 배점 |
 |---|---:|
@@ -186,16 +203,38 @@ LLM에 전달할 평가 지시는 [prompt.py](app/support_program_ranking/prompt
 [models.py](app/support_program_ranking/models.py)는 AI 출력 값 `SupportProgramAssessment`, Agent가 검증된 ID를 붙인
 내부 항목 `AssessedSupportProgram`, 검증된 HTTP 응답 `ScoredSupportProgram`을 구분합니다.
 AI는 의미·자격·항목별 점수를 판단하되 `totalScore`와 값 안의 `programId`는 출력하지 않습니다.
-[service.py](app/support_program_ranking/service.py)가 다섯 점수를 합산하고 기존 HTTP 응답으로 변환·검증한 뒤
-최소 추천 기준을 적용합니다. 지역·업종별 조건을 코드에 나열하거나 AI의 자격 판단을 바꾸는 방식이 아닙니다.
-Core도 같은 HTTP 계약을 재검증합니다. HTTP 필드·배점·추천 임계치·`scoringVersion`은 기존 v3와 같습니다.
+[service.py](app/support_program_ranking/service.py)가 모든 후보의 본문 인용을 검증하고 다섯 점수를 합산한 뒤
+최소 추천 기준을 적용합니다. 지역·업종 사전이나 규칙 기반 LLM fallback은 추가하지 않습니다.
+Core도 같은 HTTP 계약을 재검증합니다. 배점·추천 임계치는 유지하지만 근거 필드와 자격 그룹 정렬이 추가되어
+`scoringVersion`을 v4로 분리했습니다. 과거 v3 평가 캡처는 변경하지 않으며 현행 품질 검증으로 재해석하지 않습니다.
+
+후보 `summary`는 최대 6,000자, `targetDescription`은 최대 2,000자입니다. Core가 실제 본문을 잘랐으면
+`sourceTextTruncated: true`를 보내며 기본값은 false입니다. true인 후보는 잘린 부분의 제한·예외를 알 수 없어
+대상·지역 모두 UNKNOWN만 허용합니다. 입력은 공식 API 요약이지 첨부 PDF/HWP 전체 원문이 아닙니다.
+읽지 않은 부분의 조건 충족이나 최종 신청 자격을 확정하지 않습니다.
+기존 Agent의 단일 호출(`max_turns=1`)을 유지하고 출력 토큰 상한만 10,000으로 늘렸습니다.
+실행·모델 timeout은 그대로이며 20개 후보의 실제 모델 응답시간·품질은 별도 승인된 실호출 검증이 필요합니다.
 
 ### 추천 반환 최소 기준
 
 Agent는 후보를 빠짐없이 점수화하고 각 후보의 `targetAssessment`·`regionAssessment`에 `eligibility`와
-`score`를 함께 반환합니다. 두 항목의 nested `anyOf` 스키마는 `MATCH`·`UNKNOWN`이면 각각 0~25점·0~15점,
+`score`, `evidence`, `explanation`을 함께 반환합니다. 두 항목의 nested `anyOf` 스키마는 `MATCH`·`UNKNOWN`이면 각각 0~25점·0~15점,
 `INCOMPATIBLE`이면 0점만 허용해 부적합 판정과 양수 점수의 모순을 차단합니다.
 Service는 이를 기존 HTTP의 `targetEligibility`·`targetFit`, `regionEligibility`·`regionFit`으로 옮깁니다.
+추가 응답 필드는 `targetEvidence`, `targetExplanation`, `regionEvidence`, `regionExplanation`입니다.
+각 evidence는 `[{field: "SUMMARY" | "TARGET_DESCRIPTION", quote: "..."}]` 형태로 최대 1개이며,
+quote는 원문 그대로 1~240 Unicode code point, explanation은 1~160자입니다. 둘 다 원본 길이를 검사하고
+공백뿐인 값과 Unicode 제어·형식 문자를 거부하며 trim 등으로 변형하지 않습니다. MATCH·INCOMPATIBLE에는
+인용 1개가 필수이고 UNKNOWN은 0~1개와 확인할 조건을 적은 설명이 필요합니다.
+Service는 제외·점수 미달 후보까지 모두 해당 후보의 지정 본문 필드에 exact substring 인용이 존재하는지 검사합니다.
+다른 후보·제목·기관·지역 태그의 인용이나 허위 인용은 정상 빈 목록으로 숨기지 않고 503 오류를 반환합니다.
+`regions`는 검색용 태그이며 자격 증거가 아닙니다. 전국 태그와 지역 제한 본문이 충돌하면 본문을 우선하고,
+서울 기업이 경북 이전 확약 조건을 확인하지 않았다면 지역 자격은 UNKNOWN입니다.
+조건부 이전·확장 확약 신청 가능 문구를 전국 기업의 무조건 허용이나 경북 기존 소재 기업만의 허용으로
+바꾸지 않습니다. 필수 요건·예외 관계가 모호하면 UNKNOWN이고, 일반 대상 라벨보다 본문의 구체적인 산업 요건을 확인합니다.
+실제 보고된 '지원기간 내 경상북도 지역으로 사업장 이전(또는 확장) 확약기업 신청 가능' 문구는
+조건 유무 두 경로의 ScriptedModel 회귀로 전달·인용·UNKNOWN 보존을 검증합니다. 모델의 의미 판단 정확도 보장은 아닙니다.
+인용 존재 검증은 인용의 논리적 충분성까지 보장하지 않습니다. 자격의 의미 판단은 여전히 모델이 수행합니다.
 Agent에 전달하는 strict output schema의 `rankings`는 배열이 아닌 객체입니다. 요청 후보의 ID 20개가 있다면
 그 ID 20개 자체를 모두 `required` 속성 키로 선언하고 `additionalProperties=false`로 다른 키를 금지합니다.
 배열 길이만 맞추고 특정 공고를 중복 평가하는 실패를 막기 위한 구조이며, 적합하지 않은 후보도 평가한 뒤
@@ -215,6 +254,8 @@ Service에서 제외합니다. Agent가 검증된 키를 `programId`로 붙여 �
 
 자격 불일치는 높은 총점으로 상쇄할 수 없습니다. 지역·접수 상태만 맞는 공고가 추천되는 것을 막기 위해
 의미 관련성 조건도 별도로 둡니다. 하나라도 충족하지 못하면 최종 결과에서 제외하며,
+대상·지역 모두 MATCH인 그룹을 먼저, UNKNOWN이 있는 확인 필요 그룹을 후순위로 둡니다.
+각 그룹 안에서 총점 내림차순·동점은 입력 순서를 유지하고 합계 최대 resultLimit(5)개를 반환합니다.
 적격 공고가 없으면 빈 `rankings`를 정상 `200` 응답으로
 반환합니다. 이 값은 실제 검색 평가 데이터가 쌓이면 조정할 초기 정책입니다. Core도 내부 HTTP 응답이 이
 정책을 어기지 않았는지 다시 검증하지만, 키워드 사전이나 항목별 가중치를 Kotlin에 구현하지 않습니다.
@@ -223,7 +264,7 @@ Service에서 제외합니다. Agent가 검증된 키를 `programId`로 붙여 �
 판단하도록 프롬프트를 보완했습니다. 행사에 딸린 부대 지원을 독립적인 지원으로 확대하지 않고,
 현재 단계와 요청 활동을 구별합니다. 부분적으로 직접 제공하는 지원은 인정하며 모든 질문 단어 일치나
 미확인 자격의 자동 탈락을 요구하지 않습니다. 지역·업종·공고 ID별 하드코딩은 추가하지 않았습니다.
-공개 점수 계약 v3와 임계값은 유지하고 측정 파일의 프롬프트 SHA-256으로 전후 버전을 구별합니다.
+당시 공개 점수 계약 v3와 임계값은 유지하고 측정 파일의 프롬프트 SHA-256으로 전후 버전을 구별했습니다.
 실제 고정 후보 전후 32회 비교에서 dev의 알려진 무관 추천은 6→4건, 관련 추천은 15→16건이었으나
 heldout 오추천은 줄지 않았고 평균 API 응답시간은 약 1.82초 늘었습니다.
 [측정 조건·결과·재현 방법](../../evaluation/support-program-search/runs/support-program-catalog-20260906-v1/stage4-v2/README.md)에 한계를 함께 기록했습니다.

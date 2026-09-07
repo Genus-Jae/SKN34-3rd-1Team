@@ -17,7 +17,7 @@ MIN_TOTAL_RECOMMENDATION_SCORE = 60
 
 
 class SupportProgramRankingService:
-    """Agent 결과를 검증하고 적격 공고만 점수순으로 반환한다."""
+    """본문 자격 근거를 검증하고 확인된 자격 그룹을 우선 반환한다."""
 
     def __init__(self, agent: SupportProgramRecommendationAgent) -> None:
         self._agent = agent
@@ -37,6 +37,20 @@ class SupportProgramRankingService:
                 "Support program recommendation agent changed the candidate id set"
             )
 
+        candidates_by_id = {candidate.id: candidate for candidate in request.candidates}
+        # 제외되거나 점수 미달인 후보까지 모두 검증한다. 잘못된 인용을 정상 응답으로 숨기지 않는다.
+        for assessment in output.rankings:
+            candidate = candidates_by_id[assessment.program_id]
+            source_fields = {"SUMMARY": candidate.summary, "TARGET_DESCRIPTION": candidate.target_description}
+            for eligibility in (assessment.target_assessment, assessment.region_assessment):
+                if candidate.source_text_truncated and eligibility.eligibility is not SupportProgramEligibility.UNKNOWN:
+                    raise AgentExecutionError("Truncated source text requires UNKNOWN eligibility")
+                if eligibility.eligibility is not SupportProgramEligibility.UNKNOWN and not eligibility.evidence:
+                    raise AgentExecutionError("Known eligibility requires source evidence")
+                for evidence in eligibility.evidence:
+                    if evidence.quote not in source_fields[evidence.field]:
+                        raise AgentExecutionError("Eligibility evidence is not an exact quote of the candidate source")
+
         try:
             scored_rankings = [
                 ScoredSupportProgram(
@@ -44,8 +58,12 @@ class SupportProgramRankingService:
                     semantic_relevance=assessment.semantic_relevance,
                     target_fit=assessment.target_assessment.score,
                     target_eligibility=assessment.target_assessment.eligibility,
+                    target_evidence=assessment.target_assessment.evidence,
+                    target_explanation=assessment.target_assessment.explanation,
                     region_fit=assessment.region_assessment.score,
                     region_eligibility=assessment.region_assessment.eligibility,
+                    region_evidence=assessment.region_assessment.evidence,
+                    region_explanation=assessment.region_assessment.explanation,
                     application_status_fit=assessment.application_status_fit,
                     support_type_fit=assessment.support_type_fit,
                     total_score=(
@@ -67,6 +85,10 @@ class SupportProgramRankingService:
         sorted_rankings = sorted(
             scored_rankings,
             key=lambda ranking: (
+                not (
+                    ranking.target_eligibility is SupportProgramEligibility.MATCH
+                    and ranking.region_eligibility is SupportProgramEligibility.MATCH
+                ),
                 -ranking.total_score,
                 candidate_order[ranking.program_id],
             ),

@@ -9,7 +9,7 @@ describe('SearchSupportProgramsUseCase', () => {
     const search = vi.fn().mockResolvedValue(rankedPrograms)
     const useCase = new SearchSupportProgramsUseCase({ search })
 
-    const result = await useCase.execute('수출을 준비하는 서울 기업')
+    const result = await useCase.execute({ query: '수출을 준비하는 서울 기업' })
 
     expect(result.programs).toEqual(rankedPrograms)
   })
@@ -19,11 +19,19 @@ describe('SearchSupportProgramsUseCase', () => {
     const controller = new AbortController()
     const cancellableUseCase = new SearchSupportProgramsUseCase({ search })
 
-    await cancellableUseCase.execute('  서울 AI  ', controller.signal)
+    await cancellableUseCase.execute({ query: '  서울 AI  ' }, controller.signal)
 
     expect(search).toHaveBeenCalledWith(
       { acceptingOnly: true, query: '서울 AI' },
       controller.signal,
     )
+  })
+
+  it('passes confirmed company conditions separately from the unchanged search query', async () => {
+    const search = vi.fn().mockResolvedValue([])
+    const useCase = new SearchSupportProgramsUseCase({ search })
+    const companyConditions = { region: '부산', industry: '소프트웨어', establishedOn: '2024-03-01', supportPurpose: '사업화' }
+    await useCase.execute({ query: '서울 지원금', acceptingOnly: false, companyConditions })
+    expect(search).toHaveBeenCalledWith({ query: '서울 지원금', acceptingOnly: false, companyConditions }, undefined)
   })
 })

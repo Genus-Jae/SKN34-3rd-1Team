@@ -12,6 +12,7 @@ from app.support_program_ranking.models import (
     AssessedSupportProgram,
     ScoredSupportProgram,
     SupportProgramEligibility,
+    SupportProgramCompanyConditions,
     SupportProgramRankingOutput,
     SupportProgramRankingRequest,
 )
@@ -37,12 +38,22 @@ def score(
     region_eligibility: SupportProgramEligibility = SupportProgramEligibility.MATCH,
     application_status: int = 10,
     support_type: int = 5,
+    target_quote: str = "기업",
+    region_quote: str = "지원",
 ) -> AssessedSupportProgram:
     return AssessedSupportProgram(
         programId=program_id,
         semanticRelevance=semantic,
-        targetAssessment={"eligibility": target_eligibility, "score": target},
-        regionAssessment={"eligibility": region_eligibility, "score": region},
+        targetAssessment={
+            "eligibility": target_eligibility, "score": target,
+            "evidence": [] if target_eligibility is SupportProgramEligibility.UNKNOWN else [{"field": "SUMMARY", "quote": target_quote}],
+            "explanation": "기업 유형 확인 필요" if target_eligibility is SupportProgramEligibility.UNKNOWN else "본문의 기업 조건을 비교했습니다.",
+        },
+        regionAssessment={
+            "eligibility": region_eligibility, "score": region,
+            "evidence": [] if region_eligibility is SupportProgramEligibility.UNKNOWN else [{"field": "SUMMARY", "quote": region_quote}],
+            "explanation": "소재지 조건 확인 필요" if region_eligibility is SupportProgramEligibility.UNKNOWN else "본문의 지역 조건을 비교했습니다.",
+        },
         applicationStatusFit=application_status,
         supportTypeFit=support_type,
         recommendationReasons=["공고 원문 근거"],
@@ -150,6 +161,7 @@ def request_body() -> dict[str, object]:
                 "targetDescription": "창업기업",
                 "applicationPeriod": "상시 접수",
                 "status": "OPEN",
+                "sourceTextTruncated": False,
             },
             {
                 "id": "BIZINFO:program-high",
@@ -161,6 +173,7 @@ def request_body() -> dict[str, object]:
                 "targetDescription": "서울 AI 창업기업",
                 "applicationPeriod": "상시 접수",
                 "status": "OPEN",
+                "sourceTextTruncated": False,
             },
         ],
     }
@@ -279,8 +292,12 @@ def test_computes_the_failed_capture_sum_in_service_and_keeps_http_contract() ->
             "semanticRelevance": 24,
             "targetFit": 25,
             "targetEligibility": "MATCH",
+            "targetEvidence": [{"field": "SUMMARY", "quote": "기업"}],
+            "targetExplanation": "본문의 기업 조건을 비교했습니다.",
             "regionFit": 15,
             "regionEligibility": "MATCH",
+            "regionEvidence": [{"field": "SUMMARY", "quote": "지원"}],
+            "regionExplanation": "본문의 지역 조건을 비교했습니다.",
             "applicationStatusFit": 10,
             "supportTypeFit": 7,
             "totalScore": 81,
@@ -493,6 +510,7 @@ def test_excludes_explicit_pre_startup_target_mismatch_despite_high_score() -> N
                         40,
                         target=0,
                         target_eligibility=SupportProgramEligibility.INCOMPATIBLE,
+                        target_quote="예비창업자",
                         region=15,
                         application_status=10,
                         support_type=10,
@@ -586,6 +604,7 @@ def test_rejects_an_agent_output_that_omits_a_candidate_without_leaking_details(
     [
         lambda body: body.pop("scoringVersion"),
         lambda body: body.update({"originalQuery": "   "}),
+        lambda body: body.update({"originalQuery": "가" * 501}),
         lambda body: body.update({"scoringVersion": "stale-version"}),
         lambda body: body.update({"unknown": "value"}),
         lambda body: body["candidates"].append(body["candidates"][0]),
@@ -612,6 +631,109 @@ def test_rejects_invalid_requests(mutation) -> None:  # type: ignore[no-untyped-
     ).status_code == 422
 
 
+def test_forwards_normalized_confirmed_company_conditions_to_the_existing_agent() -> None:
+    agent = SuccessfulAgent()
+    body = request_body()
+    body["companyConditions"] = {
+        "region": " 서울 ", "industry": " 소프트웨어 개발업 ", "establishedOn": "2024-02-29",
+        "supportPurpose": " 기술 사업화 ", "referenceDate": "2026-09-07",
+    }
+    with TestClient(create_app(settings=TEST_SETTINGS, support_program_recommendation_agent=agent)) as client:
+        response = client.post("/internal/v1/support-program-rankings/rank", json=body)
+
+    assert response.status_code == 200
+    assert len(agent.requests) == 1
+    request = agent.requests[0]
+    assert request.original_query == body["originalQuery"]
+    assert request.company_conditions.model_dump(mode="json", by_alias=True) == {
+        "region": "서울", "industry": "소프트웨어 개발업", "establishedOn": "2024-02-29",
+        "supportPurpose": "기술 사업화", "referenceDate": "2026-09-07",
+    }
+
+
+@pytest.mark.parametrize("include_null", [False, True])
+def test_absent_company_conditions_do_not_add_a_field_to_the_v4_serialized_request(include_null) -> None:
+    body = request_body()
+    original_json = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+    if include_null:
+        body["companyConditions"] = None
+    request = SupportProgramRankingRequest.model_validate(body)
+    assert request.company_conditions is None
+    assert request.model_dump_json(by_alias=True) == original_json
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_blank_company_fields_remain_unknown(value) -> None:
+    conditions = SupportProgramCompanyConditions.model_validate({
+        "region": value, "industry": value, "establishedOn": value,
+        "supportPurpose": value, "referenceDate": "2026-09-07",
+    })
+    assert conditions.model_dump(mode="json", by_alias=True) == {
+        "region": None, "industry": None, "establishedOn": None,
+        "supportPurpose": None, "referenceDate": "2026-09-07",
+    }
+
+
+@pytest.mark.parametrize("established_on", ["1900-01-01", "2024-02-29", "2026-09-07"])
+def test_company_dates_include_the_calendar_and_reference_boundaries(established_on) -> None:
+    conditions = SupportProgramCompanyConditions.model_validate({
+        "establishedOn": established_on, "referenceDate": "2026-09-07",
+    })
+    assert conditions.established_on.isoformat() == established_on
+
+
+def test_company_condition_text_limits_count_unicode_code_points_after_trimming() -> None:
+    conditions = SupportProgramCompanyConditions.model_validate({
+        "region": " " + "🔎" * 50 + " ", "industry": " " + "업" * 100 + " ",
+        "supportPurpose": " " + "🔎" * 100 + " ", "referenceDate": "2026-09-07",
+    })
+    assert len(conditions.region) == 50
+    assert len(conditions.industry) == len(conditions.support_purpose) == 100
+
+
+@pytest.mark.parametrize("conditions", [
+    {},
+    {"referenceDate": None},
+    {"referenceDate": "2026-02-29"},
+    {"referenceDate": "20260907"},
+    {"referenceDate": " 2026-09-07 "},
+    {"referenceDate": "2026-09-07T00:00:00"},
+    {"referenceDate": 0},
+    {"referenceDate": True},
+    {"establishedOn": "1899-12-31", "referenceDate": "2026-09-07"},
+    {"establishedOn": "2026-09-08", "referenceDate": "2026-09-07"},
+    {"establishedOn": "2025-02-29", "referenceDate": "2026-09-07"},
+    {"establishedOn": "2026-04-31", "referenceDate": "2026-09-07"},
+    {"establishedOn": "2026-W01-1", "referenceDate": "2026-09-07"},
+    {"establishedOn": "20260907", "referenceDate": "2026-09-07"},
+    {"establishedOn": " 2024-02-29 ", "referenceDate": "2026-09-07"},
+    {"establishedOn": "\t", "referenceDate": "2026-09-07"},
+    {"establishedOn": "\n", "referenceDate": "2026-09-07"},
+    {"establishedOn": "\u00a0", "referenceDate": "2026-09-07"},
+    {"establishedOn": "2026-09-07T00:00:00", "referenceDate": "2026-09-07"},
+    {"establishedOn": 0, "referenceDate": "2026-09-07"},
+    {"establishedOn": True, "referenceDate": "2026-09-07"},
+    {"region": "가" * 51, "referenceDate": "2026-09-07"},
+    {"industry": "가" * 101, "referenceDate": "2026-09-07"},
+    {"supportPurpose": "가" * 101, "referenceDate": "2026-09-07"},
+    {"region": "서울\u200b", "referenceDate": "2026-09-07"},
+    {"region": "\n서울", "referenceDate": "2026-09-07"},
+    {"industry": "\t정보통신업", "referenceDate": "2026-09-07"},
+    {"supportPurpose": "사업화\r", "referenceDate": "2026-09-07"},
+    {"region": "\t", "referenceDate": "2026-09-07"},
+    {"industry": "정보\n통신업", "referenceDate": "2026-09-07"},
+    {"supportPurpose": "지원\u0000", "referenceDate": "2026-09-07"},
+    {"unexpected": "value", "referenceDate": "2026-09-07"},
+])
+def test_invalid_company_conditions_are_rejected_before_agent_execution(conditions) -> None:
+    agent = SuccessfulAgent()
+    body = {**request_body(), "companyConditions": conditions}
+    with TestClient(create_app(settings=TEST_SETTINGS, support_program_recommendation_agent=agent)) as client:
+        response = client.post("/internal/v1/support-program-rankings/rank", json=body)
+    assert response.status_code == 422
+    assert not agent.requests
+
+
 def test_score_schema_requires_the_total_to_equal_all_dimensions() -> None:
     with pytest.raises(ValidationError, match="totalScore"):
         ScoredSupportProgram(
@@ -619,8 +741,12 @@ def test_score_schema_requires_the_total_to_equal_all_dimensions() -> None:
             semanticRelevance=40,
             targetFit=25,
             targetEligibility=SupportProgramEligibility.MATCH,
+            targetEvidence=[{"field": "SUMMARY", "quote": "기업"}],
+            targetExplanation="기업 조건 근거",
             regionFit=15,
             regionEligibility=SupportProgramEligibility.MATCH,
+            regionEvidence=[{"field": "SUMMARY", "quote": "지원"}],
+            regionExplanation="지역 조건 근거",
             applicationStatusFit=10,
             supportTypeFit=10,
             totalScore=99,
@@ -676,8 +802,12 @@ def test_score_schema_requires_zero_fit_for_explicit_incompatibility(
             semanticRelevance=40,
             targetFit=target,
             targetEligibility=target_eligibility,
+            targetEvidence=[{"field": "SUMMARY", "quote": "기업"}],
+            targetExplanation="기업 조건 근거",
             regionFit=region,
             regionEligibility=region_eligibility,
+            regionEvidence=[{"field": "SUMMARY", "quote": "지원"}],
+            regionExplanation="지역 조건 근거",
             applicationStatusFit=10,
             supportTypeFit=5,
             totalScore=40 + target + region + 10 + 5,

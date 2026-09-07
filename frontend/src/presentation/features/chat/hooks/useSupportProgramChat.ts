@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { appContainer } from '../../../../app/appContainer'
 import { useAppDispatch, useAppSelector } from '../../../../app/hooks'
@@ -7,6 +7,11 @@ import type { SearchSupportProgramsUseCase } from '../../../../domain/usecases/S
 import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
 import { supportProgramRequestFailureMessage } from '../../../shared/support-program/supportProgramRequestFailureMessage'
 import {
+  acceptingOnlyChanged,
+  companyConditionDraftChanged,
+  companyConditionRemoved,
+  companyConditionsApplied,
+  companyConditionsCleared,
   conversationReset,
   draftChanged,
   maximumSupportProgramSearchQueryLength,
@@ -25,6 +30,7 @@ import {
   selectIsChatSearching,
   selectIsReadyToSubmit,
 } from '../state/chatSlice'
+import { validateCompanyConditions, type CompanyConditionsDraft } from '../validation/companyConditionsForm'
 
 export const supportProgramChatSuggestions = [
   '서울 AI 창업지원 사업 찾아줘',
@@ -55,6 +61,9 @@ export function useSupportProgramChat(
   const messages = useAppSelector(selectChatMessages)
   const canRetrySearch = useAppSelector(selectCanRetryChatSearch)
   const searchError = useAppSelector(selectChatSearchError)
+  const searchOptions = useAppSelector((state) => state.chat.searchOptions)
+  const companyConditionsDraft = useAppSelector((state) => state.chat.companyConditionsDraft)
+  const [conditionsError, setConditionsError] = useState<string | null>(null)
 
   useEffect(() => () => {
     const currentRequest = activeSearchRequest.current
@@ -70,6 +79,7 @@ export function useSupportProgramChat(
   }, [dispatchToStore])
 
   function startNewConversation() {
+    setConditionsError(null)
     const currentRequest = activeSearchRequest.current
     activeSearchRequest.current = null
     if (currentRequest) {
@@ -98,6 +108,31 @@ export function useSupportProgramChat(
 
   function updateDraft(value: string) {
     dispatchToStore(draftChanged(value))
+  }
+
+  function updateCompanyCondition(field: keyof CompanyConditionsDraft, value: string) {
+    dispatchToStore(companyConditionDraftChanged({ field, value }))
+    setConditionsError(null)
+  }
+
+  function applyCompanyConditions() {
+    const validation = validateCompanyConditions(companyConditionsDraft)
+    setConditionsError(validation.error)
+    if (validation.conditions) dispatchToStore(companyConditionsApplied(validation.conditions))
+  }
+
+  function removeCompanyCondition(field: keyof CompanyConditionsDraft) {
+    dispatchToStore(companyConditionRemoved(field))
+    setConditionsError(null)
+  }
+
+  function clearCompanyConditions() {
+    dispatchToStore(companyConditionsCleared())
+    setConditionsError(null)
+  }
+
+  function updateAcceptingOnly(value: boolean) {
+    dispatchToStore(acceptingOnlyChanged(value))
   }
 
   function submitMessage() {
@@ -137,7 +172,7 @@ export function useSupportProgramChat(
 
       try {
         const searchResult = await searchSupportProgramsUseCase.execute(
-          searchQuery,
+          { query: searchQuery, ...currentChatState.searchOptions },
           requestController.signal,
         )
 
@@ -172,6 +207,14 @@ export function useSupportProgramChat(
   }
 
   return {
+    searchOptions,
+    companyConditionsDraft,
+    conditionsError,
+    updateCompanyCondition,
+    applyCompanyConditions,
+    removeCompanyCondition,
+    clearCompanyConditions,
+    updateAcceptingOnly,
     conversationCount,
     canRetrySearch,
     draft,

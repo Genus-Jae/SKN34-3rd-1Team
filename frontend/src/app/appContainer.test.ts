@@ -51,7 +51,7 @@ describe('Awilix application container and Service Locator', () => {
     const container = createAppContainer()
     const result = await container
       .resolve('searchSupportProgramsUseCase')
-      .execute('서울 AI')
+      .execute({ query: '서울 AI' })
 
     expect(result.query).toBe('서울 AI')
     expect(result.programs[0]?.id).toBe('fixture-seoul-ai-business')
@@ -92,7 +92,7 @@ describe('Awilix application container and Service Locator', () => {
 
     const result = await container
       .resolve('searchSupportProgramsUseCase')
-      .execute('수출')
+      .execute({ query: '수출' })
 
     expect(search).toHaveBeenCalledWith(
       { acceptingOnly: true, query: '수출' },

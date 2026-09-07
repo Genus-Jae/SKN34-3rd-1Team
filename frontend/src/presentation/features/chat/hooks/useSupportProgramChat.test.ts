@@ -26,6 +26,74 @@ afterEach(() => {
 })
 
 describe('Redux chat flow', () => {
+  it('applies explicit conditions across searches, keeps snapshots, and resets them for a new conversation', async () => {
+    const execute = vi.fn().mockResolvedValue({ query: '지원금', programs: [] })
+    const store = createAppStore()
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
+    act(() => result.current.updateCompanyCondition('region', ' 서울 '))
+    act(() => result.current.updateCompanyCondition('industry', '   '))
+    expect(result.current.searchOptions.companyConditions).toBeUndefined()
+    act(() => result.current.applyCompanyConditions())
+    expect(result.current.companyConditionsDraft.region).toBe('서울')
+    act(() => result.current.updateDraft('지원금'))
+    await act(async () => result.current.submitMessage())
+    expect(execute).toHaveBeenLastCalledWith({ query: '지원금', acceptingOnly: true, companyConditions: { region: '서울' } }, expect.any(AbortSignal))
+
+    act(() => result.current.updateCompanyCondition('region', '부산'))
+    act(() => result.current.applyCompanyConditions())
+    act(() => result.current.updateAcceptingOnly(false))
+    expect(store.getState().chat.messages[1].searchOptions)
+      .toEqual({ acceptingOnly: true, companyConditions: { region: '서울' } })
+    act(() => result.current.updateDraft('서울 지원금'))
+    await act(async () => result.current.submitMessage())
+    expect(execute).toHaveBeenLastCalledWith({ query: '서울 지원금', acceptingOnly: false, companyConditions: { region: '부산' } }, expect.any(AbortSignal))
+
+    act(() => result.current.removeCompanyCondition('region'))
+    expect(result.current.searchOptions.companyConditions).toBeUndefined()
+    act(() => result.current.startNewConversation())
+    expect(result.current.searchOptions).toEqual({ acceptingOnly: true })
+    expect(result.current.companyConditionsDraft).toEqual({ region: '', industry: '', establishedOn: '', supportPurpose: '' })
+    expect(createAppStore().getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+  })
+
+  it('does not alter applied conditions when a date is invalid', () => {
+    const { result } = renderChatHook(createAppStore(), createSearchUseCase(vi.fn()))
+    act(() => result.current.updateCompanyCondition('region', '서울'))
+    act(() => result.current.applyCompanyConditions())
+    act(() => result.current.updateCompanyCondition('establishedOn', '2026-02-30'))
+    act(() => result.current.applyCompanyConditions())
+    expect(result.current.conditionsError).toMatch(/설립일/)
+    expect(result.current.searchOptions.companyConditions).toEqual({ region: '서울' })
+  })
+
+  it('blocks condition mutations during a request and retains the conditions on cancellation', async () => {
+    const pending = deferredSearchResult()
+    const execute = vi.fn().mockReturnValue(pending.promise)
+    const store = createAppStore()
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
+    act(() => result.current.updateCompanyCondition('region', '서울'))
+    act(() => result.current.applyCompanyConditions())
+    act(() => result.current.updateDraft('지원금'))
+    let request!: Promise<void>
+    act(() => { request = result.current.submitMessage() })
+    act(() => {
+      result.current.updateCompanyCondition('region', '부산')
+      result.current.removeCompanyCondition('region')
+      result.current.clearCompanyConditions()
+      result.current.updateAcceptingOnly(false)
+    })
+    expect(result.current.searchOptions).toEqual({ acceptingOnly: true, companyConditions: { region: '서울' } })
+    expect(result.current.companyConditionsDraft.region).toBe('서울')
+    act(() => result.current.cancelSearch())
+    expect(result.current.draft).toBe('지원금')
+    expect(result.current.searchOptions.companyConditions).toEqual({ region: '서울' })
+    pending.resolve({ query: '지원금', programs: [supportPrograms[0]] })
+    await act(async () => request)
+    expect(result.current.messages).toHaveLength(2)
+    act(() => result.current.clearCompanyConditions())
+    expect(result.current.searchOptions).toEqual({ acceptingOnly: true })
+  })
+
   it('stores the user message and injected search service result in the chat slice', async () => {
     const execute = vi.fn().mockResolvedValue({
       query: '서울 AI',
@@ -38,7 +106,7 @@ describe('Redux chat flow', () => {
     await act(async () => result.current.submitMessage())
 
     const chat = store.getState().chat
-    expect(execute).toHaveBeenCalledWith('서울 AI', expect.any(AbortSignal))
+    expect(execute).toHaveBeenCalledWith({ query: '서울 AI', acceptingOnly: true }, expect.any(AbortSignal))
     expect(chat.searchStatus).toBe('idle')
     expect(chat.messages.map((message) => message.role)).toEqual([
       'assistant',
@@ -71,7 +139,7 @@ describe('Redux chat flow', () => {
   it('aborts and ignores a pending result when a new conversation starts', async () => {
     const pending = deferredSearchResult()
     let requestSignal: AbortSignal | undefined
-    const execute = vi.fn((_query: string, signal?: AbortSignal) => {
+    const execute = vi.fn((_command: unknown, signal?: AbortSignal) => {
       requestSignal = signal
       return pending.promise
     })
@@ -98,7 +166,7 @@ describe('Redux chat flow', () => {
   it('keeps a new draft but blocks resubmission while a request is pending', async () => {
     const firstPending = deferredSearchResult()
     let firstSignal: AbortSignal | undefined
-    const execute = vi.fn((_query: string, signal?: AbortSignal) => {
+    const execute = vi.fn((_command: unknown, signal?: AbortSignal) => {
       firstSignal = signal
       return firstPending.promise
     })
@@ -194,7 +262,7 @@ describe('Redux chat flow', () => {
   it('cancels a pending search, restores its query, and clears the pending state', async () => {
     const pending = deferredSearchResult()
     let requestSignal: AbortSignal | undefined
-    const execute = vi.fn((_query: string, signal?: AbortSignal) => {
+    const execute = vi.fn((_command: unknown, signal?: AbortSignal) => {
       requestSignal = signal
       return pending.promise
     })
@@ -224,7 +292,7 @@ describe('Redux chat flow', () => {
     vi.useFakeTimers()
     const pending = deferredSearchResult()
     let requestSignal: AbortSignal | undefined
-    const execute = vi.fn((_query: string, signal?: AbortSignal) => {
+    const execute = vi.fn((_command: unknown, signal?: AbortSignal) => {
       requestSignal = signal
       return pending.promise
     })
@@ -264,7 +332,7 @@ describe('Redux chat flow', () => {
     execute.mockResolvedValueOnce({ query: '창업', programs: [supportPrograms[0]] })
     await act(async () => result.current.submitMessage())
     expect(execute).toHaveBeenCalledTimes(2)
-    expect(execute.mock.calls[1][0]).toBe('창업')
+    expect(execute.mock.calls[1][0]).toEqual({ query: '창업', acceptingOnly: true })
     expect(execute.mock.calls[1][1]?.aborted).toBe(false)
     expect(store.getState().chat.searchStatus).toBe('idle')
     expect(store.getState().chat.searchError).toBeNull()
@@ -279,7 +347,7 @@ describe('Redux chat flow', () => {
   it('aborts a pending request and clears pending state on unmount', async () => {
     const pending = deferredSearchResult()
     let requestSignal: AbortSignal | undefined
-    const execute = vi.fn((_query: string, signal?: AbortSignal) => {
+    const execute = vi.fn((_command: unknown, signal?: AbortSignal) => {
       requestSignal = signal
       return pending.promise
     })

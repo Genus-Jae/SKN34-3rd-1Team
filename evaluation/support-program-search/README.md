@@ -258,6 +258,12 @@ python3 evaluation/support-program-search/evaluate.py \
 
 ## 실데이터 라벨링 기준
 
+현재 production 랭킹은 원문 인용·자격 확인 상태를 포함하는 `govbiz-support-program-ranking-v4`입니다.
+`runs/`의 v3 요청·응답·평가 결과는 당시 기록으로 보존합니다. 저장 결과의 API 없는 재계산은 계속 가능하지만,
+v3 요청을 현재 v4 모델 계약으로 실제 재실행하지 않습니다. 과거 호출 재현에는 해당 실행의 코드 버전이 필요하며,
+v4 평가는 새 요청·캡처를 만들어 별도 실행 폴더에 기록해야 합니다. replay 실행 기록의 출력 토큰 상한도
+하드코딩한 과거 값이 아니라 실행한 Agent 설정에서 읽습니다.
+
 라벨은 fixture의 `docs[].text`에 적힌 내용만 근거로 만든다. 상세 원문, RAG 답변, 외부 지식으로
 공고의 적합성을 보완하지 않는다.
 

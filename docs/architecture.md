@@ -38,7 +38,8 @@ AI Service는 호스트에 포트를 게시하지 않습니다. MySQL·Qdrant·C
 단일 프로세스 보호이며 분산 한도·전역 비용 상한은 아닙니다. [설정·경계·검증](support-program-request-limits.md)을 참고하세요.
 
 ```text
-GET /api/v1/support-programs/search
+POST /api/v1/support-programs/search (조건 검색)
+GET /api/v1/support-programs/search (기존 단문·최신 목록)
   → SupportProgramController
     → SupportProgramSearchService
       → SupportProgramRepository → MyBatis Mapper → Mapper XML → MySQL
@@ -54,6 +55,12 @@ GET /api/v1/support-programs/search
             → AI Service → 단일 Agent → OpenAI 점수화
           Core의 응답 검증 → 최종 추천 0~5개
 ```
+
+Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보냅니다. Core의 공개 DTO는
+날짜·길이·문자 입력을 검증한 뒤 조건 Domain 모델로 변환합니다. 검색 Service는 요청별 서울 날짜를
+한 번 정하고, 후보 검색에는 조건을 포함한 검색문을, Ranking Facade에는 원래 질의와 구조화된 조건을
+전달합니다. Facade가 AI 전용 DTO로 바꿉니다. 조건은 Repository에 저장하지 않으며 SQL·동기화·스키마는
+변경하지 않습니다. 조건이 없는 GET 및 비웹 평가 호출은 기존 단문 경로를 유지합니다.
 
 1. Repository는 `is_source_present = TRUE`이고 제공처의 공개 세대·지문이 있는 공고를 읽습니다. 자연어 검색은
    `index_ready = TRUE`도 요구하며, 빈 검색은 공개 이후 색인 장애와 무관하게 기존 DB 목록을 유지합니다.
@@ -74,8 +81,9 @@ GET /api/v1/support-programs/search
    요청별 strict schema의 `rankings`는 후보 ID 자체를 필수 키로 선언한 객체이며 다른 키는 금지합니다.
    Agent는 검증된 키를 ID로 붙여 기존 내부 `AssessedSupportProgram` 목록으로 변환합니다.
    AI Service가 다섯 점수를 합산해 기존 HTTP 항목 `ScoredSupportProgram`으로 변환·검증한 후
-   총점순으로 정렬하고 추천 기준을 적용합니다.
-   Core도 최종 응답의 후보 ID·질의·계약 버전·점수·순서·추천 이유를 재검증해 공개 응답으로 변환합니다.
+   원문 인용과 자격·추천 기준을 검증한 후 조건 확인 묶음 우선·확인 필요 묶음 후순위로 정렬합니다.
+   Core도 최종 응답의 후보 ID·질의·계약 버전·점수·묶음별 순서·추천 이유·실제 본문 인용을 재검증해
+   비저장 검색 결과 `eligibilityReview`를 포함한 공개 응답으로 변환합니다.
 
 ```text
 GET /api/v1/support-programs/readiness
@@ -96,13 +104,18 @@ GET /api/v1/support-programs/readiness
 상태가 아직 없는 현재 공고의 제공처도 준비 미확인으로 표시하고 초기 빈 DB에서는 구성된 기업마당만 표시합니다.
 세부 정책과 검증은 [다중 제공처 준비](support-program-multi-source-preparation.md)에 있습니다.
 
-점수화 계약은 `govbiz-support-program-ranking-v3`입니다. 의미 관련성 20/40점 이상과 총점 60/100점 이상을
+점수화 계약은 `govbiz-support-program-ranking-v4`입니다. 의미 관련성 20/40점 이상과 총점 60/100점 이상을
 충족해야 하며, `targetEligibility` 또는 `regionEligibility`가 `INCOMPATIBLE`이면 추천에서 제외합니다.
 LLM 출력은 `targetAssessment`·`regionAssessment` 안에 `eligibility`와 `score`를 함께 묶습니다.
 nested `anyOf` 스키마가 `INCOMPATIBLE`의 점수를 0으로 제한하고, `MATCH`·`UNKNOWN`에는 기존 항목별
-범위(대상 0~25점·지역 0~15점)를 적용합니다. Service는 판단을 바꾸지 않고 기존 HTTP 필드로 옮깁니다.
-총점 합산은 지역·업종별 판단 규칙을 코드에 추가하는 것이 아니며 배점·추천 정책·HTTP 계약·버전은 유지합니다.
-`UNKNOWN`은 정보 부족을 뜻해 자동 제외하지 않지만 신청 자격을 확인했다는 의미도 아닙니다.
+범위(대상 0~25점·지역 0~15점)를 적용합니다. 각 판정에는 설명과 공식 API 본문 인용도 포함합니다.
+후보 summary/targetDescription은 최대 6,000/2,000 code point이며 절단 여부를 별도로 전달합니다.
+절단된 후보는 누락된 조건을 확인한 것처럼 판정하지 않도록 두 축 모두 `UNKNOWN`만 허용합니다.
+`regions`는 후보 검색용 태그이지 자격 근거가 아닙니다. AI와 Core는 MATCH/INCOMPATIBLE의 본문 인용을 필수로
+검증하며 실제 전달된 해당 필드의 정확한 부분 문자열만 인정합니다. 인용 존재 검증이 의미 판단을 보증하지는 않습니다.
+`UNKNOWN`은 확인 필요 묶음으로 분리하고 두 축 MATCH 묶음 뒤에 정렬합니다. 각 묶음 안에서는 점수순입니다.
+검색당 최대 5개이며 공개 DTO의 `eligibilityReview`로 판정·설명·근거와 `OFFICIAL_API_TEXT` 범위를 노출합니다.
+첨부파일을 자동 판독하거나 신청 자격을 확정하는 기능은 아닙니다. DB·색인 구조와 외부 호출 횟수는 바꾸지 않습니다.
 AI Service가 부적격 항목을 최종 응답에 넣으면 Core는 이를 응답 계약 위반으로 거부합니다.
 결과가 0개인 것은 정상일 수 있으며 관련 없는 공고로 5개를 채우지 않습니다.
 
@@ -330,6 +343,9 @@ Awilix의 `app/di`에서 Repository·UseCase·외부 함수를 구성하고 `app
 `useSupportProgramEvidenceQuestionViewModel`을 각각 사용하고 URL의 복합 식별자로 이동합니다.
 
 채팅 메시지·검색 조건은 Redux Toolkit으로 관리하고 검색 요청 흐름은 내부 채팅 Hook의 thunk에 둡니다.
+기업 조건은 사용자가 폼에서 명시적으로 적용하며 현재 대화의 메모리에만 보관합니다. 검색 요청마다
+그 시점의 적용 조건을 사용하고, 새 대화·브라우저 새로고침으로 초기화됩니다. 이전 메시지가 화면에
+남아 있어도 그 메시지에서 조건을 자동 추출하지 않습니다. 로그인·프로필 영속 저장과 C02 대화 갱신은 후속 범위입니다.
 `ChatPage`는 페이지 ViewModel인 `viewmodel/useChatPageViewModel` 하나를 사용합니다. 이 ViewModel은
 `hooks/useSupportProgramChat`의 Redux 상태·검색 요청 수명과 `hooks/useSupportProgramSearchReadiness`의
 준비 상태 조회·polling을 조합합니다. 페이지 ViewModel은

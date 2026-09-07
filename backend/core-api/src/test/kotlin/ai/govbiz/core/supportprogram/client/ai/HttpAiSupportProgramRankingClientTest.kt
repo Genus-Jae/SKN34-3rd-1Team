@@ -6,6 +6,9 @@ import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramCandidateRequ
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramEligibility
 import ai.govbiz.core.supportprogram.client.ai.dto.AiScoredSupportProgramPayload
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramRankingRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramCompanyConditionsRequest
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -48,6 +51,7 @@ class HttpAiSupportProgramRankingClientTest {
     fun sendsExactRankingRequestAndDecodesTheStructuredScores() {
         server.expect(requestTo(RANKING_URL))
             .andExpect(method(HttpMethod.POST))
+            .andExpect(content().string(not(containsString("companyConditions"))))
             .andExpect(header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
             .andExpect(header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE))
             .andExpect(
@@ -55,7 +59,7 @@ class HttpAiSupportProgramRankingClientTest {
                     """
                     {
                       "originalQuery":"서울 AI 스타트업 지원사업",
-                      "scoringVersion":"govbiz-support-program-ranking-v3",
+                      "scoringVersion":"govbiz-support-program-ranking-v4",
                       "resultLimit":1,
                       "candidates":[{
                         "id":"BIZINFO:program-1",
@@ -66,7 +70,8 @@ class HttpAiSupportProgramRankingClientTest {
                         "regions":["서울"],
                         "targetDescription":"서울 창업기업",
                         "applicationPeriod":"상시 접수",
-                        "status":"OPEN"
+                        "status":"OPEN",
+                        "sourceTextTruncated":false
                       }]
                     }
                     """.trimIndent(),
@@ -81,6 +86,25 @@ class HttpAiSupportProgramRankingClientTest {
         assertEquals("BIZINFO:program-1", response.rankings?.single()?.programId)
         assertEquals(AiSupportProgramEligibility.MATCH, response.rankings?.single()?.targetEligibility)
         assertEquals(AiSupportProgramEligibility.MATCH, response.rankings?.single()?.regionEligibility)
+        assertEquals("서울 창업기업", response.rankings?.single()?.targetEvidence?.single()?.quote)
+        assertEquals("공식 API 지원대상에 창업기업이 명시되어 있습니다.", response.rankings?.single()?.targetExplanation)
+    }
+
+    @Test
+    fun sendsOptionalCompanyConditionsAsStructuredJsonWithIsoDates() {
+        server.expect(requestTo(RANKING_URL))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(content().json("""{
+              "originalQuery":"서울 AI 스타트업 지원사업",
+              "companyConditions":{
+                "region":"서울","industry":"제조업","establishedOn":"2024-02-29",
+                "supportPurpose":"시제품 제작","referenceDate":"2026-09-07"
+              }
+            }"""))
+            .andRespond(withSuccess(VALID_RANKING_RESPONSE, MediaType.APPLICATION_JSON))
+        client.rankSupportPrograms(rankingRequest().copy(
+            companyConditions = AiSupportProgramCompanyConditionsRequest("서울", "제조업", "2024-02-29", "시제품 제작", "2026-09-07"),
+        ))
     }
 
     @Test
@@ -141,7 +165,7 @@ class HttpAiSupportProgramRankingClientTest {
 
     private fun rankingRequest() = AiSupportProgramRankingRequest(
         originalQuery = "서울 AI 스타트업 지원사업",
-        scoringVersion = "govbiz-support-program-ranking-v3",
+        scoringVersion = "govbiz-support-program-ranking-v4",
         resultLimit = 1,
         candidates = listOf(
             AiSupportProgramCandidateRequest(
@@ -165,7 +189,7 @@ class HttpAiSupportProgramRankingClientTest {
             """
             {
               "originalQuery":"서울 AI 스타트업 지원사업",
-              "scoringVersion":"govbiz-support-program-ranking-v3",
+              "scoringVersion":"govbiz-support-program-ranking-v4",
               "rankings":[{
                 "programId":"BIZINFO:program-1",
                 "semanticRelevance":38,
@@ -176,7 +200,11 @@ class HttpAiSupportProgramRankingClientTest {
                 "applicationStatusFit":10,
                 "supportTypeFit":8,
                 "totalScore":95,
-                "recommendationReasons":["서울 AI 창업기업 사업화 지원"]
+                "recommendationReasons":["서울 AI 창업기업 사업화 지원"],
+                "targetEvidence":[{"field":"TARGET_DESCRIPTION","quote":"서울 창업기업"}],
+                "targetExplanation":"공식 API 지원대상에 창업기업이 명시되어 있습니다.",
+                "regionEvidence":[{"field":"TARGET_DESCRIPTION","quote":"서울 창업기업"}],
+                "regionExplanation":"공식 API 지원대상에 서울 소재 요건이 명시되어 있습니다."
               }]
             }
             """.trimIndent()
@@ -184,7 +212,7 @@ class HttpAiSupportProgramRankingClientTest {
             """
             {
               "originalQuery":"서울 AI 스타트업 지원사업",
-              "scoringVersion":"govbiz-support-program-ranking-v3",
+              "scoringVersion":"govbiz-support-program-ranking-v4",
               "rankings":[]
             }
             """.trimIndent()

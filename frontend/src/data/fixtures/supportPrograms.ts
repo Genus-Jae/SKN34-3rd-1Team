@@ -19,6 +19,7 @@ export const supportPrograms: SupportProgram[] = [
     sourceUrl: 'https://www.bizinfo.go.kr/programs/seoul-ai-business',
     matchedReasons: ['AI·기술 분야', '서울 지역', '현재 접수 중'],
     recommendationScore: 94,
+    eligibilityReview: null,
   },
   {
     sourceCode: 'BIZINFO',
@@ -37,6 +38,7 @@ export const supportPrograms: SupportProgram[] = [
     sourceUrl: 'https://www.bizinfo.go.kr/programs/national-startup',
     matchedReasons: ['창업 분야', '전국 사업', '현재 접수 중'],
     recommendationScore: 90,
+    eligibilityReview: null,
   },
   {
     sourceCode: 'BIZINFO',
@@ -55,6 +57,7 @@ export const supportPrograms: SupportProgram[] = [
     sourceUrl: 'https://www.bizinfo.go.kr/programs/gyeonggi-smart-factory',
     matchedReasons: ['제조·기술 분야', '경기 지역', '현재 접수 중'],
     recommendationScore: 88,
+    eligibilityReview: null,
   },
   {
     sourceCode: 'BIZINFO',
@@ -73,6 +76,7 @@ export const supportPrograms: SupportProgram[] = [
     sourceUrl: 'https://www.bizinfo.go.kr/programs/export-voucher',
     matchedReasons: ['수출·해외진출 분야', '전국 사업', '현재 접수 중'],
     recommendationScore: 86,
+    eligibilityReview: null,
   },
   {
     sourceCode: 'BIZINFO',
@@ -91,6 +95,7 @@ export const supportPrograms: SupportProgram[] = [
     sourceUrl: 'https://www.bizinfo.go.kr/programs/content-innovation',
     matchedReasons: ['콘텐츠·창업 분야', '전국 사업', '현재 접수 중'],
     recommendationScore: 84,
+    eligibilityReview: null,
   },
   {
     sourceCode: 'BIZINFO',
@@ -109,5 +114,50 @@ export const supportPrograms: SupportProgram[] = [
     sourceUrl: 'https://www.bizinfo.go.kr/programs/daejeon-accelerating',
     matchedReasons: ['기술·창업 분야', '대전 지역'],
     recommendationScore: 72,
+    eligibilityReview: null,
   },
 ]
+
+export const conditionMatchedProgram: SupportProgram = {
+  ...supportPrograms[0],
+  eligibilityReview: {
+    status: 'MATCH',
+    basis: 'OFFICIAL_API_TEXT',
+    target: {
+      status: 'MATCH',
+      explanation: '입력한 업종과 설립일이 본문의 창업기업 지원 대상에 부합합니다.',
+      evidence: [{ field: 'TARGET_DESCRIPTION', quote: '서울 소재 창업 7년 이내 중소기업' }],
+    },
+    region: {
+      status: 'MATCH',
+      explanation: '현재 소재지 서울이 본문 지역 조건과 일치합니다.',
+      evidence: [{ field: 'SUMMARY', quote: 'AI·소프트웨어 기술을 보유한 서울 소재 창업기업의 사업화를 지원합니다.' }],
+    },
+  },
+}
+
+/** 전국 태그가 있어도 경북 이전 의향을 확인하지 않았다면 지역 충족으로 표시하지 않습니다. */
+export const relocationReviewRequiredProgram: SupportProgram = {
+  ...supportPrograms[1],
+  id: 'fixture-gyeongbuk-relocation',
+  title: '2026 경북 이전 창업기업 사업화 지원',
+  summary: '선정 후 경북으로 본사를 이전하는 창업기업을 지원합니다.',
+  targetDescription: '소프트웨어 개발업 창업 7년 이내 중소기업',
+  regions: ['전국'],
+  recommendationScore: 99,
+  matchedReasons: ['전국 사업', '창업 분야'],
+  eligibilityReview: {
+    status: 'REVIEW_REQUIRED',
+    basis: 'OFFICIAL_API_TEXT',
+    target: {
+      status: 'MATCH',
+      explanation: '입력한 업종과 설립일이 본문의 지원 대상에 부합합니다.',
+      evidence: [{ field: 'TARGET_DESCRIPTION', quote: '소프트웨어 개발업 창업 7년 이내 중소기업' }],
+    },
+    region: {
+      status: 'UNKNOWN',
+      explanation: '서울 소재지만 확인되었으며 경북 이전 의향은 확인되지 않았습니다.',
+      evidence: [{ field: 'SUMMARY', quote: '선정 후 경북으로 본사를 이전하는 창업기업을 지원합니다.' }],
+    },
+  },
+}

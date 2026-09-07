@@ -3,6 +3,7 @@ package ai.govbiz.core.supportprogram.service.search
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgram
+import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatusResolver
 import ai.govbiz.core.supportprogram.facade.SupportProgramRankingFacade
@@ -12,6 +13,8 @@ import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchResult
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchTrace
 import java.time.LocalDate
+import java.time.Clock
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 
 /** 공식 공고 후보와 LLM 점수화를 연결하는 검색 유스케이스입니다. */
@@ -20,9 +23,13 @@ class SupportProgramSearchService(
     private val supportProgramRepository: SupportProgramRepository,
     private val rankingFacade: SupportProgramRankingFacade,
     private val retrievalFacade: AiSupportProgramRetrievalFacade,
+    @param:Qualifier("seoulClock") private val clock: Clock,
 ) {
-    fun search(rawQuery: String?, acceptingOnly: Boolean): SupportProgramSearchResult =
-        execute(rawQuery, acceptingOnly).result
+    fun search(
+        rawQuery: String?,
+        acceptingOnly: Boolean,
+        companyConditions: SupportProgramCompanyConditions? = null,
+    ): SupportProgramSearchResult = execute(rawQuery, acceptingOnly, companyConditions = companyConditions).result
 
     /**
      * 평가 전용 호출입니다. 공개 검색 응답에는 노출하지 않고, 비어 있지 않은 질문에서 실제 결합 검색 후보와
@@ -54,14 +61,16 @@ class SupportProgramSearchService(
         rawQuery: String?,
         acceptingOnly: Boolean,
         referenceDate: LocalDate? = null,
+        companyConditions: SupportProgramCompanyConditions? = null,
     ): SearchExecution {
         val query = rawQuery?.trim().orEmpty()
+        val searchReferenceDate = referenceDate ?: companyConditions?.let { LocalDate.now(clock) }
         val presentPrograms = (if (query.isBlank()) {
             supportProgramRepository.findPublishedPresent()
         } else {
             supportProgramRepository.findSearchablePresent()
         }).let { programs ->
-            referenceDate?.let { date -> programs.map { it.withStatusAt(date) } } ?: programs
+            searchReferenceDate?.let { date -> programs.map { it.withStatusAt(date) } } ?: programs
         }
         if (query.isNotBlank() && presentPrograms.isEmpty()) {
             val statuses = supportProgramRepository.findSyncStatuses()
@@ -80,7 +89,10 @@ class SupportProgramSearchService(
 
         val candidates = when {
             eligiblePrograms.isEmpty() || query.isBlank() -> emptyList()
-            else -> retrievalFacade.retrieve(query, eligiblePrograms)
+            else -> retrievalFacade.retrieve(
+                buildRetrievalQuery(query, companyConditions, searchReferenceDate),
+                eligiblePrograms,
+            )
         }
 
         val programs = when {
@@ -92,8 +104,14 @@ class SupportProgramSearchService(
                         .thenBy { it.program.id },
                 )
                 .take(SupportProgramRankingFacade.MAX_RESULTS)
-                .map { it.program.copy(matchedReasons = emptyList(), recommendationScore = null) }
-            else -> rankingFacade.rank(query, candidates, SupportProgramRankingFacade.MAX_RESULTS)
+                .map { it.program.copy(matchedReasons = emptyList(), recommendationScore = null, eligibilityReview = null) }
+            else -> rankingFacade.rank(
+                query,
+                candidates,
+                SupportProgramRankingFacade.MAX_RESULTS,
+                companyConditions,
+                searchReferenceDate.takeIf { companyConditions != null },
+            )
         }
 
         return SearchExecution(
@@ -107,6 +125,26 @@ class SupportProgramSearchService(
             eligibleProgramCount = eligiblePrograms.size,
             eligiblePrograms = java.util.List.copyOf(eligiblePrograms),
         )
+    }
+
+    private fun buildRetrievalQuery(
+        query: String,
+        conditions: SupportProgramCompanyConditions?,
+        referenceDate: LocalDate?,
+    ): String {
+        if (conditions == null) return query
+        return buildString {
+            append(query)
+            append("\n사용자가 입력한 기업 조건:")
+            conditions.region?.let { append("\n소재지: ").append(it) }
+            conditions.industry?.let { append("\n업종: ").append(it) }
+            conditions.establishedOn?.let { append("\n설립일: ").append(it) }
+            conditions.supportPurpose?.let { append("\n지원 목적: ").append(it) }
+            append("\n기준일(서울): ").append(requireNotNull(referenceDate))
+        }.also {
+            // 공개 필드별 상한의 합보다 넉넉하지만 내부 검색 계약(1000자)을 넘길 수는 없습니다.
+            require(it.length <= 1000) { "condition-aware retrieval query exceeds the internal limit" }
+        }
     }
 
     private fun immutableCanonicalIds(programs: List<SupportProgram>): List<String> =

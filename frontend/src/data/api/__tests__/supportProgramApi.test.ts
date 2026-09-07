@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { supportPrograms } from '../../fixtures/supportPrograms'
+import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from '../../fixtures/supportPrograms'
 import { SupportProgramRepositoryImpl } from '../../repositories/SupportProgramRepositoryImpl'
 import {
   supportProgramSearchReadinessDtoSchema,
@@ -20,6 +20,13 @@ afterEach(() => {
 })
 
 describe('searchSupportProgramsApi', () => {
+  it('검색별 자격 판정·축별 원문 인용을 HTTP에서 도메인까지 보존한다', async () => {
+    const programs = [conditionMatchedProgram, relocationReviewRequiredProgram]
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ query: '사업화', programs })))
+    await expect(new SupportProgramRepositoryImpl().search({ query: '사업화', companyConditions: { region: '서울' } }))
+      .resolves.toEqual(programs)
+  })
+
   it('encodes the search command and supplies the abort signal', async () => {
     const controller = new AbortController()
     const responseBody = { query: '서울 AI', programs: [supportPrograms[0]] }
@@ -34,10 +41,21 @@ describe('searchSupportProgramsApi', () => {
     const [requestUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     const url = new URL(requestUrl)
     expect(url.pathname).toBe('/api/v1/support-programs/search')
-    expect(url.searchParams.get('query')).toBe('서울 AI')
-    expect(url.searchParams.get('acceptingOnly')).toBe('false')
-    expect(init.headers).toEqual({ Accept: 'application/json' })
+    expect(url.search).toBe('')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({ query: '서울 AI', acceptingOnly: false })
+    expect(init.headers).toEqual({ Accept: 'application/json', 'Content-Type': 'application/json' })
     expect(init.signal).toBe(controller.signal)
+  })
+
+  it('sends company conditions in the JSON body without exposing them in the URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ query: '지원금', programs: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const companyConditions = { region: '서울', industry: '정보통신업', establishedOn: '2023-02-28' }
+    await searchSupportProgramsApi({ query: '지원금', companyConditions })
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('?')
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)))
+      .toEqual({ query: '지원금', acceptingOnly: true, companyConditions })
   })
 
   it('accepts a non-date application period and maps it into a domain program', async () => {
