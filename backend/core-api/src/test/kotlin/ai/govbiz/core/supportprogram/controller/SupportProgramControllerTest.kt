@@ -508,7 +508,7 @@ class SupportProgramControllerTest {
     @Test
     fun postSearchNormalizesConditionsAndPreservesThePublicQueryWithoutEchoingCompanyData() {
         val programs = listOf(catalogProgram())
-        val enriched = "사업화\n사용자가 입력한 기업 조건:\n소재지: 부산\n업종: 제조업\n설립일: 2024-02-29\n지원 목적: 시제품\n기준일(서울): 2026-09-07"
+        val enriched = "사업화\n부산\n제조업\n시제품"
         Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
         Mockito.doReturn(programs).`when`(retrieval).retrieve(enriched, programs)
         ranking.response = { it.map(CatalogSupportProgram::program) }

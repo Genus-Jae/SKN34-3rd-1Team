@@ -12,7 +12,7 @@ from app.support_program_identity import (
 )
 
 
-SCORING_VERSION = "govbiz-support-program-ranking-v4"
+SCORING_VERSION = "govbiz-support-program-ranking-v5"
 MAX_CANDIDATES = 20
 MAX_CANONICAL_PROGRAM_ID_LENGTH = MAX_CANONICAL_SOURCE_PROGRAM_ID_LENGTH
 
@@ -212,15 +212,12 @@ class ScoredSupportProgram(BaseModel):
         max_length=MAX_CANONICAL_PROGRAM_ID_LENGTH,
     )
     semantic_relevance: int = Field(alias="semanticRelevance", ge=0, le=40)
-    target_fit: int = Field(alias="targetFit", ge=0, le=25)
     target_eligibility: SupportProgramEligibility = Field(alias="targetEligibility")
     target_evidence: list[SupportProgramEligibilityEvidence] = Field(alias="targetEvidence", max_length=1)
     target_explanation: EligibilityExplanation = Field(alias="targetExplanation")
-    region_fit: int = Field(alias="regionFit", ge=0, le=15)
     region_eligibility: SupportProgramEligibility = Field(alias="regionEligibility")
     region_evidence: list[SupportProgramEligibilityEvidence] = Field(alias="regionEvidence", max_length=1)
     region_explanation: EligibilityExplanation = Field(alias="regionExplanation")
-    application_status_fit: int = Field(alias="applicationStatusFit", ge=0, le=10)
     support_type_fit: int = Field(alias="supportTypeFit", ge=0, le=10)
     total_score: int = Field(alias="totalScore", ge=0, le=100)
     recommendation_reasons: list[str] = Field(
@@ -241,25 +238,9 @@ class ScoredSupportProgram(BaseModel):
 
     @model_validator(mode="after")
     def require_exact_total(self) -> "ScoredSupportProgram":
-        expected = (
-            self.semantic_relevance
-            + self.target_fit
-            + self.region_fit
-            + self.application_status_fit
-            + self.support_type_fit
-        )
+        expected = 2 * (self.semantic_relevance + self.support_type_fit)
         if self.total_score != expected:
-            raise ValueError("totalScore must equal the sum of all score dimensions")
-        if (
-            self.target_eligibility is SupportProgramEligibility.INCOMPATIBLE
-            and self.target_fit != 0
-        ):
-            raise ValueError("incompatible target eligibility must have targetFit of zero")
-        if (
-            self.region_eligibility is SupportProgramEligibility.INCOMPATIBLE
-            and self.region_fit != 0
-        ):
-            raise ValueError("incompatible region eligibility must have regionFit of zero")
+            raise ValueError("totalScore must equal 2 * (semanticRelevance + supportTypeFit)")
         if self.target_eligibility is not SupportProgramEligibility.UNKNOWN and not self.target_evidence:
             raise ValueError("known target eligibility requires source evidence")
         if self.region_eligibility is not SupportProgramEligibility.UNKNOWN and not self.region_evidence:
@@ -268,12 +249,11 @@ class ScoredSupportProgram(BaseModel):
 
 
 class TargetEligibilityAssessment(BaseModel):
-    """명백한 대상 부적합이 아닌 경우 AI가 판단하는 대상 점수."""
+    """검색 관련도 점수와 분리한 대상 자격·근거."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     eligibility: Literal[SupportProgramEligibility.MATCH, SupportProgramEligibility.UNKNOWN]
-    score: int = Field(ge=0, le=25)
     evidence: list[SupportProgramEligibilityEvidence] = Field(max_length=1)
     explanation: EligibilityExplanation
 
@@ -285,12 +265,11 @@ class TargetEligibilityAssessment(BaseModel):
 
 
 class RegionEligibilityAssessment(BaseModel):
-    """명백한 지역 부적합이 아닌 경우 AI가 판단하는 지역 점수."""
+    """검색 관련도 점수와 분리한 지역 자격·근거."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     eligibility: Literal[SupportProgramEligibility.MATCH, SupportProgramEligibility.UNKNOWN]
-    score: int = Field(ge=0, le=15)
     evidence: list[SupportProgramEligibilityEvidence] = Field(max_length=1)
     explanation: EligibilityExplanation
 
@@ -302,12 +281,11 @@ class RegionEligibilityAssessment(BaseModel):
 
 
 class IncompatibleEligibilityAssessment(BaseModel):
-    """대상·지역 부적합 판정과 양수 점수의 모순을 출력 스키마에서 차단한다."""
+    """명백한 대상·지역 부적합에는 본문 근거를 필수로 요구한다."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     eligibility: Literal[SupportProgramEligibility.INCOMPATIBLE]
-    score: Literal[0]
     evidence: list[SupportProgramEligibilityEvidence] = Field(min_length=1, max_length=1)
     explanation: EligibilityExplanation
 
@@ -324,7 +302,6 @@ class SupportProgramAssessment(BaseModel):
     region_assessment: RegionEligibilityAssessment | IncompatibleEligibilityAssessment = Field(
         alias="regionAssessment",
     )
-    application_status_fit: int = Field(alias="applicationStatusFit", ge=0, le=10)
     support_type_fit: int = Field(alias="supportTypeFit", ge=0, le=10)
     recommendation_reasons: list[str] = Field(
         alias="recommendationReasons",

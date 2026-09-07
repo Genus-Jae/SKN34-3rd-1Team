@@ -30,8 +30,8 @@ class AiSupportProgramRankingFacadeTest {
     fun sendsTheVersionedScoringContractAndMapsValidatedRankings() {
         val candidates = candidates()
         client.response = response(
-            score("second", semantic = 40, total = 85, reason = "질의와 직접 관련"),
-            score("first", semantic = 20, total = 65, reason = "일부 관련"),
+            score("second", semantic = 40, total = 90, reason = "질의와 직접 관련"),
+            score("first", semantic = 20, total = 50, reason = "일부 관련"),
         )
 
         val programs = facade().rank(QUERY, candidates, 5)
@@ -42,7 +42,7 @@ class AiSupportProgramRankingFacadeTest {
         assertEquals(2, request.resultLimit)
         assertEquals(listOf("BIZINFO:first", "BIZINFO:second"), request.candidates.map { it.id })
         assertEquals(listOf("second", "first"), programs.map { it.id })
-        assertEquals(85, programs.first().recommendationScore)
+        assertEquals(90, programs.first().recommendationScore)
         assertEquals(listOf("질의와 직접 관련"), programs.first().matchedReasons)
         assertEquals(SupportProgramEligibilityReviewStatus.MATCH, programs.first().eligibilityReview?.status)
         assertEquals("중소기업", programs.first().eligibilityReview?.target?.evidence?.single()?.quote)
@@ -50,12 +50,12 @@ class AiSupportProgramRankingFacadeTest {
 
     @Test
     fun acceptsFewerRankingsWhenOnlySomeCandidatesMeetTheRecommendationMinimum() {
-        client.reset(response(score("second", semantic = 40, total = 85, reason = "질의와 직접 관련")))
+        client.reset(response(score("second", semantic = 40, total = 90, reason = "질의와 직접 관련")))
 
         val programs = facade().rank(QUERY, candidates(), 5)
 
         assertEquals(listOf("second"), programs.map { it.id })
-        assertEquals(85, programs.single().recommendationScore)
+        assertEquals(90, programs.single().recommendationScore)
     }
 
     @Test
@@ -64,8 +64,8 @@ class AiSupportProgramRankingFacadeTest {
         val other = CatalogSupportProgram(program("SHARED", "OTHER"), "2026-08-21")
         client.reset(
             response(
-                qualifiedScore("OTHER:SHARED", semantic = 40, total = 85, reason = "다른 제공처 공고"),
-                qualifiedScore("BIZINFO:SHARED", semantic = 20, total = 65, reason = "기업마당 공고"),
+                qualifiedScore("OTHER:SHARED", semantic = 40, total = 90, reason = "다른 제공처 공고"),
+                qualifiedScore("BIZINFO:SHARED", semantic = 20, total = 50, reason = "기업마당 공고"),
             ),
         )
 
@@ -119,7 +119,7 @@ class AiSupportProgramRankingFacadeTest {
     @Test
     fun acceptsRecommendationReasonsAtTheAiContractCodePointLimit() {
         val reason = "가".repeat(119) + "🚀"
-        client.reset(response(score("first", 40, 85, reason)))
+        client.reset(response(score("first", 40, 90, reason)))
 
         val programs = facade().rank(QUERY, candidates(), 5)
 
@@ -128,7 +128,7 @@ class AiSupportProgramRankingFacadeTest {
 
     @Test
     fun rejectsRecommendationReasonsAboveTheAiContractCodePointLimit() {
-        client.reset(response(score("first", 40, 85, "가".repeat(120) + "🚀")))
+        client.reset(response(score("first", 40, 90, "가".repeat(120) + "🚀")))
 
         assertInvalidResponse()
     }
@@ -137,8 +137,8 @@ class AiSupportProgramRankingFacadeTest {
     fun rejectsMoreRankingsThanTheRequestedLimit() {
         client.reset(
             response(
-                score("second", semantic = 40, total = 85, reason = "질의와 직접 관련"),
-                score("first", semantic = 20, total = 65, reason = "일부 관련"),
+                score("second", semantic = 40, total = 90, reason = "질의와 직접 관련"),
+                score("first", semantic = 20, total = 50, reason = "일부 관련"),
             ),
         )
 
@@ -152,9 +152,9 @@ class AiSupportProgramRankingFacadeTest {
     @Test
     fun rejectsUnknownDuplicateAndAscendingProgramIds() {
         val invalidPayloads = listOf(
-            response(score("unknown", 40, 85, "근거"), score("first", 20, 65, "근거 2")),
-            response(score("first", 40, 85, "근거"), score("first", 20, 65, "근거 2")),
-            response(score("first", 20, 65, "근거"), score("second", 40, 85, "근거 2")),
+            response(score("unknown", 40, 90, "근거"), score("first", 20, 50, "근거 2")),
+            response(score("first", 40, 90, "근거"), score("first", 20, 50, "근거 2")),
+            response(score("first", 20, 50, "근거"), score("second", 40, 90, "근거 2")),
         )
 
         invalidPayloads.forEach { payload ->
@@ -165,26 +165,21 @@ class AiSupportProgramRankingFacadeTest {
     }
 
     @Test
-    fun rejectsRankingsThatDoNotMeetTheRecommendationMinimum() {
-        val invalidPayloads = listOf(
-            response(score("first", semantic = 19, total = 64, reason = "의미 관련성이 부족")),
-            response(
-                score(
-                    "first",
-                    semantic = 20,
-                    total = 59,
-                    reason = "전체 적합성이 부족",
-                    applicationStatus = 5,
-                    supportType = 4,
-                ),
-            ),
-        )
+    fun rejectsRankingsBelowTheSemanticMinimumEvenWithMaximumSupportTypeScore() {
+        client.reset(response(score("first", semantic = 19, total = 58, reason = "간접 관련", supportType = 10)))
+        assertInvalidResponse()
+    }
 
-        invalidPayloads.forEach { payload ->
-            client.reset(payload)
-
-            assertInvalidResponse()
-        }
+    @Test
+    fun acceptsRelevantUnknownWithoutTheOldTotalScoreGate() {
+        client.reset(response(score(
+            "first", semantic = 20, total = 40, reason = "요청 지원 일부 제공", supportType = 0,
+            targetEligibility = AiSupportProgramEligibility.UNKNOWN,
+            regionEligibility = AiSupportProgramEligibility.UNKNOWN,
+        )))
+        val result = facade().rank(QUERY, candidates(), 5).single()
+        assertEquals(40, result.recommendationScore)
+        assertEquals(SupportProgramEligibilityReviewStatus.REVIEW_REQUIRED, result.eligibilityReview?.status)
     }
 
     @Test
@@ -194,9 +189,8 @@ class AiSupportProgramRankingFacadeTest {
                 score(
                     "first",
                     semantic = 40,
-                    total = 65,
+                    total = 90,
                     reason = "서울 AI 공고",
-                    target = 0,
                     targetEligibility = AiSupportProgramEligibility.INCOMPATIBLE,
                 ),
             ),
@@ -204,9 +198,8 @@ class AiSupportProgramRankingFacadeTest {
                 score(
                     "first",
                     semantic = 40,
-                    total = 75,
+                    total = 90,
                     reason = "AI 기업 지원",
-                    region = 0,
                     regionEligibility = AiSupportProgramEligibility.INCOMPATIBLE,
                 ),
             ),
@@ -226,11 +219,8 @@ class AiSupportProgramRankingFacadeTest {
                 score(
                     "first",
                     semantic = 40,
-                    total = 60,
+                    total = 90,
                     reason = "질의와 관련된 지원사업",
-                    target = 0,
-                    region = 5,
-                    applicationStatus = 10,
                     supportType = 5,
                     targetEligibility = AiSupportProgramEligibility.UNKNOWN,
                     regionEligibility = AiSupportProgramEligibility.UNKNOWN,
@@ -248,8 +238,8 @@ class AiSupportProgramRankingFacadeTest {
     @Test
     fun rejectsWrongEchoVersionScoreSumAndReasons() {
         val validScores = arrayOf(
-            score("second", 40, 85, "직접 관련"),
-            score("first", 20, 65, "일부 관련"),
+            score("second", 40, 90, "직접 관련"),
+            score("first", 20, 50, "일부 관련"),
         )
         val invalidPayloads = listOf(
             response(*validScores).copy(originalQuery = "변조된 질의"),
@@ -273,7 +263,7 @@ class AiSupportProgramRankingFacadeTest {
 
     @Test
     fun rejectsMissingFabricatedWrongFieldAndMalformedEvidence() {
-        val valid = score("first", 40, 85, "공식 본문 근거")
+        val valid = score("first", 40, 90, "공식 본문 근거")
         val targetEvidence = valid.targetEvidence!!
         val regionEvidence = valid.regionEvidence!!.single()!!
         val invalid = listOf(
@@ -305,7 +295,7 @@ class AiSupportProgramRankingFacadeTest {
         val quote = "가".repeat(239) + "🚀"
         val explanation = "가".repeat(159) + "🚀"
         val candidate = candidates().first().let { it.copy(program = it.program.copy(summary = quote + "추가")) }
-        val valid = score("first", 40, 85, "근거").copy(
+        val valid = score("first", 40, 90, "근거").copy(
             regionEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.SUMMARY, quote)),
             regionExplanation = explanation,
         )
@@ -321,10 +311,10 @@ class AiSupportProgramRankingFacadeTest {
     @Test
     fun truncatedSourceCanOnlyProduceUnknownReviewsAndCannotCiteOmittedText() {
         val candidate = candidates().first().let { it.copy(program = it.program.copy(summary = "가".repeat(6000) + "숨겨진 요건")) }
-        client.reset(response(score("first", 40, 85, "근거")))
+        client.reset(response(score("first", 40, 90, "근거")))
         assertThrows(AiServiceCallException::class.java) { facade().rank(QUERY, listOf(candidate), 5) }
 
-        val unknown = score("first", 40, 85, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN, regionEligibility = AiSupportProgramEligibility.UNKNOWN)
+        val unknown = score("first", 40, 90, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN, regionEligibility = AiSupportProgramEligibility.UNKNOWN)
         client.reset(response(unknown))
         assertEquals(SupportProgramEligibilityReviewStatus.REVIEW_REQUIRED, facade().rank(QUERY, listOf(candidate), 5).single().eligibilityReview?.status)
         client.reset(response(unknown.copy(regionEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.SUMMARY, "숨겨진 요건")))))
@@ -346,7 +336,7 @@ class AiSupportProgramRankingFacadeTest {
 
     @Test
     fun unknownReviewsCanQuoteAvailableRequirementsWithoutClaimingAMatch() {
-        val unknown = score("first", 40, 85, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
+        val unknown = score("first", 40, 90, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
             .copy(targetEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.TARGET_DESCRIPTION, "중소기업")))
         client.reset(response(unknown))
         val review = facade().rank(QUERY, candidates(), 5).single().eligibilityReview!!
@@ -355,19 +345,19 @@ class AiSupportProgramRankingFacadeTest {
     }
 
     @Test
-    fun matchBucketPrecedesUnknownEvenWhenUnknownHasAHigherScore() {
-        val match = score("first", 20, 65, "충족")
-        val unknown = score("second", 40, 85, "미확인", regionEligibility = AiSupportProgramEligibility.UNKNOWN)
-        client.reset(response(match, unknown))
-        assertEquals(listOf("first", "second"), facade().rank(QUERY, candidates(), 5).map { it.id })
+    fun higherRelevanceUnknownPrecedesLowerRelevanceMatch() {
+        val match = score("first", 20, 50, "충족")
+        val unknown = score("second", 40, 90, "미확인", regionEligibility = AiSupportProgramEligibility.UNKNOWN)
         client.reset(response(unknown, match))
+        assertEquals(listOf("second", "first"), facade().rank(QUERY, candidates(), 5).map { it.id })
+        client.reset(response(match, unknown))
         assertInvalidResponse()
     }
 
     @Test
-    fun unknownBucketStillRequiresDescendingScores() {
-        val lower = score("first", 20, 65, "미확인", regionEligibility = AiSupportProgramEligibility.UNKNOWN)
-        val higher = score("second", 40, 85, "미확인", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
+    fun unknownResultsStillRequireDescendingScores() {
+        val lower = score("first", 20, 50, "미확인", regionEligibility = AiSupportProgramEligibility.UNKNOWN)
+        val higher = score("second", 40, 90, "미확인", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
         client.reset(response(lower, higher))
         assertInvalidResponse()
         client.reset(response(higher, lower))
@@ -375,11 +365,41 @@ class AiSupportProgramRankingFacadeTest {
     }
 
     @Test
+    fun tiesPreserveCandidateOrderRegardlessOfEligibility() {
+        val unknown = score("first", 40, 90, "미확인", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
+        val match = score("second", 40, 90, "조건 확인")
+        client.reset(response(unknown, match))
+        assertEquals(listOf("first", "second"), facade().rank(QUERY, candidates(), 5).map { it.id })
+        client.reset(response(match, unknown))
+        assertInvalidResponse()
+    }
+
+    @Test
+    fun rejectsMissingOrOutOfRangeRelevanceDimensions() {
+        val valid = score("first", 40, 90, "근거")
+        val invalid = listOf(
+            valid.copy(semanticRelevance = null),
+            valid.copy(semanticRelevance = -1, totalScore = 8),
+            valid.copy(semanticRelevance = 41, totalScore = 92),
+            valid.copy(supportTypeFit = null),
+            valid.copy(supportTypeFit = -1, totalScore = 78),
+            valid.copy(semanticRelevance = 30, supportTypeFit = 11, totalScore = 82),
+            valid.copy(totalScore = null),
+            valid.copy(totalScore = -1),
+            valid.copy(totalScore = 101),
+        )
+        invalid.forEach { ranking ->
+            client.reset(response(ranking))
+            assertInvalidResponse()
+        }
+    }
+
+    @Test
     fun rejectsControlCharactersEvenWhenTheQuoteExistsExactlyInTheSource() {
         for (control in listOf("\n", "\r", "\t", "\u0000", "\u200b")) {
             val quote = "서울${control}소재 기업"
             val candidate = candidates().first().let { it.copy(program = it.program.copy(summary = quote)) }
-            client.reset(response(score("first", 40, 85, "근거").copy(
+            client.reset(response(score("first", 40, 90, "근거").copy(
                 regionEvidence = listOf(AiSupportProgramEligibilityEvidencePayload(AiSupportProgramEligibilityEvidenceField.SUMMARY, quote)),
             )))
             assertThrows(AiServiceCallException::class.java) { facade().rank(QUERY, listOf(candidate), 5) }
@@ -388,7 +408,7 @@ class AiSupportProgramRankingFacadeTest {
 
     @Test
     fun unknownStillRequiresAnExplanationAndAnExplicitEvidenceList() {
-        val unknown = score("first", 40, 85, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
+        val unknown = score("first", 40, 90, "근거", targetEligibility = AiSupportProgramEligibility.UNKNOWN)
         for (invalid in listOf(unknown.copy(targetExplanation = null), unknown.copy(targetEvidence = null))) {
             client.reset(response(invalid))
             assertInvalidResponse()
@@ -459,9 +479,6 @@ class AiSupportProgramRankingFacadeTest {
         semantic: Int,
         total: Int,
         reason: String,
-        target: Int = 20,
-        region: Int = 10,
-        applicationStatus: Int = 10,
         supportType: Int = 5,
         targetEligibility: AiSupportProgramEligibility = AiSupportProgramEligibility.MATCH,
         regionEligibility: AiSupportProgramEligibility = AiSupportProgramEligibility.MATCH,
@@ -470,9 +487,6 @@ class AiSupportProgramRankingFacadeTest {
         semantic = semantic,
         total = total,
         reason = reason,
-        target = target,
-        region = region,
-        applicationStatus = applicationStatus,
         supportType = supportType,
         targetEligibility = targetEligibility,
         regionEligibility = regionEligibility,
@@ -483,20 +497,14 @@ class AiSupportProgramRankingFacadeTest {
         semantic: Int,
         total: Int,
         reason: String,
-        target: Int = 20,
-        region: Int = 10,
-        applicationStatus: Int = 10,
         supportType: Int = 5,
         targetEligibility: AiSupportProgramEligibility = AiSupportProgramEligibility.MATCH,
         regionEligibility: AiSupportProgramEligibility = AiSupportProgramEligibility.MATCH,
     ) = AiScoredSupportProgramPayload(
         programId = programId,
         semanticRelevance = semantic,
-        targetFit = target,
         targetEligibility = targetEligibility,
-        regionFit = region,
         regionEligibility = regionEligibility,
-        applicationStatusFit = applicationStatus,
         supportTypeFit = supportType,
         totalScore = total,
         recommendationReasons = listOf(reason),

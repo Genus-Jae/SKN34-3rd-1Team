@@ -5,7 +5,6 @@ import type { SupportProgramConversationContext, SupportProgramInterpretation } 
 import type { SupportProgramSearchReadiness } from '../../../../domain/entities/SupportProgramSearchReadiness'
 import { useChatPageViewModel } from '../viewmodel/useChatPageViewModel'
 import type { ChatSearchOptions } from '../state/chatSlice'
-import { groupSupportProgramsByEligibility } from '../supportProgramEligibility'
 import {
   chatMessageBubbleClassName,
   chatMessageRowClassName,
@@ -35,6 +34,8 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     canSearch,
     canRetrySearch,
     cancelSearch,
+    composerInputRef,
+    conversationCount,
     draft,
     handleCompositionEnd,
     handleCompositionStart,
@@ -42,12 +43,14 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     handleInputKeyDown,
     handleRetrySearch,
     handleSelectSuggestion,
+    handleStartNewConversation,
     handleSubmit,
     isReadyToSubmit,
     messages,
     readiness,
     refetchReadiness,
     searchError,
+    searchOptions,
     searchStatusAnnouncement,
     suggestions,
     timelineRef,
@@ -55,6 +58,21 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
 
   const hasReadinessNotice = readiness.isInitialLoading || readiness.isError
     || readiness.data?.searchState !== 'SEARCHABLE'
+  const hasConfirmedSearch = confirmedContext.query !== null
+  const hasSearchToReset = hasConfirmedSearch || conversationCount > 0 || draft.length > 0
+
+  const searchContextControls = hasSearchToReset ? (
+    <div className={chatPageStyles.searchContextControls}>
+      {hasConfirmedSearch ? (
+        <p id="support-program-current-conditions" className={chatPageStyles.currentConditions}>
+          적용 중인 조건: {formatSearchOptions(searchOptions)}
+        </p>
+      ) : null}
+      <button type="button" className={chatPageStyles.newSearchButton}
+        title="대화와 적용 조건을 초기화합니다"
+        onClick={handleStartNewConversation}>새 검색</button>
+    </div>
+  ) : null
 
   const introBlock = (
     <div className={chatPageStyles.intro}>
@@ -69,9 +87,13 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   const composerInputGroup = (
       <div className={chatPageStyles.composerInputGroup}>
         <textarea
+          ref={composerInputRef}
           className={chatPageStyles.composerInput}
           aria-label="지원사업 검색어"
-          aria-describedby={hasReadinessNotice ? 'support-program-search-readiness' : undefined}
+          aria-describedby={[
+            hasReadinessNotice ? 'support-program-search-readiness' : null,
+            hasConfirmedSearch ? 'support-program-current-conditions' : null,
+          ].filter(Boolean).join(' ') || undefined}
           value={draft}
           disabled={isInterpreting}
           onChange={handleDraftChange}
@@ -250,6 +272,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           {timeline}
           <form className={chatPageStyles.composerWorkspace} onSubmit={handleSubmit}>
             {readinessNotice}
+            {searchContextControls}
             {composerErrors}
             {composerInputGroup}
             {composerHint}
@@ -264,6 +287,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
       <section className={chatPageStyles.workspace}>
         {introBlock}
         <form className={chatPageStyles.composer} onSubmit={handleSubmit}>
+          {searchContextControls}
           {composerInputGroup}
           {composerErrors}
           {composerHint}
@@ -407,29 +431,12 @@ function getReadinessNoticeMessage(readiness: SupportProgramSearchReadiness) {
 }
 
 function ProgramResults({ programs }: { programs: SupportProgram[] }) {
-  const groups = groupSupportProgramsByEligibility(programs)
   return (
-    <div className={chatPageStyles.programList}>
-      <ProgramResultSection title="조건 확인 공고" programs={groups.matched}
-        description="지원 대상과 지역을 공식 API 본문에서 확인했습니다. 최종 신청 자격 확정은 아닙니다." />
-      <ProgramResultSection title="확인 필요 공고" programs={groups.reviewRequired}
-        description="지원 대상·지역이 불명확하거나 자격 판정이 제공되지 않았습니다. 조건 확인 공고와 구분해 확인하세요." />
-      <ProgramResultSection title="최신 공고" programs={groups.latest}
-        description="자격을 평가하지 않은 최신 목록입니다. 입력한 기업 조건에 맞는다는 뜻이 아닙니다." />
-    </div>
-  )
-}
-
-function ProgramResultSection({ title, description, programs }: {
-  title: string
-  description: string
-  programs: SupportProgram[]
-}) {
-  if (!programs.length) return null
-  return (
-    <section aria-label={title}>
-      <h2 className={chatPageStyles.resultSectionTitle}>{title} · {programs.length}건</h2>
-      <p className={chatPageStyles.conditionsHint}>{description}</p>
+    <section aria-label="지원사업 검색 결과">
+      <h2 className={chatPageStyles.resultSectionTitle}>검색 결과 · {programs.length}건</h2>
+      <p className={chatPageStyles.conditionsHint}>
+        검색 결과의 순서를 유지합니다. 관련도와 신청 자격은 다르며, 각 공고의 조건 확인·확인 필요 표시를 확인하세요.
+      </p>
       <div className={chatPageStyles.programList}>
         {programs.map((program) => (
           <ProgramCard key={`${program.sourceCode}:${program.id}`} program={program} />

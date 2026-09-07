@@ -18,7 +18,8 @@ SPEC.loader.exec_module(replay)
 FIXTURE_SCHEMA = "support-program-region-eligibility-fixture-v1"
 CAPTURE_SCHEMA = "support-program-region-eligibility-capture-v1"
 REPORT_SCHEMA = "support-program-region-eligibility-report-v1"
-SCORING_VERSION = "govbiz-support-program-ranking-v4"
+SCORING_VERSION = "govbiz-support-program-ranking-v5"
+LEGACY_SCORING_VERSION = "govbiz-support-program-ranking-v4"
 ELIGIBILITIES = {"MATCH", "INCOMPATIBLE", "UNKNOWN"}
 SOURCE_FIELDS = {"SUMMARY": "summary", "TARGET_DESCRIPTION": "targetDescription"}
 LIMITATION = (
@@ -82,12 +83,14 @@ def validate_fixture(fixture):
     return candidates, cases
 
 
-def build_requests(fixture):
+def build_requests(fixture, scoring_version=SCORING_VERSION):
     """Return only production request fields; expected labels never enter model input."""
+    if scoring_version not in {SCORING_VERSION, LEGACY_SCORING_VERSION}:
+        raise ValueError("Unsupported regional scoring version")
     _, cases = validate_fixture(fixture)
     return [
         {"caseId": case["id"], "request": {
-            "originalQuery": case["query"], "scoringVersion": SCORING_VERSION,
+            "originalQuery": case["query"], "scoringVersion": scoring_version,
             "resultLimit": 5, "candidates": copy.deepcopy(fixture["candidates"]),
             "companyConditions": copy.deepcopy(case["companyConditions"]),
         }}
@@ -126,7 +129,9 @@ def evaluate(fixture, capture):
     observations = index_unique(capture.get("observations"), "caseId", "Observations")
     if set(observations) != set(cases):
         raise ValueError("Capture must contain every fixture case exactly once")
-    requests = {row["caseId"]: row["request"] for row in build_requests(fixture)}
+    # v4 captures predate the explicit field; preserve their original request hashes.
+    scoring_version = capture.get("scoringVersion", LEGACY_SCORING_VERSION)
+    requests = {row["caseId"]: row["request"] for row in build_requests(fixture, scoring_version)}
     rows = []
     for identity, case in cases.items():
         observation = observations[identity]
@@ -168,6 +173,7 @@ def evaluate(fixture, capture):
             })
     return {
         "schemaVersion": REPORT_SCHEMA, "fixtureSha256": fixture_hash,
+        "scoringVersion": scoring_version,
         "provenance": copy.deepcopy(provenance), "provenanceVerified": False,
         "limitation": LIMITATION, "caseCount": len(cases), "assessmentCount": len(rows),
         "passedAssessments": sum(row["passed"] for row in rows),

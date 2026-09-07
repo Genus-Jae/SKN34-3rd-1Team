@@ -17,6 +17,7 @@ from app.support_program_conversation.service import SupportProgramConversationS
 @pytest.mark.parametrize("message,status,fields", [
     ("부산으로 변경", "READY", ["REGION"]),
     ("지원금 위주", "READY", ["QUERY", "SUPPORT_PURPOSE"]),
+    ("사업화 말고 수출 지원으로 바꿔줘", "READY", ["QUERY", "SUPPORT_PURPOSE"]),
     ("사업화 지원을 찾고 싶어요", "READY", ["QUERY"]),
     ("지역 조건 삭제", "READY", ["REGION"]),
     ("전체 초기화", "CLARIFICATION_REQUIRED", ["QUERY", "REGION", "INDUSTRY", "ESTABLISHED_ON", "SUPPORT_PURPOSE", "ACCEPTING_ONLY"]),
@@ -56,4 +57,12 @@ async def test_actual_compose_stub_through_sdk_and_service(request_data, monkeyp
         await client.close()
     assert result.status == status
     assert [update.field for update in result.updates] == fields
+    if message == "지원금 위주":
+        assert {update.field: update.value for update in result.updates} == {
+            "QUERY": "사업화 지원금", "SUPPORT_PURPOSE": "지원금",
+        }
+    if message == "사업화 말고 수출 지원으로 바꿔줘":
+        assert {update.field: update.value for update in result.updates} == {
+            "QUERY": "수출 지원", "SUPPORT_PURPOSE": "수출",
+        }
     assert len(calls) == 1

@@ -53,13 +53,12 @@ def valid_output(candidate_count: int = 1) -> SupportProgramRankingOutput:
             AssessedSupportProgram(
                 programId=f"BIZINFO:program-{index}",
                 semanticRelevance=38,
-                targetAssessment={"eligibility": "MATCH", "score": 24,
+                targetAssessment={"eligibility": "MATCH",
                                   "evidence": [{"field": "SUMMARY", "quote": "AI 창업기업의 사업화를 지원합니다."}],
                                   "explanation": "창업기업 대상 사업화 지원입니다."},
-                regionAssessment={"eligibility": "MATCH", "score": 15,
+                regionAssessment={"eligibility": "MATCH",
                                   "evidence": [{"field": "TARGET_DESCRIPTION", "quote": "서울 소재 창업기업"}],
                                   "explanation": "서울 소재 기업 대상입니다."},
-                applicationStatusFit=10,
                 supportTypeFit=8,
                 recommendationReasons=["서울 AI 창업기업 사업화 지원"],
             )
@@ -92,7 +91,9 @@ def rankings_schema(schema: dict[str, object]) -> dict[str, object]:
 
 def test_prompt_declares_the_recommendation_minimum_without_omitting_candidates() -> None:
     assert "semanticRelevance 20점 이상" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
-    assert "totalScore 60점 이상" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    assert "총점 60점 문턱은 없으며" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    assert "2 × (semanticRelevance + supportTypeFit)" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    assert "UNKNOWN은 검색 관련도 감점 사유가 아닙니다" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "모든 후보를 점수화해야 합니다" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "targetAssessment" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "regionAssessment" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
@@ -106,12 +107,49 @@ def test_prompt_declares_the_recommendation_minimum_without_omitting_candidates(
 
 def test_prompt_distinguishes_requested_support_from_topic_similarity_without_requiring_every_term() -> None:
     assert "서비스·비용·결과가 원문에 없으면 semanticRelevance는 20점 미만" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
-    assert "일부를 직접 제공함" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    assert "필수 활동·지원 형태를 직접 제공하되 지원 범위의 일부를 충족함" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "모든 질문 단어의 일치를 요구하지 않습니다" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "부대 지원을 독립적인 서비스나 비용 지원으로 확대하지 않습니다" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "현재 단계와 원하는 활동을 구분" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "최대 개수이지 채워야 할 개수가 아닙니다" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "UNKNOWN 규칙은 유지" in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+
+
+def test_prompt_keeps_requested_activity_and_industry_separate_from_unknown_eligibility() -> None:
+    instructions = SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    for rule in (
+        "originalQuery의 핵심 활동과 확인된 companyConditions.industry·supportPurpose를 함께",
+        "지원 형태가 '사업화', '수출' 등 검색문의 핵심 활동을 대체하지",
+        "사용자가 별개 산업의 활동도 한다고 가정할 허가가 아닙니다",
+        "자격 판정과 독립적으로 실제 요청 활동에 대한 지원 근거가 없으면 semanticRelevance는 20점 미만",
+        "영화 촬영·후반작업 제작비나 특정 행사 참가비",
+        "'돈을 지급한다'는 공통점만으로 관련성을 인정하지",
+        "특정 산업 이름만으로 일괄 제외하지",
+        "'소프트웨어'라는 단어가 없다는 이유만으로 낮추지",
+    ):
+        assert rule in instructions
+
+
+def test_prompt_requires_explicit_requested_funding_but_preserves_consulting_and_preferences():
+    # 프롬프트 규칙 보존 검증이며 실제 모델의 판단 정확도를 측정하지 않는다.
+    instructions = SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    for rule in (
+        "비용 지급·보조·환급·바우처",
+        "자금·비용 지원의 의미는 명시돼 있어야",
+        "서비스·활동만 적힌 문구를 지원금으로 추측하지",
+        "컨설팅 요청이나 지원 형태를 정하지 않은 전체 사업화 지원 요청",
+        "그 선호를 필수 요건으로 확대하지",
+        "자격 UNKNOWN에 대한 감점이 아니라",
+        "높은 supportTypeFit으로 누락된 필수 활동을 상쇄하지",
+    ):
+        assert rule in instructions
+
+
+@pytest.mark.parametrize("value", ["medium", "", None])
+def test_direct_ranking_agent_rejects_unsupported_reasoning(value):
+    with pytest.raises(ValueError, match="ranking reasoning effort must be none or low"):
+        SupportProgramRecommendationAgent(model=ScriptedModel([]), model_timeout_seconds=1,
+                                          run_timeout_seconds=2, reasoning_effort=value)
 
 
 @pytest.mark.parametrize("rule", [
@@ -171,6 +209,7 @@ async def test_runs_typed_ranking_agent_through_the_real_runner() -> None:
     assert keyed_schema["required"] == ["BIZINFO:program-1"]
     assert keyed_schema["additionalProperties"] is False
     assert call.model_settings.timeout == 3.0
+    assert call.model_settings.reasoning.effort == "none"
     assert call.tracing is ModelTracing.DISABLED
     model.assert_complete()
 
@@ -228,7 +267,7 @@ async def test_region_instructions_reach_model_without_inventing_a_district_or_r
     payload["candidates"][0]["targetDescription"] = "서울 서초구 소재 기업만 신청 가능"
     selection = llm_output()
     selection["rankings"]["BIZINFO:program-1"]["regionAssessment"].update(
-        eligibility="UNKNOWN", score=7, explanation="서울 정보만으로는 서초구 소재 여부를 확인할 수 없습니다.",
+        eligibility="UNKNOWN", explanation="서울 정보만으로는 서초구 소재 여부를 확인할 수 없습니다.",
     )
     model = ScriptedModel([[assistant_message(json.dumps(selection, ensure_ascii=False))]])
     agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
@@ -243,7 +282,7 @@ async def test_region_instructions_reach_model_without_inventing_a_district_or_r
         assert "적용 조건에 없는 하위 소재지를 추가하지" in model.first_call.system_instructions
     region = result.rankings[0].region_assessment
     assert region.eligibility.value == "UNKNOWN"
-    assert region.score == 7
+    assert "score" not in region.model_dump()
     assert region.evidence[0].quote == payload["candidates"][0]["targetDescription"]
     assert len(model.calls) == 1
     model.assert_complete()
@@ -410,7 +449,12 @@ def test_internal_output_still_rejects_duplicate_ids() -> None:
         lambda item: item["targetAssessment"].update(eligibility="MATCH", score=26),
         lambda item: item["regionAssessment"].update(eligibility="UNKNOWN", score=16),
         lambda item: item["targetAssessment"].update(eligibility="UNKNOWN", score=-1),
-        lambda item: item["regionAssessment"].update(eligibility="ELIGIBLE", score=0),
+        lambda item: item["regionAssessment"].update(eligibility="ELIGIBLE"),
+        lambda item: item.update(semanticRelevance=41),
+        lambda item: item.update(semanticRelevance=-1),
+        lambda item: item.update(supportTypeFit=11),
+        lambda item: item.update(supportTypeFit=-1),
+        lambda item: item.update(applicationStatusFit=10),
         lambda item: item.update(recommendationReasons=["  "]),
         lambda item: item.update(recommendationReasons=["가" * 121]),
     ],
@@ -434,9 +478,9 @@ async def test_rejects_invalid_assessments_without_normalizing_judgments_or_retr
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("dimension", ["targetAssessment", "regionAssessment"])
-async def test_preserves_incompatible_judgment_with_zero_score(dimension: str) -> None:
+async def test_preserves_incompatible_judgment_without_eligibility_score(dimension: str) -> None:
     output = llm_output()
-    output["rankings"]["BIZINFO:program-1"][dimension].update(eligibility="INCOMPATIBLE", score=0)
+    output["rankings"]["BIZINFO:program-1"][dimension].update(eligibility="INCOMPATIBLE")
     model = ScriptedModel([[assistant_message(json.dumps(output, ensure_ascii=False))]])
     agent = SupportProgramRecommendationAgent(
         model=model,
@@ -447,7 +491,7 @@ async def test_preserves_incompatible_judgment_with_zero_score(dimension: str) -
     result = await agent.rank(ranking_request())
 
     expected = valid_output().model_dump(by_alias=True)["rankings"][0][dimension]
-    expected.update(eligibility="INCOMPATIBLE", score=0)
+    expected.update(eligibility="INCOMPATIBLE")
     assert result.model_dump(by_alias=True)["rankings"][0][dimension] == expected
     assert len(model.calls) == 1
 
@@ -637,7 +681,8 @@ def responses_body(output_json: str) -> dict[str, object]:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("candidate_count", [1, 20])
-async def test_openai_request_uses_non_stored_strict_structured_output(candidate_count: int) -> None:
+@pytest.mark.parametrize("model_name,reasoning", [("gpt-5.6-luna", "none"), ("gpt-5.6-sol", "low")])
+async def test_openai_request_uses_non_stored_strict_structured_output(candidate_count, model_name, reasoning) -> None:
     captured_requests: list[dict[str, object]] = []
     captured_timeouts = []
 
@@ -659,11 +704,12 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
     )
     agent = SupportProgramRecommendationAgent(
         model=OpenAIResponsesModel(
-            model="gpt-5.6-luna",
+            model=model_name,
             openai_client=openai_client,
         ),
         model_timeout_seconds=45.0,
         run_timeout_seconds=50.0,
+        reasoning_effort=reasoning,
     )
 
     try:
@@ -679,7 +725,9 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
     assert "timeout" not in request_body
     assert request_body["store"] is False
     assert request_body["max_output_tokens"] == 10_000
-    assert request_body["reasoning"] == {"effort": "none"}
+    assert request_body["model"] == model_name
+    assert request_body["reasoning"] == {"effort": reasoning}
+    assert len(captured_requests) == 1
     text_format = request_body["text"]["format"]  # type: ignore[index]
     assert text_format["type"] == "json_schema"
     assert text_format["strict"] is True
@@ -702,18 +750,16 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
     assert "totalScore" not in assessment_schema["required"]
     assert "programId" not in assessment_schema["properties"]
     assert assessment_schema["additionalProperties"] is False
-    for dimension, maximum in (("targetAssessment", 25), ("regionAssessment", 15)):
+    for dimension in ("targetAssessment", "regionAssessment"):
         branches = assessment_schema["properties"][dimension]["anyOf"]
         assert len(branches) == 2
         branch_schemas = [schema["$defs"][branch["$ref"].split("/")[-1]] for branch in branches]
         compatible, incompatible = branch_schemas
         assert compatible["properties"]["eligibility"]["enum"] == ["MATCH", "UNKNOWN"]
-        assert compatible["properties"]["score"]["minimum"] == 0
-        assert compatible["properties"]["score"]["maximum"] == maximum
         assert incompatible["properties"]["eligibility"]["const"] == "INCOMPATIBLE"
-        assert incompatible["properties"]["score"]["const"] == 0
         for branch in branch_schemas:
-            assert branch["required"] == ["eligibility", "score", "evidence", "explanation"]
+            assert branch["required"] == ["eligibility", "evidence", "explanation"]
+            assert "score" not in branch["properties"]
             assert branch["additionalProperties"] is False
             assert branch["properties"]["evidence"]["maxItems"] == 1
             assert branch["properties"]["evidence"]["items"] == {

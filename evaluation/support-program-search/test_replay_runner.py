@@ -63,7 +63,7 @@ class ReplayRunnerTest(unittest.TestCase):
             "capturedAt": "2026-09-06T01:00:00Z", "referenceDate": "2026-09-06",
             "acceptingOnly": True, "catalog": copy.deepcopy(catalog),
             "search": {"candidateLimit": 20, "finalResultLimit": 5,
-                       "scoringVersion": "govbiz-support-program-ranking-v4"},
+                       "scoringVersion": "govbiz-support-program-ranking-v5"},
             "observations": [
                 {**{key: case[key] for key in ("id", "query", "split")},
                  "candidateIds": [doc["id"] for doc in docs], "finalProgramIds": []}
@@ -77,7 +77,7 @@ class ReplayRunnerTest(unittest.TestCase):
             "catalog": copy.deepcopy(catalog), "sourceCaptureSha256": runner.sha256_file(self.paths["source_capture"]),
             "queries": [
                 {"id": case["id"], "split": case["split"], "request": {
-                    "originalQuery": case["query"], "scoringVersion": "govbiz-support-program-ranking-v4", "resultLimit": 5,
+                    "originalQuery": case["query"], "scoringVersion": "govbiz-support-program-ranking-v5", "resultLimit": 5,
                     "candidates": [
                         {"id": doc["id"], "title": doc["text"], "organization": "테스트 기관",
                          "summary": "오프라인 테스트 전용 내용", "categories": ["기술"], "regions": ["전국"],
@@ -160,7 +160,7 @@ class ReplayRunnerTest(unittest.TestCase):
 
     async def execute_offline(self, *, upstream_status=200, fail_close=False,
                               ranking_timeouts=(25, 30), shared_timeouts=None,
-                              responses_payload_transform=None, skip_upstream=False):
+                              responses_payload_transform=None, skip_upstream=False, settings=None):
         import httpx
         from fastapi import FastAPI
         from fastapi.responses import JSONResponse
@@ -212,7 +212,8 @@ class ReplayRunnerTest(unittest.TestCase):
                 # Match the Responses request boundary: instructions are separate
                 # from the user input containing server-generated evidence options.
                 responses_payload = {
-                    "model": settings.openai_model,
+                    "model": settings.openai_ranking_model or settings.openai_model,
+                    "reasoning": {"effort": settings.openai_ranking_reasoning_effort},
                     "instructions": app.state.container.support_program_ranking_service._agent._agent.instructions,
                     "input": [{"content": json.dumps(model_payload, ensure_ascii=False), "role": "user"}],
                     "store": False,
@@ -238,6 +239,7 @@ class ReplayRunnerTest(unittest.TestCase):
         if shared_timeouts is not None:
             environment.update(LLM_MODEL_TIMEOUT_SECONDS=str(shared_timeouts[0]),
                                LLM_RUN_TIMEOUT_SECONDS=str(shared_timeouts[1]))
+        environment.update(settings or {})
         with patch.dict(os.environ, environment, clear=True), \
                 patch("app.main.create_app", side_effect=create_offline_app), redirect_stdout(io.StringIO()):
             await runner.execute(args, self.envelope, prompts)
@@ -266,6 +268,42 @@ class ReplayRunnerTest(unittest.TestCase):
         self.assertEqual("succeeded", manifest["status"])
         self.assertEqual({"model": 25.0, "agent": 30.0}, manifest["timeoutsSeconds"])
         self.assertEqual(32, manifest["actualCalls"])
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_changed_effective_ranking_model_is_rejected_before_creating_app_or_sending(self):
+        for index, settings in enumerate((
+                {"OPENAI_RANKING_MODEL": "gpt-5.6-sol"},
+                {"OPENAI_MODEL": "gpt-5.6-sol"})):
+            with self.subTest(settings=settings):
+                self.output = self.directory / f"changed-model-{index}"
+                with self.assertRaisesRegex(ValueError, "measured gpt-5.6-luna model"):
+                    asyncio.run(self.execute_offline(settings=settings))
+                self.assertFalse(self.output.exists())
+                self.assertEqual(([], [], []), self.execution_state)
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_changed_ranking_reasoning_is_rejected_before_creating_app_or_sending(self):
+        with self.assertRaisesRegex(ValueError, "frozen none ranking reasoning effort"):
+            asyncio.run(self.execute_offline(settings={"OPENAI_RANKING_REASONING_EFFORT": "low"}))
+        self.assertFalse(self.output.exists())
+        self.assertEqual(([], [], []), self.execution_state)
+
+    @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
+    def test_explicit_frozen_ranking_settings_use_and_record_effective_model(self):
+        asyncio.run(self.execute_offline(settings={
+            "OPENAI_MODEL": "gpt-5.6-sol", "OPENAI_RANKING_MODEL": "gpt-5.6-luna",
+            "OPENAI_RANKING_REASONING_EFFORT": "none",
+        }))
+        manifest = self.read_manifest()
+        self.assertEqual("succeeded", manifest["status"])
+        self.assertEqual("gpt-5.6-luna", manifest["model"])
+        self.assertEqual("none", manifest["reasoningEffort"])
+        self.assertEqual(32, manifest["actualCalls"])
+        for request in self.execution_state[0]:
+            payload = json.loads(request.content)
+            self.assertEqual("gpt-5.6-luna", payload["model"])
+            self.assertEqual("none", payload["reasoning"]["effort"])
+        self.assert_no_secret_in_artifacts()
 
     @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
     def test_actual_responses_input_hash_includes_evidence_options_and_not_instructions(self):

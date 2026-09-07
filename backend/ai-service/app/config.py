@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from math import isfinite
 from os import environ
+from typing import Literal, cast
 
 
 DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
@@ -27,8 +28,12 @@ class Settings:
     embedding_timeout_seconds: float = 15.0
     llm_ranking_model_timeout_seconds: float = DEFAULT_LLM_RANKING_MODEL_TIMEOUT_SECONDS
     llm_ranking_run_timeout_seconds: float = DEFAULT_LLM_RANKING_RUN_TIMEOUT_SECONDS
+    openai_ranking_model: str | None = None
+    openai_ranking_reasoning_effort: Literal["none", "low"] = "none"
 
     def __post_init__(self) -> None:
+        if self.openai_ranking_reasoning_effort not in ("none", "low"):
+            raise SettingsConfigurationError("OPENAI_RANKING_REASONING_EFFORT must be none or low")
         for name, value in (
             ("LLM_RANKING_MODEL_TIMEOUT_SECONDS", self.llm_ranking_model_timeout_seconds),
             ("LLM_RANKING_RUN_TIMEOUT_SECONDS", self.llm_ranking_run_timeout_seconds),
@@ -50,6 +55,10 @@ class Settings:
             openai_model=(
                 environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip()
                 or DEFAULT_OPENAI_MODEL
+            ),
+            openai_ranking_model=_optional_value(environ.get("OPENAI_RANKING_MODEL")),
+            openai_ranking_reasoning_effort=cast(
+                Literal["none", "low"], environ.get("OPENAI_RANKING_REASONING_EFFORT", "none").strip(),
             ),
             llm_model_timeout_seconds=_positive_float(
                 environ.get("LLM_MODEL_TIMEOUT_SECONDS"),

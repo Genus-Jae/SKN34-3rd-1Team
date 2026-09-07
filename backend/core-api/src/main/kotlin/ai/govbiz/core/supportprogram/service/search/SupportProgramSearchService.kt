@@ -35,15 +35,20 @@ class SupportProgramSearchService(
      * 평가 전용 호출입니다. 공개 검색 응답에는 노출하지 않고, 비어 있지 않은 질문에서 실제 결합 검색 후보와
      * 최종 추천 공고의 제공처 포함 식별자를 남깁니다.
      */
-    fun searchWithTrace(rawQuery: String?, acceptingOnly: Boolean): SupportProgramSearchTrace =
-        trace(execute(rawQuery, acceptingOnly))
+    fun searchWithTrace(
+        rawQuery: String?,
+        acceptingOnly: Boolean,
+        companyConditions: SupportProgramCompanyConditions? = null,
+    ): SupportProgramSearchTrace =
+        trace(execute(rawQuery, acceptingOnly, companyConditions = companyConditions))
 
     /** 평가 기준 날짜의 접수 상태로만 후보·최종 결과를 기록합니다. */
     fun searchWithTrace(
         rawQuery: String?,
         acceptingOnly: Boolean,
         referenceDate: LocalDate,
-    ): SupportProgramSearchTrace = trace(execute(rawQuery, acceptingOnly, referenceDate))
+        companyConditions: SupportProgramCompanyConditions? = null,
+    ): SupportProgramSearchTrace = trace(execute(rawQuery, acceptingOnly, referenceDate, companyConditions))
 
     private fun trace(execution: SearchExecution): SupportProgramSearchTrace {
         require(execution.query.isNotBlank()) { "search trace requires a nonblank query" }
@@ -90,7 +95,7 @@ class SupportProgramSearchService(
         val candidates = when {
             eligiblePrograms.isEmpty() || query.isBlank() -> emptyList()
             else -> retrievalFacade.retrieve(
-                buildRetrievalQuery(query, companyConditions, searchReferenceDate),
+                buildRetrievalQuery(query, companyConditions),
                 eligiblePrograms,
             )
         }
@@ -130,21 +135,16 @@ class SupportProgramSearchService(
     private fun buildRetrievalQuery(
         query: String,
         conditions: SupportProgramCompanyConditions?,
-        referenceDate: LocalDate?,
     ): String {
         if (conditions == null) return query
-        return buildString {
-            append(query)
-            append("\n사용자가 입력한 기업 조건:")
-            conditions.region?.let { append("\n소재지: ").append(it) }
-            conditions.industry?.let { append("\n업종: ").append(it) }
-            conditions.establishedOn?.let { append("\n설립일: ").append(it) }
-            conditions.supportPurpose?.let { append("\n지원 목적: ").append(it) }
-            append("\n기준일(서울): ").append(requireNotNull(referenceDate))
-        }.also {
-            // 공개 필드별 상한의 합보다 넉넉하지만 내부 검색 계약(1000자)을 넘길 수는 없습니다.
-            require(it.length <= 1000) { "condition-aware retrieval query exceeds the internal limit" }
-        }
+        // 의미·키워드 검색에는 실제 검색 조건만 사용합니다. 설립일과 서울 기준일은 자격 판단에만 전달하며,
+        // 시스템 표제나 날짜가 공고의 지역·신청기간과 우연히 일치해 후보 순위를 바꾸지 않게 합니다.
+        return listOfNotNull(query, conditions.region, conditions.industry, conditions.supportPurpose)
+            .joinToString("\n")
+            .also {
+                // 공개 필드별 상한의 합보다 넉넉하지만 내부 검색 계약(1000자)을 넘길 수는 없습니다.
+                require(it.length <= 1000) { "condition-aware retrieval query exceeds the internal limit" }
+            }
     }
 
     private fun immutableCanonicalIds(programs: List<SupportProgram>): List<String> =

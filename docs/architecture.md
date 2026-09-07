@@ -96,9 +96,9 @@ Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보�
    요청별 strict schema의 `rankings`는 후보 ID 자체를 필수 키로 선언한 객체이며 다른 키는 금지합니다.
    Agent가 후보별 원문 조각 선택지를 제공하고, LLM은 인용문을 재작성하지 않고 근거 번호만 선택합니다.
    번호를 해당 후보의 원래 필드·문구로 복원한 뒤 검증된 키를 ID로 붙여 `AssessedSupportProgram` 목록으로 변환합니다.
-   AI Service가 다섯 점수를 합산해 기존 HTTP 항목 `ScoredSupportProgram`으로 변환·검증한 후
-   원문 인용과 자격·추천 기준을 검증한 후 조건 확인 묶음 우선·확인 필요 묶음 후순위로 정렬합니다.
-   Core도 최종 응답의 후보 ID·질의·계약 버전·점수·묶음별 순서·추천 이유·실제 본문 인용을 재검증해
+   AI Service가 `2 × (semanticRelevance + supportTypeFit)`으로 관련도를 계산해 `ScoredSupportProgram`으로 변환한 뒤
+   원문 인용과 자격·추천 기준을 검증하고 관련도 내림차순으로 정렬합니다. 자격 미확인은 별도로 표시합니다.
+   Core도 최종 응답의 후보 ID·질의·계약 버전·점수·순서·추천 이유·실제 본문 인용을 재검증해
    비저장 검색 결과 `eligibilityReview`를 포함한 공개 응답으로 변환합니다.
 
 ```text
@@ -120,20 +120,20 @@ GET /api/v1/support-programs/readiness
 상태가 아직 없는 현재 공고의 제공처도 준비 미확인으로 표시하고 초기 빈 DB에서는 구성된 기업마당만 표시합니다.
 세부 정책과 검증은 [다중 제공처 준비](support-program-multi-source-preparation.md)에 있습니다.
 
-점수화 계약은 `govbiz-support-program-ranking-v4`입니다. 의미 관련성 20/40점 이상과 총점 60/100점 이상을
+점수화 계약은 `govbiz-support-program-ranking-v5`입니다. 의미 관련성 20/40점 이상을
 충족해야 하며, `targetEligibility` 또는 `regionEligibility`가 `INCOMPATIBLE`이면 추천에서 제외합니다.
-LLM 출력은 `targetAssessment`·`regionAssessment` 안에 `eligibility`와 `score`를 함께 묶습니다.
-nested `anyOf` 스키마가 `INCOMPATIBLE`의 점수를 0으로 제한하고, `MATCH`·`UNKNOWN`에는 기존 항목별
-범위(대상 0~25점·지역 0~15점)를 적용합니다. 각 판정에는 설명과 후보별 원문 조각 번호도 포함합니다.
+관련도는 `2 × (semanticRelevance 0~40 + supportTypeFit 0~10)`입니다. 자격·접수 상태를 가산점으로 쓰지 않습니다.
+LLM 출력의 `targetAssessment`·`regionAssessment`는 자격 상태·설명·후보별 원문 조각 번호만 포함합니다.
+미확인 자격 때문에 관련도가 낮아지거나 별도 총점 컷에서 탈락하지 않습니다.
 Agent가 번호를 공식 API 본문의 `{field, quote}`로 복원하며 Core와 공개 HTTP 인용 계약은 유지합니다.
 전체 `summary`·`targetDescription`도 그대로 모델에 제공해 조각 경계로 뒤쪽 조건·예외가 생략되지 않게 합니다.
 후보 summary/targetDescription은 최대 6,000/2,000 code point이며 절단 여부를 별도로 전달합니다.
 절단된 후보는 누락된 조건을 확인한 것처럼 판정하지 않도록 두 축 모두 `UNKNOWN`만 허용합니다.
 `regions`는 후보 검색용 태그이지 자격 근거가 아닙니다. AI와 Core는 MATCH/INCOMPATIBLE의 본문 인용을 필수로
 검증하며 실제 전달된 해당 필드의 정확한 부분 문자열만 인정합니다. 인용 존재 검증이 의미 판단을 보증하지는 않습니다.
-`UNKNOWN`은 확인 필요 묶음으로 분리하고 두 축 MATCH 묶음 뒤에 정렬합니다. 각 묶음 안에서는 점수순입니다.
+`UNKNOWN`은 확인 필요 배지로 구분하며 전체를 관련도순으로 표시합니다. 동점은 입력 후보 순서입니다.
 검색당 최대 5개이며 공개 DTO의 `eligibilityReview`로 판정·설명·근거와 `OFFICIAL_API_TEXT` 범위를 노출합니다.
-첨부파일을 자동 판독하거나 신청 자격을 확정하는 기능은 아닙니다. v4 점수화는 기존 DB·색인 구조와 호출 횟수를
+첨부파일을 자동 판독하거나 신청 자격을 확정하는 기능은 아닙니다. v5 점수화는 기존 DB·색인 구조와 호출 횟수를
 유지합니다. C02 대화 해석은 사용자 확인 검색에 앞서는 별도 모델 호출입니다.
 AI Service가 부적격 항목을 최종 응답에 넣으면 Core는 이를 응답 계약 위반으로 거부합니다.
 결과가 0개인 것은 정상일 수 있으며 관련 없는 공고로 5개를 채우지 않습니다.
@@ -386,6 +386,11 @@ AI Service는 조건 변경 해석·점수화·원문 근거 답변에서 각각
 `max_turns=1`로 실행합니다. 현재 tool·handoff·multi-agent orchestration은 없습니다. 일반 공고 색인·검색은
 `support_program_index`, 원문 청크 색인·검색은 `support_program_evidence`가 OpenAI 임베딩과 분리된 Qdrant
 컬렉션을 직접 사용합니다.
+
+랭킹 모델은 `OPENAI_RANKING_MODEL`로 지정하고 미설정이면 공통 `OPENAI_MODEL`을 상속합니다.
+`OPENAI_RANKING_REASONING_EFFORT`는 `none`/`low`만 허용합니다. 정확도 우선 프로필은 랭킹만
+Sol/low를 사용하며 대화·원문 답변 모델은 바꾸지 않습니다. 모델 객체는 분리하되 동일한 OpenAI
+클라이언트·인증·재시도 정책을 공유하며 새 provider나 orchestration 계층은 없습니다.
 
 두 색인 Service가 실제로 공유하는 입력 토큰 상한 처리는 `support_program_embedding.py`의 함수 하나로
 유지합니다. 토크나이저 준비·인코딩·잘라내기를 작업 스레드에서 실행해 HTTP 이벤트 루프를 막지 않으며,

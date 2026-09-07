@@ -154,7 +154,7 @@ class AiServiceClientConfigIntegrationTest {
             requestReceived.countDown()
             try {
                 Thread.sleep(Duration.ofSeconds(2).toMillis())
-                sendJson(exchange, """{"originalQuery":"AI","scoringVersion":"govbiz-support-program-ranking-v4","rankings":[]}""")
+                sendJson(exchange, """{"originalQuery":"AI","scoringVersion":"govbiz-support-program-ranking-v5","rankings":[]}""")
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 exchange.close()
@@ -168,7 +168,7 @@ class AiServiceClientConfigIntegrationTest {
         val client = HttpAiSupportProgramRankingClient(AiServiceClientConfig().aiRankingRestClient(RestClient.builder(), properties))
 
         val exception = assertThrows(AiServiceCallException::class.java) {
-            client.rankSupportPrograms(AiSupportProgramRankingRequest("AI", "govbiz-support-program-ranking-v4", 1, emptyList()))
+            client.rankSupportPrograms(AiSupportProgramRankingRequest("AI", "govbiz-support-program-ranking-v5", 1, emptyList()))
         }
 
         assertEquals(AiServiceFailure.TIMEOUT, exception.failure)

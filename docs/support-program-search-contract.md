@@ -15,7 +15,7 @@ Browser
           → POST /internal/v1/support-program-rankings/rank
               → LLM이 버전된 평가 기준으로 모든 후보 점수화
           → 본문 인용 검증 → 지원대상·지역 불일치 제외 + 최소 추천 기준 적용
-          → 조건 확인 공고 우선, 확인 필요 공고 후순위 (각 묶음 안에서 점수순)
+          → 관련도 내림차순, 자격 확인 여부는 별도 표시
           → 0~5개를 Core가 검증해 반환
 ```
 
@@ -157,7 +157,7 @@ Content-Type: application/json
 
 {
   "originalQuery": "서울 AI 창업기업이 받을 사업",
-  "scoringVersion": "govbiz-support-program-ranking-v4",
+  "scoringVersion": "govbiz-support-program-ranking-v5",
   "resultLimit": 5,
   "candidates": [
     {
@@ -176,9 +176,9 @@ Content-Type: application/json
 }
 ```
 
-AI Service의 버전 `govbiz-support-program-ranking-v4`는 다음 100점 기준을 사용합니다.
-점수 배점은 v3와 같지만 원문 인용·자격 검증과 결과 정렬 계약이 달라졌으므로 버전을 구분합니다.
-기존 v3 평가 기록은 당시 결과로 보존하며 v4 품질 근거로 재사용하지 않습니다.
+AI Service의 버전 `govbiz-support-program-ranking-v5`는 검색 관련성과 신청 자격을 분리합니다.
+`totalScore = 2 × (semanticRelevance + supportTypeFit)`이며 100점 만점의 관련도이지 자격 충족 확률이 아닙니다.
+기존 v3/v4 평가 기록은 당시 결과로 보존하며 v5 품질 근거로 재사용하지 않습니다.
 
 조건 검색에서는 위 요청에 선택 필드 `companyConditions`를 추가합니다. 공개 입력의 네 필드와 함께
 Core가 생성한 `referenceDate`(`YYYY-MM-DD`, 서울 기준)를 전달합니다. 조건 없는 요청에서는 이 필드를
@@ -192,25 +192,25 @@ Core가 생성한 `referenceDate`(`YYYY-MM-DD`, 서울 기준)를 전달합니�
 이전·확장 확약 조건을 무효화하지 않습니다. 첨부 PDF/HWP를 자동으로 수집·판독하는 기능은 포함하지 않습니다.
 
 `originalQuery`의 500자 제한은 그대로입니다. 조건을 합친 **내부 색인 검색**의 `query`만 최대
-1,000 Unicode code point를 허용합니다. 전체 대화 이력을 이 문자열에 이어붙이지 않습니다.
+1,000 Unicode code point를 허용합니다. 사용자 질문과 지역·업종·지원 목적의 **값**만 연결합니다.
+표제·서버 기준일·서울 시간대·설립일을 검색어로 추가하지 않으며, 사용자가 질문에 직접 쓴 날짜는 보존합니다.
+전체 대화 이력을 이 문자열에 이어붙이지 않습니다.
 AI는 설립일과 `referenceDate`를 참고하되 공고에 별도 업력 기준일·예외가 있으면 이를 구분하고,
 판단 근거가 부족하면 `UNKNOWN`으로 남겨야 합니다. 입력 조건과 공고 본문은 데이터이지 실행 지시가 아닙니다.
 
 | 평가 항목 | 배점 | 의미 |
 |---|---:|---|
 | `semanticRelevance` | 40 | 사용자 질문과 공고 목적·내용의 의미적 관련성 |
-| `targetFit` | 25 | 기업 유형·업종·업력과 지원 대상의 적합성 |
-| `regionFit` | 15 | 사용자 지역과 지원 지역의 적합성 |
-| `applicationStatusFit` | 10 | 신청 시점 요구와 공고 접수 상태의 적합성 |
 | `supportTypeFit` | 10 | 자금·기술·수출·교육 등 원하는 지원 유형의 적합성 |
 
 LLM은 입력 후보를 정확히 한 번씩 모두 평가합니다. 후보 문장은 데이터일 뿐 지시가 아니며,
-후보에 없는 자격·금액·상태를 만들어서는 안 됩니다. v4는 점수와 별도로 모든 후보의 `targetEligibility`와
+후보에 없는 자격·금액·상태를 만들어서는 안 됩니다. 점수와 별도로 모든 후보의 `targetEligibility`와
 `regionEligibility`를 필수로 반환합니다. `MATCH`는 제공된 정보와 일치, `INCOMPATIBLE`은 명백한 조건
 불일치, `UNKNOWN`은 정보 부족입니다. 하나라도 `INCOMPATIBLE`이면 총점과 관계없이 추천에서 제외합니다.
-`UNKNOWN`은 일반 조건 확인 공고와 분리합니다. 여기에 `semanticRelevance` 20점 이상과 `totalScore` 60점 이상을
-모두 통과한 공고만 반환합니다. 대상·지역이 모두 `MATCH`인 묶음이 먼저이고, 하나라도 `UNKNOWN`이면 그 뒤입니다.
-각 묶음 안에서는 총점 내림차순(동점은 입력 후보 순서)이며, 두 묶음을 합쳐 최대 `resultLimit`개입니다.
+`UNKNOWN`은 확인 필요 배지·설명으로 구분하지만 관련도 감점이나 제외 사유가 아닙니다.
+`semanticRelevance >= 20`을 통과한 공고를 관련도 총점 내림차순(동점은 입력 후보 순서)으로
+최대 `resultLimit`개 반환합니다. 과거 총점 60점 컷과 MATCH 절대 우선 정렬은 제거했습니다.
+프론트엔드도 서버 순서를 유지합니다. 접수 중 필터는 기존처럼 Core에서 접수 상태로 적용합니다.
 통과 공고가 없으면 `rankings`는 빈 배열입니다.
 
 각 대상·지역 판정에는 `explanation`(1~160 code point)과 `evidence`(0~1개)가 필수입니다. `MATCH`와
@@ -221,28 +221,25 @@ AI와 Core가 실제 전달한 해당 후보·해당 본문 필드의 정확한 
 
 Agent ↔ OpenAI의 내부 출력에서만 `evidence`는 후보별 원문 조각 번호 배열입니다. Agent가 번호의 범위를
 검증하고 해당 후보의 `{field, quote}`로 복원한 뒤 전체 후보의 기존 검증을 수행합니다. HTTP 호출자는
-원문 조각이나 번호를 보내지 않으며 위 v4 인용 계약은 바뀌지 않습니다. 전체 본문도 모델에 함께 제공하고,
+원문 조각이나 번호를 보내지 않으며 기존 인용 계약은 바뀌지 않습니다. 전체 본문도 모델에 함께 제공하고,
 원문 조각의 존재만으로 자격 충족을 추정하지 않습니다.
 
 ```json
 {
   "originalQuery": "서울 AI 창업기업이 받을 사업",
-  "scoringVersion": "govbiz-support-program-ranking-v4",
+  "scoringVersion": "govbiz-support-program-ranking-v5",
   "rankings": [
     {
       "programId": "BIZINFO:PBLN_001",
       "semanticRelevance": 38,
-      "targetFit": 24,
       "targetEligibility": "MATCH",
       "targetEvidence": [{ "field": "TARGET_DESCRIPTION", "quote": "서울 소재 창업기업" }],
       "targetExplanation": "사용자가 밝힌 창업기업 조건과 제공된 지원대상이 일치합니다.",
-      "regionFit": 15,
       "regionEligibility": "MATCH",
       "regionEvidence": [{ "field": "TARGET_DESCRIPTION", "quote": "서울 소재 창업기업" }],
       "regionExplanation": "본문이 서울 소재 기업을 지원대상으로 명시합니다.",
-      "applicationStatusFit": 10,
       "supportTypeFit": 8,
-      "totalScore": 95,
+      "totalScore": 92,
       "recommendationReasons": ["서울 소재 AI 창업기업의 사업화를 지원"]
     }
   ]
@@ -255,11 +252,11 @@ Core는 다음 불변식을 다시 검사합니다.
 - `programId`가 전달한 후보의 제공처 포함 식별자와 정확히 일치하고 중복되지 않음
 - 세부 점수가 각 배점 범위 안에 있음
 - `targetEligibility`·`regionEligibility`가 누락 없이 허용 값이며 어느 쪽도 `INCOMPATIBLE`이 아님
-- `totalScore`가 다섯 세부 점수의 합과 정확히 일치
-- 결과가 조건 확인 묶음 우선·확인 필요 묶음 후순위이며 각 묶음 안에서 총점 내림차순, 합계 0~5개
+- `totalScore`가 `2 × (semanticRelevance + supportTypeFit)`과 정확히 일치
+- 자격 상태에 관계없이 총점 내림차순, 합계 0~5개
 - 판정 설명·인용 개수·문자 상한과 실제 전달한 본문 내 인용의 정확한 존재 여부
 - 절단된 본문 후보는 대상·지역이 모두 `UNKNOWN`
-- 반환한 공고마다 `semanticRelevance >= 20`, `totalScore >= 60`을 충족
+- 반환한 공고마다 `semanticRelevance >= 20`을 충족
 - 추천 이유가 1~3개이고 각 1~120 Unicode code point. Core와 AI가 같은 기준으로 검사하며 보조 평면 문자도 하나로 셈
 
 하나라도 위반하면 성공 결과를 만들지 않고 `AI_SERVICE_INVALID_RESPONSE`로 거부합니다.
@@ -311,7 +308,7 @@ Core는 다음 불변식을 다시 검사합니다.
 `eligibilityReview`는 `null`입니다. 검색 결과의 판정은 DB에 저장하지 않습니다.
 
 `eligibilityReview.status`는 두 축이 모두 `MATCH`일 때만 `MATCH`, 하나라도 `UNKNOWN`이면 `REVIEW_REQUIRED`입니다.
-공개 추천에는 `INCOMPATIBLE`을 포함하지 않습니다. Frontend는 두 묶음을 구분하고 점수보다 자격 확인 상태를 먼저 보여 줍니다.
+공개 추천에는 `INCOMPATIBLE`을 포함하지 않습니다. Frontend는 관련도순을 유지하고 각 카드에 자격 확인 상태를 표시합니다.
 `basis=OFFICIAL_API_TEXT`는 수집한 공식 API 본문 기준이라는 뜻이며 첨부파일 검증·법적 신청 자격 확정이 아닙니다.
 
 해석할 수 없는 시작·종료일은 각각 `null`입니다. 접수 상태는 파싱된 날짜와 서울 기준
@@ -488,7 +485,7 @@ Core는 반환된 ID가 허용 목록에 있고 내용 해시가 일치하는지
 기존 Agent 평가 점수입니다. 둘 다 선정 확률이 아닙니다.
 
 색인 누락·임베딩·Qdrant 장애는 정상 빈 결과나 최신 목록으로 대체하지 않고 오류로 반환합니다. AI 점수화는
-지원대상·지역의 명백한 불일치를 제외하고 의미 관련성 20점·총점 60점 최소 기준을 통과한 공고를
+지원대상·지역의 명백한 불일치를 제외하고 의미 관련성 20점 최소 기준을 통과한 공고를
 최대 5개 반환하며, 적격 공고가 없을 때의 빈 목록은
 정상 성공 응답입니다. 원문 근거 질문은 위의 별도 endpoint이며 이 목록 검색 경로의 동작을 바꾸지 않습니다.
 후보·최종 추천 비교를 위한 [검색 평가 자료와 실행 도구](../evaluation/support-program-search/README.md)를

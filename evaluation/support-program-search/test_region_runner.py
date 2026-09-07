@@ -90,12 +90,12 @@ class RegionRunnerTest(unittest.TestCase):
                     label = "UNKNOWN"
                 output["rankings"][candidate["id"]] = {
                     "semanticRelevance": 40,
-                    "targetAssessment": {"eligibility": "MATCH", "score": 25, "evidence": [1],
+                    "targetAssessment": {"eligibility": "MATCH", "evidence": [1],
                                          "explanation": "AI 분야 기업 조건을 확인했습니다."},
-                    "regionAssessment": {"eligibility": label, "score": 0 if label != "MATCH" else 15,
+                    "regionAssessment": {"eligibility": label,
                                          "evidence": [] if label == "UNKNOWN" else [0],
                                          "explanation": "합성 원문의 지역 범위를 비교했습니다."},
-                    "applicationStatusFit": 10, "supportTypeFit": 10,
+                    "supportTypeFit": 10,
                     "recommendationReasons": ["AI 제품 사업화 비용을 지원합니다."],
                 }
             return httpx.Response(200, json=response_body(output, usage={} if missing_usage else None))
@@ -219,6 +219,22 @@ class RegionRunnerTest(unittest.TestCase):
         self.assertEqual(16, report["passedAssessments"])
         self.assertEqual(["request", "response", "request", "response"],
                          [entry["event"] for entry in self.read("api-usage.json")])
+        self.assertTrue(self.transports[0].closed)
+        self.assert_redacted()
+
+    @unittest.skipUnless(AI_AVAILABLE, "Requires the AI Service venv")
+    def test_ranking_override_does_not_change_the_frozen_luna_none_experiment(self):
+        self.assertEqual(0, self.execute(settings={
+            "OPENAI_RANKING_MODEL": "gpt-5.6-sol", "OPENAI_RANKING_REASONING_EFFORT": "low",
+        }))
+        manifest = self.read("execution-manifest.json")
+        self.assertEqual("gpt-5.6-luna", manifest["model"])
+        self.assertEqual("none", manifest["reasoningEffort"])
+        self.assertEqual("gpt-5.6-luna", self.read("capture.json")["provenance"]["model"])
+        self.assertEqual(3, len(self.wires))
+        for payload, _ in self.wires:
+            self.assertEqual("gpt-5.6-luna", payload["model"])
+            self.assertEqual("none", payload["reasoning"]["effort"])
         self.assertTrue(self.transports[0].closed)
         self.assert_redacted()
 

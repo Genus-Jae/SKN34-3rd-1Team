@@ -11,13 +11,12 @@ from .models import (
 )
 
 
-# 40점인 의미 관련성 항목의 절반과 100점 총점의 60%를 동시에 충족해야 추천한다.
+# 사용자가 요청한 지원을 원문이 일부라도 직접 제공해야 추천한다.
 MIN_SEMANTIC_RELEVANCE_SCORE = 20
-MIN_TOTAL_RECOMMENDATION_SCORE = 60
 
 
 class SupportProgramRankingService:
-    """본문 자격 근거를 검증하고 확인된 자격 그룹을 우선 반환한다."""
+    """본문 자격 근거를 검증하고 명백한 부적합을 제외해 검색 관련도순으로 반환한다."""
 
     def __init__(self, agent: SupportProgramRecommendationAgent) -> None:
         self._agent = agent
@@ -66,23 +65,14 @@ class SupportProgramRankingService:
                 ScoredSupportProgram(
                     program_id=assessment.program_id,
                     semantic_relevance=assessment.semantic_relevance,
-                    target_fit=assessment.target_assessment.score,
                     target_eligibility=assessment.target_assessment.eligibility,
                     target_evidence=assessment.target_assessment.evidence,
                     target_explanation=assessment.target_assessment.explanation,
-                    region_fit=assessment.region_assessment.score,
                     region_eligibility=assessment.region_assessment.eligibility,
                     region_evidence=assessment.region_assessment.evidence,
                     region_explanation=assessment.region_assessment.explanation,
-                    application_status_fit=assessment.application_status_fit,
                     support_type_fit=assessment.support_type_fit,
-                    total_score=(
-                        assessment.semantic_relevance
-                        + assessment.target_assessment.score
-                        + assessment.region_assessment.score
-                        + assessment.application_status_fit
-                        + assessment.support_type_fit
-                    ),
+                    total_score=2 * (assessment.semantic_relevance + assessment.support_type_fit),
                     recommendation_reasons=assessment.recommendation_reasons,
                 )
                 for assessment in output.rankings
@@ -95,10 +85,6 @@ class SupportProgramRankingService:
         sorted_rankings = sorted(
             scored_rankings,
             key=lambda ranking: (
-                not (
-                    ranking.target_eligibility is SupportProgramEligibility.MATCH
-                    and ranking.region_eligibility is SupportProgramEligibility.MATCH
-                ),
                 -ranking.total_score,
                 candidate_order[ranking.program_id],
             ),
@@ -107,7 +93,6 @@ class SupportProgramRankingService:
             ranking
             for ranking in sorted_rankings
             if ranking.semantic_relevance >= MIN_SEMANTIC_RELEVANCE_SCORE
-            and ranking.total_score >= MIN_TOTAL_RECOMMENDATION_SCORE
             and ranking.target_eligibility is not SupportProgramEligibility.INCOMPATIBLE
             and ranking.region_eligibility is not SupportProgramEligibility.INCOMPATIBLE
         ]

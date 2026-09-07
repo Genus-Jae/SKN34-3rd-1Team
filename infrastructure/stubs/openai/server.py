@@ -23,8 +23,13 @@ def conversation_output(payload: dict) -> dict | None:
         updates = [{"field": "REGION", "operation": "SET", "value": "부산", "evidence": "부산"}]
     elif message == "지원금 위주":
         updates = [
-            {"field": field, "operation": "SET", "value": "지원금", "evidence": "지원금"}
-            for field in ("QUERY", "SUPPORT_PURPOSE")
+            {"field": "QUERY", "operation": "SET", "value": "사업화 지원금", "evidence": "지원금"},
+            {"field": "SUPPORT_PURPOSE", "operation": "SET", "value": "지원금", "evidence": "지원금"},
+        ]
+    elif message == "사업화 말고 수출 지원으로 바꿔줘":
+        updates = [
+            {"field": "QUERY", "operation": "SET", "value": "수출 지원", "evidence": "수출 지원"},
+            {"field": "SUPPORT_PURPOSE", "operation": "SET", "value": "수출", "evidence": "수출"},
         ]
     elif message == "사업화 지원을 찾고 싶어요":
         updates = [{"field": "QUERY", "operation": "SET", "value": "사업화 지원", "evidence": "사업화 지원"}]
@@ -98,19 +103,17 @@ class Handler(BaseHTTPRequestHandler):
                     "semanticRelevance": 40 if relevant else 0,
                     "targetAssessment": {
                         "eligibility": "MATCH" if confirmed else "UNKNOWN",
-                        "score": 25 if relevant else 0,
                         "evidence": [next(option["index"] for option in candidate["evidenceOptions"]
                                           if option["field"] == "TARGET_DESCRIPTION")] if confirmed else [],
                         "explanation": "테스트 대역의 본문 인용이며 실제 자격 판정이 아닙니다." if confirmed else "지원 대상 조건을 확인해야 합니다.",
                     },
                     "regionAssessment": {
                         "eligibility": "MATCH" if confirmed else "UNKNOWN",
-                        "score": 15 if relevant else 0,
                         "evidence": [next(option["index"] for option in candidate["evidenceOptions"]
                                           if option["field"] == "SUMMARY")] if confirmed else [],
                         "explanation": "테스트 대역의 본문 인용이며 실제 자격 판정이 아닙니다." if confirmed else "지역 조건을 확인해야 합니다.",
                     },
-                    "applicationStatusFit": 10 if relevant else 0, "supportTypeFit": 10 if relevant else 0,
+                    "supportTypeFit": 10 if relevant else 0,
                     "recommendationReasons": [candidate["title"][:100]],
                 }
             self.respond_model_output(request, {"rankings": rankings})

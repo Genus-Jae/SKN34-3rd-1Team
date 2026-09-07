@@ -19,6 +19,8 @@ export function useChatPageViewModel() {
   const chat = useSupportProgramChat()
   const isComposingInput = useRef(false)
   const timelineRef = useRef<HTMLDivElement>(null)
+  const composerInputRef = useRef<HTMLTextAreaElement>(null)
+  const focusAfterReset = useRef(false)
   const latestMessage = chat.messages.at(-1)
   const searchStatusAnnouncement = chat.isInterpreting
     ? '메시지의 조건 변경을 해석하고 있습니다. 아직 검색하지 않았습니다.'
@@ -35,6 +37,10 @@ export function useChatPageViewModel() {
   useEffect(() => {
     const timeline = timelineRef.current
     if (timeline) timeline.scrollTop = timeline.scrollHeight
+    if (focusAfterReset.current) {
+      focusAfterReset.current = false
+      composerInputRef.current?.focus()
+    }
   }, [chat.messages, chat.isSearching, chat.interpretation.status])
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -43,6 +49,7 @@ export function useChatPageViewModel() {
   }
 
   function handleStartNewConversation() {
+    focusAfterReset.current = true
     chat.startNewConversation()
   }
 
@@ -115,6 +122,7 @@ export function useChatPageViewModel() {
     suggestions: supportProgramChatSuggestions,
     searchStatusAnnouncement,
     timelineRef,
+    composerInputRef,
     handleSubmit,
     handleStartNewConversation,
     handleSelectSuggestion,

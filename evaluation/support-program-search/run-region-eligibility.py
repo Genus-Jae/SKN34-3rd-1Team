@@ -50,7 +50,11 @@ def allowed_usage(value):
 
 
 async def execute(args, fixture, *, transport=None):
-    """Use the production Agent and Service; transport is an offline-test-only hook."""
+    """Use the production Agent/Service with frozen Luna/none, not bootstrap overrides.
+
+    Transport is an offline-test-only hook. Ranking-specific model/reasoning
+    environment overrides do not change this fixed experiment.
+    """
     if not args.execute:
         raise ValueError("Explicit execution is required")
     requests = evaluator.build_requests(fixture)
@@ -70,6 +74,7 @@ async def execute(args, fixture, *, transport=None):
     }
     capture = {
         "schemaVersion": evaluator.CAPTURE_SCHEMA,
+        "scoringVersion": evaluator.SCORING_VERSION,
         "fixtureSha256": manifest["fixtureSha256"],
         "provenance": {"kind": "mock" if transport is not None else "live_openai"},
         "observations": [],
@@ -177,7 +182,7 @@ async def execute(args, fixture, *, transport=None):
                              max_retries=0, timeout=settings.llm_model_timeout_seconds, http_client=http_client)
         agent = SupportProgramRecommendationAgent(
             model=OpenAIResponsesModel(model=settings.openai_model, openai_client=client),
-            model_timeout_seconds=45, run_timeout_seconds=50,
+            model_timeout_seconds=45, run_timeout_seconds=50, reasoning_effort="none",
         )
         configured = agent._agent.model_settings
         if configured.max_tokens != 10000 or configured.reasoning.effort != "none" or configured.store is not False:

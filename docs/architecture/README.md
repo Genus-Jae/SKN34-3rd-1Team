@@ -273,7 +273,8 @@ HTTP API → Router → Ranking Service → Recommendation Agent → OpenAI
 `router.py`는 HTTP 요청·응답과 안전한 오류 변환을, `models.py`는 Pydantic 요청·출력 스키마와
 점수 합계 등의 불변식을 담당합니다. `prompt.py`는 LLM에 전달할 평가 지시를 담고, `agent.py`는
 Agents SDK 실행·제한시간·모델 오류 처리를 맡습니다. `service.py`는 모든 후보가 빠짐없이 점수화되었는지
-검증하고 다섯 세부 점수를 합산한 뒤 정렬·최소 기준·자격 필터를 적용합니다.
+검증하고 `2 × (의미 관련성 + 지원 유형 관련성)`으로 관련도를 계산한 뒤 정렬·의미 최소 기준·자격 필터를 적용합니다.
+v5에서는 자격 `UNKNOWN`을 관련도와 분리해 확인 필요로 표시하며, MATCH를 무조건 앞세우지 않습니다.
 
 프롬프트에 올바르게 답하라고 지시하는 것과 코드에서 결과를 검사하는 역할을 분리했습니다.
 예를 들어 모델이 전달받지 않은 공고 ID를 반환하면 Service가 거부하고 Router가 안전한 오류로 변환합니다.
@@ -285,7 +286,7 @@ Agents SDK 실행·제한시간·모델 오류 처리를 맡습니다. `service.
 `support_program_index/service.py`가 문서 버전 확인·임베딩 생성·Qdrant 저장·검색을 직접 수행합니다.
 기업마당 수집이나 MySQL 조회는 Core가 맡으며 AI Service는 전달받은 문서·ID·해시를 사용합니다.
 
-업무 Agent는 후보 점수화용과 원문 근거 답변용 두 개입니다. 임베딩과 벡터 검색을 별도 Agent로 구성하지 않았으며,
+업무 Agent는 조건 변경 해석·후보 점수화·원문 근거 답변용 세 개입니다. 임베딩과 벡터 검색을 별도 Agent로 구성하지 않았으며,
 tool·handoff·graph 없이 각 Agent를 `max_turns=1`로 실행합니다. 실행 설정은
 [AI Service README](../../backend/ai-service/README.md), Agent 추가 기준과 테스트 배치는
 [Agent 모듈 구조](../../backend/ai-service/docs/agent-structure.md)를 참고하세요.

@@ -23,6 +23,7 @@ class RegionEligibilityEvaluationTest(unittest.TestCase):
         requests = region.build_requests(self.fixture)
         self.capture = {
             "schemaVersion": region.CAPTURE_SCHEMA,
+            "scoringVersion": region.SCORING_VERSION,
             "fixtureSha256": region.replay.canonical_sha256(self.fixture),
             "provenance": {"kind": "mock"},
             "observations": [],
@@ -34,17 +35,16 @@ class RegionEligibilityEvaluationTest(unittest.TestCase):
                 rankings.append({
                     "programId": candidate["id"], "semanticRelevance": 35,
                     "targetAssessment": {
-                        "eligibility": "MATCH", "score": 25,
+                        "eligibility": "MATCH",
                         "evidence": [{"field": "TARGET_DESCRIPTION", "quote": "AI 분야 기업"}],
                         "explanation": "모의 출력: AI 업종과 지원 대상이 일치합니다.",
                     },
                     "regionAssessment": {
                         "eligibility": expected["eligibility"],
-                        "score": 0 if expected["eligibility"] == "INCOMPATIBLE" else 10,
                         "evidence": [copy.deepcopy(expected["requiredEvidence"])] if "requiredEvidence" in expected else [],
                         "explanation": "평가기만 검증하는 모의 출력이며 실제 모델 판단이 아닙니다.",
                     },
-                    "applicationStatusFit": 10, "supportTypeFit": 10,
+                    "supportTypeFit": 10,
                     "recommendationReasons": ["평가 도구 검증용 모의 출력"],
                 })
             self.capture["observations"].append({
@@ -75,6 +75,23 @@ class RegionEligibilityEvaluationTest(unittest.TestCase):
                 assessment["eligibility"] = wrong
                 assessment["evidence"] = [{"field": "SUMMARY", "quote": self.fixture["candidates"][0]["summary"]}]
                 self.assertIn("ELIGIBILITY_MISMATCH", self.result()["failures"])
+
+    def test_legacy_v4_capture_keeps_its_original_request_identity(self):
+        del self.capture["scoringVersion"]
+        requests = region.build_requests(self.fixture, region.LEGACY_SCORING_VERSION)
+        for observation, row in zip(self.capture["observations"], requests, strict=True):
+            observation["requestSha256"] = region.replay.canonical_sha256(row["request"])
+        report = region.evaluate(self.fixture, self.capture)
+        self.assertTrue(report["passed"])
+        self.assertEqual(region.LEGACY_SCORING_VERSION, report["scoringVersion"])
+        self.capture["scoringVersion"] = region.SCORING_VERSION
+        with self.assertRaisesRegex(ValueError, "identity"):
+            region.evaluate(self.fixture, self.capture)
+
+    def test_unknown_scoring_version_is_rejected(self):
+        self.capture["scoringVersion"] = "invented-version"
+        with self.assertRaisesRegex(ValueError, "scoring version"):
+            region.evaluate(self.fixture, self.capture)
 
     def test_explicit_district_matches_while_other_city_is_incompatible(self):
         self.assertEqual(self.result("REGION_SEOCHO")["expectedEligibility"], "MATCH")
