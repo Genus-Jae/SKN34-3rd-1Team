@@ -5,7 +5,7 @@ import type { SupportProgramEvidenceAnswer } from '../../../../domain/entities/S
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import type { AskSupportProgramEvidenceQuestionUseCase } from '../../../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
 import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
-import { supportProgramRequestFailureMessage } from './supportProgramRequestFailureMessage'
+import { supportProgramRequestFailureMessage } from '../../../shared/support-program/supportProgramRequestFailureMessage'
 
 export const maximumSupportProgramEvidenceQuestionLength = 500
 

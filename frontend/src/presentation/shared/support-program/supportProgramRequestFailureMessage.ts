@@ -1,4 +1,4 @@
-import type { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
+import type { SupportProgramRequestError } from '../../../domain/errors/SupportProgramRequestError'
 
 /** 검색과 근거 질문이 공유하는 안전한 안내이며 자동 재시도는 예약하지 않습니다. */
 export function supportProgramRequestFailureMessage(error: SupportProgramRequestError): string {

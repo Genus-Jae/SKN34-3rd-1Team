@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router'
 
 import { ChatPage } from './presentation/features/chat/view/ChatPage'
-import { SupportProgramDetailPage } from './presentation/features/chat/view/SupportProgramDetailPage'
+import { SupportProgramDetailPage } from './presentation/features/support-program-detail/view/SupportProgramDetailPage'
 import { ReduxSampleItemPage } from './presentation/features/sample-item/view/ReduxSampleItemPage'
 import { SampleItemPage } from './presentation/features/sample-item/view/SampleItemPage'
 
