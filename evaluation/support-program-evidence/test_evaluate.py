@@ -81,7 +81,7 @@ def test_rejects_invalid_fixture(loaded, tmp_path, mutation):
     fixture = deepcopy(loaded[0])
     mutation(fixture)
     path = tmp_path / "invalid.json"
-    path.write_text(json.dumps(fixture))
+    path.write_text(json.dumps(fixture), encoding="utf-8")
     with pytest.raises(ValueError):
         evaluate.load_fixture(path)
 
@@ -138,6 +138,27 @@ def test_cli_default_never_executes_or_writes(loaded, monkeypatch, capsys):
     assert not json.loads(capsys.readouterr().out)["measured"]
 
 
+def test_saved_capture_cli_reads_utf8_with_a_legacy_locale(loaded, tmp_path, monkeypatch, capsys):
+    capture = capture_for(loaded)
+    capture["cases"][0]["response"]["answer"] = "지원 대상 확인 🔎"
+    path = tmp_path / "capture.json"
+    path.write_bytes(json.dumps(capture, ensure_ascii=False).encode("utf-8"))
+    original_read = Path.read_text
+
+    def read_with_legacy_default(path, encoding=None, **kwargs):
+        return original_read(path, encoding=encoding or "cp949", **kwargs)
+
+    def forbidden(*args):
+        pytest.fail("saved capture verification must not execute model calls")
+
+    monkeypatch.setattr(Path, "read_text", read_with_legacy_default)
+    monkeypatch.setattr(evaluate, "execute", forbidden)
+    monkeypatch.setattr(evaluate.sys, "argv", ["evaluate.py", "--capture", str(path)])
+
+    assert evaluate.main() == 0
+    assert json.loads(capsys.readouterr().out)["completed"]
+
+
 @pytest.mark.parametrize("status,category", [
     (200, None), (429, "unknown"), ("invalid-citation", "unknown_citation"),
     ("invalid-json", "invalid_json"), ("invalid-contract", "invalid_answer_contract"),
@@ -147,7 +168,14 @@ def test_cli_default_never_executes_or_writes(loaded, monkeypatch, capsys):
 def test_execute_uses_production_agent_with_mock_http_only(loaded, tmp_path, monkeypatch, status, category):
     requests = []
     fake_capture = capture_for(loaded)
+    fake_capture["cases"][0]["response"]["answer"] = "지원 대상 확인 🔎"
     real_client = httpx2.AsyncClient
+    original_write = Path.write_text
+
+    def write_with_legacy_default(path, text, encoding=None, **kwargs):
+        return original_write(path, text, encoding=encoding or "cp949", **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", write_with_legacy_default)
 
     def handler(request):
         assert str(request.url) == "https://api.openai.com/v1/responses"
@@ -216,8 +244,10 @@ def test_execute_uses_production_agent_with_mock_http_only(loaded, tmp_path, mon
     )
     if status in ("invalid-json", "invalid-contract"):
         assert isinstance(capture["cases"][0].get("causeType"), str)
-    saved = (output / "capture.json").read_text()
+    saved = (output / "capture.json").read_text(encoding="utf-8")
     assert "SECRET-MUST-NOT-PERSIST" not in saved and "fake-key" not in saved
+    if status == 200:
+        assert "지원 대상 확인 🔎" in saved
     assert evaluate.report(*loaded, capture)["completed"] == (status == 200)
 
 
@@ -290,20 +320,20 @@ def test_capture_write_failure_preserves_previous_record_and_closes_client(loade
         asyncio.run(evaluate.execute(loaded[1][:2], loaded[2], output))
 
     assert client.closed
-    assert (output / "capture.json").read_text() == writes[0]
-    retained = json.loads((output / "capture.json").read_text())
+    assert (output / "capture.json").read_text(encoding="utf-8") == writes[0]
+    retained = json.loads((output / "capture.json").read_text(encoding="utf-8"))
     assert len(retained["cases"]) == 1
     assert retained["completed"] is False
 
 
 @pytest.mark.parametrize("capture_path", sorted((HERE / "runs").glob("*/capture.json")))
 def test_shared_run_reports_recalculate_without_api(capture_path):
-    capture = json.loads(capture_path.read_text())
+    capture = json.loads(capture_path.read_text(encoding="utf-8"))
     fixtures = [evaluate.load_fixture(HERE / name) for name in (
         "fixture.json", "target-coverage-fixture.json",
     )]
     matching = [loaded for loaded in fixtures if loaded[2] == capture["fixtureSha256"]]
     assert len(matching) == 1, "shared capture must match exactly one known fixture"
     actual = evaluate.report(*matching[0], capture)
-    expected = json.loads((capture_path.parent / "report.json").read_text())
+    expected = json.loads((capture_path.parent / "report.json").read_text(encoding="utf-8"))
     assert actual == expected

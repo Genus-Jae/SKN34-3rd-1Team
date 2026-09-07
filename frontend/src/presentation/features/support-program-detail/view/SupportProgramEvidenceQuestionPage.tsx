@@ -194,7 +194,7 @@ function EvidenceQuestionFeedback({
   }
 
   const message = evidenceFeedbackMessage(state.status)
-  const isFailure = state.status === 'failed' || state.status === 'unavailable'
+  const isFailure = state.status === 'failed' || state.status === 'unavailable' || state.status === 'timed-out'
   return (
     <p
       className={isFailure
@@ -216,6 +216,7 @@ function evidenceFeedbackMessage(
 ) {
   const messages = {
     cancelled: '질문 요청을 취소했습니다.',
+    'timed-out': '답변 시간이 초과되었습니다. 입력한 질문을 다시 전송해 주세요.',
     'insufficient-evidence': '공고 원문에서 이 질문에 답할 만큼 충분한 근거를 찾지 못했습니다. 원문 공고를 확인해 주세요.',
     'not-supported': '이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다. 원문 공고에서 확인해 주세요.',
     unavailable: '원문 근거 답변을 지금 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.',

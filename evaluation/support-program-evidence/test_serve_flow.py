@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import httpx2
@@ -37,6 +38,12 @@ def test_real_app_with_mock_http_enforces_budget_and_records_only_safe_data(tmp_
     request = prepared[0][1]
     calls = []
     original_client = httpx2.AsyncClient
+    original_write = Path.write_text
+
+    def write_with_legacy_default(path, text, encoding=None, **kwargs):
+        return original_write(path, text, encoding=encoding or "cp949", **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", write_with_legacy_default)
 
     def respond(http_request):
         assert str(http_request.url) == "https://api.openai.com/v1/responses"
@@ -44,14 +51,14 @@ def test_real_app_with_mock_http_enforces_budget_and_records_only_safe_data(tmp_
         assert calls[-1]["store"] is False
         if mode == "rate-limit":
             return httpx2.Response(429, json={"error": {"message": "PRIVATE-ERROR-DETAIL"}})
-        answer = {"answer": "서울 소프트웨어 개발업 법인이 대상입니다.", "answerStatus": "ANSWERED",
+        answer = {"answer": "서울 소프트웨어 개발업 법인이 대상입니다. 🔎", "answerStatus": "ANSWERED",
                   "citationChunkIndexes": [0 if mode == "success" else 4]}
         return httpx2.Response(200, json={
             "id": "resp_mock", "created_at": 0, "model": evaluate.DEFAULT_OPENAI_MODEL,
             "object": "response", "status": "completed", "error": None, "incomplete_details": None,
             "parallel_tool_calls": False, "tool_choice": "none", "tools": [],
             "output": [{"id": "msg_mock", "type": "message", "role": "assistant", "status": "completed",
-                        "content": [{"type": "output_text", "annotations": [], "text": json.dumps(answer)}]}],
+                        "content": [{"type": "output_text", "annotations": [], "text": json.dumps(answer, ensure_ascii=False)}]}],
             "usage": {"input_tokens": 100, "output_tokens": 30, "total_tokens": 130},
         })
 
@@ -74,9 +81,11 @@ def test_real_app_with_mock_http_enforces_budget_and_records_only_safe_data(tmp_
         assert second.status_code == 503
         assert client.get("/health").json()["stopped"]
     assert len(calls) == 1
-    saved = (output / "api-capture.json").read_text()
+    saved = (output / "api-capture.json").read_text(encoding="utf-8")
     assert "PRIVATE-ERROR-DETAIL" not in saved and "fake-key" not in saved
     trace = json.loads(saved)
+    if mode == "success":
+        assert "서울 소프트웨어 개발업 법인이 대상입니다. 🔎" in saved
     assert trace["calls"][0]["response"]["httpStatus"] == (429 if mode == "rate-limit" else 200)
     assert trace["stopped"]
 
@@ -108,6 +117,6 @@ def test_unexpected_service_error_stops_the_run_and_preserves_http_500(tmp_path,
         assert second.status_code == 503
 
     answer.assert_awaited_once()
-    saved = (output / "api-capture.json").read_text()
+    saved = (output / "api-capture.json").read_text(encoding="utf-8")
     assert json.loads(saved)["stopped"] is True
     assert "PRIVATE-UNEXPECTED-ERROR" not in saved

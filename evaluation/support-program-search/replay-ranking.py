@@ -204,16 +204,17 @@ def main():
     try:
         if args.output_dir.exists() or args.output_dir.is_symlink():
             raise ValueError("Replay output directory must be new")
-        envelope = json.loads(args.requests.read_text())
-        metadata = json.loads(args.export_metadata.read_text())
+        envelope = json.loads(args.requests.read_text(encoding="utf-8"))
+        metadata = json.loads(args.export_metadata.read_text(encoding="utf-8"))
         if metadata["sourceHashes"]["requestFileSha256"] != sha256_file(args.requests):
             raise ValueError("Export metadata request file hash mismatch")
         fixture = evaluator.comparison.load_fixture(args.fixture)
         evaluator.validate_requests(envelope, fixture, args.source_capture)
-        source_ids = [row["id"] for row in json.loads(args.source_capture.read_text())["observations"]]
+        source_ids = [row["id"] for row in json.loads(args.source_capture.read_text(encoding="utf-8"))["observations"]]
         if len(source_ids) != 16 or [row["id"] for row in envelope["queries"]] != source_ids:
             raise ValueError("This experiment requires all 16 frozen queries in source order (maximum 32 calls)")
-        prompts = {"before": args.before_prompt.read_text(), "after": args.after_prompt.read_text()}
+        prompts = {"before": args.before_prompt.read_text(encoding="utf-8"),
+                   "after": args.after_prompt.read_text(encoding="utf-8")}
         if not all(prompt.strip() for prompt in prompts.values()):
             raise ValueError("Both prompts must be nonempty")
         print(json.dumps({"queryCount": len(envelope["queries"]), "maximumOpenaiCalls": len(envelope["queries"]) * 2,

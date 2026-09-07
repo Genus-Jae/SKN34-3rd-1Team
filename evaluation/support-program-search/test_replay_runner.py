@@ -106,8 +106,11 @@ class ReplayRunnerTest(unittest.TestCase):
         for name, path in self.paths.items():
             arguments.extend(["--" + name.replace("_", "-"), str(path)])
         arguments.extend(["--output-dir", str(self.output)])
-        # An empty environment proves dry-run does not depend on credentials or inherited API configuration.
-        return subprocess.run(arguments, env={"PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True,
+        # Exclude credentials and API settings while retaining Windows' asyncio runtime requirement.
+        environment = {"PYTHONDONTWRITEBYTECODE": "1"}
+        if "SYSTEMROOT" in os.environ:
+            environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+        return subprocess.run(arguments, env=environment, capture_output=True,
                               text=True, timeout=20, check=False)
 
     def test_dry_run_without_key_reports_32_calls_without_creating_output(self):
@@ -116,6 +119,27 @@ class ReplayRunnerTest(unittest.TestCase):
         self.assertEqual({"queryCount": 16, "maximumOpenaiCalls": 32, "embeddingCalls": 0, "execute": False},
                          json.loads(result.stdout))
         self.assertEqual("", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_dry_run_reads_utf8_inputs_with_a_legacy_locale(self):
+        self.paths["before_prompt"].write_text("이전 안내 🔎", encoding="utf-8")
+        self.paths["after_prompt"].write_text("현재 안내 🔎", encoding="utf-8")
+        arguments = [str(RUNNER_PATH)]
+        for name, path in self.paths.items():
+            arguments.extend(["--" + name.replace("_", "-"), str(path)])
+        arguments.extend(["--output-dir", str(self.output)])
+        original_read = Path.read_text
+
+        def read_with_legacy_default(path, encoding=None, **kwargs):
+            return original_read(path, encoding=encoding or "cp949", **kwargs)
+
+        output = io.StringIO()
+        with patch.object(sys, "argv", arguments), patch.object(Path, "read_text", read_with_legacy_default), \
+                patch.object(runner, "execute", side_effect=AssertionError("dry-run must not call a model")), \
+                redirect_stdout(output):
+            self.assertIsNone(runner.main())
+
+        self.assertEqual(32, json.loads(output.getvalue())["maximumOpenaiCalls"])
         self.assertFalse(self.output.exists())
 
     def test_cli_rejects_partial_query_set_without_creating_output(self):
@@ -189,14 +213,14 @@ class ReplayRunnerTest(unittest.TestCase):
             await runner.execute(args, self.envelope, prompts)
 
     def read_usage(self):
-        return [json.loads(line) for line in (self.output / "api-usage.jsonl").read_text().splitlines()]
+        return [json.loads(line) for line in (self.output / "api-usage.jsonl").read_text(encoding="utf-8").splitlines()]
 
     def read_manifest(self):
-        return json.loads((self.output / "execution-manifest.json").read_text())
+        return json.loads((self.output / "execution-manifest.json").read_text(encoding="utf-8"))
 
     def assert_no_secret_in_artifacts(self):
         for path in self.output.iterdir():
-            self.assertNotIn(SECRET_MARKER, path.read_text(), str(path))
+            self.assertNotIn(SECRET_MARKER, path.read_text(encoding="utf-8"), str(path))
 
     @unittest.skipUnless(AI_DEPENDENCIES_AVAILABLE, "Execute-path tests require the AI Service venv")
     def test_non_json_upstream_failure_preserves_http_status_and_failed_manifest(self):
@@ -236,7 +260,7 @@ class ReplayRunnerTest(unittest.TestCase):
         for index, query in enumerate(self.envelope["queries"]):
             self.assertEqual(query["request"], received[2 * index])
             self.assertEqual(received[2 * index], received[2 * index + 1])
-        results = [json.loads(line) for line in (self.output / "results.jsonl").read_text().splitlines()]
+        results = [json.loads(line) for line in (self.output / "results.jsonl").read_text(encoding="utf-8").splitlines()]
         for index in range(0, len(results), 2):
             self.assertEqual({"before", "after"}, {row["variant"] for row in results[index:index + 2]})
             self.assertEqual(results[index]["requestSha256"], results[index + 1]["requestSha256"])

@@ -9,6 +9,9 @@ import { supportProgramRequestFailureMessage } from '../../../shared/support-pro
 
 export const maximumSupportProgramEvidenceQuestionLength = 500
 
+/** 원문 수집(10초)과 AI 답변(35초)에 여유를 두고 질문 요청 시간을 제한합니다. */
+export const supportProgramEvidenceQuestionTimeoutMilliseconds = 70_000
+
 type SupportProgramEvidenceQuestionUseCase = Pick<
   AskSupportProgramEvidenceQuestionUseCase,
   'execute'
@@ -24,6 +27,7 @@ export type SupportProgramEvidenceQuestionState =
   | { status: 'failed' }
   | { status: 'rate-limited' | 'busy'; message: string }
   | { status: 'cancelled' }
+  | { status: 'timed-out' }
   | { status: 'validation-failed'; message: string }
 
 /** 원문 질문 페이지의 입력·응답 상태와 사용자가 요청한 질문의 수명을 관리합니다. */
@@ -39,6 +43,7 @@ export function useSupportProgramEvidenceQuestionViewModel(
   const activeRequest = useRef<{
     controller: AbortController
     requestId: number
+    timeoutId: ReturnType<typeof setTimeout>
   } | null>(null)
   const latestRequestId = useRef(0)
   const questionLength = question.length
@@ -55,6 +60,7 @@ export function useSupportProgramEvidenceQuestionViewModel(
     return () => {
       const currentRequest = activeRequest.current
       activeRequest.current = null
+      if (currentRequest) clearTimeout(currentRequest.timeoutId)
       currentRequest?.controller.abort()
     }
   }, [sourceCode, sourceProgramId])
@@ -71,6 +77,7 @@ export function useSupportProgramEvidenceQuestionViewModel(
     activeRequest.current = null
     if (!currentRequest) return
 
+    clearTimeout(currentRequest.timeoutId)
     currentRequest.controller.abort()
     setState({ status: 'cancelled' })
   }
@@ -100,7 +107,14 @@ export function useSupportProgramEvidenceQuestionViewModel(
     const controller = new AbortController()
     const requestId = latestRequestId.current + 1
     latestRequestId.current = requestId
-    activeRequest.current = { controller, requestId }
+    const timeoutId = setTimeout(() => {
+      if (activeRequest.current?.requestId !== requestId) return
+
+      activeRequest.current = null
+      controller.abort()
+      setState({ status: 'timed-out' })
+    }, supportProgramEvidenceQuestionTimeoutMilliseconds)
+    activeRequest.current = { controller, requestId, timeoutId }
     setState({ status: 'loading' })
 
     try {
@@ -126,6 +140,7 @@ export function useSupportProgramEvidenceQuestionViewModel(
         ? { status: error.reason, message: supportProgramRequestFailureMessage(error) }
         : { status: 'failed' })
     } finally {
+      clearTimeout(timeoutId)
       if (activeRequest.current?.requestId === requestId) {
         activeRequest.current = null
       }

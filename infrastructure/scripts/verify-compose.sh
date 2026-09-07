@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# Keep this Linux/WSL entrypoint LF-terminated; the root .gitattributes enforces it.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

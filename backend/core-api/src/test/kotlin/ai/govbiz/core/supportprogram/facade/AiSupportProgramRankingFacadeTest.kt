@@ -76,6 +76,52 @@ class AiSupportProgramRankingFacadeTest {
     }
 
     @Test
+    fun truncatesCandidateTextAtCodePointBoundariesWithoutSplittingSupplementaryCharacters() {
+        val candidate = candidates().first().let { candidate ->
+            candidate.copy(
+                program = candidate.program.copy(
+                    title = "가".repeat(299) + "🚀추가",
+                    organization = "가".repeat(199) + "🚀추가",
+                    summary = "가".repeat(999) + "🚀추가",
+                    targetDescription = "가".repeat(499) + "🚀추가",
+                    applicationPeriod = "가".repeat(199) + "🚀추가",
+                    categories = listOf("가".repeat(99) + "🚀추가"),
+                    regions = listOf("가".repeat(99) + "🚀추가"),
+                ),
+            )
+        }
+        client.reset(response())
+
+        facade().rank(QUERY, listOf(candidate), 5)
+
+        val sent = client.requests.single().candidates.single()
+        assertEquals("가".repeat(299) + "🚀", sent.title)
+        assertEquals("가".repeat(199) + "🚀", sent.organization)
+        assertEquals("가".repeat(999) + "🚀", sent.summary)
+        assertEquals("가".repeat(499) + "🚀", sent.targetDescription)
+        assertEquals("가".repeat(199) + "🚀", sent.applicationPeriod)
+        assertEquals(listOf("가".repeat(99) + "🚀"), sent.categories)
+        assertEquals(listOf("가".repeat(99) + "🚀"), sent.regions)
+    }
+
+    @Test
+    fun acceptsRecommendationReasonsAtTheAiContractCodePointLimit() {
+        val reason = "가".repeat(119) + "🚀"
+        client.reset(response(score("first", 40, 85, reason)))
+
+        val programs = facade().rank(QUERY, candidates(), 5)
+
+        assertEquals(listOf(reason), programs.single().matchedReasons)
+    }
+
+    @Test
+    fun rejectsRecommendationReasonsAboveTheAiContractCodePointLimit() {
+        client.reset(response(score("first", 40, 85, "가".repeat(120) + "🚀")))
+
+        assertInvalidResponse()
+    }
+
+    @Test
     fun rejectsMoreRankingsThanTheRequestedLimit() {
         client.reset(
             response(
