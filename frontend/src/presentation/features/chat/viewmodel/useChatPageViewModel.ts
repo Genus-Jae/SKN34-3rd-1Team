@@ -10,16 +10,16 @@ import {
 
 import {
   supportProgramChatSuggestions,
-  useSupportProgramChatViewModel,
-} from './useSupportProgramChatViewModel'
-import { useSupportProgramSearchReadinessViewModel } from './useSupportProgramSearchReadinessViewModel'
+  useSupportProgramChat,
+} from '../hooks/useSupportProgramChat'
+import { useSupportProgramSearchReadiness } from '../hooks/useSupportProgramSearchReadiness'
 
 const chatMobileMediaQuery = '(max-width: 47.5rem)'
 
-/** 채팅·준비 상태를 조합하고 ChatPage의 상태와 사용자 동작을 관리합니다. */
+/** 내부 훅을 조합해 ChatPage에 제공할 최종 화면 상태와 사용자 동작을 관리합니다. */
 export function useChatPageViewModel() {
-  const readiness = useSupportProgramSearchReadinessViewModel()
-  const chat = useSupportProgramChatViewModel()
+  const readiness = useSupportProgramSearchReadiness()
+  const chat = useSupportProgramChat()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const isComposingInput = useRef(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)

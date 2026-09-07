@@ -64,7 +64,7 @@ flowchart LR
 UseCase 테스트에는 필요한 Repository 대역을 전달할 수 있습니다.
 
 이 방향은 주요 업무 기능에 적용한 설계 원칙입니다. 모든 의존성이 엄격하게 격리된 전체 구조는 아닙니다.
-Domain 계약에 요청 취소용 Web 표준 `AbortSignal`이 있고, ViewModel은 앱 컨테이너를 참조합니다.
+Domain 계약에 요청 취소용 Web 표준 `AbortSignal`이 있고, ViewModel 또는 내부 Hook은 앱 컨테이너를 참조합니다.
 단순 Health Hook은 별도 Domain UseCase 없이 등록된 외부 함수를 호출합니다.
 
 ### Awilix DI와 Service Locator
@@ -81,7 +81,7 @@ Repository 구현체를 직접 생성하지 않으므로 데이터 접근 구현
 // app/di의 factory가 Repository를 UseCase 생성자에 전달
 return new SearchSupportProgramsUseCase(supportProgramRepository)
 
-// ViewModel Hook의 기본 인수는 앱 컨테이너에서 UseCase 조회
+// 내부 채팅 Hook의 기본 인수는 앱 컨테이너에서 UseCase 조회
 appContainer.resolve('searchSupportProgramsUseCase')
 ```
 
@@ -101,12 +101,13 @@ MVVM은 Model·View·ViewModel의 책임을 나누는 화면 설계입니다. �
 |---|---|---|
 | View | [ChatPage.tsx](../../frontend/src/presentation/features/chat/view/ChatPage.tsx) | 입력창·결과 카드 렌더링, 사용자 이벤트 연결 |
 | 페이지 ViewModel | [useChatPageViewModel.ts](../../frontend/src/presentation/features/chat/viewmodel/useChatPageViewModel.ts) | 채팅·준비 상태 조합, 검색 가능 여부 검사, 사이드바·IME·포커스·스크롤, 화면 이벤트 제공 |
-| 채팅 ViewModel | [useSupportProgramChatViewModel.ts](../../frontend/src/presentation/features/chat/viewmodel/useSupportProgramChatViewModel.ts) | `draft`, `messages`, `isSearching` 등 Redux 상태와 검색·취소 요청 흐름 관리 |
+| 내부 채팅 Hook | [useSupportProgramChat.ts](../../frontend/src/presentation/features/chat/hooks/useSupportProgramChat.ts) | `draft`, `messages`, `isSearching` 등 Redux 상태와 검색·취소·시간 제한 등 요청 수명 관리 |
+| 내부 준비 상태 Hook | [useSupportProgramSearchReadiness.ts](../../frontend/src/presentation/features/chat/hooks/useSupportProgramSearchReadiness.ts) | 검색 준비 상태 조회와 준비 중 polling 관리 |
 | Model 측 | Domain 모델·UseCase·Repository | 검색 조건과 공고 데이터, 검색·상세 조회 실행 |
 
-View는 페이지 Hook이 반환한 상태를 렌더링하고 사용자 이벤트를 반환된 handler에 연결합니다.
-페이지 ViewModel은 검색 준비 상태를 확인한 뒤 채팅 ViewModel의 `submitMessage()`를 호출하고,
-채팅 ViewModel은 UseCase 실행과 요청 수명을 관리합니다. 사이드바 상태·IME 조합·스크롤 DOM 참조와
+View는 페이지 ViewModel 하나가 반환한 상태를 렌더링하고 사용자 이벤트를 반환된 handler에 연결합니다.
+페이지 ViewModel은 두 내부 Hook을 조합하며, 검색 준비 상태를 확인한 뒤 채팅 Hook의 `submitMessage()`를
+호출합니다. 채팅 Hook은 UseCase 실행과 요청 수명을 관리합니다. 사이드바 상태·IME 조합·스크롤 DOM 참조와
 포커스 제어도 페이지 ViewModel에 두되, 화면 전용 상태와 ref는 Redux가 아닌 Hook 로컬로 유지합니다.
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷만 남깁니다.
 
@@ -125,28 +126,28 @@ Redux Store 자체를 Model 전체나 ViewModel 전체와 같은 것으로 취�
 ```text
 ChatPage의 제출 이벤트
   → 페이지 ViewModel.handleSubmit → 검색 준비 상태 확인
-  → 채팅 ViewModel.submitMessage → dispatch(Thunk)
+  → 내부 채팅 Hook.submitMessage → dispatch(Thunk)
       ├→ dispatch(searchStarted) → chat Reducer → pending 상태
       └→ await UseCase.execute(...)
           ├→ 성공: dispatch(searchSucceeded) → 결과·메시지 반영
           └→ 실패: dispatch(searchFailed) → 안전한 오류 상태
-  → Store 변경 → useAppSelector 구독 → ViewModel 반환값 → View 재렌더링
+  → Store 변경 → 채팅 Hook의 useAppSelector 구독 → 페이지 ViewModel 반환값 → View 재렌더링
 ```
 
-Thunk는 비동기 처리를 수행하는 함수이며, 현재 ViewModel 안에 정의되어 Redux 미들웨어가 실행합니다.
+Thunk는 비동기 처리를 수행하는 함수이며, 현재 내부 채팅 Hook 안에 정의되어 Redux 미들웨어가 실행합니다.
 HTTP 호출은 UseCase·Repository를 통해 수행하고 [chatSlice](../../frontend/src/presentation/features/chat/state/chatSlice.ts)의
 Reducer에는 상태 변경 규칙을 둡니다. Slice 내부의 `state.messages.push(...)` 표기는 Redux Toolkit이
 Immer로 처리하는 갱신 방식이며 View나 HTTP 코드가 Store 상태를 직접 변경하는 흐름이 아닙니다.
 
 `main.tsx`의 Redux `Provider`가 Store를 화면 트리에 연결하고 Selector가 필요한 상태를 읽습니다.
 요청 ID를 비교해 이전 요청의 늦은 결과를 무시하고, 직렬화할 수 없는 `AbortController`는 Store가 아닌
-ViewModel의 ref에 보관합니다.
+내부 채팅 Hook의 ref에 보관합니다.
 
 ### Hook 상태와 Redux 상태의 선택
 
 | 사용처 | 상태 저장 위치 | 수명 |
 |---|---|---|
-| 지원사업 채팅 | Redux `chat` slice + ViewModel Hook | 앱 내 화면 이동 동안 메시지·입력 유지 |
+| 지원사업 채팅 | Redux `chat` slice + 내부 채팅 Hook | 앱 내 화면 이동 동안 메시지·입력 유지 |
 | 지원사업 상세 | ViewModel Hook의 로컬 상태 | 화면 진입 때 API 재조회, 이탈 시 로컬 상태 해제 |
 | Hook SampleItem | React Hook Form + Hook 로컬 상태 | 화면 이탈 시 입력·결과 초기화 |
 | Redux SampleItem | Redux `sampleItem` slice + ViewModel Hook | 앱 내 화면 이동 동안 입력·결과 유지 |

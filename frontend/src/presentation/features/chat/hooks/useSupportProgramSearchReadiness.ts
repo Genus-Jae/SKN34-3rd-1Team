@@ -30,7 +30,7 @@ const initialState: SupportProgramSearchReadinessState = {
 }
 
 /** 검색 화면에서 현재 공고 데이터가 검색 가능한지 확인하고 초기 준비 중에는 다시 조회합니다. */
-export function useSupportProgramSearchReadinessViewModel(
+export function useSupportProgramSearchReadiness(
   getSupportProgramSearchReadinessUseCase: SupportProgramSearchReadinessUseCase = appContainer.resolve(
     'getSupportProgramSearchReadinessUseCase',
   ),

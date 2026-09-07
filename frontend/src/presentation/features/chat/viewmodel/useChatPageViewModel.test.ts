@@ -5,34 +5,34 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
-import type { useSupportProgramChatViewModel } from './useSupportProgramChatViewModel'
+import type { useSupportProgramChat } from '../hooks/useSupportProgramChat'
 import { useChatPageViewModel } from './useChatPageViewModel'
-import type { useSupportProgramSearchReadinessViewModel } from './useSupportProgramSearchReadinessViewModel'
+import type { useSupportProgramSearchReadiness } from '../hooks/useSupportProgramSearchReadiness'
 
-const viewModelMocks = vi.hoisted(() => ({
+const hookMocks = vi.hoisted(() => ({
   chat: vi.fn(),
   readiness: vi.fn(),
 }))
 
-vi.mock('./useSupportProgramChatViewModel', () => ({
+vi.mock('../hooks/useSupportProgramChat', () => ({
   supportProgramChatSuggestions: [
     '서울 AI 창업지원 사업 찾아줘',
     '현재 접수 중인 수출 지원사업 알려줘',
     '제조기업 R&D 사업을 찾아줘',
   ],
-  useSupportProgramChatViewModel: viewModelMocks.chat,
+  useSupportProgramChat: hookMocks.chat,
 }))
 
-vi.mock('./useSupportProgramSearchReadinessViewModel', () => ({
-  useSupportProgramSearchReadinessViewModel: viewModelMocks.readiness,
+vi.mock('../hooks/useSupportProgramSearchReadiness', () => ({
+  useSupportProgramSearchReadiness: hookMocks.readiness,
 }))
 
-type ChatViewModel = ReturnType<typeof useSupportProgramChatViewModel>
-type ReadinessViewModel = ReturnType<typeof useSupportProgramSearchReadinessViewModel>
+type ChatHook = ReturnType<typeof useSupportProgramChat>
+type ReadinessHook = ReturnType<typeof useSupportProgramSearchReadiness>
 
 beforeEach(() => {
-  viewModelMocks.chat.mockReturnValue(createChatViewModel())
-  viewModelMocks.readiness.mockReturnValue(createReadinessViewModel())
+  hookMocks.chat.mockReturnValue(createChatHook())
+  hookMocks.readiness.mockReturnValue(createReadinessHook())
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -47,12 +47,12 @@ afterEach(() => {
 
 describe('useChatPageViewModel', () => {
   it('검색 불가 상태에서 직접 호출해도 제출·재시도·추천 선택을 위임하지 않는다', () => {
-    const chat = createChatViewModel({
+    const chat = createChatHook({
       canRetrySearch: true,
       isReadyToSubmit: true,
     })
-    viewModelMocks.chat.mockReturnValue(chat)
-    viewModelMocks.readiness.mockReturnValue(createReadinessViewModel({ canSearch: false }))
+    hookMocks.chat.mockReturnValue(chat)
+    hookMocks.readiness.mockReturnValue(createReadinessHook({ canSearch: false }))
     const { result } = renderHook(() => useChatPageViewModel())
     const submitEvent = createSubmitEvent()
 
@@ -74,14 +74,14 @@ describe('useChatPageViewModel', () => {
     })
   })
 
-  it('검색 가능 상태에서 하위 ViewModel에 위임하고 추천 선택 후 사이드바를 닫는다', () => {
-    const chat = createChatViewModel({
+  it('검색 가능 상태에서 내부 훅에 위임하고 추천 선택 후 사이드바를 닫는다', () => {
+    const chat = createChatHook({
       canRetrySearch: true,
       isReadyToSubmit: true,
     })
-    const readiness = createReadinessViewModel()
-    viewModelMocks.chat.mockReturnValue(chat)
-    viewModelMocks.readiness.mockReturnValue(readiness)
+    const readiness = createReadinessHook()
+    hookMocks.chat.mockReturnValue(chat)
+    hookMocks.readiness.mockReturnValue(readiness)
     const { result } = renderHook(() => useChatPageViewModel())
     const submitEvent = createSubmitEvent()
 
@@ -103,13 +103,13 @@ describe('useChatPageViewModel', () => {
   })
 
   it('준비 상태가 바뀌면 검색·재시도·제출 가능 여부를 다시 계산한다', () => {
-    const chat = createChatViewModel({
+    const chat = createChatHook({
       canRetrySearch: true,
       isReadyToSubmit: true,
     })
-    let readiness = createReadinessViewModel({ canSearch: false })
-    viewModelMocks.chat.mockReturnValue(chat)
-    viewModelMocks.readiness.mockImplementation(() => readiness)
+    let readiness = createReadinessHook({ canSearch: false })
+    hookMocks.chat.mockReturnValue(chat)
+    hookMocks.readiness.mockImplementation(() => readiness)
     const { result, rerender } = renderHook(() => useChatPageViewModel())
 
     expect(result.current).toMatchObject({
@@ -118,7 +118,7 @@ describe('useChatPageViewModel', () => {
       isReadyToSubmit: false,
     })
 
-    readiness = createReadinessViewModel({ canSearch: true })
+    readiness = createReadinessHook({ canSearch: true })
     rerender()
 
     expect(result.current).toMatchObject({
@@ -129,9 +129,9 @@ describe('useChatPageViewModel', () => {
   })
 
   it('검색 불가 상태에서도 새 대화를 시작하고 사이드바를 닫는다', () => {
-    const chat = createChatViewModel()
-    viewModelMocks.chat.mockReturnValue(chat)
-    viewModelMocks.readiness.mockReturnValue(createReadinessViewModel({ canSearch: false }))
+    const chat = createChatHook()
+    hookMocks.chat.mockReturnValue(chat)
+    hookMocks.readiness.mockReturnValue(createReadinessHook({ canSearch: false }))
     const { result } = renderHook(() => useChatPageViewModel())
 
     act(() => result.current.openSidebar())
@@ -143,7 +143,7 @@ describe('useChatPageViewModel', () => {
   })
 
   it('검색 중·0건·성공 결과를 스크린 리더 안내로 구분한다', () => {
-    let chat = createChatViewModel({
+    let chat = createChatHook({
       isSearching: true,
       messages: [{
         id: 'previous-result',
@@ -152,18 +152,18 @@ describe('useChatPageViewModel', () => {
         programs: [supportPrograms[0]],
       }],
     })
-    viewModelMocks.chat.mockImplementation(() => chat)
+    hookMocks.chat.mockImplementation(() => chat)
     const { result, rerender } = renderHook(() => useChatPageViewModel())
 
     expect(result.current.searchStatusAnnouncement).toBe('지원사업 공고를 검색하고 있습니다.')
 
-    chat = createChatViewModel({
+    chat = createChatHook({
       messages: [{ id: 'empty-result', role: 'assistant', text: '결과 없음', programs: [] }],
     })
     rerender()
     expect(result.current.searchStatusAnnouncement).toBe('지원사업 검색 결과 0건을 표시했습니다.')
 
-    chat = createChatViewModel({
+    chat = createChatHook({
       messages: [{
         id: 'successful-result',
         role: 'assistant',
@@ -176,7 +176,7 @@ describe('useChatPageViewModel', () => {
   })
 })
 
-function createChatViewModel(overrides: Partial<ChatViewModel> = {}): ChatViewModel {
+function createChatHook(overrides: Partial<ChatHook> = {}): ChatHook {
   return {
     canRetrySearch: false,
     conversationCount: 0,
@@ -194,9 +194,9 @@ function createChatViewModel(overrides: Partial<ChatViewModel> = {}): ChatViewMo
   }
 }
 
-function createReadinessViewModel(
-  overrides: Partial<ReadinessViewModel> = {},
-): ReadinessViewModel {
+function createReadinessHook(
+  overrides: Partial<ReadinessHook> = {},
+): ReadinessHook {
   return {
     canSearch: true,
     data: {

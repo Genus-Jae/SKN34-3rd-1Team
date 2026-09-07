@@ -7,15 +7,15 @@ import type { SupportProgramSearchReadiness } from '../../../../domain/entities/
 import {
   supportProgramReadinessPollingMilliseconds,
   supportProgramReadinessTimeoutMilliseconds,
-  useSupportProgramSearchReadinessViewModel,
-} from './useSupportProgramSearchReadinessViewModel'
+  useSupportProgramSearchReadiness,
+} from './useSupportProgramSearchReadiness'
 
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
 })
 
-describe('useSupportProgramSearchReadinessViewModel', () => {
+describe('useSupportProgramSearchReadiness', () => {
   it('times out an unresponsive initial check and allows manual retry without accepting its late response', async () => {
     vi.useFakeTimers()
     const pending = deferred<SupportProgramSearchReadiness>()
@@ -27,7 +27,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
       })
       .mockResolvedValueOnce(readiness('SEARCHABLE'))
     const useCase = createReadinessUseCase(execute)
-    const { result } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     await act(async () => vi.advanceTimersByTimeAsync(supportProgramReadinessTimeoutMilliseconds - 1))
     expect(result.current.isInitialLoading).toBe(true)
@@ -59,7 +59,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
     vi.useFakeTimers()
     const pending = deferred<SupportProgramSearchReadiness>()
     const useCase = createReadinessUseCase(vi.fn().mockReturnValue(pending.promise))
-    const { result } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     await act(async () => vi.advanceTimersByTimeAsync(supportProgramReadinessTimeoutMilliseconds))
     await act(async () => {
@@ -77,7 +77,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
     vi.useFakeTimers()
     const pending = deferred<SupportProgramSearchReadiness>()
     const useCase = createReadinessUseCase(vi.fn().mockReturnValue(pending.promise))
-    const { unmount } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { unmount } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     expect(vi.getTimerCount()).toBe(1)
     unmount()
@@ -93,7 +93,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
       return signals.length === 1 ? first.promise : second.promise
     })
     const useCase = createReadinessUseCase(execute)
-    const { result } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     await waitFor(() => expect(execute).toHaveBeenCalledOnce())
     let refetch!: Promise<void>
@@ -124,7 +124,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
       .mockResolvedValueOnce(readiness('PREPARING'))
       .mockResolvedValueOnce(readiness('SEARCHABLE'))
     const useCase = createReadinessUseCase(execute)
-    const { result } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     await act(async () => {
       await Promise.resolve()
@@ -148,7 +148,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
       return pending.promise
     })
     const useCase = createReadinessUseCase(execute)
-    const { unmount } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { unmount } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     await waitFor(() => expect(execute).toHaveBeenCalledOnce())
     unmount()
@@ -173,7 +173,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
       .mockResolvedValueOnce(partialReadiness)
       .mockResolvedValueOnce(readiness('SEARCHABLE'))
     const useCase = createReadinessUseCase(execute)
-    const { result } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     await act(async () => { await Promise.resolve() })
     expect(result.current.canSearch).toBe(true)
@@ -191,7 +191,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
       .mockResolvedValueOnce(readiness('SEARCHABLE'))
       .mockResolvedValueOnce(readiness('SEARCHABLE_WITH_SYNC_FAILURE'))
     const useCase = createReadinessUseCase(execute)
-    const { result } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
     await waitFor(() => expect(result.current.canSearch).toBe(true))
 
     await act(async () => result.current.refetch())
@@ -206,7 +206,7 @@ describe('useSupportProgramSearchReadinessViewModel', () => {
       .mockRejectedValueOnce(new Error('private upstream status'))
       .mockResolvedValueOnce(readiness('SEARCHABLE_WITH_SYNC_FAILURE'))
     const useCase = createReadinessUseCase(execute)
-    const { result } = renderHook(() => useSupportProgramSearchReadinessViewModel(useCase))
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.canSearch).toBe(false)

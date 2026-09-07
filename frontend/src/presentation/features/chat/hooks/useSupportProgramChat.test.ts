@@ -18,7 +18,7 @@ import {
   draftChanged,
   maximumSupportProgramSearchQueryLength,
 } from '../state/chatSlice'
-import { useSupportProgramChatViewModel } from './useSupportProgramChatViewModel'
+import { useSupportProgramChat } from './useSupportProgramChat'
 
 afterEach(() => {
   cleanup()
@@ -32,7 +32,7 @@ describe('Redux chat flow', () => {
       programs: [supportPrograms[0]],
     })
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('서울 AI')))
     await act(async () => result.current.submitMessage())
@@ -52,7 +52,7 @@ describe('Redux chat flow', () => {
     const pending = deferredSearchResult()
     const execute = vi.fn().mockReturnValue(pending.promise)
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('수출')))
     let firstSearch!: Promise<void>
@@ -76,7 +76,7 @@ describe('Redux chat flow', () => {
       return pending.promise
     })
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('제조')))
     let search!: Promise<void>
@@ -103,7 +103,7 @@ describe('Redux chat flow', () => {
       return firstPending.promise
     })
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('서울')))
     let firstSearch!: Promise<void>
@@ -130,7 +130,7 @@ describe('Redux chat flow', () => {
   it('500자를 넘는 검색어는 요청하지 않고 입력값과 검증 메시지를 유지한다', async () => {
     const execute = vi.fn()
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
     const overlongQuery = '가'.repeat(maximumSupportProgramSearchQueryLength + 1)
 
     act(() => store.dispatch(draftChanged(overlongQuery)))
@@ -147,7 +147,7 @@ describe('Redux chat flow', () => {
   it('stores a safe error when the search service fails', async () => {
     const execute = vi.fn().mockRejectedValue(new Error('private server detail'))
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('서울')))
     await act(async () => result.current.submitMessage())
@@ -170,7 +170,7 @@ describe('Redux chat flow', () => {
       .mockRejectedValueOnce(new SupportProgramRequestError(reason, seconds))
       .mockResolvedValueOnce({ query: '수출', programs: [supportPrograms[3]] })
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
     act(() => result.current.updateDraft('서울'))
     await act(async () => result.current.submitMessage())
     const priorMessages = store.getState().chat.messages
@@ -199,7 +199,7 @@ describe('Redux chat flow', () => {
       return pending.promise
     })
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('수출')))
     let search!: Promise<void>
@@ -229,7 +229,7 @@ describe('Redux chat flow', () => {
       return pending.promise
     })
     const store = createAppStore()
-    const { result } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('창업')))
     let search!: Promise<void>
@@ -284,7 +284,7 @@ describe('Redux chat flow', () => {
       return pending.promise
     })
     const store = createAppStore()
-    const { result, unmount } = renderChatViewModel(store, createSearchUseCase(execute))
+    const { result, unmount } = renderChatHook(store, createSearchUseCase(execute))
 
     act(() => store.dispatch(draftChanged('창업')))
     let search!: Promise<void>
@@ -303,11 +303,11 @@ describe('Redux chat flow', () => {
   })
 })
 
-function renderChatViewModel(
+function renderChatHook(
   store: ReturnType<typeof createAppStore>,
   searchUseCase: Pick<SearchSupportProgramsUseCase, 'execute'>,
 ) {
-  return renderHook(() => useSupportProgramChatViewModel(searchUseCase), {
+  return renderHook(() => useSupportProgramChat(searchUseCase), {
     wrapper: createWrapper(store),
   })
 }
