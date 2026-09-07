@@ -85,7 +85,7 @@ K-Startup API 연동은 아직 추가하지 않았으며 URL 허용 목록만 �
 ```text
 src/
 ├── app/                         # Redux Store, typed hook, Awilix 조립·등록
-├── presentation/features/chat/ # 채팅 검색 View, ViewModel, chat slice
+├── presentation/features/chat/ # 채팅 검색 View, 페이지 ViewModel, 내부 hooks, chat slice
 ├── presentation/features/support-program-detail/ # 상세 조회·원문 근거 질문 View, ViewModel
 ├── presentation/features/sample-item/ # 상태관리 비교 예제
 ├── presentation/shared/        # Core API 상태 표시, 지원사업 공통 오류 안내
@@ -93,8 +93,8 @@ src/
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture
 ```
 
-검색은 `View → ViewModel → UseCase → Repository → Fetch → Core API` 순서입니다. ViewModel은
-전역 `appContainer`에서 UseCase를 조회하고, ViewModel 내부 Thunk가 Redux의 요청·성공·실패 상태를
+검색은 `View → 페이지 ViewModel → 내부 Hook → UseCase → Repository → Fetch → Core API` 순서입니다.
+채팅 Hook은 전역 `appContainer`에서 UseCase를 조회하고, 내부 Thunk가 Redux의 요청·성공·실패 상태를
 변경합니다. Awilix 등록은 `app/di`에 있으며 Domain은 컨테이너를 알지 못합니다. 상세 조회는 같은
 UseCase·Repository 경계를 거치되 로딩·결과 상태를 ViewModel의 로컬 state에 둡니다.
 
@@ -104,9 +104,11 @@ UseCase·Repository 경계를 거치되 로딩·결과 상태를 ViewModel의 �
 `presentation/shared/support-program`에 둡니다. Domain·UseCase·Repository·DI는 기존 공용 계층을 유지합니다.
 
 `ChatPage`는 `useChatPageViewModel`이 반환하는 상태를 렌더링하고 이벤트를 연결합니다.
-페이지 ViewModel은 기존 채팅·검색 준비 상태 ViewModel을 조합해 제출·재시도·추천 질문의 검색
-가능 여부를 검사합니다. 사이드바 상태, IME 조합, 포커스·스크롤 effect와 검색 결과 안내도 이
-Hook이 소유합니다. 화면 전용 상태와 DOM ref는 Redux에 넣지 않고 Hook 로컬로 유지합니다.
+페이지 ViewModel은 `hooks/useSupportProgramChat`과 `hooks/useSupportProgramSearchReadiness`를
+조합해 제출·재시도·추천 질문의 검색 가능 여부를 검사합니다. 채팅 Hook은 Redux 상태와 검색·취소·
+시간 제한을 관리하고, 준비 상태 Hook은 상태 조회와 준비 중 polling을 담당합니다.
+사이드바 상태, IME 조합, 포커스·스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 소유합니다.
+화면 전용 상태와 DOM ref는 Redux에 넣지 않고 Hook 로컬로 유지합니다.
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷을 둡니다.
 
 | 소유자 | 현재 담당 상태 | 화면 이동·새로고침 동작 |
@@ -115,7 +117,8 @@ View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 �
 | Redux 메모리 | 채팅 메시지·입력·검색 상태, Redux SampleItem | 앱 내 이동 시 유지, 새로고침 시 초기화 |
 | 서버 | MySQL 공고 카탈로그 | 브라우저 상태와 별개로 유지 |
 
-Redux에는 직렬화 가능한 데이터만 저장하며 `AbortController`는 ViewModel의 `useRef`가 관리합니다.
+Redux에는 직렬화 가능한 데이터만 저장하며 채팅 요청의 `AbortController`는
+`useSupportProgramChat`의 `useRef`가 관리합니다.
 새 대화 시작·화면 이탈 시 요청을 취소하고, `requestId`가 다른 과거 응답은 무시합니다. 새 대화
 시작은 현재 메시지를 초기화하며 이전 대화 목록을 보관하지 않습니다.
 

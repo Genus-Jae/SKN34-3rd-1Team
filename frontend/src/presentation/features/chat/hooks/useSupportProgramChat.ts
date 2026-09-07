@@ -37,7 +37,8 @@ export const supportProgramSearchTimeoutMilliseconds = 70_000
 
 type SupportProgramSearchUseCase = Pick<SearchSupportProgramsUseCase, 'execute'>
 
-export function useSupportProgramChatViewModel(
+/** 채팅의 Redux 상태와 검색 요청·취소 수명을 관리하는 내부 훅입니다. */
+export function useSupportProgramChat(
   searchSupportProgramsUseCase: SupportProgramSearchUseCase = appContainer.resolve('searchSupportProgramsUseCase')
 ) {
   const dispatchToStore = useAppDispatch()

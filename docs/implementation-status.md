@@ -53,7 +53,9 @@ K-Startup 공식 URL 표시와 RAG 미지원 사전 안내를 검증했습니다
 `POST /detail/answers`는 사용자가 질문한 기업마당 현재 공고에 한해 공식 상세 HTML을 추가 수집해 근거 답변을
 만듭니다. 첨부문서는 수집하지 않습니다. 추천 이유·점수는 검색 문장에 종속되므로 상세 GET API에서는 빈 이유·null 점수로 반환합니다.
 
-관련 코드: [화면 라우트](../frontend/src/App.tsx), [채팅 ViewModel](../frontend/src/presentation/features/chat/viewmodel/useSupportProgramChatViewModel.ts),
+관련 코드: [화면 라우트](../frontend/src/App.tsx), [채팅 페이지 ViewModel](../frontend/src/presentation/features/chat/viewmodel/useChatPageViewModel.ts),
+[내부 채팅 Hook](../frontend/src/presentation/features/chat/hooks/useSupportProgramChat.ts),
+[내부 준비 상태 Hook](../frontend/src/presentation/features/chat/hooks/useSupportProgramSearchReadiness.ts),
 [공개 Controller](../backend/core-api/src/main/kotlin/ai/govbiz/core/supportprogram/controller/SupportProgramController.kt).
 
 ## 공고 수집·저장·동기화

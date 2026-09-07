@@ -15,17 +15,17 @@ vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => (
   CoreApiConnectionStatus: () => null,
 }))
 
-const readinessViewModelMock = vi.hoisted(() => ({
-  useSupportProgramSearchReadinessViewModel: vi.fn(),
+const readinessHookMock = vi.hoisted(() => ({
+  useSupportProgramSearchReadiness: vi.fn(),
 }))
 
-vi.mock('./presentation/features/chat/viewmodel/useSupportProgramSearchReadinessViewModel', () => (
-  readinessViewModelMock
+vi.mock('./presentation/features/chat/hooks/useSupportProgramSearchReadiness', () => (
+  readinessHookMock
 ))
 
 beforeEach(() => {
-  readinessViewModelMock.useSupportProgramSearchReadinessViewModel.mockReturnValue(
-    createReadinessViewModel(),
+  readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
+    createReadinessHook(),
   )
 })
 
@@ -480,8 +480,8 @@ describe('App navigation', () => {
   })
 
   it('초기 공고 데이터 준비 중에는 검색을 막고 준비 완료를 안내한다', () => {
-    readinessViewModelMock.useSupportProgramSearchReadinessViewModel.mockReturnValue(
-      createReadinessViewModel({
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
+      createReadinessHook({
         canSearch: false,
         data: {
           searchState: 'PREPARING',
@@ -509,8 +509,8 @@ describe('App navigation', () => {
   })
 
   it('공고 상태를 처음 확인하는 동안에는 준비 중과 구분된 안내를 표시한다', () => {
-    readinessViewModelMock.useSupportProgramSearchReadinessViewModel.mockReturnValue(
-      createReadinessViewModel({
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
+      createReadinessHook({
         canSearch: false,
         data: undefined,
         isInitialLoading: true,
@@ -525,8 +525,8 @@ describe('App navigation', () => {
   })
 
   it('최신 동기화가 실패해도 이전 공고 검색은 유지하고 동기화 시각을 보여 준다', async () => {
-    readinessViewModelMock.useSupportProgramSearchReadinessViewModel.mockReturnValue(
-      createReadinessViewModel({
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
+      createReadinessHook({
         data: {
           searchState: 'SEARCHABLE_WITH_SYNC_FAILURE',
           programCount: 12,
@@ -561,8 +561,8 @@ describe('App navigation', () => {
 
   it('검색 불가 상태는 검색을 막고 상태 확인을 다시 요청할 수 있다', () => {
     const refetch = vi.fn()
-    readinessViewModelMock.useSupportProgramSearchReadinessViewModel.mockReturnValue(
-      createReadinessViewModel({
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
+      createReadinessHook({
         canSearch: false,
         data: {
           searchState: 'UNAVAILABLE',
@@ -586,8 +586,8 @@ describe('App navigation', () => {
 
   it('일부 제공처만 준비되어도 검색을 허용하고 제공처별 상태와 검색 범위를 보여 준다', async () => {
     const refetch = vi.fn()
-    readinessViewModelMock.useSupportProgramSearchReadinessViewModel.mockReturnValue(
-      createReadinessViewModel({
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(
+      createReadinessHook({
         data: {
           searchState: 'SEARCHABLE_WITH_PARTIAL_SOURCES', programCount: 12, indexReady: true,
           lastSuccessfulSyncAt: '2026-09-05T09:00:00+09:00',
@@ -634,12 +634,12 @@ describe('App navigation', () => {
   })
 
   it('검색 실패 뒤 공고 상태가 검색 불가로 바뀌면 다시 검색 버튼을 숨긴다', async () => {
-    let currentReadiness = createReadinessViewModel()
-    readinessViewModelMock.useSupportProgramSearchReadinessViewModel.mockImplementation(
+    let currentReadiness = createReadinessHook()
+    readinessHookMock.useSupportProgramSearchReadiness.mockImplementation(
       () => currentReadiness,
     )
     const fetchMock = vi.fn(() => {
-      currentReadiness = createReadinessViewModel({
+      currentReadiness = createReadinessHook({
         canSearch: false,
         data: {
           searchState: 'UNAVAILABLE',
@@ -903,7 +903,7 @@ function getProgramCard(title: string): HTMLElement {
   return card
 }
 
-function createReadinessViewModel(overrides: {
+function createReadinessHook(overrides: {
   data?: Omit<SupportProgramSearchReadiness, 'sources'> & { sources?: SupportProgramSearchReadiness['sources'] }
   isError?: boolean
   isInitialLoading?: boolean
