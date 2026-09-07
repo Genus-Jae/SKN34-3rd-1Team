@@ -313,8 +313,16 @@ Awilix의 `app/di`에서 Repository·UseCase·외부 함수를 구성하고 `app
 제공합니다. ViewModel은 UseCase·외부 함수 토큰을 조회하며 Repository를 직접 생성하지 않습니다.
 `data/api`의 함수가 요청 URL·Fetch·Zod 응답 검증을 담당합니다.
 
+화면 기능은 `presentation/features/chat`의 채팅 검색과 `presentation/features/support-program-detail`의
+상세 조회·원문 근거 질문으로 나눕니다. 각 feature가 전용 View·스타일·ViewModel·테스트를 소유하고,
+서로의 화면 구현을 import하지 않습니다. 검색 카드와 상세 화면은 기존 상세 URL·복합 식별자로 연결합니다.
+검색과 근거 질문이 함께 쓰는 안전한 오류 문구는 `presentation/shared/support-program`에 둡니다.
+
 채팅 메시지·검색 조건은 Redux Toolkit으로 관리하고 검색 요청 흐름은 ViewModel의 thunk에 둡니다.
-화면 전용 DOM 참조·입력 조합 상태 등은 로컬 hook으로 관리합니다. React Router는 검색 화면,
+`ChatPage`는 `useChatPageViewModel`을 통해 채팅·검색 준비 상태를 함께 사용합니다. 페이지 ViewModel은
+검색 가능 여부에 따른 제출·재시도·추천 질문 처리와 사이드바 상태를 소유하고, DOM 참조·입력 조합·
+포커스·스크롤도 Hook 로컬로 관리합니다. View는 렌더링·이벤트 연결·순수 표시용 포맷을 담당합니다.
+React Router는 검색 화면,
 지원사업 상세와 두 SampleItem 예제 화면을 연결합니다. SampleItem은 업무 기능이 아니라 같은 UseCase의
 Hook 상태와 Redux 상태 차이를 비교하는 예제입니다.
 

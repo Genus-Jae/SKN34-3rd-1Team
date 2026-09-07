@@ -100,13 +100,21 @@ MVVM은 Model·View·ViewModel의 책임을 나누는 화면 설계입니다. �
 | 역할 | 실제 코드 | 담당 작업 |
 |---|---|---|
 | View | [ChatPage.tsx](../../frontend/src/presentation/features/chat/view/ChatPage.tsx) | 입력창·결과 카드 렌더링, 사용자 이벤트 연결 |
-| ViewModel | [useSupportProgramChatViewModel.ts](../../frontend/src/presentation/features/chat/viewmodel/useSupportProgramChatViewModel.ts) | `draft`, `messages`, `isSearching` 등 상태와 `submitMessage` 등 동작 제공 |
+| 페이지 ViewModel | [useChatPageViewModel.ts](../../frontend/src/presentation/features/chat/viewmodel/useChatPageViewModel.ts) | 채팅·준비 상태 조합, 검색 가능 여부 검사, 사이드바·IME·포커스·스크롤, 화면 이벤트 제공 |
+| 채팅 ViewModel | [useSupportProgramChatViewModel.ts](../../frontend/src/presentation/features/chat/viewmodel/useSupportProgramChatViewModel.ts) | `draft`, `messages`, `isSearching` 등 Redux 상태와 검색·취소 요청 흐름 관리 |
 | Model 측 | Domain 모델·UseCase·Repository | 검색 조건과 공고 데이터, 검색·상세 조회 실행 |
 
-View는 Hook이 반환한 상태를 렌더링하고 사용자가 제출하면 Hook의 `submitMessage()`를 호출합니다.
-Hook은 UseCase 실행과 요청 수명을 관리합니다. Hook을 사용했다는 사실만으로 MVVM이 되는 것이 아니라,
-이처럼 화면 동작을 ViewModel의 책임으로 구성했기 때문에 MVVM 방식으로 설명합니다.
-사이드바·IME 조합·스크롤 DOM 참조 같은 순수 화면 동작은 View 안에 남겨 둡니다.
+View는 페이지 Hook이 반환한 상태를 렌더링하고 사용자 이벤트를 반환된 handler에 연결합니다.
+페이지 ViewModel은 검색 준비 상태를 확인한 뒤 채팅 ViewModel의 `submitMessage()`를 호출하고,
+채팅 ViewModel은 UseCase 실행과 요청 수명을 관리합니다. 사이드바 상태·IME 조합·스크롤 DOM 참조와
+포커스 제어도 페이지 ViewModel에 두되, 화면 전용 상태와 ref는 Redux가 아닌 Hook 로컬로 유지합니다.
+View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷만 남깁니다.
+
+상세 조회·원문 근거 질문은 별도 `support-program-detail` feature에 둡니다.
+[SupportProgramDetailPage.tsx](../../frontend/src/presentation/features/support-program-detail/view/SupportProgramDetailPage.tsx)와
+전용 View·스타일·ViewModel·테스트를 함께 배치하고, 채팅 feature의 화면 구현이나 상태에 의존하지 않습니다.
+채팅은 상세 URL의 제공처·원본 공고 ID만 전달합니다. 두 feature가 공유하는 오류 안내 문구는
+`presentation/shared/support-program`에 두며 Domain·UseCase·Repository·DI 경계는 그대로 유지합니다.
 
 ### Redux Toolkit의 Flux 계열 단방향 흐름
 
@@ -116,7 +124,8 @@ Redux Store 자체를 Model 전체나 ViewModel 전체와 같은 것으로 취�
 
 ```text
 ChatPage의 제출 이벤트
-  → ViewModel.submitMessage → dispatch(Thunk)
+  → 페이지 ViewModel.handleSubmit → 검색 준비 상태 확인
+  → 채팅 ViewModel.submitMessage → dispatch(Thunk)
       ├→ dispatch(searchStarted) → chat Reducer → pending 상태
       └→ await UseCase.execute(...)
           ├→ 성공: dispatch(searchSucceeded) → 결과·메시지 반영

@@ -5,7 +5,7 @@ import { useAppDispatch, useAppSelector } from '../../../../app/hooks'
 import type { AppDispatch, RootState } from '../../../../app/store'
 import type { SearchSupportProgramsUseCase } from '../../../../domain/usecases/SearchSupportProgramsUseCase'
 import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
-import { supportProgramRequestFailureMessage } from './supportProgramRequestFailureMessage'
+import { supportProgramRequestFailureMessage } from '../../../shared/support-program/supportProgramRequestFailureMessage'
 import {
   conversationReset,
   draftChanged,

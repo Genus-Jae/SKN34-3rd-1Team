@@ -1,4 +1,3 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
@@ -6,11 +5,7 @@ import type {
   SupportProgramSearchReadiness,
   SupportProgramSourceSearchState,
 } from '../../../../domain/entities/SupportProgramSearchReadiness'
-import {
-  supportProgramChatSuggestions,
-  useSupportProgramChatViewModel,
-} from '../viewmodel/useSupportProgramChatViewModel'
-import { useSupportProgramSearchReadinessViewModel } from '../viewmodel/useSupportProgramSearchReadinessViewModel'
+import { useChatPageViewModel } from '../viewmodel/useChatPageViewModel'
 import {
   chatBackdropClassName,
   chatMessageBubbleClassName,
@@ -19,7 +14,6 @@ import {
   chatSidebarClassName,
 } from './ChatPage.styles'
 
-const chatMobileMediaQuery = '(max-width: 47.5rem)'
 const syncTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -27,145 +21,36 @@ const syncTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
 })
 
 export function ChatPage() {
-  const readiness = useSupportProgramSearchReadinessViewModel()
   const {
+    canSearch,
     canRetrySearch,
     conversationCount,
     cancelSearch,
+    closeSidebar,
     draft,
+    handleCompositionEnd,
+    handleCompositionStart,
+    handleDraftChange,
+    handleInputKeyDown,
+    handleRetrySearch,
+    handleSelectSuggestion,
+    handleStartNewConversation,
+    handleSubmit,
     isReadyToSubmit,
     isSearching,
+    isSidebarOpen,
+    menuButtonRef,
     messages,
+    openSidebar,
+    readiness,
+    refetchReadiness,
     searchError,
-    selectSuggestion,
-    startNewConversation,
-    submitMessage,
-    updateDraft,
-  } = useSupportProgramChatViewModel()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const isComposingInput = useRef(false)
-  const menuButtonRef = useRef<HTMLButtonElement>(null)
-  const sidebarRef = useRef<HTMLElement>(null)
-  const sidebarPrimaryActionRef = useRef<HTMLButtonElement>(null)
-  const shouldRestoreMenuFocusRef = useRef(false)
-  const timelineRef = useRef<HTMLDivElement>(null)
-  const latestMessage = messages.at(-1)
-  const searchStatusAnnouncement = isSearching
-    ? '지원사업 공고를 검색하고 있습니다.'
-    : latestMessage?.role === 'assistant' && latestMessage.programs
-      ? `지원사업 검색 결과 ${latestMessage.programs.length}건을 표시했습니다.`
-      : ''
-
-  useEffect(() => {
-    const timeline = timelineRef.current
-    if (timeline) timeline.scrollTop = timeline.scrollHeight
-  }, [messages, isSearching])
-
-  useEffect(() => {
-    if (!isSidebarOpen) {
-      if (shouldRestoreMenuFocusRef.current) {
-        menuButtonRef.current?.focus()
-        shouldRestoreMenuFocusRef.current = false
-      }
-      return
-    }
-
-    const sidebar = sidebarRef.current
-    if (!sidebar) return
-
-    focusFirstSidebarElement(sidebar)
-
-    function handleSidebarKeyboardNavigation(event: KeyboardEvent) {
-      const currentSidebar = sidebarRef.current
-      if (!currentSidebar) return
-
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        closeSidebar()
-        return
-      }
-      if (event.key !== 'Tab') return
-
-      const focusableElements = getSidebarFocusableElements(currentSidebar)
-      if (focusableElements.length === 0) {
-        event.preventDefault()
-        currentSidebar.focus()
-        return
-      }
-
-      const firstElement = focusableElements[0]
-      const lastElement = focusableElements.at(-1)
-      const activeElement = document.activeElement
-      const isFocusInsideSidebar = currentSidebar.contains(activeElement)
-      const shouldMoveToFirst = !event.shiftKey && (
-        activeElement === lastElement || !isFocusInsideSidebar
-      )
-      const shouldMoveToLast = event.shiftKey && (
-        activeElement === firstElement || activeElement === currentSidebar || !isFocusInsideSidebar
-      )
-
-      if (shouldMoveToFirst) {
-        event.preventDefault()
-        firstElement.focus()
-      }
-      if (shouldMoveToLast && lastElement) {
-        event.preventDefault()
-        lastElement.focus()
-      }
-    }
-
-    document.addEventListener('keydown', handleSidebarKeyboardNavigation)
-    return () => document.removeEventListener('keydown', handleSidebarKeyboardNavigation)
-  }, [isSidebarOpen])
-
-  useEffect(() => {
-    if (!isSidebarOpen) return
-
-    const mediaQuery = window.matchMedia(chatMobileMediaQuery)
-
-    function closeSidebarForDesktop(event: MediaQueryListEvent) {
-      if (event.matches) return
-
-      shouldRestoreMenuFocusRef.current = false
-      setIsSidebarOpen(false)
-      sidebarPrimaryActionRef.current?.focus()
-    }
-
-    mediaQuery.addEventListener('change', closeSidebarForDesktop)
-    return () => mediaQuery.removeEventListener('change', closeSidebarForDesktop)
-  }, [isSidebarOpen])
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!readiness.canSearch) return
-    void submitMessage()
-  }
-
-  function handleStartNewConversation() {
-    startNewConversation()
-    closeSidebar()
-  }
-
-  function handleSelectSuggestion(suggestion: string) {
-    if (!readiness.canSearch) return
-    selectSuggestion(suggestion)
-    closeSidebar()
-  }
-
-  function handleRetrySearch() {
-    if (!readiness.canSearch) return
-    void submitMessage()
-  }
-
-  function openSidebar() {
-    shouldRestoreMenuFocusRef.current = false
-    setIsSidebarOpen(true)
-  }
-
-  function closeSidebar() {
-    shouldRestoreMenuFocusRef.current = true
-    setIsSidebarOpen(false)
-  }
+    searchStatusAnnouncement,
+    sidebarPrimaryActionRef,
+    sidebarRef,
+    suggestions,
+    timelineRef,
+  } = useChatPageViewModel()
 
   return (
     <main className={chatPageStyles.page}>
@@ -227,13 +112,13 @@ export function ChatPage() {
           <p className={chatPageStyles.sidebarSectionTitle}>
             추천 질문
           </p>
-          {supportProgramChatSuggestions.map((suggestion) => (
+          {suggestions.map((suggestion) => (
             <button
               key={suggestion}
               type="button"
               className={chatPageStyles.popularQuestionButton}
               onClick={() => handleSelectSuggestion(suggestion)}
-              disabled={!readiness.canSearch}
+              disabled={!canSearch}
             >
               {suggestion}
             </button>
@@ -320,13 +205,13 @@ export function ChatPage() {
                   </div>
                   {message.id === messages[0]?.id ? (
                     <div className={chatPageStyles.suggestedQuestions}>
-                      {supportProgramChatSuggestions.map((suggestion) => (
+                      {suggestions.map((suggestion) => (
                         <button
                           key={suggestion}
                           type="button"
                           className={chatPageStyles.suggestedQuestionButton}
                           onClick={() => handleSelectSuggestion(suggestion)}
-                          disabled={!readiness.canSearch}
+                          disabled={!canSearch}
                         >
                           {suggestion}
                         </button>
@@ -365,14 +250,12 @@ export function ChatPage() {
             isError={readiness.isError}
             isInitialLoading={readiness.isInitialLoading}
             isRefreshing={readiness.isRefreshing}
-            onRetry={() => {
-              void readiness.refetch()
-            }}
+            onRetry={refetchReadiness}
           />
           {searchError ? (
             <div className={chatPageStyles.searchError} role="alert">
               <span>{searchError}</span>
-              {canRetrySearch && readiness.canSearch ? (
+              {canRetrySearch ? (
                 <button
                   type="button"
                   className={chatPageStyles.searchRetryButton}
@@ -389,25 +272,11 @@ export function ChatPage() {
               aria-label="지원사업 검색어"
               aria-describedby="support-program-search-readiness"
               value={draft}
-              disabled={!readiness.canSearch}
-              onChange={(event) => updateDraft(event.target.value)}
-              onCompositionStart={() => {
-                isComposingInput.current = true
-              }}
-              onCompositionEnd={() => {
-                isComposingInput.current = false
-              }}
-              onKeyDown={(event) => {
-                if (
-                  isComposingInput.current ||
-                  event.nativeEvent.isComposing ||
-                  event.nativeEvent.keyCode === 229
-                ) return
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  event.currentTarget.form?.requestSubmit()
-                }
-              }}
+              disabled={!canSearch}
+              onChange={handleDraftChange}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              onKeyDown={handleInputKeyDown}
               placeholder="예: 서울에서 AI 창업지원 사업을 찾아줘"
               rows={1}
             />
@@ -424,7 +293,7 @@ export function ChatPage() {
                 type="submit"
                 className={chatPageStyles.submitButton}
                 aria-label="검색 전송"
-                disabled={!isReadyToSubmit || !readiness.canSearch}
+                disabled={!isReadyToSubmit}
               >
                 ↑
               </button>
@@ -685,27 +554,4 @@ function formatApplicationDeadline(program: SupportProgram) {
 
   const [, month, day] = program.applicationEndDate.split('-')
   return `마감 ${Number(month)}월 ${Number(day)}일`
-}
-
-const sidebarFocusableSelector = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',')
-
-function focusFirstSidebarElement(sidebar: HTMLElement) {
-  const [firstElement] = getSidebarFocusableElements(sidebar)
-  if (firstElement) {
-    firstElement.focus()
-    return
-  }
-  sidebar.focus()
-}
-
-function getSidebarFocusableElements(sidebar: HTMLElement): HTMLElement[] {
-  return Array.from(sidebar.querySelectorAll<HTMLElement>(sidebarFocusableSelector))
-    .filter((element) => element.getAttribute('aria-hidden') !== 'true')
 }
