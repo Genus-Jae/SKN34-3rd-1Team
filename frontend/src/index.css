@@ -14,6 +14,24 @@
   --animate-connection-pulse: connection-pulse 1s ease-in-out infinite alternate;
   --animate-chat-loading-dot: chat-loading-dot 1.4s ease-in-out infinite;
   --animate-chat-loading-sweep: chat-loading-sweep 2.1s ease-in-out infinite;
+  --animate-search-intro-enter: search-intro-enter 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-search-intro-highlight: search-intro-highlight 3s ease-in-out 450ms both;
+
+  @keyframes search-intro-enter {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes search-intro-highlight {
+    from { background-position: 100% 50%; }
+    to { background-position: 0% 50%; }
+  }
 
   @keyframes chat-loading-dot {
     0%, 60%, 100% {

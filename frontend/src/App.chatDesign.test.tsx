@@ -34,8 +34,9 @@ function renderChat(path = '/') {
 describe('참고 이미지 기반 채팅 디자인', () => {
   it('공개 검색은 소개와 넓은 빈 입력으로 시작하고 가짜 이용 한도·기관 수를 표시하지 않는다', () => {
     const fetchMock = renderChat()
-    expect(screen.getByRole('heading', { level: 1, name: /상황만 입력하면, AI가.*우리 회사 지원사업을 찾아드립니다/ })).toBeTruthy()
-    expect(screen.getByText('AI 맞춤 검색')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.' })).toBeTruthy()
+    expect(screen.getByText('회사의 지역과 업종, 필요한 지원을 알려주세요. 관련 공고와 확인할 신청 조건을 함께 안내합니다.')).toBeTruthy()
+    expect(screen.queryByText('AI 맞춤 검색')).toBeNull()
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
     expect(input.value).toBe('')
     expect(input.rows).toBe(3)
@@ -50,7 +51,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' }))
     expect(input.value).toBe('서울 AI 창업지원 사업 찾아줘')
     expect(input.rows).toBe(3)
-    expect(screen.getByRole('heading', { level: 1, name: /상황만 입력하면, AI가/ })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: /우리 회사에 맞는 지원사업/ })).toBeTruthy()
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBe(input)
     expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
@@ -63,6 +64,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     for (const id of ids) expect(document.getElementById(id)).toBeTruthy()
     expect(screen.getByText(/Enter로 전송 · Shift\+Enter로 줄바꿈/)).toBeTruthy()
     expect(screen.getByRole('link', { name: '지원사업 찾기' }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: 'GovBiz 홈으로' }).getAttribute('href')).toBe('/')
     expect(screen.getByRole('link', { name: '파트너 모집' }).getAttribute('href')).toBe('/partners')
   })
 
@@ -74,7 +76,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     for (const draft of ['', '   ', '가'.repeat(501)]) {
       fireEvent.change(input, { target: { value: draft } })
       fireEvent.submit(form)
-      expect(screen.getByRole('heading', { level: 1, name: /상황만 입력하면, AI가/ })).toBeTruthy()
+      expect(screen.getByRole('heading', { level: 1, name: /우리 회사에 맞는 지원사업/ })).toBeTruthy()
       expect(input.rows).toBe(3)
       expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBe(input)
       expect(input.closest('form')).toBe(form)
@@ -110,7 +112,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     expectNoLoadingCards()
 
     fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
-    expect(screen.getByRole('heading', { level: 1, name: /상황만 입력하면, AI가/ })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: /우리 회사에 맞는 지원사업/ })).toBeTruthy()
     expect(input.rows).toBe(3)
     expect(input.value).toBe('')
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBe(input)
@@ -245,7 +247,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
 })
 
 function expectDockedChat(input: HTMLTextAreaElement, form: HTMLFormElement) {
-  expect(screen.queryByRole('heading', { level: 1, name: /상황만 입력하면, AI가/ })).toBeNull()
+  expect(screen.queryByRole('heading', { level: 1, name: /우리 회사에 맞는 지원사업/ })).toBeNull()
   expect(screen.getByRole('heading', { level: 1, name: '지원사업 채팅' })).toBeTruthy()
   expect(screen.queryByText('AI 맞춤 검색')).toBeNull()
   expect(screen.getAllByRole('textbox', { name: '지원사업 검색어' })).toEqual([input])
