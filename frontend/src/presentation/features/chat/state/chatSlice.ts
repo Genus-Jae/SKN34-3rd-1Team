@@ -155,7 +155,10 @@ const chatSlice = createSlice({
       ) {
         if (state.searchStatus === 'pending') return
         state.activeRequestId = action.payload.requestId
-        state.draft = ''
+        // 재시도는 실패한 검색만 다시 보내며, 작성 중인 다른 초안은 보존합니다.
+        if (state.searchStatus !== 'failed' || state.draft.trim() === action.payload.query) {
+          state.draft = ''
+        }
         const existingMessage = state.messages.find((message) => message.id === action.payload.messageId)
         const snapshot = copySearchOptions(action.payload.searchOptions ?? state.searchOptions)
         if (existingMessage) {

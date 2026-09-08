@@ -6,13 +6,12 @@ function classes(...groups: string[]) {
 // 두 화면은 같은 껍데기를 공유하고 카드 안의 입력 항목만 달라집니다.
 export const authPageStyles = {
   page: classes(
-    'grid min-h-screen grid-cols-[560px_minmax(0,1fr)] bg-app-canvas text-app-ink',
-    'max-chat:grid-cols-1',
+    'grid min-h-screen grid-cols-1 bg-app-canvas text-app-ink',
+    'min-[1100px]:grid-cols-[560px_minmax(0,1fr)]',
   ),
   brandPanel: classes(
-    'flex flex-col gap-11 px-[3.25rem] py-14 text-[#e9edff]',
+    'hidden flex-col gap-11 px-[3.25rem] py-14 text-[#e9edff] min-[1100px]:flex',
     'bg-[linear-gradient(180deg,#1c2342_0%,#11162e_100%)]',
-    'max-chat:hidden',
   ),
   brand: 'flex items-center gap-3 text-[#e9edff] no-underline',
   brandMark:
@@ -32,9 +31,9 @@ export const authPageStyles = {
   brandFeatureTitle: 'block text-[0.9rem] font-bold text-white',
   brandFeatureDescription: 'mt-[0.2rem] block text-[0.78rem] leading-[1.5] text-[#c8d0eb]',
   brandFooter: 'mt-auto mb-0 text-[0.72rem] leading-[1.55] text-[#7783a9]',
-  formPanel: 'grid place-items-center p-12 max-chat:px-5 max-chat:py-8',
+  formPanel: 'grid min-w-0 place-items-center p-12 max-chat:px-5 max-chat:py-8',
   card: classes(
-    'flex w-[440px] max-w-full flex-col gap-6 rounded-[1.25rem] border bg-white p-10',
+    'flex min-w-0 w-full max-w-[440px] flex-col gap-6 rounded-[1.25rem] border bg-white p-10',
     'border-sample-border shadow-[0_20px_50px_rgb(33_59_126_/_8%)] max-chat:p-6',
   ),
   cardHeader: 'flex flex-col gap-2',
@@ -46,11 +45,12 @@ export const authPageStyles = {
   field: 'flex flex-col gap-2 text-[0.9rem] font-bold text-[#1e2a49]',
   fieldControl: classes(
     'box-border min-h-12 w-full rounded-[0.7rem] border px-[0.9rem] py-[0.8rem] text-[0.95rem] font-normal',
-    'border-[#cbd5ec] bg-[#fbfcff] text-[#17213d] placeholder:text-[#8a94ae]',
+    'border-[#cbd5ec] bg-[#fbfcff] text-[#17213d] placeholder:text-sample-muted',
     'focus:border-[#7774d7] focus:shadow-[0_0_0_3px_rgb(119_116_215_/_15%)] focus:outline-0',
   ),
-  fieldHint: 'text-[0.75rem] font-medium text-[#7a849d]',
-  optionsRow: 'flex items-center justify-between gap-4',
+  fieldHint: 'text-[0.75rem] font-medium text-sample-muted',
+  fieldError: 'm-0 text-[0.82rem] font-medium text-[#9a3947]',
+  optionsRow: 'flex flex-wrap items-center justify-between gap-4',
   checkboxLabel: 'inline-flex items-center gap-2 text-[0.82rem] font-normal text-[#43527a]',
   checkbox: 'size-[1.05rem] accent-brand-primary',
   helperLink: 'text-[0.82rem] font-bold text-[#5e5fc8] no-underline hover:text-[#504ebd]',
@@ -62,10 +62,10 @@ export const authPageStyles = {
   ),
   divider: 'flex items-center gap-3',
   dividerLine: 'h-px flex-1 bg-[#e4e8f5]',
-  dividerText: 'text-[0.75rem] text-[#8a94ae]',
+  dividerText: 'text-[0.75rem] text-sample-muted',
   secondaryButton: classes(
     'inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-[0.7rem] border bg-white px-4 py-[0.85rem]',
     'border-[#dfe4f2] text-[0.9rem] font-bold text-[#536087] no-underline hover:border-[#7774d7] hover:text-[#504ebd]',
   ),
-  cardFooter: 'm-0 text-center text-[0.72rem] leading-[1.55] text-[#8a94ae]',
+  cardFooter: 'm-0 text-center text-[0.72rem] leading-[1.55] text-sample-muted',
 } as const

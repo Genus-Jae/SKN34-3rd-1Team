@@ -20,6 +20,20 @@ afterEach(() => {
 })
 
 describe('searchSupportProgramsApi', () => {
+  it('다른 검색어의 결과를 현재 검색 결과로 표시하지 않고 명시적인 오류로 반환한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ query: '부산 수출', programs: [supportPrograms[0]] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(new SupportProgramRepositoryImpl().search({ query: '서울 AI' }))
+      .rejects.toThrow('different search query')
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it.each(['  서울 AI  ', '', '   '])('정상 trim과 빈 검색어 최신 목록 응답을 보존한다: %j', async (query) => {
+    const response = { query: query.trim(), programs: [supportPrograms[0]] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(response)))
+    await expect(searchSupportProgramsApi({ query })).resolves.toEqual(response)
+  })
+
   it('검색별 자격 판정·축별 원문 인용을 HTTP에서 도메인까지 보존한다', async () => {
     const programs = [conditionMatchedProgram, relocationReviewRequiredProgram]
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ query: '사업화', programs })))

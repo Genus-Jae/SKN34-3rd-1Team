@@ -16,6 +16,32 @@ afterEach(() => {
 })
 
 describe('useSupportProgramSearchReadiness', () => {
+  it('keeps search blocked while rechecking after a failure with stale searchable data', async () => {
+    const pending = deferred<SupportProgramSearchReadiness>()
+    const execute = vi.fn()
+      .mockResolvedValueOnce(readiness('SEARCHABLE'))
+      .mockRejectedValueOnce(new Error('readiness unavailable'))
+      .mockReturnValueOnce(pending.promise)
+    const useCase = createReadinessUseCase(execute)
+    const { result } = renderHook(() => useSupportProgramSearchReadiness(useCase))
+    await waitFor(() => expect(result.current.canSearch).toBe(true))
+    await act(async () => result.current.refetch())
+    expect(result.current.canSearch).toBe(false)
+
+    let retry!: Promise<void>
+    act(() => { retry = result.current.refetch() })
+    expect(result.current.isRefreshing).toBe(true)
+    expect(result.current.isError).toBe(true)
+    expect(result.current.canSearch).toBe(false)
+
+    await act(async () => {
+      pending.resolve(readiness('SEARCHABLE'))
+      await retry
+    })
+    expect(result.current.isError).toBe(false)
+    expect(result.current.canSearch).toBe(true)
+  })
+
   it('times out an unresponsive initial check and allows manual retry without accepting its late response', async () => {
     vi.useFakeTimers()
     const pending = deferred<SupportProgramSearchReadiness>()

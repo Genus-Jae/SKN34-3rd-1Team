@@ -9,9 +9,81 @@ import type { SampleItemPreparation } from '../../../../domain/entities/SampleIt
 import type { PrepareSampleItemUseCase } from '../../../../domain/usecases/PrepareSampleItemUseCase'
 import { useSampleItemViewModel } from './useSampleItemViewModel'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.useRealTimers() })
 
 describe('useSampleItemViewModel', () => {
+  it.each(['edit', 'unmount'] as const)('does not start an outdated request when %s happens during form validation', async (operation) => {
+    const execute = vi.fn().mockResolvedValue(successfulPreparation('이전 입력'))
+    const { unmount } = render(<TestHarness useCase={{ execute }} />)
+    fireEvent.change(screen.getByTestId('name-input'), { target: { value: '이전 입력' } })
+    await waitFor(() => expect(submitButton().disabled).toBe(false))
+
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('sample-form'))
+      if (operation === 'edit') {
+        fireEvent.change(screen.getByTestId('name-input'), { target: { value: '새 입력' } })
+      } else unmount()
+    })
+
+    expect(execute).not.toHaveBeenCalled()
+    if (operation === 'edit') {
+      expect(screen.queryByTestId('preparation')).toBeNull()
+      expect(submitButton().disabled).toBe(false)
+      fireEvent.submit(screen.getByTestId('sample-form'))
+      await waitFor(() => expect(execute).toHaveBeenCalledOnce())
+      expect(execute.mock.calls[0][0].name).toBe('새 입력')
+    }
+  })
+
+  it('times out after 10 seconds, allows retry, and ignores the earlier late response', async () => {
+    const initial = deferred<SampleItemPreparation>()
+    const retry = deferred<SampleItemPreparation>()
+    const execute = vi.fn().mockReturnValueOnce(initial.promise).mockReturnValueOnce(retry.promise)
+    render(<TestHarness useCase={{ execute }} />)
+    fireEvent.change(screen.getByTestId('name-input'), { target: { value: '같은 입력' } })
+    await waitFor(() => expect(submitButton().disabled).toBe(false))
+    vi.useFakeTimers()
+    await act(async () => { fireEvent.submit(screen.getByTestId('sample-form')) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_999) })
+    expect(submitButton().disabled).toBe(true)
+    expect(execute.mock.calls[0][1].aborted).toBe(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(execute.mock.calls[0][1].aborted).toBe(true)
+    expect(screen.getByTestId('preparation-error').textContent).toContain('시간이 초과')
+    expect(submitButton().disabled).toBe(false)
+    expect(submitButton().textContent).toBe('다시 요청')
+    expect(vi.getTimerCount()).toBe(0)
+
+    await act(async () => { fireEvent.submit(screen.getByTestId('sample-form')) })
+    expect(execute).toHaveBeenCalledTimes(2)
+    expect(execute.mock.calls[1][0]).toEqual(execute.mock.calls[0][0])
+    await act(async () => { initial.resolve(successfulPreparation('이전 결과')); await initial.promise })
+    expect(screen.queryByTestId('preparation')).toBeNull()
+    expect(submitButton().disabled).toBe(true)
+    expect(vi.getTimerCount()).toBe(1)
+    await act(async () => { retry.resolve(successfulPreparation('같은 입력')); await retry.promise })
+    expect(screen.getByTestId('preparation').textContent).toBe('같은 입력')
+    expect(screen.queryByTestId('preparation-error')).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['edit', 'unmount'] as const)('clears the request timeout on %s', async (operation) => {
+    const pending = deferred<SampleItemPreparation>()
+    const execute = vi.fn().mockReturnValue(pending.promise)
+    const { unmount } = render(<TestHarness useCase={{ execute }} />)
+    fireEvent.change(screen.getByTestId('name-input'), { target: { value: '예제' } })
+    await waitFor(() => expect(submitButton().disabled).toBe(false))
+    vi.useFakeTimers()
+    await act(async () => { fireEvent.submit(screen.getByTestId('sample-form')) })
+    expect(vi.getTimerCount()).toBe(1)
+    if (operation === 'edit') fireEvent.change(screen.getByTestId('name-input'), { target: { value: '수정' } })
+    else unmount()
+    expect(execute.mock.calls[0][1].aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => { pending.resolve(successfulPreparation('예제')); await pending.promise })
+    if (operation === 'edit') expect(screen.queryByTestId('preparation-error')).toBeNull()
+  })
+
   it('normalizes the item, blocks duplicate submits, and stores the result', async () => {
     const pending = deferred<SampleItemPreparation>()
     const prepareSampleItem = vi.fn(

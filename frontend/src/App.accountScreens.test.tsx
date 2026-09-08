@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { createAppStore } from './app/store'
@@ -12,9 +12,15 @@ vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => (
   CoreApiConnectionStatus: () => null,
 }))
 
+beforeEach(() => {
+  // 작업 화면 진입 후 readiness 확인도 실제 서버에 연결하지 않습니다.
+  vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+})
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('계정 화면', () => {
@@ -48,13 +54,69 @@ describe('계정 화면', () => {
     expect(screen.getByText('비밀번호 재설정 · 준비 중')).toBeTruthy()
   })
 
-  it('가입하면 사이드바가 있는 작업 화면으로 이동한다', () => {
+  it('회원가입 입력이 비어 있으면 데모 작업 화면으로 이동하지 않는다', () => {
     renderApp('/signup')
+    fireEvent.submit(screen.getByRole('form', { name: '회원가입' }))
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain('이메일')
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: '가입하기' }))
+  it('비밀번호 확인이 다르면 입력 화면에서 설명한다', () => {
+    renderApp('/signup')
+    const form = screen.getByRole('form', { name: '회원가입' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'Demo1234' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호 확인'), { target: { value: 'Different1234' } })
+    fireEvent.submit(form)
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain('일치')
+  })
+
+  it('유효한 가입 입력을 확인하면 계정을 생성하지 않고 데모 작업 화면으로 이동한다', () => {
+    renderApp('/signup')
+    const form = screen.getByRole('form', { name: '회원가입' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'Demo1234' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호 확인'), { target: { value: 'Demo1234' } })
+    expect(fetch).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '가입 입력 확인 · 데모' }))
 
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
+    for (const [url, options] of vi.mocked(fetch).mock.calls) {
+      expect(String(url)).not.toMatch(/demo@example|Demo1234/)
+      expect(options?.body).toBeUndefined()
+    }
+  })
+
+  it.each(['short1', 'abcdefgh', '12345678'])('안내한 비밀번호 조건을 충족하지 못하면 이동하지 않는다: %s', (password) => {
+    renderApp('/signup')
+    const form = screen.getByRole('form', { name: '회원가입' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: password } })
+    fireEvent.change(within(form).getByLabelText('비밀번호 확인'), { target: { value: password } })
+    fireEvent.submit(form)
+    expect(screen.getByRole('alert').textContent).toContain('8자')
+    expect(document.activeElement).toBe(within(form).getByLabelText('비밀번호'))
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it.each(['/login', '/signup'])('인증 데모 안내와 모바일에서도 보이는 공개 검색 링크를 제공한다: %s', (path) => {
+    renderApp(path)
+    const form = screen.getByRole('form')
+    expect(within(form).getByText(/입력값은 전송·저장되지 않습니다/)).toBeTruthy()
+    expect(within(form).getByRole('link', { name: /없이 지원사업 검색/ }).getAttribute('href')).toBe('/')
+    expect(within(form).getByLabelText('비밀번호').getAttribute('autocomplete')).toBe('off')
+  })
+
+  it.each(['', 'invalid-email'])('로그인 데모도 빈 값과 잘못된 이메일을 차단한다: %s', (email) => {
+    renderApp('/login')
+    const form = screen.getByRole('form', { name: '로그인' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: email } })
+    fireEvent.submit(form)
+    expect(screen.getByRole('alert').textContent).toContain('이메일')
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
   })
 })
 
@@ -145,6 +207,18 @@ describe('기업 프로필 화면', () => {
     expect(within(qualifications).getByText('보유 · 2027-03 만료')).toBeTruthy()
     expect(within(qualifications).queryByText('자격 있음')).toBeNull()
   })
+
+  it('프로필 임시 변경은 저장된 것처럼 표시하지 않고 화면 재진입 시 초기화한다', () => {
+    renderApp('/profile')
+    expect(screen.getByText(/설정 변경은 저장·공개되지 않으며/)).toBeTruthy()
+    const input = screen.getByLabelText('보유 역량·실적') as HTMLTextAreaElement
+    const original = input.value
+    fireEvent.change(input, { target: { value: '임시 데모 입력' } })
+    fireEvent.click(screen.getByRole('link', { name: '파트너 모집' }))
+    fireEvent.click(screen.getByRole('link', { name: '내 프로필' }))
+    expect((screen.getByLabelText('보유 역량·실적') as HTMLTextAreaElement).value).toBe(original)
+    expect(fetch).not.toHaveBeenCalled()
+  })
 })
 
 describe('파트너 모집 화면', () => {
@@ -191,12 +265,26 @@ describe('파트너 모집 화면', () => {
     expect(within(form).queryByText('데이터 라벨링')).toBeNull()
   })
 
-  it('모집글을 등록하면 목록으로 돌아간다', () => {
+  it.each([{ isComposing: true }, { keyCode: 229 }])('한글 조합 Enter에서는 필요 역량 입력을 확정하거나 지우지 않는다: %o', (composition) => {
     renderApp('/partners/new')
+    const input = screen.getByLabelText('필요 역량') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '데이터 구축' } })
+    fireEvent.keyDown(input, { key: 'Enter', ...composition })
+    expect(input.value).toBe('데이터 구축')
+    expect(screen.queryByRole('button', { name: '데이터 구축 삭제' })).toBeNull()
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: '모집글 등록' }))
+  it('모집글 입력을 확인하면 저장하지 않고 데모 목록으로 돌아간다', () => {
+    renderApp('/partners/new')
+    expect(screen.getByText('데모 입력 · 저장되지 않음')).toBeTruthy()
+    expect(screen.queryByText(/임시 저장됨/)).toBeNull()
+    fireEvent.change(screen.getByLabelText('제목'), { target: { value: '데모 모집글' } })
+    fireEvent.change(screen.getByLabelText('본문'), { target: { value: '데모 소개' } })
+    fireEvent.click(screen.getByRole('button', { name: '입력 확인 후 목록으로' }))
 
     expect(screen.getByRole('heading', { name: '함께 신청할 기업 찾기' })).toBeTruthy()
+    expect(screen.queryByRole('article', { name: '데모 모집글' })).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('모집 마감일은 연결한 공고 마감일 이전만 고를 수 있다', () => {
@@ -205,9 +293,43 @@ describe('파트너 모집 화면', () => {
     const form = screen.getByRole('form', { name: '모집글 작성' })
     const deadline = within(form).getByLabelText('모집 마감일') as HTMLInputElement
 
-    expect(deadline.max).toBe('2026-09-30')
+    expect(deadline.max).toBe('2026-09-29')
     fireEvent.change(deadline, { target: { value: '2026-09-25' } })
     expect(deadline.value).toBe('2026-09-25')
+  })
+
+  it('공고 마감 당일은 모집 마감일로 제출하지 못한다', () => {
+    renderApp('/partners/new')
+    fireEvent.change(screen.getByLabelText('모집 마감일'), { target: { value: '2026-09-30' } })
+    fireEvent.submit(screen.getByRole('form', { name: '모집글 작성' }))
+    expect(screen.getByRole('alert').textContent).toContain('2026-09-29')
+    expect(screen.getByRole('heading', { name: '모집글 작성', level: 1 })).toBeTruthy()
+  })
+
+  it('상세가 없는 카드는 다른 모집글 상세로 연결하지 않는다', () => {
+    renderApp('/partners')
+    expect(screen.getAllByRole('link', { name: '자세히 보기' }).length).toBe(1)
+    expect(screen.getByRole('link', { name: '자세히 보기' }).getAttribute('href')).toBe('/partners/detail?recruitmentId=ai-labeling')
+    const other = screen.getByRole('article', { name: /스마트공장 고도화/ })
+    expect(within(other).queryByRole('link')).toBeNull()
+    expect(within(other).getByText('상세 · 준비 중')).toBeTruthy()
+    expect(screen.queryByRole('tablist')).toBeNull()
+  })
+
+  it.each(['smart-factory', '', 'ai-labeling&recruitmentId=smart-factory'])('준비되지 않은 상세 식별자는 첫 예시로 대체하지 않는다: %s', (id) => {
+    renderApp(`/partners/detail?recruitmentId=${id}`)
+    expect(screen.getByRole('heading', { name: '준비되지 않은 모집글 상세입니다' })).toBeTruthy()
+    expect(screen.queryByRole('form', { name: '참여 제안' })).toBeNull()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('미연결 참여 제안은 보내진 것처럼 처리하지 않는다', () => {
+    renderApp('/partners/detail?recruitmentId=ai-labeling')
+    const button = screen.getByRole('button', { name: '참여 제안 보내기 · 준비 중' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    expect(screen.getByText(/제안은 전송되지 않습니다/)).toBeTruthy()
+    fireEvent.click(button)
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('아직 화면이 없는 기업 프로필 보기는 링크로 만들지 않는다', () => {
@@ -235,6 +357,14 @@ describe('관리자 회원·기업 목록', () => {
     const policies = screen.getByRole('region', { name: '모집·제안 운영 규칙' })
     expect(within(policies).getByText('제안 유효기간')).toBeTruthy()
     expect(within(policies).queryByRole('textbox')).toBeNull()
+  })
+
+  it('관리자 예시 조치와 단일 페이지 이전·다음은 실행 가능한 버튼으로 표시하지 않는다', () => {
+    renderApp('/admin/members')
+    expect(screen.getByText(/회원·정책은 예시이며/)).toBeTruthy()
+    for (const button of screen.getAllByRole('button')) expect((button as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByRole('region', { name: '회원·기업 표 가로 스크롤' }).tabIndex).toBe(0)
+    expect(fetch).not.toHaveBeenCalled()
   })
 })
 

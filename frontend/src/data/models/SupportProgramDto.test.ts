@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from '../fixtures/supportPrograms'
-import { supportProgramDtoSchema, toSupportProgram } from './SupportProgramDto'
+import { supportProgramDtoSchema, supportProgramSearchResponseDtoSchema, toSupportProgram } from './SupportProgramDto'
 
 describe('지원사업 자격 판정 HTTP 계약', () => {
   const matched = conditionMatchedProgram.eligibilityReview!
@@ -54,7 +54,7 @@ describe('지원사업 자격 판정 HTTP 계약', () => {
     const explanation = ` ${'😀'.repeat(158)} `
     const quote = ` ${'😀'.repeat(238)} `
     const review = { ...matched, region: { ...matched.region, explanation, evidence: [{ field: 'SUMMARY', quote }] } }
-    expect(supportProgramDtoSchema.parse({ ...conditionMatchedProgram, eligibilityReview: review }).eligibilityReview?.region)
+    expect(supportProgramDtoSchema.parse({ ...conditionMatchedProgram, summary: quote, eligibilityReview: review }).eligibilityReview?.region)
       .toEqual(review.region)
     expect(supportProgramDtoSchema.safeParse({ ...conditionMatchedProgram, eligibilityReview: {
       ...review, region: { ...review.region, explanation: `${explanation} ` },
@@ -62,6 +62,51 @@ describe('지원사업 자격 판정 HTTP 계약', () => {
     expect(supportProgramDtoSchema.safeParse({ ...conditionMatchedProgram, eligibilityReview: {
       ...review, region: { ...review.region, evidence: [{ field: 'SUMMARY', quote: `${quote} ` }] },
     } }).success).toBe(false)
+  })
+
+  it.each(['target', 'region'] as const)('실제 %s 본문에 없는 인용으로 조건 확인을 표시하지 않는다', (axis) => {
+    const eligibilityReview = { ...matched, [axis]: {
+      ...matched[axis], evidence: [{ field: 'SUMMARY', quote: '이 공고에 없는 신청 자격' }],
+    } }
+    expect(supportProgramDtoSchema.safeParse({ ...conditionMatchedProgram, eligibilityReview }).success).toBe(false)
+  })
+
+  it('다른 필드의 인용이나 공백을 재작성한 인용도 지정한 원문 근거로 인정하지 않는다', () => {
+    const parseEvidence = (field: string, quote: string) => supportProgramDtoSchema.safeParse({
+      ...conditionMatchedProgram,
+      eligibilityReview: { ...matched, target: { ...matched.target, evidence: [{ field, quote }] } },
+    }).success
+    expect(parseEvidence('SUMMARY', conditionMatchedProgram.targetDescription)).toBe(false)
+    expect(parseEvidence('TARGET_DESCRIPTION', conditionMatchedProgram.targetDescription.replaceAll(' ', '  '))).toBe(false)
+    expect(parseEvidence('TARGET_DESCRIPTION', conditionMatchedProgram.targetDescription)).toBe(true)
+  })
+
+  it('확인 필요 인용에도 같은 원문 일치 규칙을 적용하고 인용 없는 UNKNOWN은 유지한다', () => {
+    const review = relocationReviewRequiredProgram.eligibilityReview!
+    expect(supportProgramDtoSchema.safeParse({ ...relocationReviewRequiredProgram, eligibilityReview: {
+      ...review, region: { ...review.region, evidence: [{ field: 'SUMMARY', quote: '전국 기업 신청 가능' }] },
+    } }).success).toBe(false)
+    expect(supportProgramDtoSchema.safeParse({ ...relocationReviewRequiredProgram, eligibilityReview: {
+      ...review, region: { ...review.region, evidence: [] },
+    } }).success).toBe(true)
+  })
+
+  it.each(['2026-02-29', '2024-02-30', '2026-13-01', '2026-01-00', '2026-2-01'])('달력상 불가능하거나 잘못된 신청일을 거부한다: %s', (date) => {
+    for (const field of ['applicationStartDate', 'applicationEndDate']) {
+      expect(supportProgramDtoSchema.safeParse({ ...supportPrograms[0], [field]: date }).success).toBe(false)
+    }
+  })
+
+  it('윤일·nullable 신청일과 접수 상태·추천 관련성·자격의 독립성을 유지한다', () => {
+    const program = { ...relocationReviewRequiredProgram, applicationStartDate: '2024-02-29', applicationEndDate: null, status: 'CLOSED', recommendationScore: 100 }
+    expect(supportProgramDtoSchema.parse(program)).toEqual(program)
+  })
+
+  it('동일 제공처·원본 ID 중복은 거부하고 다른 제공처의 같은 ID는 유지한다', () => {
+    const same = { ...supportPrograms[0], title: '동일 공고의 충돌 제목' }
+    expect(supportProgramSearchResponseDtoSchema.safeParse({ query: '사업화', programs: [supportPrograms[0], same] }).success).toBe(false)
+    const other = { ...same, sourceCode: 'KSTARTUP', sourceUrl: 'https://www.k-startup.go.kr/program' }
+    expect(supportProgramSearchResponseDtoSchema.safeParse({ query: '사업화', programs: [supportPrograms[0], other] }).success).toBe(true)
   })
 
   it.each(['\n', '\r', '\t', '\u0000', '\u200b', '\ud800'])('설명과 인용의 제어문자·형식문자·서로게이트를 거부한다 (%#)', (invalid) => {

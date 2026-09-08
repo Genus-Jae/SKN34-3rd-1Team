@@ -39,6 +39,7 @@ export const appSidebarStyles = {
   pendingBadge:
     'ml-auto inline-flex rounded-full bg-[rgb(113_128_197_/_18%)] px-[0.45rem] py-[0.1rem] text-[0.62rem] font-bold text-[#8a95bb]',
   account: 'mt-auto flex flex-col gap-[0.6rem] max-chat:mt-4',
+  demoNotice: 'm-0 text-xs leading-relaxed text-[#c8d0eb]',
   accountCard:
     'flex items-center gap-[0.65rem] rounded-[0.7rem] bg-[rgb(113_128_197_/_12%)] p-3',
   accountAvatar:
@@ -46,8 +47,8 @@ export const appSidebarStyles = {
   accountName: 'block text-[0.8rem] font-bold text-white',
   accountCompany:
     'mt-[0.1rem] block overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-[#a7b1d4]',
-  logoutLink: 'pl-[0.35rem] text-[0.72rem] font-semibold text-[#7783a9] no-underline hover:text-[#c8d0eb]',
-  workspace: 'flex min-h-0 min-w-0 flex-col overflow-y-auto max-chat:overflow-visible',
+  publicSearchLink: 'pl-[0.35rem] text-[0.72rem] font-semibold text-[#a7b1d4] no-underline hover:text-[#e9edff]',
+  workspace: '@container/workspace flex min-h-0 min-w-0 flex-col overflow-y-auto max-chat:overflow-visible',
 } as const
 
 export function sidebarMenuItemClassName(state: 'active' | 'inactive' | 'pending') {

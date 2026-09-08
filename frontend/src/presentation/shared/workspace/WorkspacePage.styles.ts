@@ -9,7 +9,7 @@ export type WorkspaceTagTone = 'ok' | 'warn' | 'danger' | 'muted' | 'info'
 export const workspacePageStyles = {
   // 본문이 스크롤돼도 현재 화면 이름과 주요 동작은 남아야 하므로 본문 칸의 위쪽에 붙입니다.
   header: classes(
-    'sticky top-0 z-[3] flex items-center justify-between gap-4 border-b border-[#e8ecf7]',
+    'sticky top-0 z-[3] flex flex-wrap items-center justify-between gap-4 border-b border-[#e8ecf7]',
     'bg-[rgb(255_255_255_/_92%)] backdrop-blur',
     'px-[clamp(1.25rem,5vw,4.5rem)] py-6 max-chat:px-4 max-chat:py-4',
   ),
@@ -19,13 +19,14 @@ export const workspacePageStyles = {
   eyebrow:
     'm-0 text-[0.7rem] font-extrabold tracking-[0.12em] text-[#6471a0] uppercase',
   title: 'm-0 text-[1.25rem] font-bold tracking-[-0.04em] text-[#151d3a]',
-  headerActions: 'flex shrink-0 items-center gap-2',
+  headerActions: 'flex min-w-0 max-w-full flex-wrap items-center gap-2',
   content: classes(
     'flex flex-col gap-5 px-[clamp(1.25rem,5vw,4.5rem)] pt-8 pb-12',
     'max-chat:px-4 max-chat:pt-5 max-chat:pb-8',
   ),
-  columns: 'grid grid-cols-[minmax(0,1fr)_340px] items-start gap-6 max-chat:grid-cols-1',
-  column: 'flex min-w-0 flex-col gap-5',
+  // 사이드바를 제외한 실제 작업 공간이 충분할 때만 보조 패널을 옆에 배치합니다.
+  columns: 'grid grid-cols-1 items-start gap-6 @min-[64rem]/workspace:grid-cols-[minmax(0,1fr)_340px]',
+  column: '@container/column flex min-w-0 flex-col gap-5',
   card: classes(
     'flex flex-col gap-[0.9rem] rounded-2xl border border-[#e4e8f5] bg-white p-[1.35rem]',
     'shadow-[0_12px_30px_rgb(47_67_129_/_7%)]',
@@ -34,7 +35,7 @@ export const workspacePageStyles = {
     'flex flex-col gap-[0.9rem] rounded-2xl border border-dashed border-[#cbd5ec] bg-white p-[1.35rem]',
   cardHeader: 'flex items-start justify-between gap-4',
   cardTitle: 'm-0 text-[1.02rem] font-bold tracking-[-0.025em] text-app-ink',
-  cardDescription: 'mt-1 mb-0 text-[0.75rem] leading-[1.5] text-[#7883a3]',
+  cardDescription: 'mt-1 mb-0 text-[0.75rem] leading-[1.5] text-sample-muted',
   sectionEyebrow:
     'm-0 text-[0.7rem] font-extrabold tracking-[0.12em] text-[#6471a0] uppercase',
   primaryButton: classes(
@@ -51,7 +52,7 @@ export const workspacePageStyles = {
     'px-[0.8rem] py-[0.55rem] text-[0.74rem] font-extrabold text-white hover:bg-[#873140]',
   ),
   quietLink: 'text-[0.74rem] font-bold text-[#5e5fc8] no-underline hover:text-[#504ebd]',
-  mutedLink: 'text-[0.74rem] font-bold text-[#7883a3] no-underline hover:text-[#536087]',
+  mutedLink: 'text-[0.74rem] font-bold text-sample-muted no-underline hover:text-[#536087]',
   dangerLink: 'text-[0.74rem] font-bold text-[#9a3947] no-underline hover:text-[#7d2f3a]',
   // 아직 화면이 없는 이동은 링크로 만들지 않고 이 스타일로 "준비 중"임을 보여줍니다.
   pendingLink: 'cursor-default text-[0.74rem] font-bold text-[#8a94ae]',
@@ -64,7 +65,7 @@ export const workspacePageStyles = {
   inactiveChip: 'border-[#dfe4f2]',
   keyValueRow:
     'flex items-center justify-between gap-3 rounded-[0.6rem] bg-[#f7f8fc] px-3 py-[0.6rem] text-[0.78rem] text-[#293454]',
-  keyValueLabel: 'text-[0.75rem] font-bold text-[#7883a3]',
+  keyValueLabel: 'text-[0.75rem] font-bold text-sample-muted',
   table: 'w-full border-separate border-spacing-0 overflow-hidden rounded-xl border border-sample-border text-[0.75rem]',
   tableHeadCell:
     'bg-[#f2f5fc] px-3 py-[0.6rem] text-left text-[0.7rem] font-bold whitespace-nowrap text-[#263556]',
@@ -73,8 +74,8 @@ export const workspacePageStyles = {
   tableActionCell: 'flex flex-wrap items-center gap-2',
   warnRow: 'bg-[#fffaf0]',
   dangerRow: 'bg-[#fff5f6]',
-  pagination: 'flex items-center justify-between gap-3 text-[0.75rem] text-[#7883a3]',
-  emptyNote: 'm-0 text-[0.78rem] leading-[1.6] text-[#7883a3]',
+  pagination: 'flex items-center justify-between gap-3 text-[0.75rem] text-sample-muted',
+  emptyNote: 'm-0 text-[0.78rem] leading-[1.6] text-sample-muted',
   toggle:
     'relative inline-flex h-[22px] w-10 shrink-0 cursor-pointer items-center rounded-full border-0 p-0',
   toggleOn: 'bg-brand-primary',

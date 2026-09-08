@@ -3,7 +3,7 @@ function classes(...groups: string[]) {
 }
 
 export const supportProgramEvidenceQuestionStyles = {
-  page: 'mx-auto w-[min(720px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)]',
+  page: 'mx-auto w-[min(720px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)] [overflow-wrap:anywhere]',
   backLink: classes(
     'inline-flex items-center rounded-[0.7rem] border px-[0.85rem] py-[0.65rem]',
     'border-[#d8e0f3] bg-white text-[0.85rem] font-bold text-[#43527a] no-underline',
@@ -19,12 +19,12 @@ export const supportProgramEvidenceQuestionStyles = {
   evidenceForm: 'mt-5 grid gap-2',
   evidenceLabel: 'text-[0.82rem] font-extrabold text-[#344166]',
   evidenceInput: classes(
-    'min-h-24 w-full resize-y rounded-xl border bg-white px-3 py-3 leading-[1.55] text-[#26305a] outline-0',
+    'min-h-24 w-full resize-y rounded-xl border bg-white px-3 py-3 leading-[1.55] text-[#26305a] placeholder:text-sample-muted outline-0',
     'border-[#d7dcef] focus:border-[#7774d7] focus:shadow-[0_0_0_3px_rgb(119_116_215_/_15%)]',
     'disabled:cursor-wait disabled:bg-[#f7f8fc] disabled:text-[#667291]',
   ),
   evidenceControls: 'mt-1 flex items-center justify-between gap-3',
-  evidenceCount: 'text-[0.72rem] text-[#7b86a3]',
+  evidenceCount: 'text-[0.72rem] text-sample-muted',
   evidenceSubmitButton: classes(
     'cursor-pointer rounded-[0.7rem] border-0 bg-brand-primary px-4 py-[0.7rem] text-[0.78rem] font-extrabold text-white',
     'hover:bg-[#4d4dab] disabled:cursor-not-allowed disabled:opacity-[0.4]',
@@ -33,7 +33,7 @@ export const supportProgramEvidenceQuestionStyles = {
     'cursor-pointer rounded-[0.7rem] border border-[#d1d8ec] bg-white px-4 py-[0.7rem] text-[0.78rem] font-extrabold text-[#49557a]',
     'hover:border-[#7774d7] hover:text-[#504ebd]',
   ),
-  evidenceHint: 'text-[0.7rem] leading-[1.45] text-[#7b86a3]',
+  evidenceHint: 'text-[0.7rem] leading-[1.45] text-sample-muted',
   evidenceFeedback: 'mt-5 mb-0 rounded-xl bg-[#f4f6ff] px-4 py-3 text-[0.84rem] leading-[1.55] text-[#46537a]',
   evidenceError: 'mt-5 mb-0 rounded-xl bg-[#fff5f6] px-4 py-3 text-[0.84rem] leading-[1.55] text-[#9a3947]',
   evidenceAnswer: 'mt-5 rounded-2xl border border-[#dce7d1] bg-[#fbfff8] p-5',

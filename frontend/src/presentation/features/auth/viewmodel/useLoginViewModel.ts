@@ -9,20 +9,31 @@ export function useLoginViewModel() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
+  const [error, setError] = useState<{ field: 'email' | 'password'; message: string } | null>(null)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const emailInput = event.currentTarget.elements.namedItem('email') as HTMLInputElement
+    if (!email.trim() || emailInput.validity.typeMismatch) {
+      setError({ field: 'email', message: '확인용 이메일 형식으로 입력해 주세요.' })
+      emailInput.focus()
+      return
+    }
+    if (!password.trim()) {
+      setError({ field: 'password', message: '데모 확인용 비밀번호를 입력해 주세요.' })
+      const passwordInput = event.currentTarget.elements.namedItem('password') as HTMLInputElement
+      passwordInput.focus()
+      return
+    }
     navigate('/chat')
   }
 
   return {
     email,
     password,
-    rememberMe,
-    updateEmail: setEmail,
-    updatePassword: setPassword,
-    toggleRememberMe: () => setRememberMe(!rememberMe),
+    error,
+    updateEmail: (value: string) => { setEmail(value); setError(null) },
+    updatePassword: (value: string) => { setPassword(value); setError(null) },
     submit,
   }
 }

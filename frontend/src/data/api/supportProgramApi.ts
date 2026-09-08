@@ -132,7 +132,11 @@ export async function searchSupportProgramsApi(
     )
   }
 
-  return supportProgramSearchResponseDtoSchema.parse(await response.json())
+  const result = supportProgramSearchResponseDtoSchema.parse(await response.json())
+  if (result.query !== command.query.trim()) {
+    throw new SupportProgramApiError('Core API returned support programs for a different search query.')
+  }
+  return result
 }
 
 /** 검색 전에 공고 동기화와 검색 인덱스 준비 상태를 확인합니다. */

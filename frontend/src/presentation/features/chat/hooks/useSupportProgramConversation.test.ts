@@ -22,6 +22,27 @@ const clarification: SupportProgramInterpretation = {
 }
 
 describe('해석 → 명시적 확인 → 기존 검색', () => {
+  it('검색 중 작성한 다음 초안은 실패한 검색을 재시도해도 지우지 않는다', async () => {
+    const pending = deferred<Awaited<ReturnType<SearchSupportProgramsUseCase['execute']>>>()
+    const search = vi.fn<SearchSupportProgramsUseCase['execute']>()
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue({ query: '사업화 지원', programs: [supportPrograms[0]] })
+    const { result } = renderConversation(vi.fn().mockResolvedValue(readyConversationProposal(seoulConversationContext)), search)
+    act(() => result.current.updateDraft('서울 SW 사업화'))
+    await act(async () => result.current.submitMessage())
+    let request!: Promise<void>
+    act(() => { request = result.current.confirmInterpretation() })
+    act(() => result.current.updateDraft('다음에는 수출 지원도 찾아줘'))
+    await act(async () => {
+      pending.reject(new Error('temporary failure'))
+      await request
+    })
+    expect(result.current.canRetrySearch).toBe(true)
+    await act(async () => result.current.retrySearch())
+    expect(search.mock.calls[1][0]).toEqual(search.mock.calls[0][0])
+    expect(result.current.draft).toBe('다음에는 수출 지원도 찾아줘')
+  })
+
   it('서울 SW → 지원금 위주 → 부산 변경에서 확인 전 검색하지 않고 확정 검색 의도와 조건을 유지한다', async () => {
     const grants = { ...seoulConversationContext, query: '지원금', companyConditions: { ...seoulConversationContext.companyConditions, supportPurpose: '지원금' } }
     const busan = { ...grants, companyConditions: { ...grants.companyConditions, region: '부산' } }
@@ -295,6 +316,7 @@ function renderConversation(interpret: InterpretSupportProgramConversationUseCas
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((complete) => { resolve = complete })
-  return { promise, resolve }
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((complete, fail) => { resolve = complete; reject = fail })
+  return { promise, resolve, reject }
 }

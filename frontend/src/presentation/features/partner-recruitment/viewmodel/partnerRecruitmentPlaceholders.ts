@@ -91,7 +91,7 @@ export const partnerRecruitments: PartnerRecruitment[] = [
 /** 목록에 아직 싣지 않은 모집글 수입니다. 페이지 조회 API가 생기면 응답의 남은 건수로 바꿉니다. */
 export const remainingRecruitmentCount = 8
 
-/** 상세 화면 예시입니다. 목록에서 어떤 카드를 눌러도 지금은 이 하나를 보여줍니다. */
+/** 준비된 상세 화면 예시입니다. 다른 모집글의 상세를 이 값으로 대체하지 않습니다. */
 export const partnerRecruitmentDetail: PartnerRecruitmentDetail = {
   ...partnerRecruitments[0],
   recruitmentStatusLabel: '모집 중',

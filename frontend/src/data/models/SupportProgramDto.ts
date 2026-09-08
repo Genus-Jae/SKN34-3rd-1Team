@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import type { SupportProgram } from '../../domain/entities/SupportProgram'
 
-const isoLocalDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const isoLocalDateSchema = z.iso.date()
 const sourceCodeSchema = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/)
 const officialSourceHostsByCode: Record<string, readonly string[]> = {
   BIZINFO: ['bizinfo.go.kr'],
@@ -73,18 +73,40 @@ export const supportProgramDtoSchema = z.object({
   recommendationScore: z.number().int().min(0).max(100).nullable(),
   eligibilityReview: eligibilityReviewDtoSchema.nullable().default(null),
 }).superRefine((program, context) => {
-  if (isOfficialSupportProgramSourceUrl(program.sourceCode, program.sourceUrl)) return
-
-  context.addIssue({
-    code: 'custom',
-    path: ['sourceUrl'],
-    message: `${program.sourceCode} 제공처의 공식 http(s) URL이어야 합니다.`,
-  })
+  if (!isOfficialSupportProgramSourceUrl(program.sourceCode, program.sourceUrl)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['sourceUrl'],
+      message: `${program.sourceCode} 제공처의 공식 http(s) URL이어야 합니다.`,
+    })
+  }
+  if (!program.eligibilityReview) return
+  for (const axisName of ['target', 'region'] as const) {
+    program.eligibilityReview[axisName].evidence.forEach((evidence, index) => {
+      const source = evidence.field === 'SUMMARY' ? program.summary : program.targetDescription
+      if (!source.includes(evidence.quote)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['eligibilityReview', axisName, 'evidence', index, 'quote'],
+          message: '자격 판정 인용은 지정한 공고 본문과 정확히 일치해야 합니다.',
+        })
+      }
+    })
+  }
 })
 
 export const supportProgramSearchResponseDtoSchema = z.object({
   query: z.string(),
   programs: z.array(supportProgramDtoSchema),
+}).superRefine((response, context) => {
+  const identities = new Set<string>()
+  response.programs.forEach((program, index) => {
+    const identity = JSON.stringify([program.sourceCode, program.id])
+    if (identities.has(identity)) {
+      context.addIssue({ code: 'custom', path: ['programs', index, 'id'], message: '같은 제공처의 공고가 검색 결과에 중복될 수 없습니다.' })
+    }
+    identities.add(identity)
+  })
 })
 
 export type SupportProgramDto = z.infer<typeof supportProgramDtoSchema>

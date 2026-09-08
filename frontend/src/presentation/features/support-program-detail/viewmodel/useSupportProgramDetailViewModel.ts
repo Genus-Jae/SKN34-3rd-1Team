@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { appContainer } from '../../../../app/appContainer'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
@@ -22,8 +22,10 @@ export function useSupportProgramDetailViewModel(
   getSupportProgramDetailUseCase: SupportProgramDetailUseCase = appContainer.resolve(
     'getSupportProgramDetailUseCase',
   ),
-): SupportProgramDetailLoadState {
+): SupportProgramDetailLoadState & { retry: () => void } {
   const { sourceCode, sourceProgramId } = identity
+  const [requestVersion, setRequestVersion] = useState(0)
+  const retry = useCallback(() => setRequestVersion((version) => version + 1), [])
   const [state, setState] = useState<SupportProgramDetailLoadState>({
     status: 'loading',
     program: null,
@@ -65,9 +67,10 @@ export function useSupportProgramDetailViewModel(
     }
   }, [
     getSupportProgramDetailUseCase,
+    requestVersion,
     sourceCode,
     sourceProgramId,
   ])
 
-  return state
+  return { ...state, retry }
 }

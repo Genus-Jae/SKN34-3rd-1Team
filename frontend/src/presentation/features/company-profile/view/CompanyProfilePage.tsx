@@ -85,6 +85,7 @@ export function CompanyProfilePage() {
       </header>
 
       <div className={workspacePageStyles.content}>
+        <p className={workspacePageStyles.emptyNote}>기업 프로필 데모입니다. 예시 정보와 설정 변경은 저장·공개되지 않으며 화면을 나가면 초기화됩니다.</p>
         <div className={workspacePageStyles.columns}>
           <div className={workspacePageStyles.column}>
             <section className={workspacePageStyles.card} aria-label="프로필 요약">
@@ -109,8 +110,8 @@ export function CompanyProfilePage() {
                     </div>
                   </div>
                 </div>
-                <button className={workspacePageStyles.secondaryButton} type="button">
-                  기본정보 수정
+                <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+                  기본정보 수정 · 준비 중
                 </button>
               </div>
 
@@ -141,8 +142,8 @@ export function CompanyProfilePage() {
             <section className={workspacePageStyles.card} aria-label="기업 기본정보">
               <div className={workspacePageStyles.cardHeader}>
                 <h2 className={workspacePageStyles.cardTitle}>기업 기본정보</h2>
-                <button className={workspacePageStyles.quietLink} type="button">
-                  수정
+                <button className={workspacePageStyles.quietLink} type="button" disabled>
+                  수정 · 준비 중
                 </button>
               </div>
               <div className={companyProfileStyles.fieldGrid}>
@@ -276,8 +277,8 @@ export function CompanyProfilePage() {
                     원문과 기관에서 확인하세요.
                   </p>
                 </div>
-                <button className={workspacePageStyles.secondaryButton} type="button">
-                  상태 업데이트
+                <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+                  상태 업데이트 · 준비 중
                 </button>
               </div>
               <div className="flex flex-col gap-2">
@@ -314,8 +315,8 @@ export function CompanyProfilePage() {
 
                 <div className={companyProfileStyles.accountRow}>
                   <span className={companyProfileStyles.accountValue}>비밀번호</span>
-                  <button className={workspacePageStyles.quietLink} type="button">
-                    변경
+                  <button className={workspacePageStyles.quietLink} type="button" disabled>
+                    변경 · 준비 중
                   </button>
                 </div>
 
@@ -349,8 +350,8 @@ export function CompanyProfilePage() {
                 </div>
               </div>
               <div className={companyProfileStyles.dangerRow}>
-                <button className={workspacePageStyles.dangerLink} type="button">
-                  계정 삭제
+                <button className={workspacePageStyles.dangerLink} type="button" disabled>
+                  계정 삭제 · 준비 중
                 </button>
               </div>
             </section>
@@ -457,6 +458,7 @@ export function CompanyProfilePage() {
                       }
                     >
                       {item.label}
+                      <span className="sr-only"> · {item.isDone ? '완료' : '미완료'}</span>
                     </span>
                   </div>
                 ))}

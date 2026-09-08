@@ -106,8 +106,9 @@ MVVM은 Model·View·ViewModel의 책임을 나누는 화면 설계입니다. �
 | Model 측 | Domain 모델·UseCase·Repository | 검색 조건과 공고 데이터, 검색·상세 조회 실행 |
 
 View는 페이지 ViewModel 하나가 반환한 상태를 렌더링하고 사용자 이벤트를 반환된 handler에 연결합니다.
-페이지 ViewModel은 두 내부 Hook을 조합하며, 검색 준비 상태를 확인한 뒤 채팅 Hook의 `submitMessage()`를
-호출합니다. 채팅 Hook은 UseCase 실행과 요청 수명을 관리합니다. IME 조합·스크롤 DOM 참조와
+페이지 ViewModel은 두 내부 Hook을 조합합니다. `submitMessage()`의 조건 해석은 준비 상태와 독립적이며,
+제안 확인 검색·검색 재시도만 준비 상태를 검사합니다. 조회 실패 뒤 재확인 중에도 실제 성공 전까지 검색을 차단합니다.
+채팅 Hook은 UseCase 실행과 요청 수명을 관리합니다. IME 조합·스크롤 DOM 참조와
 포커스 제어도 페이지 ViewModel에 두되, 화면 전용 상태와 ref는 Redux가 아닌 Hook 로컬로 유지합니다.
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷만 남깁니다.
 
@@ -119,7 +120,9 @@ View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 �
 함께 배치하고, 채팅 feature의 화면 구현이나 상태에 의존하지 않습니다.
 기업마당 상세의 **이 공고에 질문하기** 링크로 `/support-programs/detail/question`에 제공처·원본 ID를 전달합니다.
 질문 페이지는 URL 식별자를 검증해 직접 접속·새로고침과 상세로 돌아가기를 지원하며, 명시적 질문 제출 때만 API를 호출합니다.
-채팅은 상세 URL의 제공처·원본 공고 ID만 전달합니다. 두 feature가 공유하는 오류 안내 문구는
+채팅은 상세 URL의 제공처·원본 공고 ID와 라우트 상태의 원래 검색 경로(`/` 또는 `/chat`)를 전달합니다.
+상세·질문은 채팅의 ViewModel이나 Store를 조회하지 않고 허용된 복귀 경로만 왕복 전달합니다.
+두 feature가 공유하는 오류 안내 문구는
 `presentation/shared/support-program`에 두며 Domain·UseCase·Repository·DI 경계는 그대로 유지합니다.
 
 ### Redux Toolkit의 Flux 계열 단방향 흐름
@@ -130,8 +133,11 @@ Redux Store 자체를 Model 전체나 ViewModel 전체와 같은 것으로 취�
 
 ```text
 ChatPage의 제출 이벤트
-  → 페이지 ViewModel.handleSubmit → 검색 준비 상태 확인
-  → 내부 채팅 Hook.submitMessage → dispatch(Thunk)
+  → 페이지 ViewModel.handleSubmit → 내부 Hook.submitMessage
+  → 조건 해석 요청 → 제안 또는 추가 질문 표시 (검색·조건 적용 없음)
+사용자의 제안 확인 클릭
+  → 페이지 ViewModel.handleConfirmInterpretation → 검색 준비 상태 확인
+  → 내부 Hook.confirmInterpretation → dispatch(검색 Thunk)
       ├→ dispatch(searchStarted) → chat Reducer → pending 상태
       └→ await UseCase.execute(...)
           ├→ 성공: dispatch(searchSucceeded) → 결과·메시지 반영
@@ -160,12 +166,27 @@ Immer로 처리하는 갱신 방식이며 View나 HTTP 코드가 Store 상태를
 
 SampleItem의 두 버전 모두 같은 `PrepareSampleItemUseCase`와 API를 사용하며 ViewModel Hook이 있습니다.
 비교 대상은 MVVM 적용 유무가 아니라 상태를 어느 곳에 보관하고 얼마나 유지하는가입니다.
-현재 상태는 모두 메모리에 있으므로 브라우저 새로고침 시 초기화됩니다. 검색 요청에는 현재 검색 문장만
-보내며 이전 메시지를 AI 대화 맥락으로 보내지 않습니다.
+현재 상태는 모두 메모리에 있으므로 브라우저 새로고침 시 초기화됩니다. 검색 요청에는 확인한 검색 의도와
+기업 조건·접수 상태를 보냅니다. 해석은 확정 조건과 필요한 마지막 추가 질문·미확정 초안만 사용하며,
+전체 대화 이력을 보내지 않습니다.
 
 Zod가 HTTP 응답을 검증합니다. AbortController와 요청 ID는 화면 이탈·새 대화 이후 오래된 결과가
 반영되는 것을 막습니다. 이 취소 처리가 서버의 OpenAI 작업 중단까지 보장하는 것은 아닙니다.
 상태 관리 비교용 SampleItem은 별도 예제 화면이며 지원사업 기능과 분리되어 있습니다.
+Core 상태 조회와 두 SampleItem 요청에는 10초 상한을 적용합니다. 비동기 폼 검증 중 입력 수정·이탈은
+요청 시작 전 세대 번호로 검사하며, 완료 후 늦은 응답은 요청 ID와 취소 상태로 차단합니다.
+
+### 화면 데모와 실제 서비스 경계
+
+계정·파트너 모집·기업 프로필·관리자는 현재 로컬 예시 데이터와 입력을 가진 화면 데모입니다.
+입력 검증이나 페이지 이동을 인증·저장·전송 성공으로 표시하지 않습니다. 미연결 동작은 준비 중으로
+비활성화하며, 실제 API가 없는 기능에 형식적인 UseCase·Repository 계층을 추가하지 않습니다.
+이 화면들은 실제 인증·권한 검사가 구현되었다는 뜻이 아니며 서버 세션·권한·저장 연결은 별도 출시 조건입니다.
+
+공용 작업 레이아웃은 이름 있는 `workspace` 컨테이너를 제공하고 페이지는 실제 가용 너비에 따라 열을 접습니다.
+페이지 내부 `column` 컨테이너는 각 카드·폼 열을 제어합니다. 사이드바가 차지하는 너비를 무시한 viewport
+분기 때문에 본문이 49px로 좁아지는 문제를 막으며, 새 전역 레이아웃 상태나 JavaScript resize 구독은 추가하지 않습니다.
+데스크톱 채팅의 내부 스크롤과 공개·모바일 화면의 문서 스크롤은 구분하여 처리합니다.
 
 ## Core API: 업무 흐름과 외부 경계
 

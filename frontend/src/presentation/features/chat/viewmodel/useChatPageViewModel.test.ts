@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { type FormEvent } from 'react'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { createElement, type FormEvent } from 'react'
+import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
@@ -43,6 +43,57 @@ afterEach(() => {
 })
 
 describe('useChatPageViewModel', () => {
+  it('문서 스크롤 화면은 새 로딩·제안·응답을 보이게 하되 초기 진입·초안 수정·초기화에서는 점프하지 않는다', () => {
+    const initial = createChatHook()
+    const harness = renderScrollHarness(initial)
+    expect(harness.scrollIntoView).not.toHaveBeenCalled()
+    harness.rerender({ ...initial, draft: '서울' })
+    expect(harness.scrollIntoView).not.toHaveBeenCalled()
+
+    const pending = { ...initial, messages: [...initial.messages, { id: 'question', role: 'user' as const, text: '서울' }],
+      isInterpreting: true, isBusy: true, interpretation: { status: 'pending' as const } }
+    harness.rerender(pending)
+    expect(harness.scrollIntoView).toHaveBeenLastCalledWith({ block: 'start' })
+    expect(harness.scrollIntoView).toHaveBeenCalledTimes(1)
+    harness.rerender({ ...pending, isInterpreting: false, isBusy: false, interpretation: { status: 'ready' } })
+    expect(harness.scrollIntoView).toHaveBeenCalledTimes(2)
+    harness.rerender({ ...pending, isInterpreting: false, isSearching: true, interpretation: { status: 'idle' } })
+    expect(harness.scrollIntoView).toHaveBeenCalledTimes(3)
+    const completed = { ...initial, messages: [...pending.messages,
+      { id: 'answer', role: 'assistant' as const, text: '결과', programs: [supportPrograms[0]] }] }
+    harness.rerender(completed)
+    expect(harness.scrollIntoView).toHaveBeenCalledTimes(4)
+    harness.rerender({ ...completed, draft: '다음 질문' })
+    expect(harness.scrollIntoView).toHaveBeenCalledTimes(4)
+
+    act(() => harness.model().handleStartNewConversation())
+    harness.rerender(createChatHook())
+    expect(harness.scrollIntoView).toHaveBeenCalledTimes(4)
+    expect(harness.focus).toHaveBeenCalledOnce()
+  })
+
+  it('과거 대화가 있는 내부 overflow 화면은 최초 진입·상세 복귀에도 문서 이동 없이 마지막 내용을 표시한다', () => {
+    const initial = createChatHook({ messages: [
+      { id: 'old-question', role: 'user', text: '서울 지원사업' },
+      { id: 'old-answer', role: 'assistant', text: '이전 검색 결과', programs: [supportPrograms[0]] },
+    ] })
+    const harness = renderScrollHarness(initial, true)
+    expect(harness.model().timelineRef.current?.scrollTop).toBe(1_000)
+    harness.model().timelineRef.current!.scrollTop = 0
+    harness.rerender({ ...initial, draft: '작성 중인 새 질문' })
+    expect(harness.model().timelineRef.current?.scrollTop).toBe(0)
+    harness.rerender({ ...initial, interpretation: { status: 'clarification' } })
+    expect(harness.model().timelineRef.current?.scrollTop).toBe(1_000)
+    expect(harness.scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('scrollIntoView가 없는 테스트 DOM에서도 새로운 제안 표시가 실패하지 않는다', () => {
+    const initial = createChatHook()
+    const harness = renderScrollHarness(initial)
+    Object.defineProperty(harness.model().timelineRef.current!.lastElementChild!, 'scrollIntoView', { value: undefined, configurable: true })
+    expect(() => harness.rerender({ ...initial, interpretation: { status: 'ready' } })).not.toThrow()
+  })
+
   it('검색 불가 상태에서도 해석은 허용하고 확인 검색·검색 재시도는 차단한다', () => {
     const chat = createChatHook({
       canRetrySearch: true,
@@ -233,4 +284,37 @@ function createSubmitEvent() {
     event: { preventDefault } as unknown as FormEvent<HTMLFormElement>,
     preventDefault,
   }
+}
+
+function renderScrollHarness(initial: ChatHook, internal = false) {
+  let chat = initial
+  let viewModel!: ReturnType<typeof useChatPageViewModel>
+  const scrollIntoView = vi.fn()
+  const focus = vi.fn()
+  hookMocks.chat.mockImplementation(() => chat)
+
+  function Harness() {
+    viewModel = useChatPageViewModel()
+    return createElement('div', null,
+      createElement('div', { ref: (element: HTMLDivElement | null) => {
+        viewModel.timelineRef.current = element
+        if (!element) return
+        element.style.overflowY = internal ? 'auto' : 'visible'
+        Object.defineProperties(element, {
+          clientHeight: { value: internal ? 400 : 1_000, configurable: true },
+          scrollHeight: { value: 1_000, configurable: true },
+        })
+      } }, createElement('article', { ref: (element: HTMLElement | null) => {
+        if (element && !Object.hasOwn(element, 'scrollIntoView')) element.scrollIntoView = scrollIntoView
+      } }, '마지막 표시 내용')),
+      createElement('textarea', { ref: (element: HTMLTextAreaElement | null) => {
+        viewModel.composerInputRef.current = element
+        if (element) element.focus = focus
+      } }),
+    )
+  }
+
+  const view = render(createElement(Harness))
+  return { scrollIntoView, focus, model: () => viewModel,
+    rerender: (next: ChatHook) => { chat = next; view.rerender(createElement(Harness)) } }
 }

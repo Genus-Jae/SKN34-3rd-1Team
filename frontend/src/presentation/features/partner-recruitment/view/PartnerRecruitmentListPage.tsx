@@ -12,7 +12,7 @@ import {
   partnerTabClassName,
 } from './PartnerRecruitment.styles'
 
-function RecruitmentCard({ recruitment }: { recruitment: PartnerRecruitment }) {
+function RecruitmentCard({ recruitment, availableDetailId }: { recruitment: PartnerRecruitment; availableDetailId: string }) {
   const cardClassName = recruitment.isMine
     ? workspacePageStyles.outlinedCard
     : workspacePageStyles.card
@@ -95,16 +95,18 @@ function RecruitmentCard({ recruitment }: { recruitment: PartnerRecruitment }) {
             · 제안 {recruitment.proposalCount}건
           </span>
         )}
-        <Link
+        {recruitment.id === availableDetailId ? <Link
           className={
             recruitment.isMine
               ? workspacePageStyles.secondaryButton
               : workspacePageStyles.primaryButton
           }
-          to="/partners/detail"
+          to={`/partners/detail?${new URLSearchParams({ recruitmentId: recruitment.id })}`}
         >
           {recruitment.isMine ? '제안 관리' : '자세히 보기'}
-        </Link>
+        </Link> : <span className={workspacePageStyles.pendingLink} aria-disabled="true">
+          {recruitment.isMine ? '제안 관리 · 준비 중' : '상세 · 준비 중'}
+        </span>}
       </div>
     </article>
   )
@@ -114,6 +116,7 @@ function RecruitmentCard({ recruitment }: { recruitment: PartnerRecruitment }) {
 export function PartnerRecruitmentListPage() {
   const {
     recruitments,
+    availableDetailId,
     remainingRecruitmentCount,
     tabs,
     filters,
@@ -151,16 +154,16 @@ export function PartnerRecruitmentListPage() {
       </header>
 
       <div className={workspacePageStyles.content}>
+        <p className={workspacePageStyles.emptyNote}>파트너 모집 데모입니다. 기업·모집글·매칭은 예시이며 검색·필터·제안 기능은 준비 중입니다.</p>
         <div className={workspacePageStyles.columns}>
           <div className={workspacePageStyles.column}>
             <div className={partnerRecruitmentStyles.toolbar}>
-              <div className={partnerRecruitmentStyles.tabs} role="tablist" aria-label="모집 화면 전환">
+              <div className={partnerRecruitmentStyles.tabs} role="group" aria-label="모집 화면 예시">
                 {tabs.map((tab) => (
                   <span
                     className={partnerTabClassName(tab.isActive)}
                     key={tab.label}
-                    role="tab"
-                    aria-selected={tab.isActive}
+                    aria-disabled={!tab.isActive || undefined}
                   >
                     {tab.label}
                     {tab.count ? (
@@ -200,13 +203,13 @@ export function PartnerRecruitmentListPage() {
 
             <div className={partnerRecruitmentStyles.cardGrid}>
               {recruitments.map((recruitment) => (
-                <RecruitmentCard key={recruitment.id} recruitment={recruitment} />
+                <RecruitmentCard key={recruitment.id} recruitment={recruitment} availableDetailId={availableDetailId} />
               ))}
             </div>
 
             <div className={partnerRecruitmentStyles.moreRow}>
-              <button className={workspacePageStyles.secondaryButton} type="button">
-                모집글 {remainingRecruitmentCount}건 더 보기
+              <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+                모집글 {remainingRecruitmentCount}건 더 보기 · 준비 중
               </button>
             </div>
           </div>

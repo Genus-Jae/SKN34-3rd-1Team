@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router'
 import { ownCompany, selectedProgram } from './partnerRecruitmentPlaceholders'
 
 const titleMaxLength = 80
+// 날짜 입력에는 시간이 없으므로 '마감일 이전'의 마지막 허용일은 전날입니다.
+const maximumRecruitmentDeadline = new Date(
+  Date.parse(`${selectedProgram.deadlineDate}T00:00:00Z`) - 86_400_000,
+).toISOString().slice(0, 10)
 
 /**
  * 모집글 작성의 대표 ViewModel입니다. 역할 선택, 조건 입력, 필요 역량 목록, 본문과 제안 설정을 소유합니다.
@@ -22,6 +26,7 @@ export function usePartnerRecruitmentCreateViewModel() {
   const [capabilityDraft, setCapabilityDraft] = useState('')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [error, setError] = useState<{ field: 'title' | 'body' | 'recruitmentDeadline'; message: string } | null>(null)
   const [proposalSettings, setProposalSettings] = useState({
     verifiedOnly: true,
     emailNotice: true,
@@ -30,6 +35,18 @@ export function usePartnerRecruitmentCreateViewModel() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!recruitmentDeadline || recruitmentDeadline > maximumRecruitmentDeadline) {
+      setError({ field: 'recruitmentDeadline', message: `모집 마감일은 ${maximumRecruitmentDeadline}까지 선택해 주세요.` })
+      return
+    }
+    if (!title.trim() || title.length > titleMaxLength) {
+      setError({ field: 'title', message: `제목을 1~${titleMaxLength}자로 입력해 주세요.` })
+      return
+    }
+    if (!body.trim()) {
+      setError({ field: 'body', message: '모집 소개 본문을 입력해 주세요.' })
+      return
+    }
     navigate('/partners')
   }
 
@@ -37,6 +54,7 @@ export function usePartnerRecruitmentCreateViewModel() {
   function addCapabilityOnEnter(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== 'Enter') return
     event.preventDefault()
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
     const capability = capabilityDraft.trim()
     if (!capability || capabilities.includes(capability)) return
     setCapabilities([...capabilities, capability])
@@ -65,7 +83,8 @@ export function usePartnerRecruitmentCreateViewModel() {
     seekingCompanyAge,
     updateSeekingCompanyAge: setSeekingCompanyAge,
     recruitmentDeadline,
-    updateRecruitmentDeadline: setRecruitmentDeadline,
+    maximumRecruitmentDeadline,
+    updateRecruitmentDeadline: (value: string) => { setRecruitmentDeadline(value); setError(null) },
     capabilities,
     capabilityDraft,
     updateCapabilityDraft: setCapabilityDraft,
@@ -73,14 +92,14 @@ export function usePartnerRecruitmentCreateViewModel() {
     removeCapability,
     title,
     titleMaxLength,
-    updateTitle: setTitle,
+    updateTitle: (value: string) => { setTitle(value); setError(null) },
     body,
-    updateBody: setBody,
+    updateBody: (value: string) => { setBody(value); setError(null) },
+    error,
     proposalSettings,
     toggleProposalSetting,
     submit,
-    // 임시 저장 API가 생기면 마지막 저장 시각으로 바꿉니다.
-    draftStatus: '임시 저장됨 · 방금 전',
+    draftStatus: '데모 입력 · 저장되지 않음',
     ownCompany,
     selectedProgram,
     // 공고 원문에서 발췌한 문장만 씁니다. 원문에 없는 조건은 확인 필요로 남깁니다.

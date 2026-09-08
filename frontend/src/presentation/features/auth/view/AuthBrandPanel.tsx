@@ -47,13 +47,13 @@ export function AuthBrandPanel() {
       </Link>
 
       <div className={authPageStyles.brandHeadline}>
-        <p className={authPageStyles.brandEyebrow}>GovBiz 계정</p>
+        <p className={authPageStyles.brandEyebrow}>GovBiz 계정 · 구현 예정</p>
         <h2 className={authPageStyles.brandTagline}>
           계정 하나로 관심 공고 저장부터 파트너 모집까지
         </h2>
         <p className={authPageStyles.brandDescription}>
-          지원사업 검색은 로그인 없이 그대로 쓸 수 있습니다. 계정은 저장하고, 알림을 받고,
-          함께할 기업을 찾을 때만 필요합니다.
+          지원사업 검색은 로그인 없이 쓸 수 있습니다. 아래 계정 기능은 준비 중이며,
+          현재는 예시 화면으로만 확인할 수 있습니다.
         </p>
       </div>
 
@@ -84,8 +84,7 @@ export function AuthBrandPanel() {
       </div>
 
       <p className={authPageStyles.brandFooter}>
-        검색 결과는 기업마당 공식 공고와 원문 링크를 기반으로 합니다. 계정 정보는 추천 근거와
-        파트너 매칭에만 사용합니다.
+        계정 인증·저장·알림은 아직 연결되지 않았습니다. 실제 개인정보나 비밀번호는 입력하지 마세요.
       </p>
     </aside>
   )

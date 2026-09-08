@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useRef, useState } from 'react'
+import { type BaseSyntheticEvent, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 
 import { appContainer } from '../../../../app/appContainer'
@@ -12,6 +12,8 @@ import {
 } from '../validation/sampleItemFormSchema'
 
 type SampleItemUseCase = Pick<PrepareSampleItemUseCase, 'execute'>
+
+const sampleItemPreparationTimeoutMilliseconds = 10_000
 
 export function useSampleItemViewModel(
   prepareSampleItemUseCase: SampleItemUseCase = appContainer.resolve('prepareSampleItemUseCase'),
@@ -26,6 +28,7 @@ export function useSampleItemViewModel(
     },
   })
   const activeController = useRef<AbortController | null>(null)
+  const activeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeRequestId = useRef<number | null>(null)
   const isMounted = useRef(true)
   const requestSequence = useRef(0)
@@ -39,6 +42,8 @@ export function useSampleItemViewModel(
 
     return () => {
       isMounted.current = false
+      if (activeTimeout.current !== null) clearTimeout(activeTimeout.current)
+      activeTimeout.current = null
       activeController.current?.abort()
       activeController.current = null
       activeRequestId.current = null
@@ -47,6 +52,8 @@ export function useSampleItemViewModel(
   }, [])
 
   function resetPreparation() {
+    if (activeTimeout.current !== null) clearTimeout(activeTimeout.current)
+    activeTimeout.current = null
     activeController.current?.abort()
     activeController.current = null
     activeRequestId.current = null
@@ -63,38 +70,55 @@ export function useSampleItemViewModel(
     })
   }
 
-  const prepare = form.handleSubmit(async (values) => {
-    if (activeRequestId.current !== null) return
+  function prepare(event?: BaseSyntheticEvent) {
+    // 비동기 폼 검증 중 수정·이탈한 입력으로 뒤늦게 요청을 시작하지 않습니다.
+    const submittedRevision = requestSequence.current
+    return form.handleSubmit(async (values) => {
+      if (!isMounted.current || requestSequence.current !== submittedRevision || activeRequestId.current !== null) return
 
-    const item = toSampleItem(values)
-    const requestId = requestSequence.current + 1
-    const controller = new AbortController()
-    requestSequence.current = requestId
-    activeController.current = controller
-    activeRequestId.current = requestId
-    setIsRetrying(preparationError !== null)
-    setIsPreparing(true)
-    setPreparation(null)
-    setPreparationError(null)
-
-    try {
-      const result = await prepareSampleItemUseCase.execute(item, controller.signal)
-      if (!isMounted.current || activeRequestId.current !== requestId) return
-      setPreparation(result)
-    } catch {
-      if (!isMounted.current || activeRequestId.current !== requestId) return
-      setPreparationError(
-        'Core API에 예제 요청을 전달하지 못했습니다. Core API 상태를 확인한 뒤 다시 요청해 주세요.',
-      )
-    } finally {
-      if (isMounted.current && activeRequestId.current === requestId) {
+      const item = toSampleItem(values)
+      const requestId = requestSequence.current + 1
+      const controller = new AbortController()
+      requestSequence.current = requestId
+      activeController.current = controller
+      activeRequestId.current = requestId
+      setIsRetrying(preparationError !== null)
+      setIsPreparing(true)
+      setPreparation(null)
+      setPreparationError(null)
+      const timeoutId = setTimeout(() => {
+        if (!isMounted.current || activeRequestId.current !== requestId) return
         activeController.current = null
+        activeTimeout.current = null
         activeRequestId.current = null
+        controller.abort()
         setIsPreparing(false)
         setIsRetrying(false)
+        setPreparationError('Core API 예제 요청 시간이 초과되었습니다. 다시 요청해 주세요.')
+      }, sampleItemPreparationTimeoutMilliseconds)
+      activeTimeout.current = timeoutId
+
+      try {
+        const result = await prepareSampleItemUseCase.execute(item, controller.signal)
+        if (!isMounted.current || activeRequestId.current !== requestId) return
+        setPreparation(result)
+      } catch {
+        if (!isMounted.current || activeRequestId.current !== requestId) return
+        setPreparationError(
+          'Core API에 예제 요청을 전달하지 못했습니다. Core API 상태를 확인한 뒤 다시 요청해 주세요.',
+        )
+      } finally {
+        clearTimeout(timeoutId)
+        if (isMounted.current && activeRequestId.current === requestId) {
+          activeTimeout.current = null
+          activeController.current = null
+          activeRequestId.current = null
+          setIsPreparing(false)
+          setIsRetrying(false)
+        }
       }
-    }
-  })
+    })(event)
+  }
 
   return {
     actionMessage: createActionMessage(

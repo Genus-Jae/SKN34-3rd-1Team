@@ -6,9 +6,47 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CoreApiHealth } from '../../../data/api/coreApiHealth'
 import { useCoreApiHealth } from './useCoreApiHealth'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.useRealTimers() })
 
 describe('useCoreApiHealth', () => {
+  it('ends an unresponsive check after 10 seconds and ignores its late response before retry', async () => {
+    vi.useFakeTimers()
+    const pending = deferred<CoreApiHealth>()
+    const fetchCoreApiHealth = vi.fn()
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce({ service: 'govbiz-core-api', status: 'up' })
+    const { result } = renderHook(() => useCoreApiHealth(fetchCoreApiHealth))
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_999) })
+    expect(result.current.isLoading).toBe(true)
+    expect(fetchCoreApiHealth.mock.calls[0][0].aborted).toBe(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(result.current).toMatchObject({ isLoading: false, isError: true, data: undefined })
+    expect(fetchCoreApiHealth.mock.calls[0][0].aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+
+    await act(async () => { pending.resolve({ service: 'stale-core-api', status: 'up' }); await pending.promise })
+    expect(result.current).toMatchObject({ isLoading: false, isError: true, data: undefined })
+    await act(async () => { await result.current.refetch() })
+    expect(result.current).toMatchObject({ isLoading: false, isError: false, data: { service: 'govbiz-core-api', status: 'up' } })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['refetch', 'unmount'] as const)('cleans up an unresponsive check timer on %s', async (operation) => {
+    vi.useFakeTimers()
+    const pending = deferred<CoreApiHealth>()
+    const fetchCoreApiHealth = vi.fn().mockReturnValue(pending.promise)
+    const { result, unmount } = renderHook(() => useCoreApiHealth(fetchCoreApiHealth))
+    expect(vi.getTimerCount()).toBe(1)
+    if (operation === 'refetch') {
+      act(() => { void result.current.refetch() })
+      expect(fetchCoreApiHealth.mock.calls[0][0].aborted).toBe(true)
+      expect(vi.getTimerCount()).toBe(1)
+    }
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => { pending.resolve({ service: 'govbiz-core-api', status: 'up' }); await pending.promise })
+  })
+
   it('aborts the first StrictMode request and only applies the latest response', async () => {
     const first = deferred<CoreApiHealth>()
     const second = deferred<CoreApiHealth>()
