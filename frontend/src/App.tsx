@@ -8,6 +8,7 @@ import { CompanyProfilePage } from './presentation/features/company-profile/view
 import { PartnerRecruitmentCreatePage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentCreatePage'
 import { PartnerRecruitmentDetailPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentDetailPage'
 import { PartnerRecruitmentListPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentListPage'
+import { PricingPage } from './presentation/features/pricing/view/PricingPage'
 import { SupportProgramDetailPage } from './presentation/features/support-program-detail/view/SupportProgramDetailPage'
 import { SupportProgramEvidenceQuestionPage } from './presentation/features/support-program-detail/view/SupportProgramEvidenceQuestionPage'
 import { ReduxSampleItemPage } from './presentation/features/sample-item/view/ReduxSampleItemPage'
@@ -35,6 +36,7 @@ function App() {
     <Routes>
       <Route element={<PublicLayout />}>
         <Route path="/" element={<ChatPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
         <Route
           path="/support-programs/detail"
           element={<SupportProgramDetailPage />}

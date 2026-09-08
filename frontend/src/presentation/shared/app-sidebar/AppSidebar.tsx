@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 import { sidebarAccount } from './sidebarAccountPlaceholder'
 
-type MenuIcon = 'search' | 'bookmark' | 'users' | 'building' | 'shield'
+type MenuIcon = 'search' | 'bookmark' | 'users' | 'building' | 'shield' | 'pricing'
 
 /** 사이드바 메뉴 한 줄입니다. `to`가 없으면 아직 화면이 없는 메뉴이므로 링크로 만들지 않습니다. */
 type MenuItem = {
@@ -40,6 +40,7 @@ const menuGroups: MenuGroup[] = [
         to: '/profile',
         matches: (pathname) => pathname.startsWith('/profile'),
       },
+      { label: '요금제', icon: 'pricing', to: '/pricing' },
     ],
   },
   {
@@ -56,6 +57,12 @@ const menuGroups: MenuGroup[] = [
 ]
 
 const iconPaths: Record<MenuIcon, ReactNode> = {
+  pricing: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="3" />
+      <path d="M3 10h18M7 15h3" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="8" />
