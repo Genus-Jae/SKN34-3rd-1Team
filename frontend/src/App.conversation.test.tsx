@@ -185,7 +185,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.fetch).toHaveBeenCalledOnce()
   })
 
-  it('검색어만 제안하면 제목과 확인·취소만 간단히 보여주고 미입력 조건은 나열하지 않는다', async () => {
+  it('검색어만 제안하면 접수 범위를 짧게 안내하고 미입력 기업 조건은 상세에도 나열하지 않는다', async () => {
     const context = { ...emptyConversationContext, query: '제조기업 R&D 사업' }
     const network = mockConversationNetwork([readyConversationProposal(context)])
     const { store } = renderConversationApp()
@@ -194,10 +194,16 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
     const card = within(proposal)
     expect(card.getByRole('heading', { name: context.query })).toBeTruthy()
+    expect(card.getByText('이렇게 찾아볼게요')).toBeTruthy()
+    expect(card.getByText('접수 중만', { selector: 'span' })).toBeTruthy()
+    expect(card.getByText('접수 중인 공고에서 관련 지원사업을 찾아볼게요.')).toBeTruthy()
     expect(card.getByRole('button', { name: '이 조건으로 검색' })).toBeTruthy()
     expect(card.getByRole('button', { name: '제안 취소' })).toBeTruthy()
     expect(proposal.textContent).not.toMatch(/미입력|현재:|제안:|변경 전·후|해석과 검색은 각각|나머지 조건/)
-    expect(proposal.textContent).not.toMatch(/현재 소재지|업종|설립일|지원 목적|접수 상태/)
+    expect(proposal.textContent).not.toMatch(/현재 소재지|업종|설립일|지원 목적/)
+    const details = card.getByText('검색 조건 자세히').closest('details')!
+    expect(details.open).toBe(false)
+    expect(proposalDetailEntries(details)).toEqual([['검색어', context.query], ['접수 상태', '접수 중만']])
     expect(network.searchRequests).toHaveLength(0)
     expect(store.getState().chat.conversationQuery).toBeNull()
     await act(async () => fireEvent.click(card.getByRole('button', { name: '이 조건으로 검색' })))
@@ -219,7 +225,12 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const card = within(proposal)
     expect(card.getByRole('heading', { name: '수출 지원' })).toBeTruthy()
     expect(card.getByText('나머지 조건은 유지됩니다.')).toBeTruthy()
-    expect(proposal.textContent).not.toMatch(/현재 소재지|업종|설립일|지원 목적|접수 상태|서울|SW|2024-01-01/)
+    expect(proposalSummaryText(proposal)).not.toMatch(/현재 소재지|업종|설립일|지원 목적|서울|SW|2024-01-01/)
+    expect(card.queryByRole('list', { name: '변경할 조건' })).toBeNull()
+    expect(proposalDetailEntries(proposal.querySelector('details')!)).toEqual([
+      ['검색어', '수출 지원'], ['접수 상태', '접수 중만'], ['현재 소재지', '서울'],
+      ['업종', 'SW'], ['설립일', '2024-01-01'], ['지원 목적', '사업화'],
+    ])
     expect(network.searchRequests).toHaveLength(1)
     await act(async () => fireEvent.click(card.getByRole('button', { name: '이 조건으로 검색' })))
     expect(network.searchRequests[1]).toEqual({ query: '수출 지원', acceptingOnly: true,
@@ -243,7 +254,11 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(card.getByText('업종 해제')).toBeTruthy()
     expect(card.getByText('접수 상태: 전체')).toBeTruthy()
     expect(card.getByText('나머지 조건은 유지됩니다.')).toBeTruthy()
-    expect(proposal.textContent).not.toMatch(/설립일|지원 목적|서울|2024-01-01|현재:|제안:|미입력/)
+    expect(proposalSummaryText(proposal)).not.toMatch(/설립일|지원 목적|서울|2024-01-01|현재:|제안:|미입력/)
+    expect(proposalDetailEntries(proposal.querySelector('details')!)).toEqual([
+      ['검색어', seoulConversationContext.query], ['접수 상태', '전체 (접수 중·예정·마감·상태 미확인)'],
+      ['현재 소재지', '부산'], ['설립일', '2024-01-01'], ['지원 목적', '사업화'],
+    ])
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true,
       companyConditions: seoulConversationContext.companyConditions })
     fireEvent.click(card.getByRole('button', { name: '제안 취소' }))
@@ -272,9 +287,92 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
 
     const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
     expect(within(proposal).getByText('나머지 조건은 유지됩니다.')).toBeTruthy()
-    expect(proposal.textContent).not.toMatch(/접수 상태|현재 소재지|미입력/)
+    expect(within(proposal).getByText('전체 접수 상태')).toBeTruthy()
+    expect(proposalSummaryText(proposal)).not.toMatch(/현재 소재지|미입력/)
+    expect(within(proposal).queryByRole('list', { name: '변경할 조건' })).toBeNull()
+    expect(proposalDetailEntries(proposal.querySelector('details')!)).toEqual([
+      ['검색어', '수출 지원'], ['접수 상태', '전체 (접수 중·예정·마감·상태 미확인)'],
+    ])
     await act(async () => fireEvent.click(within(proposal).getByRole('button', { name: '이 조건으로 검색' })))
     expect(network.searchRequests[1]).toEqual({ query: '수출 지원', acceptingOnly: false })
+  })
+
+  it.each(['/', '/chat'])('%s의 수출 제안은 접수 중 배지와 변경 목적만 요약하고 자세히 보기는 요청·조건을 바꾸지 않는다', async (path) => {
+    const context = { ...emptyConversationContext, query: '수출 지원사업',
+      companyConditions: { ...emptyConversationContext.companyConditions, supportPurpose: '수출' } }
+    const network = mockConversationNetwork([{ ...readyConversationProposal(context), changedFields: ['QUERY', 'SUPPORT_PURPOSE'] }])
+    const { store } = renderConversationApp(path)
+    await submitMessage('수출 지원사업 찾아줘')
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    const card = within(proposal)
+    expect(card.getByText('이렇게 찾아볼게요')).toBeTruthy()
+    expect(card.getByRole('heading', { level: 2, name: '수출 지원사업' })).toBeTruthy()
+    expect(card.getByText('접수 중만', { selector: 'span' })).toBeTruthy()
+    expect(card.getByText('접수 중인 공고에서 관련 지원사업을 찾아볼게요.')).toBeTruthy()
+    const changes = card.getByRole('list', { name: '변경할 조건' })
+    expect(within(changes).getAllByRole('listitem').map(item => item.textContent)).toEqual(['지원 목적: 수출'])
+    expect(proposal.textContent).not.toMatch(/미입력|전국|예상\s*\d|자격 충족|조건 충족/)
+
+    const summary = card.getByText('검색 조건 자세히').closest('summary')!
+    const details = summary.closest('details')!
+    expect(details.open).toBe(false)
+    expect(proposalDetailEntries(details)).toEqual([
+      ['검색어', '수출 지원사업'], ['접수 상태', '접수 중만'], ['지원 목적', '수출'],
+    ])
+    const before = store.getState().chat
+    fireEvent.click(summary)
+    expect(details.open).toBe(true)
+    expect(within(details).getByText('아직 검색하지 않았어요. 바꾸고 싶은 조건은 새 메시지로 알려주세요.')).toBeTruthy()
+    expect(store.getState().chat).toEqual(before)
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+    expect(store.getState().chat.conversationQuery).toBeNull()
+    expect(network.searchRequests).toHaveLength(0)
+    expect(network.fetch).toHaveBeenCalledOnce()
+    fireEvent.click(summary)
+    expect(details.open).toBe(false)
+    expect(store.getState().chat).toEqual(before)
+    expect(network.fetch).toHaveBeenCalledOnce()
+    fireEvent.click(card.getByRole('button', { name: '제안 취소' }))
+    expect(screen.queryByRole('region', { name: '조건 변경 제안' })).toBeNull()
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
+    expect(network.searchRequests).toHaveLength(0)
+    expect(network.fetch).toHaveBeenCalledOnce()
+  })
+
+  it('전체 상태와 긴 검색어·기업 조건은 상세에서 원문 그대로 확인하며 검색은 명시적 확인 후에만 실행한다', async () => {
+    const longQuery = '해외 시장 진출과 수출 바우처 지원사업 '.repeat(12).trim()
+    const longPurpose = '해외 전시회 참가와 시장 조사 '.repeat(4).trim()
+    const context = { ...seoulConversationContext, query: longQuery, acceptingOnly: false,
+      companyConditions: { ...seoulConversationContext.companyConditions, supportPurpose: longPurpose } }
+    const network = mockConversationNetwork([readyConversationProposal(context)])
+    const { store } = renderConversationApp()
+    await submitMessage('서울 SW 기업, 예정·마감 공고를 포함해서 수출 지원사업 찾아줘')
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    const card = within(proposal)
+    expect(card.getByRole('heading', { level: 2, name: longQuery }).textContent).toBe(longQuery)
+    expect(card.getByText('전체 접수 상태')).toBeTruthy()
+    expect(card.getByText('예정·마감·상태 미확인 공고까지 함께 찾아볼게요.')).toBeTruthy()
+    expect(within(card.getByRole('list', { name: '변경할 조건' })).getByText(`지원 목적: ${longPurpose}`)).toBeTruthy()
+    const summary = card.getByText('검색 조건 자세히').closest('summary')!
+    const details = summary.closest('details')!
+    expect(details.open).toBe(false)
+    const before = store.getState().chat
+    fireEvent.click(summary)
+    expect(details.open).toBe(true)
+    expect(proposalDetailEntries(details)).toEqual([
+      ['검색어', longQuery], ['접수 상태', '전체 (접수 중·예정·마감·상태 미확인)'],
+      ['현재 소재지', '서울'], ['업종', 'SW'], ['설립일', '2024-01-01'], ['지원 목적', longPurpose],
+    ])
+    expect(store.getState().chat).toEqual(before)
+    expect(network.fetch).toHaveBeenCalledOnce()
+    expect(network.searchRequests).toHaveLength(0)
+    await act(async () => fireEvent.click(card.getByRole('button', { name: '이 조건으로 검색' })))
+    expect(network.searchRequests).toEqual([{ query: longQuery, acceptingOnly: false,
+      companyConditions: context.companyConditions }])
+    expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: false,
+      companyConditions: context.companyConditions })
+    expect(screen.queryByRole('region', { name: '조건 변경 제안' })).toBeNull()
+    expect(network.fetch).toHaveBeenCalledTimes(2)
   })
 
   it('서울 SW → 지원금 → 부산을 각각 확인한 뒤에만 검색하며 실제 body와 검색 스냅샷이 일치한다', async () => {
@@ -330,6 +428,10 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const clarification = screen.getByRole('region', { name: '조건 추가 확인' })
     expect(within(clarification).getByRole('heading', { name: question })).toBeTruthy()
     expect(within(clarification).getByText('답변을 입력해 주세요. 아직 검색하지 않았어요.')).toBeTruthy()
+    expect(within(clarification).queryByText('이렇게 찾아볼게요')).toBeNull()
+    expect(within(clarification).queryByText('접수 중만')).toBeNull()
+    expect(within(clarification).queryByText('전체 접수 상태')).toBeNull()
+    expect(clarification.querySelector('details')).toBeNull()
     expect(clarification.textContent).not.toMatch(/미확정 초안|미입력|현재:|제안:|현재 소재지|설립일 ·|2024-01-01|서울|SW/)
     expect(within(clarification).getAllByRole('button')).toHaveLength(1)
     expect(within(clarification).getByRole('button', { name: '제안 취소' })).toBeTruthy()
@@ -470,6 +572,19 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
+
+function proposalSummaryText(proposal: HTMLElement) {
+  const summary = proposal.cloneNode(true) as HTMLElement
+  summary.querySelector('details')?.remove()
+  return summary.textContent ?? ''
+}
+
+function proposalDetailEntries(details: HTMLDetailsElement) {
+  const terms = Array.from(details.querySelectorAll('dl dt'), term => term.textContent)
+  const definitions = Array.from(details.querySelectorAll('dl dd'), definition => definition.textContent)
+  expect(terms).toHaveLength(definitions.length)
+  return terms.map((term, index) => [term, definitions[index]])
+}
 
 function searchTimeoutResponse(changes: Record<string, unknown> = {}) {
   return new Response(JSON.stringify({
