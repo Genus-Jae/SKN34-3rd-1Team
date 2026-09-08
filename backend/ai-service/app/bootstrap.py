@@ -68,6 +68,7 @@ def build_application_container(
             model_timeout_seconds=settings.llm_ranking_model_timeout_seconds,
             run_timeout_seconds=settings.llm_ranking_run_timeout_seconds,
             reasoning_effort=settings.openai_ranking_reasoning_effort,
+            service_tier=settings.openai_ranking_service_tier,
         )
     if evidence_answer_agent is None:
         assert general_model is not None

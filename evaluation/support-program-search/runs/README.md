@@ -15,6 +15,13 @@ AI-only 기준으로 6개 질문(관련 공고 있는 질문 2개)을 평가했�
 가상 공고·지역 조건, 필터 전 응답, 평가 보고서, 선별된 사용량·해시 및 변경 소스 스냅샷만 포함합니다.
 키·개인정보·원시 오류 로그는 포함하지 않습니다. 저장된 결과는 저장소 루트에서 외부 API 없이 재평가합니다.
 
+[검색 지연 비교](search-latency-20260908-v1/README.md)는 공개 공고 20개 고정의 일반/축약/Fast 18회와
+동일 실제 검색 2회 한도 검증을 보관합니다. 미채택 실험·실패도 남기며, API 호출 없이 비교 보고서를 재계산합니다.
+
+[지역 충돌 재검증](region-conflict-20260908-v1/README.md)은 이후 Fast 상시 설정과 함께 수행한
+합성 54개 판정의 전후 비교, 공개 공고의 타지역 충돌·이전 예외 및 실제 검색 1회 확인을 보관합니다.
+기대값은 AI 작성 개발용 사례이며 전체 카탈로그 정확도나 사람 검증 정답으로 취급하지 않습니다.
+
 ```bash
 python3 evaluation/support-program-search/evaluate-region-eligibility.py --fixture evaluation/support-program-search/runs/region-scope-20260907-v1/fixture.json --capture evaluation/support-program-search/runs/region-scope-20260907-v1/capture.json
 python3 evaluation/support-program-search/evaluate-region-eligibility.py --fixture evaluation/support-program-search/runs/region-scope-20260907-v2/fixture.json --capture evaluation/support-program-search/runs/region-scope-20260907-v2/capture.json

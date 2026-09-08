@@ -30,10 +30,13 @@ class Settings:
     llm_ranking_run_timeout_seconds: float = DEFAULT_LLM_RANKING_RUN_TIMEOUT_SECONDS
     openai_ranking_model: str | None = None
     openai_ranking_reasoning_effort: Literal["none", "low"] = "none"
+    openai_ranking_service_tier: Literal["default", "priority"] = "default"
 
     def __post_init__(self) -> None:
         if self.openai_ranking_reasoning_effort not in ("none", "low"):
             raise SettingsConfigurationError("OPENAI_RANKING_REASONING_EFFORT must be none or low")
+        if self.openai_ranking_service_tier not in ("default", "priority"):
+            raise SettingsConfigurationError("OPENAI_RANKING_SERVICE_TIER must be default or priority")
         for name, value in (
             ("LLM_RANKING_MODEL_TIMEOUT_SECONDS", self.llm_ranking_model_timeout_seconds),
             ("LLM_RANKING_RUN_TIMEOUT_SECONDS", self.llm_ranking_run_timeout_seconds),
@@ -59,6 +62,9 @@ class Settings:
             openai_ranking_model=_optional_value(environ.get("OPENAI_RANKING_MODEL")),
             openai_ranking_reasoning_effort=cast(
                 Literal["none", "low"], environ.get("OPENAI_RANKING_REASONING_EFFORT", "none").strip(),
+            ),
+            openai_ranking_service_tier=cast(
+                Literal["default", "priority"], environ.get("OPENAI_RANKING_SERVICE_TIER", "default").strip(),
             ),
             llm_model_timeout_seconds=_positive_float(
                 environ.get("LLM_MODEL_TIMEOUT_SECONDS"),

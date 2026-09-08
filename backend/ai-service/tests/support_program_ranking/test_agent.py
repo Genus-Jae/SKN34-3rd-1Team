@@ -163,6 +163,21 @@ def test_region_prompt_contains_directional_scope_examples(rule):
     assert rule in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
 
 
+@pytest.mark.parametrize("rule", [
+    "회사 지역 내부의 하위 지역인 경우에만",
+    "별도 허용 경로 없이 회사 지역 밖으로 명백히 제한하면 INCOMPATIBLE",
+    "주소 상세도의 차이만으로 UNKNOWN 처리하지",
+    "회사 '서울' / 본문 '안산시 관내 ICT/SW 관련 창업기업' → INCOMPATIBLE",
+    "'만'이라는 단어가 반드시 필요한 것은 아닙니다",
+    "원문에 없는 추가 사업장·지점·이전 경로를 가정해",
+    "별도 경로를 실제 허용했다면",
+    "회사 지역만으로 개인의 거주지 충족·불충족을 단정하지",
+])
+def test_region_prompt_separates_disjoint_places_from_unconfirmed_subregions(rule):
+    # 지침 보존 회귀다. 실제 모델의 의미 판단은 별도 고정 API 평가로 검증한다.
+    assert rule in SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+
+
 def test_region_prompt_requires_location_evidence_and_preserves_national_and_conditional_access():
     instructions = SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
     assert "일반 대상·지원 내용의 인용으로 지역을 증명하지" in instructions
@@ -171,6 +186,26 @@ def test_region_prompt_requires_location_evidence_and_preserves_national_and_con
     assert "행사 장소·지원기관 주소·우대 지역을 기업의 필수 소재지로 바꾸지" in instructions
     assert "이전·확장 확약" in instructions
     assert "대상 자격의 UNKNOWN을 지역 MATCH의 근거로 사용하지" in instructions
+
+
+def test_region_prompt_does_not_treat_unconfirmed_explicit_branch_path_as_absent():
+    # 고정 지침 계약이며 모델의 실제 판정은 별도 유료 회귀 검사로 확인한다.
+    instructions = SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    assert "각 경로의 충족·불충족·미확인을 구분" in instructions
+    assert "'또는', '중 하나', '하나 이상'" in instructions
+    assert "충족 경로 없이 미확인 경로가 남으면 UNKNOWN" in instructions
+    assert "회사 소재지 하나만으로 다른 사업장이 없다고 단정하지" in instructions
+    assert "사업장 종류가 확인되지 않은 회사 지역을 본점·공장 각각의 주소로 일반화하지" in instructions
+    assert "회사 '안산' / 본문 '서울에 본점·지점·공장 중 하나가 있는 기업' → UNKNOWN" in instructions
+    assert "존재 여부 미확인은 그 경로의 불충족 증거가 아닙니다" in instructions
+
+
+def test_region_prompt_checks_the_restricted_subject_before_company_location_conflict():
+    instructions = SUPPORT_PROGRAM_RANKING_INSTRUCTIONS
+    subject_rule = "지역 비교 전에 원문에서 제한이 적용되는 주체를 먼저 구분"
+    assert instructions.index(subject_rule) < instructions.index("별도 허용 경로 없이 회사 지역 밖으로")
+    assert "제한 주체에 해당하는 주소 정보가 없으면 UNKNOWN" in instructions
+    assert "회사 서울 주소로 개인 대구 조건을 INCOMPATIBLE 처리하지" in instructions
 
 
 def test_region_prompt_does_not_require_every_alternative_or_treat_unconfirmed_relocation_as_false():
@@ -741,10 +776,20 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
     assert keyed_schema["additionalProperties"] is False
     assessment_schema = schema["$defs"]["SupportProgramSelectionFor2Options"]
     region_description = assessment_schema["properties"]["regionAssessment"]["description"]
-    assert "상위 지역만 알고 공고가 하위 지역으로 제한되면 UNKNOWN" in region_description
+    assert "회사 지역 내부의 하위 지역일 때만" in region_description
+    assert "별도 허용 경로 없이 회사 지역 밖으로 명백히 제한하면 INCOMPATIBLE" in region_description
+    assert "서울/서울 서초는 UNKNOWN, 서울/경기 안산은 INCOMPATIBLE" in region_description
+    assert "원문에 없는 추가 사업장·지점·이전 경로를 가정하지" in region_description
+    assert "개인 거주지와 회사 소재지는 별개" in region_description
     assert "태그·제목·일반 지원 내용은 지역 근거가 아니다" in region_description
     assert "허용 경로 중 하나를 이미 충족하면 MATCH" in region_description
-    assert "이전 경로 미확인의 조합은 UNKNOWN" in region_description
+    assert "모든 허용 경로의 불충족이 확인되어야 INCOMPATIBLE" in region_description
+    assert "이미 충족한 허용 경로가 없고 본문이 실제 허용한 이전·별도 사업장 경로가 미확인이면 UNKNOWN" in region_description
+    assert "서울 지점·공장 유무 미확인이므로 UNKNOWN" in region_description
+    assert "회사 소재지 하나만으로 다른 사업장의 부재를 증명하지" in region_description
+    assert "사업장 종류가 확인되지 않은 회사 지역을 본점·공장 각각의 주소로 일반화하지" in region_description
+    assert region_description.startswith("먼저 지역 제한 주체를 회사·특정 사업장·개인으로 구분")
+    assert "서울 회사/대구지역 여성은 개인 지역 미확인이므로 UNKNOWN" in region_description
     assert "description" not in assessment_schema["properties"]["targetAssessment"]
     assert "totalScore" not in assessment_schema["properties"]
     assert "totalScore" not in assessment_schema["required"]

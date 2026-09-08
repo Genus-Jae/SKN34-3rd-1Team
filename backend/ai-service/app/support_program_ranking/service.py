@@ -1,3 +1,11 @@
+import asyncio
+from collections import OrderedDict
+from dataclasses import dataclass
+from hashlib import sha256
+import logging
+from math import isfinite
+from time import monotonic
+
 from pydantic import ValidationError
 
 from app.support_program_ranking.errors import AgentExecutionError, AgentFailureCode
@@ -13,15 +21,98 @@ from .models import (
 
 # 사용자가 요청한 지원을 원문이 일부라도 직접 제공해야 추천한다.
 MIN_SEMANTIC_RELEVANCE_SCORE = 20
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _PendingRanking:
+    """동일 입력의 평가 작업과 아직 결과를 기다리는 호출 수를 보관한다."""
+
+    task: asyncio.Task[SupportProgramRankingResponse]
+    waiters: int = 0
 
 
 class SupportProgramRankingService:
     """본문 자격 근거를 검증하고 명백한 부적합을 제외해 검색 관련도순으로 반환한다."""
 
-    def __init__(self, agent: SupportProgramRecommendationAgent) -> None:
+    def __init__(
+        self,
+        agent: SupportProgramRecommendationAgent,
+        *,
+        cache_max_entries: int = 128,
+        cache_ttl_seconds: float = 300.0,
+    ) -> None:
+        if cache_max_entries < 1 or cache_ttl_seconds <= 0 or not isfinite(cache_ttl_seconds):
+            raise ValueError("Ranking cache capacity and TTL must be positive and finite")
+        # Agent의 모델·프롬프트 정책은 인스턴스 생애 동안 고정되며 캐시를 다른 인스턴스와 공유하지 않는다.
         self._agent = agent
+        self._cache_max_entries = cache_max_entries
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._cache: OrderedDict[str, tuple[float, SupportProgramRankingResponse]] = OrderedDict()
+        self._pending: dict[str, _PendingRanking] = {}
 
     async def rank(
+        self,
+        request: SupportProgramRankingRequest,
+    ) -> SupportProgramRankingResponse:
+        started_at = monotonic()
+        # frozen 모델 안의 list까지 복사해 키 생성 이후 호출자가 입력을 바꿔도 평가 입력과 키가 일치한다.
+        request = request.model_copy(deep=True)
+        key = sha256(request.model_dump_json(by_alias=True).encode("utf-8")).hexdigest()
+        now = monotonic()
+        for expired_key, (expires_at, _) in list(self._cache.items()):
+            if expires_at <= now:
+                del self._cache[expired_key]
+
+        cache_state = "miss"
+        try:
+            cached = self._cache.get(key)
+            if cached is not None:
+                cache_state = "hit"
+                self._cache.move_to_end(key)
+                return cached[1].model_copy(deep=True)
+
+            pending = self._pending.get(key)
+            if pending is None:
+                pending = _PendingRanking(asyncio.create_task(self._rank_and_cache(key, request)))
+                self._pending[key] = pending
+            else:
+                cache_state = "shared"
+            pending.waiters += 1
+            try:
+                # 한 HTTP 호출의 취소가 다른 호출이 기다리는 OpenAI 작업까지 취소하지 않게 한다.
+                response = await asyncio.shield(pending.task)
+                return response.model_copy(deep=True)
+            finally:
+                pending.waiters -= 1
+                if pending.waiters == 0:
+                    if self._pending.get(key) is pending:
+                        del self._pending[key]
+                    if not pending.task.done():
+                        pending.task.cancel()
+                        await asyncio.gather(pending.task, return_exceptions=True)
+        finally:
+            logger.info(
+                "support_program_ranking cache_state=%s elapsed_ms=%.1f candidate_count=%d",
+                cache_state,
+                (monotonic() - started_at) * 1_000,
+                len(request.candidates),
+            )
+
+    async def _rank_and_cache(
+        self,
+        key: str,
+        request: SupportProgramRankingRequest,
+    ) -> SupportProgramRankingResponse:
+        response = await self._rank_uncached(request)
+        # 모든 후보·인용·점수의 기존 검증을 통과한 정상 응답만 저장한다. 실패는 그대로 전파한다.
+        self._cache[key] = (monotonic() + self._cache_ttl_seconds, response.model_copy(deep=True))
+        self._cache.move_to_end(key)
+        while len(self._cache) > self._cache_max_entries:
+            self._cache.popitem(last=False)
+        return response
+
+    async def _rank_uncached(
         self,
         request: SupportProgramRankingRequest,
     ) -> SupportProgramRankingResponse:

@@ -123,7 +123,7 @@ async def test_builds_and_wires_agent_in_the_composition_root(
     assert container.support_program_conversation_service._agent._run_timeout_seconds == 1.75
     ranking_agent = container.support_program_ranking_service._agent
     assert ranking_agent._agent.model_settings.timeout == 45
-    assert ranking_agent._agent.model_settings.extra_args == {"timeout": 45}
+    assert ranking_agent._agent.model_settings.extra_args == {"timeout": 45, "service_tier": "default"}
     assert ranking_agent._run_timeout_seconds == 50
     evidence_agent = container.support_program_evidence_answer_service._agent
     assert evidence_agent._agent.model_settings.timeout == 1.25
@@ -167,8 +167,9 @@ async def test_builds_and_wires_agent_in_the_composition_root(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("ranking_model,reasoning", [(None, "none"), ("gpt-5.6-sol", "low")])
+@pytest.mark.parametrize("tier", ["default", "priority"])
 async def test_ranking_model_and_reasoning_do_not_change_conversation_or_evidence(
-    monkeypatch, ranking_model, reasoning,
+    monkeypatch, ranking_model, reasoning, tier,
 ):
     client = FakeOpenAIClient()
     captured = []
@@ -181,7 +182,8 @@ async def test_ranking_model_and_reasoning_do_not_change_conversation_or_evidenc
     monkeypatch.setattr(bootstrap_module, "AsyncOpenAI", lambda **kwargs: client)
     monkeypatch.setattr(bootstrap_module, "OpenAIResponsesModel", fake_responses_model)
     settings = replace(OPENAI_SETTINGS, openai_ranking_model=ranking_model,
-                       openai_ranking_reasoning_effort=reasoning)
+                       openai_ranking_reasoning_effort=reasoning,
+                       openai_ranking_service_tier=tier)
     container = build_application_container(settings)
     try:
         general_arguments, general_model = captured[0]
@@ -194,10 +196,12 @@ async def test_ranking_model_and_reasoning_do_not_change_conversation_or_evidenc
         assert ranking.model is selected_ranking_model
         assert ranking.model_settings.reasoning.effort == reasoning
         assert ranking.model_settings.timeout == 45
+        assert ranking.model_settings.extra_args == {"timeout": 45, "service_tier": tier}
         for agent in (conversation, evidence):
             assert agent.model is general_model
             assert agent.model_settings.reasoning.effort == "none"
             assert agent.model_settings.timeout == 1.25
+            assert not agent.model_settings.extra_args or "service_tier" not in agent.model_settings.extra_args
         assert container.openai_client is client
         assert container.support_program_index_service.openai_client is client
         assert container.support_program_evidence_service.openai_client is client

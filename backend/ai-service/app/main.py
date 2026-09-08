@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 
@@ -32,6 +33,15 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
+        # Uvicorn 기본 설정은 app 로그를 출력하지 않는다. 외부 라이브러리의 로그 수준은 유지한다.
+        application_logger = logging.getLogger("app")
+        application_logger.setLevel(logging.INFO)
+        if not application_logger.hasHandlers():
+            handler = logging.StreamHandler()
+            handler.set_name("govbiz_application")
+            handler.setLevel(logging.INFO)
+            handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
+            application_logger.addHandler(handler)
         try:
             yield
         finally:
