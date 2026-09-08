@@ -1,5 +1,7 @@
 import { Link } from 'react-router'
 
+import { appPaths, publicPaths } from '../../../shared/routes/appPaths'
+
 import { pricingPageStyles } from './PricingPage.styles'
 
 // 현재 제공 기능과 출시 준비 방향을 구분합니다. 유료 가격·결제 정책은 아직 확정하지 않습니다.
@@ -77,7 +79,7 @@ const frequentlyAskedQuestions = [
   },
   {
     question: '로그인·기업 프로필·파트너 모집은 실제로 이용할 수 있나요?',
-    answer: '현재 데모 화면으로 제공됩니다. 실제 계정 인증과 기업 정보 저장, 파트너 모집글 등록 및 제안 전송은 연결되지 않았습니다. 데모 화면은 정식 요금제의 제공 기능이 아닙니다.',
+    answer: '로그인은 실제 계정 세션으로 동작합니다. 기업 프로필 저장, 파트너 모집글 등록과 제안 전송은 아직 연결되지 않은 데모 화면이며, 데모 화면은 정식 요금제의 제공 기능이 아닙니다.',
   },
   {
     question: 'AI가 지원 자격이나 선정을 보장하나요?',
@@ -85,8 +87,14 @@ const frequentlyAskedQuestions = [
   },
 ] as const
 
-/** 결제 기능 없이 현재 공개 기능과 출시 예정 요금제를 안내하는 공개 페이지입니다. */
-export function PricingPage() {
+type PricingPageLayout = 'public' | 'workspace'
+
+/**
+ * 결제 기능 없이 현재 공개 기능과 출시 예정 요금제를 안내합니다. 로그인 전에는 헤더 아래 공개 페이지로,
+ * 로그인 뒤에는 사이드바 안에서 같은 내용을 보여 주며 검색 진입 버튼만 각 세계의 검색 화면으로 향합니다.
+ */
+export function PricingPage({ layout = 'public' }: { layout?: PricingPageLayout }) {
+  const searchPath = layout === 'workspace' ? appPaths.chat : publicPaths.landing
   return (
     <main className={pricingPageStyles.page}>
       <section className={pricingPageStyles.hero} aria-labelledby="pricing-title">
@@ -175,7 +183,7 @@ export function PricingPage() {
                 </ul>
                 <div className={pricingPageStyles.planFooter}>
                   {plan.isAvailable ? (
-                    <Link className={`${pricingPageStyles.planButton} ${pricingPageStyles.availableButton}`} to="/">
+                    <Link className={`${pricingPageStyles.planButton} ${pricingPageStyles.availableButton}`} to={searchPath}>
                       무료로 지원사업 찾기
                     </Link>
                   ) : (
@@ -256,7 +264,7 @@ export function PricingPage() {
           <br />
           지금 제공하는 검색 기능으로 탐색을 시작할 수 있습니다.
         </p>
-        <Link className={pricingPageStyles.closingButton} to="/">
+        <Link className={pricingPageStyles.closingButton} to={searchPath}>
           지원사업 찾기 시작하기
           <svg
             className={pricingPageStyles.arrowIcon}

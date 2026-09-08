@@ -4,6 +4,7 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { appPaths } from '../../../shared/routes/appPaths'
 import { usePartnerRecruitmentDetailViewModel } from '../viewmodel/usePartnerRecruitmentDetailViewModel'
 import { partnerRecruitmentStyles } from './PartnerRecruitment.styles'
 
@@ -24,7 +25,7 @@ export function PartnerRecruitmentDetailPage() {
     return <div className={workspacePageStyles.content}>
       <h1 className={workspacePageStyles.title}>준비되지 않은 모집글 상세입니다</h1>
       <p className={workspacePageStyles.emptyNote}>요청한 모집글의 상세 예시가 없습니다. 다른 모집글로 대신 표시하지 않습니다.</p>
-      <Link className={workspacePageStyles.secondaryButton} to="/partners">파트너 모집 목록</Link>
+      <Link className={workspacePageStyles.secondaryButton} to={appPaths.partners}>파트너 모집 목록</Link>
     </div>
   }
 
@@ -32,7 +33,7 @@ export function PartnerRecruitmentDetailPage() {
     <>
       <header className={workspacePageStyles.header}>
         <div className={workspacePageStyles.headerTitleGroup}>
-          <Link className={workspacePageStyles.headerBackLink} to="/partners">
+          <Link className={workspacePageStyles.headerBackLink} to={appPaths.partners}>
             <svg
               width="14"
               height="14"

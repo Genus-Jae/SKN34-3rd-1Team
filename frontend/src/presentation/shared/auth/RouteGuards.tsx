@@ -2,7 +2,9 @@ import { Navigate, Outlet, useLocation } from 'react-router'
 
 import { useAppSelector } from '../../../app/hooks'
 import { meetsTier, type AccountTier } from '../../../domain/entities/Account'
-import { loginPathFor, readReturnPath } from './returnPath'
+import { appPaths, toAppPath } from '../routes/appPaths'
+import { loginPathFor } from './returnPath'
+import { readReturnPath } from './returnPath'
 import { selectAuthStatus, selectCurrentAccount } from './state/authSlice'
 
 /**
@@ -19,7 +21,7 @@ export function RequireAuth({ minimumTier = 'MEMBER' }: { minimumTier?: AccountT
   if (status !== 'authenticated' || account === null) {
     return <Navigate replace to={loginPathFor(`${location.pathname}${location.search}`)} />
   }
-  if (!meetsTier(account, minimumTier)) return <Navigate replace to="/chat" />
+  if (!meetsTier(account, minimumTier)) return <Navigate replace to={appPaths.chat} />
   return <Outlet />
 }
 
@@ -30,5 +32,20 @@ export function GuestOnly() {
 
   if (status === 'unknown') return null
   if (status === 'authenticated') return <Navigate replace to={readReturnPath(location.search)} />
+  return <Outlet />
+}
+
+/**
+ * 헤더 아래 공개 화면 묶음입니다. 로그인한 사용자는 사이드바 안에서만 화면을 보므로, 같은 내용의 내부 경로로
+ * 보내고 검색 복귀 정보 같은 이동 상태는 그대로 넘깁니다.
+ */
+export function PublicOnly() {
+  const status = useAppSelector(selectAuthStatus)
+  const location = useLocation()
+
+  if (status === 'unknown') return null
+  if (status === 'authenticated') {
+    return <Navigate replace to={toAppPath(location.pathname, location.search)} state={location.state} />
+  }
   return <Outlet />
 }

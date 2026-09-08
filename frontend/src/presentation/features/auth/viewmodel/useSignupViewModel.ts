@@ -32,7 +32,7 @@ export function useSignupViewModel() {
       confirmationInput.focus()
       return
     }
-    navigate('/chat')
+    navigate('/login')
   }
 
   return {

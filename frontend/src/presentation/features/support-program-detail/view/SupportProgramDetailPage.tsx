@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 
+import { isAppPath, supportProgramQuestionPath } from '../../../shared/routes/appPaths'
+
 import type { SupportProgram, SupportProgramStatus } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import { useSupportProgramDetailViewModel } from '../viewmodel/useSupportProgramDetailViewModel'
 import { supportProgramDetailStyles } from './SupportProgramDetailPage.styles'
-import { getSupportProgramSearchReturnTo } from './supportProgramNavigation'
+import { getSupportProgramSearchReturnTo, type SupportProgramSearchReturnTo } from './supportProgramNavigation'
 
 /** URL의 제공처·원본 공고 ID로 최신 상세 정보를 조회하는 화면입니다. */
 export function SupportProgramDetailPage() {
@@ -37,7 +39,7 @@ export function SupportProgramDetailPage() {
 
 function SupportProgramDetailContent({ identity, searchReturnTo }: {
   identity: SupportProgramIdentity
-  searchReturnTo: '/' | '/chat'
+  searchReturnTo: SupportProgramSearchReturnTo
 }) {
   const detail = useSupportProgramDetailViewModel(identity)
 
@@ -67,7 +69,7 @@ function SupportProgramDetailContent({ identity, searchReturnTo }: {
   return <SupportProgramDetail program={detail.program} searchReturnTo={searchReturnTo} />
 }
 
-function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: '/' | '/chat' }) {
+function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: SupportProgramSearchReturnTo }) {
   return (
     <main className={supportProgramDetailStyles.unavailablePage} aria-live="polite">
       <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
@@ -86,8 +88,10 @@ function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: '/' |
 
 function SupportProgramDetail({ program, searchReturnTo }: {
   program: SupportProgram
-  searchReturnTo: '/' | '/chat'
+  searchReturnTo: SupportProgramSearchReturnTo
 }) {
+  // 작업 채팅에서 연 상세는 질문 화면도 사이드바 안(/app)에서 열리도록 현재 경로로 판단합니다.
+  const inApp = isAppPath(useLocation().pathname)
   return (
     <main className={supportProgramDetailStyles.page}>
       <header className={supportProgramDetailStyles.header}>
@@ -172,10 +176,10 @@ function SupportProgramDetail({ program, searchReturnTo }: {
             <Link
               className={supportProgramDetailStyles.questionLink}
               state={{ searchReturnTo }}
-              to={`/support-programs/detail/question?${new URLSearchParams({
-                sourceCode: program.sourceCode,
-                sourceProgramId: program.id,
-              })}`}
+              to={supportProgramQuestionPath(
+                { sourceCode: program.sourceCode, sourceProgramId: program.id },
+                inApp,
+              )}
             >
               이 공고에 질문하기
             </Link>
@@ -218,7 +222,7 @@ function UnavailableSupportProgramDetail({
 }: {
   description: string
   retry?: () => void
-  searchReturnTo: '/' | '/chat'
+  searchReturnTo: SupportProgramSearchReturnTo
   title: string
 }) {
   return (
