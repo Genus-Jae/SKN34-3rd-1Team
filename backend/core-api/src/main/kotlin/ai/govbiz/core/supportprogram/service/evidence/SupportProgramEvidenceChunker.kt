@@ -14,7 +14,6 @@ object SupportProgramEvidenceChunker {
             .map(String::trim)
             .filter(String::isNotBlank)
             .flatMap(::splitLongSection)
-            .toList()
         val texts = packSections(sections)
         check(texts.isNotEmpty() && texts.size <= MAX_CHUNKS) {
             "source document exceeded the supported evidence chunk limit"
@@ -36,19 +35,19 @@ object SupportProgramEvidenceChunker {
         )
     }
 
-    private fun packSections(sections: List<String>): List<String> {
+    private fun packSections(sections: Sequence<String>): List<String> {
         val chunks = ArrayList<String>()
-        var current = ""
+        val current = StringBuilder(MAX_CHUNK_LENGTH)
         for (section in sections) {
-            val next = if (current.isEmpty()) section else "$current\n\n$section"
-            if (next.length <= MAX_CHUNK_LENGTH) {
-                current = next
-            } else {
-                if (current.isNotEmpty()) chunks += current
-                current = section
+            val separatorLength = if (current.isEmpty()) 0 else 2
+            if (current.length + separatorLength + section.length > MAX_CHUNK_LENGTH) {
+                if (current.isNotEmpty()) chunks += current.toString()
+                current.setLength(0)
             }
+            if (current.isNotEmpty()) current.append("\n\n")
+            current.append(section)
         }
-        if (current.isNotEmpty()) chunks += current
+        if (current.isNotEmpty()) chunks += current.toString()
         return chunks
     }
 

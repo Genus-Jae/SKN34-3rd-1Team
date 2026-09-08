@@ -332,12 +332,14 @@ class SupportProgramRepository(
 
     private fun replaceSourceSnapshot(sourceCode: String, programs: List<CatalogSupportProgram>) {
         supportProgramMapper.markAllNotPresentBySourceCode(sourceCode)
-        programs.forEach { program ->
-            supportProgramMapper.upsert(program.toDbRow())
+        // 입력 순서와 transaction을 유지하면서 DB 왕복과 임시 행 목록의 크기를 제한합니다.
+        programs.asSequence().chunked(UPSERT_BATCH_SIZE).forEach { batch ->
+            supportProgramMapper.upsertBatch(batch.map { it.toDbRow() })
         }
     }
 
     private companion object {
+        const val UPSERT_BATCH_SIZE = 100
         val SOURCE_CODE_PATTERN = Regex("[A-Z][A-Z0-9_]{0,63}")
         val STRING_LIST_TYPE = object : TypeReference<List<String>>() {}
     }

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link, useLocation } from 'react-router'
 
 import type { SupportProgram, SupportProgramEligibilityAxis } from '../../../../domain/entities/SupportProgram'
@@ -437,7 +438,8 @@ function getReadinessNoticeMessage(readiness: SupportProgramSearchReadiness) {
   }
 }
 
-function ProgramResults({ programs }: { programs: SupportProgram[] }) {
+// 초안 입력 중에도 Redux가 보존하는 검색 결과 배열은 카드 전체를 다시 렌더하지 않습니다.
+const ProgramResults = memo(function ProgramResults({ programs }: { programs: SupportProgram[] }) {
   return (
     <section aria-label="지원사업 검색 결과">
       <h2 className={chatPageStyles.resultSectionTitle}>검색 결과 · {programs.length}건</h2>
@@ -451,7 +453,7 @@ function ProgramResults({ programs }: { programs: SupportProgram[] }) {
       </div>
     </section>
   )
-}
+})
 
 function ProgramCard({ program }: { program: SupportProgram }) {
   const { pathname } = useLocation()

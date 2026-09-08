@@ -107,7 +107,6 @@ class SupportProgramEvidenceService:
                     _point_id(chunk): chunk for chunk in request.eligible_chunks
                 }
                 point_ids = list(identities)
-                await self._require_all_indexed(point_ids)
                 indexed_points = await self.qdrant_client.retrieve(
                     collection_name=self.collection_name,
                     ids=point_ids,
@@ -171,17 +170,6 @@ class SupportProgramEvidenceService:
             raise
         except Exception as error:
             raise SupportProgramEvidenceError() from error
-
-    async def _require_all_indexed(self, point_ids: list[str]) -> None:
-        count = await self.qdrant_client.count(
-            collection_name=self.collection_name,
-            count_filter=models.Filter(
-                must=[models.HasIdCondition(has_id=point_ids)]
-            ),
-            exact=True,
-        )
-        if count.count != len(point_ids):
-            raise SupportProgramEvidenceError("EVIDENCE_NOT_READY")
 
     async def _ensure_collection(self) -> None:
         if not await self.qdrant_client.collection_exists(self.collection_name):

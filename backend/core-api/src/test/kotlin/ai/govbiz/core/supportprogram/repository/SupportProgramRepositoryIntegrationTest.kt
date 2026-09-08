@@ -57,6 +57,38 @@ class SupportProgramRepositoryIntegrationTest {
     }
 
     @Test
+    fun synchronizesLargeSnapshotsInOrderAcrossBatchBoundaries() {
+        val programs = (0 until 205).map { index ->
+            catalogProgram(
+                id = "PBLN_BATCH_${index.toString().padStart(3, '0')}",
+                title = "서울 \"AI\" 지원 $index",
+                categories = listOf("AI", "창업·수출"),
+                regions = listOf("서울", "전국"),
+                applicationPeriod = "상시 접수",
+                applicationStartDate = null,
+                applicationEndDate = null,
+            )
+        }
+        val sameBatchUpdate = programs[0].copy(program = programs[0].program.copy(title = "같은 배치의 최종 값"))
+        val laterBatchUpdate = programs[1].copy(program = programs[1].program.copy(title = "다음 배치의 최종 값"))
+        val otherSource = catalogProgram(programs[0].program.id, "다른 제공처 공고", sourceCode = "KSTARTUP")
+        repository.upsert(otherSource)
+        repository.upsert(catalogProgram("PBLN_STALE", "목록에서 사라진 공고"))
+        val snapshot = programs.take(2) + sameBatchUpdate + programs.drop(2) + laterBatchUpdate
+        val expected = listOf(sameBatchUpdate, laterBatchUpdate) + programs.drop(2)
+
+        repeat(2) {
+            repository.synchronizeSource("BIZINFO", snapshot)
+
+            assertEquals(expected, repository.findPresent().filter { it.program.sourceCode == "BIZINFO" })
+            assertEquals(205, countPresentRows("BIZINFO"))
+            assertEquals(206, countRows("BIZINFO"))
+            assertFalse(isSourcePresent("BIZINFO", "PBLN_STALE"))
+            assertEquals(otherSource, repository.findPresentBySourceAndProgramId("KSTARTUP", programs[0].program.id))
+        }
+    }
+
+    @Test
     fun storesAndReadsKoreanArraysAndNullableDates() {
         val catalogProgram = catalogProgram(
             id = "PBLN_JSON",
@@ -607,9 +639,12 @@ class SupportProgramRepositoryIntegrationTest {
             id = "PBLN_TOO_LONG",
             title = "가".repeat(501),
         )
+        val earlierBatchInserts = (0 until 100).map { index ->
+            catalogProgram(id = "PBLN_ROLLBACK_NEW_$index", title = "롤백되어야 하는 신규 공고")
+        }
 
         assertThrows(DataAccessException::class.java) {
-            repository.synchronizeSource("BIZINFO", listOf(changed, invalid))
+            repository.synchronizeSource("BIZINFO", listOf(changed) + earlierBatchInserts + invalid)
         }
 
         assertEquals(
@@ -621,6 +656,7 @@ class SupportProgramRepositoryIntegrationTest {
             repository.findPresentBySourceAndProgramId("BIZINFO", "PBLN_ROLLBACK_B"),
         )
         assertEquals(2, countPresentRows("BIZINFO"))
+        assertEquals(2, countRows("BIZINFO"))
         assertEquals(0, countRowsByProgramId("BIZINFO", "PBLN_TOO_LONG"))
     }
 

@@ -1,4 +1,5 @@
 from hashlib import sha256
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -58,6 +59,67 @@ async def test_search_requires_every_eligible_chunk_before_embedding_the_questio
                 question="제출 서류가 무엇인가요?",
                 eligibleChunks=[identity(indexed), identity(missing)],
                 limit=2,
+            )
+        )
+
+    assert len(stub.requests) == 1
+
+
+@pytest.mark.anyio
+async def test_search_checks_readiness_and_identity_with_one_payload_lookup(
+    evidence_environment, monkeypatch,
+):
+    service, _ = evidence_environment
+    indexed = chunk("BIZINFO:PBLN:100", 0, "서울 AI 지원")
+    await service.index_chunks(SupportProgramEvidenceBatchRequest(chunks=[indexed]))
+    retrieve = AsyncMock(wraps=service.qdrant_client.retrieve)
+    count = AsyncMock(wraps=service.qdrant_client.count)
+    monkeypatch.setattr(service.qdrant_client, "retrieve", retrieve)
+    monkeypatch.setattr(service.qdrant_client, "count", count)
+
+    result = await service.search(
+        SupportProgramEvidenceSearchRequest(
+            question="서울 AI 지원인가요?",
+            eligibleChunks=[identity(indexed)],
+            limit=1,
+        )
+    )
+
+    assert [match.id for match in result.matches] == [indexed.id]
+    retrieve.assert_awaited_once_with(
+        collection_name=service.collection_name,
+        ids=[_point_id(indexed)],
+        with_payload=True,
+        with_vectors=False,
+    )
+    count.assert_not_awaited()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("payload", [
+    {"id": "0" * 64},
+    {"contentHash": "0" * 64},
+    {"order": 1},
+])
+async def test_search_rejects_mismatched_indexed_payload_before_embedding(
+    evidence_environment, payload,
+):
+    service, stub = evidence_environment
+    indexed = chunk("BIZINFO:PBLN:100", 0, "서울 AI 지원")
+    await service.index_chunks(SupportProgramEvidenceBatchRequest(chunks=[indexed]))
+    await service.qdrant_client.set_payload(
+        collection_name=service.collection_name,
+        payload=payload,
+        points=[_point_id(indexed)],
+        wait=True,
+    )
+
+    with pytest.raises(SupportProgramEvidenceError, match="EVIDENCE_UNAVAILABLE"):
+        await service.search(
+            SupportProgramEvidenceSearchRequest(
+                question="서울 AI 지원인가요?",
+                eligibleChunks=[identity(indexed)],
+                limit=1,
             )
         )
 

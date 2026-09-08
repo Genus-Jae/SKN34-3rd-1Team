@@ -59,8 +59,16 @@ class AiSupportProgramRetrievalFacade(private val client: AiSupportProgramIndexC
         programsById: Map<String, CatalogSupportProgram>,
     ): List<String> {
         val queryTokens = tokenize(query)
+        if (queryTokens.isEmpty()) return emptyList()
         return documents.map { document ->
-            document.id to tokenize(document.text).count(queryTokens::contains)
+            // 공고의 모든 토큰을 보관할 필요 없이 아직 찾지 못한 검색어만 추적합니다.
+            val remainingTokens = queryTokens.toMutableSet()
+            val normalizedText = Normalizer.normalize(document.text, Normalizer.Form.NFC).lowercase(Locale.ROOT)
+            for (match in TOKEN.findAll(normalizedText)) {
+                remainingTokens.remove(match.value)
+                if (remainingTokens.isEmpty()) break
+            }
+            document.id to queryTokens.size - remainingTokens.size
         }.filter { it.second > 0 }
             .sortedWith(
                 compareByDescending<Pair<String, Int>> { it.second }

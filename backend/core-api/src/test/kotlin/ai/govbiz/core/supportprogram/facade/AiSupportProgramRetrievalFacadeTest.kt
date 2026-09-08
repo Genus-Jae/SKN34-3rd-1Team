@@ -116,6 +116,33 @@ class AiSupportProgramRetrievalFacadeTest {
     }
 
     @Test
+    fun ignoresRepeatedQueryTokensAndLongUnrelatedTextAfterAllKeywordsAreFound() {
+        val query = "QUARTZ funding quartz"
+        val semantic = (1..20).map { catalogProgram("semantic-$it", "별도 공고") }
+        val unrelatedText = (1..1_000).joinToString(" ") { "unrelated$it" }
+        val strongest = catalogProgram("strongest", "quartz funding $unrelatedText")
+            .copy(sortTimestamp = "2020-01-01")
+        val repeated = catalogProgram("repeated", "quartz ".repeat(100))
+        val candidates = semantic + listOf(repeated, strongest)
+        stubSemantic(query, candidates, semantic)
+
+        val result = AiSupportProgramRetrievalFacade(client).retrieve(query, candidates)
+
+        assertEquals(listOf(strongest, repeated), result.filter { it !in semantic })
+    }
+
+    @Test
+    fun preservesSemanticRankingForAQueryWithoutKeywordTokens() {
+        val query = "!!!🙂"
+        val semantic = programs.take(20).reversed()
+        stubSemantic(query, programs, semantic)
+
+        val result = AiSupportProgramRetrievalFacade(client).retrieve(query, programs)
+
+        assertEquals(semantic, result)
+    }
+
+    @Test
     fun propagatesSemanticFailureEvenWhenTheCatalogHasKeywordMatches() {
         doThrow(AiServiceCallException.unavailable(null)).`when`(client).search(request)
 

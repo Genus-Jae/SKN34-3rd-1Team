@@ -9,6 +9,7 @@ import { emptyConversationContext } from '../../../../data/fixtures/supportProgr
 import type { useSupportProgramChat } from '../hooks/useSupportProgramChat'
 import { useChatPageViewModel } from './useChatPageViewModel'
 import type { useSupportProgramSearchReadiness } from '../hooks/useSupportProgramSearchReadiness'
+import * as supportProgramEligibility from '../supportProgramEligibility'
 
 const hookMocks = vi.hoisted(() => ({
   chat: vi.fn(),
@@ -39,10 +40,37 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 describe('useChatPageViewModel', () => {
+  it('초안 수정은 기존 검색 결과의 자격 건수를 재집계하지 않고 새 결과가 오면 안내를 갱신한다', () => {
+    const formatCounts = vi.spyOn(supportProgramEligibility, 'formatSupportProgramEligibilityCounts')
+    let chat = createChatHook({ messages: [{
+      id: 'search-result', role: 'assistant', text: '검색 결과', programs: supportPrograms.slice(0, 2),
+    }] })
+    hookMocks.chat.mockImplementation(() => chat)
+    const { result, rerender } = renderHook(() => useChatPageViewModel())
+    const announcement = result.current.searchStatusAnnouncement
+    expect(formatCounts).toHaveBeenCalledOnce()
+
+    for (let index = 1; index <= 20; index += 1) {
+      chat = { ...chat, draft: `다음 질문 ${index}` }
+      rerender()
+    }
+    expect(formatCounts).toHaveBeenCalledOnce()
+    expect(result.current.searchStatusAnnouncement).toBe(announcement)
+
+    chat = { ...chat, messages: [...chat.messages, {
+      id: 'next-result', role: 'assistant', text: '새 결과', programs: [],
+    }] }
+    rerender()
+    expect(formatCounts).toHaveBeenCalledTimes(2)
+    expect(result.current.searchStatusAnnouncement)
+      .toBe('지원사업 검색 결과 0건: 조건 확인 공고 0건, 확인 필요 공고 0건을 표시했습니다.')
+  })
+
   it('문서 스크롤 화면은 새 로딩·제안·응답을 보이게 하되 초기 진입·초안 수정·초기화에서는 점프하지 않는다', () => {
     const initial = createChatHook()
     const harness = renderScrollHarness(initial)

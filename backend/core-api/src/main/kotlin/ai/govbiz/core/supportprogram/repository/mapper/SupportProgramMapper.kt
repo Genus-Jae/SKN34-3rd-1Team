@@ -10,6 +10,8 @@ interface SupportProgramMapper {
 
     fun upsert(row: SupportProgramDbRow): Int
 
+    fun upsertBatch(@Param("rows") rows: List<SupportProgramDbRow>): Int
+
     fun markAllNotPresentBySourceCode(@Param("sourceCode") sourceCode: String): Int
 
     fun findBySourceAndProgramId(
