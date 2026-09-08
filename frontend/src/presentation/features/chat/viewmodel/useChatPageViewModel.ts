@@ -21,7 +21,7 @@ export function useChatPageViewModel() {
   const isComposingInput = useRef(false)
   const timelineRef = useRef<HTMLDivElement>(null)
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
-  const focusAfterReset = useRef(false)
+  const focusComposerAfterAction = useRef(false)
   const latestMessage = chat.messages.at(-1)
   const previousTimelineState = useRef({
     isInitial: true,
@@ -55,8 +55,8 @@ export function useChatPageViewModel() {
       interpretationStatus: chat.interpretation.status,
       isSearching: chat.isSearching,
     }
-    if (focusAfterReset.current) {
-      focusAfterReset.current = false
+    if (focusComposerAfterAction.current) {
+      focusComposerAfterAction.current = false
       composerInputRef.current?.focus()
       return
     }
@@ -78,8 +78,13 @@ export function useChatPageViewModel() {
   }
 
   function handleStartNewConversation() {
-    focusAfterReset.current = true
+    focusComposerAfterAction.current = true
     chat.startNewConversation()
+  }
+
+  function handleCancelSearch() {
+    focusComposerAfterAction.current = true
+    chat.cancelSearch()
   }
 
   function handleSelectSuggestion(suggestion: string) {
@@ -146,7 +151,7 @@ export function useChatPageViewModel() {
     isSearching: chat.isSearching,
     messages: chat.messages,
     searchError: chat.searchError,
-    cancelSearch: chat.cancelSearch,
+    cancelSearch: handleCancelSearch,
     readiness,
     suggestions: supportProgramChatSuggestions,
     searchStatusAnnouncement,

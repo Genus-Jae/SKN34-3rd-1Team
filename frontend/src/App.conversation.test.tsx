@@ -26,6 +26,84 @@ beforeEach(() => { readiness.canSearch = true })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
+  it.each(['/', '/chat'])('%s에서 새 검색은 초안 입력만으로 나타나지 않고 대화가 시작되면 입력창 아래 안내 옆에 표시된다', async (path) => {
+    const network = mockConversationNetwork([readyConversationProposal(seoulConversationContext)])
+    renderConversationApp(path)
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
+
+    fireEvent.change(input, { target: { value: '서울 AI 창업지원 사업 찾아줘' } })
+    expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
+    expect(network.fetch).not.toHaveBeenCalled()
+
+    await submitMessage('서울 AI 창업지원 사업 찾아줘')
+    const newSearchButton = screen.getByRole('button', { name: '새 검색' })
+    const hint = screen.getByText(/Enter로 전송 · Shift\+Enter로 줄바꿈/)
+    expect(input.compareDocumentPosition(newSearchButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(newSearchButton.parentElement).toBe(hint.parentElement)
+    expect(input.closest('form')?.contains(newSearchButton)).toBe(true)
+    expect(network.fetch).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    { path: '/', phase: 'interpretation' },
+    { path: '/', phase: 'search' },
+    { path: '/chat', phase: 'interpretation' },
+    { path: '/chat', phase: 'search' },
+  ] as const)('$path에서 $phase 중 취소 클릭은 요청을 다시 제출하지 않고 입력을 복원하며 늦은 응답을 무시한다', async ({ path, phase }) => {
+    let complete!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => { complete = resolve })
+    const fetchMock = vi.fn()
+    if (phase === 'search') fetchMock.mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
+    fetchMock.mockReturnValueOnce(pending)
+    vi.stubGlobal('fetch', fetchMock)
+    const { store } = renderConversationApp(path)
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
+    const message = '서울 AI 창업지원 사업 찾아줘'
+    fireEvent.change(input, { target: { value: message } })
+    await act(async () => fireEvent.submit(input.closest('form')!))
+    if (phase === 'search') {
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    }
+
+    const requestSignal = fetchMock.mock.calls.at(-1)![1].signal as AbortSignal
+    const requestCount = phase === 'search' ? 2 : 1
+    const cancelButton = screen.getByRole('button', { name: '취소' })
+    expect(requestSignal.aborted).toBe(false)
+    // 폼 제출 기본 동작도 실행해 취소 버튼이 전송 버튼으로 재사용되는 회귀를 확인합니다.
+    act(() => cancelButton.click())
+
+    expect(requestSignal.aborted).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(requestCount)
+    expect(screen.queryByRole('button', { name: '취소' })).toBeNull()
+    const submitButton = screen.getByRole('button', { name: '검색 전송' }) as HTMLButtonElement
+    expect(submitButton).not.toBe(cancelButton)
+    expect(submitButton.disabled).toBe(false)
+    expect(input.disabled).toBe(false)
+    expect(input.value).toBe(phase === 'search' ? seoulConversationContext.query : message)
+    expect(document.activeElement).toBe(input)
+    expect(screen.queryByText(/조건 변경안을 해석하고 있어요|공고를 찾아보고 있어요/)).toBeNull()
+    expect(screen.queryByRole('button', { name: '다시 검색' })).toBeNull()
+    const cancelledState = store.getState().chat
+    expect(cancelledState.searchStatus).toBe('idle')
+    expect(cancelledState.interpretation.status).toBe('idle')
+    expect(cancelledState.messages).toHaveLength(2)
+    expect(cancelledState.confirmedSearch).toEqual(phase === 'search'
+      ? { query: seoulConversationContext.query, acceptingOnly: true,
+        companyConditions: seoulConversationContext.companyConditions }
+      : null)
+
+    await act(async () => {
+      complete(json(phase === 'search' ? { query: seoulConversationContext.query, programs: [] }
+        : readyConversationProposal(seoulConversationContext)))
+      await pending
+    })
+    expect(store.getState().chat).toEqual(cancelledState)
+    expect(screen.queryByRole('button', { name: '이 조건으로 검색' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '취소' })).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(requestCount)
+  })
+
   it.each(['/', '/chat'])('%s에서 새 검색 버튼은 대화와 조건을 초기화하고 다음 메시지를 빈 맥락으로 보낸다', async (path) => {
     const context = { ...seoulConversationContext, acceptingOnly: false }
     const next = { ...emptyConversationContext, query: '수출 지원' }

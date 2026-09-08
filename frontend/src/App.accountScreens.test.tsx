@@ -146,11 +146,16 @@ describe('작업 화면 사이드바', () => {
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     expect(within(sidebar).queryByText('새 대화 시작')).toBeNull()
 
-    // 초기화할 대화가 생겼을 때 채팅 화면이 새 검색을 제공합니다.
-    fireEvent.change(screen.getByRole('textbox', { name: '지원사업 검색어' }), {
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    fireEvent.change(input, {
       target: { value: '수출 지원사업' },
     })
-    expect(screen.getByRole('button', { name: '새 검색' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
+
+    // 초안이 아닌 실제 대화가 시작되면 채팅 입력 영역에 새 검색을 제공합니다.
+    fireEvent.submit(input.closest('form')!)
+    expect(within(input.closest('form')!).getByRole('button', { name: '새 검색' })).toBeTruthy()
+    expect(within(sidebar).queryByRole('button', { name: '새 검색' })).toBeNull()
   })
 })
 
