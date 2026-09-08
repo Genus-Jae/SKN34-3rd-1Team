@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -90,6 +90,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     fireEvent.submit(form)
 
     expectDockedChat(input, form)
+    expectLoadingCard('interpretation')
     expect(input.disabled).toBe(true)
     expect(fetchMock).toHaveBeenCalledOnce()
     const requestSignal = fetchMock.mock.calls[0][1].signal as AbortSignal
@@ -100,6 +101,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     expect(input.disabled).toBe(false)
     expect(document.activeElement).toBe(input)
     expectDockedChat(input, form)
+    expectNoLoadingCards()
 
     fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
     expect(screen.getByRole('heading', { level: 1, name: /상황만 입력하면, AI가/ })).toBeTruthy()
@@ -129,6 +131,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
 
     const retryButton = await screen.findByRole('button', { name: '다시 해석' })
     expectDockedChat(input, form)
+    expectNoLoadingCards()
     expect(input.disabled).toBe(false)
     expect(screen.queryByRole('button', { name: '다시 검색' })).toBeNull()
     fireEvent.click(retryButton)
@@ -157,6 +160,74 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
+  it('해석과 검색 요청이 진행되는 동안에만 접근 가능한 로딩 카드와 숨긴 애니메이션 장식을 표시한다', async () => {
+    const fetchMock = renderChat()
+    const interpretation = pendingResponse()
+    const search = pendingResponse()
+    fetchMock.mockReturnValueOnce(interpretation.promise).mockReturnValueOnce(search.promise)
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    expectNoLoadingCards()
+    fireEvent.change(input, { target: { value: '서울 SW 사업화' } })
+    fireEvent.submit(input.closest('form')!)
+
+    expectLoadingCard('interpretation')
+    expect(fetchMock).toHaveBeenCalledOnce()
+    await act(async () => {
+      interpretation.complete(proposalResponse())
+      await interpretation.promise
+    })
+    const confirm = await screen.findByRole('button', { name: '이 조건으로 검색' })
+    expectNoLoadingCards()
+    expect(fetchMock).toHaveBeenCalledOnce()
+
+    fireEvent.click(confirm)
+    expectLoadingCard('search')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      search.complete(new Response(JSON.stringify({ query: seoulConversationContext.query, programs: [] }), {
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      await search.promise
+    })
+    await waitFor(expectNoLoadingCards)
+    expect(screen.queryByRole('button', { name: '취소' })).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('검색 취소와 검색 오류에서는 로딩 카드를 제거하고 자동으로 재요청하지 않는다', async () => {
+    for (const outcome of ['cancel', 'error'] as const) {
+      const fetchMock = renderChat()
+      const search = pendingResponse()
+      fetchMock.mockResolvedValueOnce(proposalResponse()).mockReturnValueOnce(search.promise)
+      const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+      fireEvent.change(input, { target: { value: '서울 SW 사업화' } })
+      fireEvent.submit(input.closest('form')!)
+      fireEvent.click(await screen.findByRole('button', { name: '이 조건으로 검색' }))
+      expectLoadingCard('search')
+      const requestSignal = fetchMock.mock.calls[1][1].signal as AbortSignal
+
+      if (outcome === 'cancel') {
+        fireEvent.click(screen.getByRole('button', { name: '취소' }))
+        expect(requestSignal.aborted).toBe(true)
+        expectNoLoadingCards()
+      }
+      await act(async () => {
+        search.complete(new Response('', { status: 503 }))
+        await search.promise
+      })
+      if (outcome === 'error') {
+        expect(await screen.findByRole('button', { name: '다시 검색' })).toBeTruthy()
+      } else {
+        expect(screen.queryByRole('alert')).toBeNull()
+        expect(screen.queryByRole('button', { name: '다시 검색' })).toBeNull()
+      }
+      expectNoLoadingCards()
+      expect(screen.queryByRole('button', { name: '취소' })).toBeNull()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      cleanup()
+    }
+  })
+
   it('작업 채팅은 기존 사이드바와 단일 입력·대화 영역을 유지한다', () => {
     renderChat('/chat')
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
@@ -180,4 +251,33 @@ function proposalResponse() {
   return new Response(JSON.stringify(readyConversationProposal(seoulConversationContext)), {
     headers: { 'Content-Type': 'application/json' },
   })
+}
+
+function pendingResponse() {
+  let complete!: (response: Response) => void
+  const promise = new Promise<Response>((resolve) => { complete = resolve })
+  return { promise, complete }
+}
+
+function expectNoLoadingCards() {
+  expect(screen.queryByRole('group', { name: '조건 해석 진행 중' })).toBeNull()
+  expect(screen.queryByRole('group', { name: '지원사업 검색 진행 중' })).toBeNull()
+}
+
+function expectLoadingCard(phase: 'interpretation' | 'search') {
+  const isInterpreting = phase === 'interpretation'
+  const card = screen.getByRole('group', {
+    name: isInterpreting ? '조건 해석 진행 중' : '지원사업 검색 진행 중',
+  })
+  expect(within(card).getByText(isInterpreting
+    ? '조건 변경안을 해석하고 있어요. 아직 검색하지 않았습니다…'
+    : '공고를 찾아보고 있어요…')).toBeTruthy()
+  expect(card.querySelector('span[aria-hidden="true"]')?.children).toHaveLength(3)
+  expect(card.querySelector('div[aria-hidden="true"]')?.children).toHaveLength(1)
+  expect(card.querySelectorAll('[aria-hidden="true"]')).toHaveLength(2)
+  expect(screen.getAllByRole('status')).toHaveLength(1)
+  expect(card.contains(screen.getByRole('status'))).toBe(false)
+  expect(screen.queryByRole('group', {
+    name: isInterpreting ? '지원사업 검색 진행 중' : '조건 해석 진행 중',
+  })).toBeNull()
 }

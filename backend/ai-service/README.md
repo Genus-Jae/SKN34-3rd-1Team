@@ -93,7 +93,12 @@ CLEAR는 문자열을 null, acceptingOnly를 true로 복원합니다. 모호한 
 message/query는 LF/CR/tab을 허용하지만 그 외 Unicode C는 거부하며 조건·질문·인용은 모든 C를 거부합니다.
 boolean 강제 변환은 하지 않습니다. 날짜는 실제 달력 날짜이고 설립일은 1900-01-01~referenceDate입니다.
 내부 입력 오류는 기존 FastAPI 422, 모델 장애·잘못된 패치·허위 인용·잘못된 READY는 안전한 503입니다.
-공개 API는 Core의 400/상위 오류 정책을 따릅니다. 오류를 확인 질문이나 검색 0건으로 숨기지 않습니다.
+모델·HTTP·전체 실행 시간 초과는 `SupportProgramConversationTimeoutError`로 구분해 내부 504로 반환합니다.
+Core는 기존 계약대로 공개 `504 AI_SERVICE_TIMEOUT` 또는 `503 AI_SERVICE_UNAVAILABLE`로 변환하고,
+화면은 시간 초과와 일시 이용 불가를 구분해 수동 재시도를 안내합니다. 제한 시간을 늘리거나 자동 재시도하지 않습니다.
+실패 로그에는 `failure_kind`(timeout/execution), 오류 클래스명, `elapsed_ms`만 기록합니다.
+메시지·기업 조건·모델 응답·원문 예외·traceback은 기록하지 않습니다. 공개 입력 오류는 기존 Core 400이며,
+오류를 확인 질문이나 검색 0건으로 숨기지 않습니다.
 
 사용자 확인 전에는 적용 조건을 바꾸거나 검색하지 않습니다. 인용의 문자 일치는 value의 의미 정확도까지
 보증하지 않으므로 모든 READY 결과에 확인이 필요합니다. 기존 query에서 옛 지역을 제거하고 구조 조건 중복을
@@ -439,7 +444,7 @@ OpenAI 거부·기타 SDK 오류·structured output 오류
 유효하지 않은 AI 출력을 정상 결과로 보정하지 않습니다. 재시도·fallback은 추가하지 않습니다.
 순위화 실패 로그에는 `failure_kind`, 고정 `reason_code`, 오류 클래스명, 후보 수, 경과 시간만 기록합니다.
 질문·기업 조건·프롬프트·응답 본문·API key·원문 예외 메시지와 traceback은 기록하지 않습니다.
-조건 해석과 상세 근거 답변의 기존 오류 응답은 변경하지 않습니다.
+조건 해석도 시간 초과는 내부 504, 그 외 실패는 503으로 구분합니다. 상세 근거 답변의 오류 정책은 유지합니다.
 `reason_code`는 후보 집합 불일치 `CANDIDATE_SET_MISMATCH`, 절단 본문의 확정 판정
 `TRUNCATED_SOURCE_KNOWN_ELIGIBILITY`, 확정 판정 근거 누락 `MISSING_KNOWN_EVIDENCE`, 지정 본문
 인용 불일치 `EXACT_QUOTE_MISMATCH`, 예상 밖 Agent 출력 타입 `UNEXPECTED_OUTPUT_TYPE`을 구분합니다.

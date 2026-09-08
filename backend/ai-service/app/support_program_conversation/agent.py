@@ -5,11 +5,13 @@ from agents import (
     Agent, MaxTurnsExceeded, Model, ModelBehaviorError, ModelRefusalError,
     ModelSettings, ModelTimeoutError, RunConfig, Runner,
 )
-from openai import OpenAIError
+from openai import APITimeoutError, OpenAIError
 from openai.types.shared import Reasoning
 from pydantic import ValidationError
 
-from app.support_program_conversation.errors import SupportProgramConversationError
+from app.support_program_conversation.errors import (
+    SupportProgramConversationError, SupportProgramConversationTimeoutError,
+)
 from app.support_program_conversation.models import (
     SupportProgramConversationOutput, SupportProgramConversationRequest,
 )
@@ -29,6 +31,8 @@ class SupportProgramConversationAgent:
             model_settings=ModelSettings(
                 max_tokens=2_000, reasoning=Reasoning(effort="none"), store=False,
                 timeout=model_timeout_seconds,
+                # Keep the per-request HTTP deadline aligned without mutating the shared client.
+                extra_args={"timeout": model_timeout_seconds},
             ),
         )
         self._run_config = RunConfig(
@@ -46,8 +50,10 @@ class SupportProgramConversationAgent:
             if not isinstance(result.final_output, SupportProgramConversationOutput):
                 raise SupportProgramConversationError()
             return SupportProgramConversationOutput.model_validate(result.final_output.model_dump(by_alias=True))
+        except (ModelTimeoutError, APITimeoutError, TimeoutError) as error:
+            raise SupportProgramConversationTimeoutError() from error
         except (
-            MaxTurnsExceeded, ModelBehaviorError, ModelRefusalError, ModelTimeoutError,
-            OpenAIError, TimeoutError, ValidationError,
+            MaxTurnsExceeded, ModelBehaviorError, ModelRefusalError,
+            OpenAIError, ValidationError,
         ) as error:
             raise SupportProgramConversationError() from error

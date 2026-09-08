@@ -4,12 +4,12 @@ from copy import deepcopy
 
 import httpx2
 import pytest
-from agents import MaxTurnsExceeded, ModelTracing, OpenAIResponsesModel
+from agents import MaxTurnsExceeded, ModelTimeoutError, ModelTracing, OpenAIResponsesModel
 from agents.testing import ModelStep, ScriptedModel, assistant_message
-from openai import AsyncOpenAI
+from openai import APITimeoutError, AsyncOpenAI
 
 from app.support_program_conversation.agent import SupportProgramConversationAgent
-from app.support_program_conversation.errors import SupportProgramConversationError
+from app.support_program_conversation.errors import SupportProgramConversationError, SupportProgramConversationTimeoutError
 from app.support_program_conversation.models import SupportProgramConversationOutput, SupportProgramConversationRequest
 from app.support_program_conversation.prompt import SUPPORT_PROGRAM_CONVERSATION_INSTRUCTIONS
 from app.support_program_conversation.service import SupportProgramConversationService
@@ -150,9 +150,45 @@ async def test_run_deadline(request_data):
         return []
     model = ScriptedModel([ModelStep.respond(hang_forever)])
     agent = SupportProgramConversationAgent(model=model, model_timeout_seconds=1, run_timeout_seconds=0.01)
-    with pytest.raises(SupportProgramConversationError) as captured:
+    with pytest.raises(SupportProgramConversationTimeoutError) as captured:
         await agent.interpret(SupportProgramConversationRequest.model_validate(request_data))
     assert isinstance(captured.value.__cause__, TimeoutError)
+    # The whole-run deadline can expire during SDK setup, before a model call starts.
+    assert len(model.calls) <= 1
+
+
+@pytest.mark.anyio
+async def test_model_deadline_is_classified_as_timeout_without_retry(request_data):
+    async def hang_forever(_):
+        await asyncio.Event().wait()
+        return []
+    model = ScriptedModel([ModelStep.respond(hang_forever)])
+    agent = SupportProgramConversationAgent(model=model, model_timeout_seconds=0.01, run_timeout_seconds=1)
+    with pytest.raises(SupportProgramConversationTimeoutError) as captured:
+        await agent.interpret(SupportProgramConversationRequest.model_validate(request_data))
+    assert isinstance(captured.value.__cause__, ModelTimeoutError)
+    assert len(model.calls) == 1
+
+
+@pytest.mark.anyio
+async def test_http_timeout_is_classified_and_uses_interpretation_deadline_without_retry(request_data):
+    calls = []
+    def handle(request):
+        calls.append(request)
+        raise httpx2.ReadTimeout("private transport details", request=request)
+    client = AsyncOpenAI(api_key="test-key", timeout=25, max_retries=0,
+                         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handle)))
+    agent = SupportProgramConversationAgent(model=OpenAIResponsesModel(model="test-model", openai_client=client),
+                                           model_timeout_seconds=4, run_timeout_seconds=5)
+    try:
+        with pytest.raises(SupportProgramConversationTimeoutError) as captured:
+            await agent.interpret(SupportProgramConversationRequest.model_validate(request_data))
+    finally:
+        await client.close()
+    assert isinstance(captured.value.__cause__, APITimeoutError)
+    assert len(calls) == 1
+    assert calls[0].extensions["timeout"] == dict.fromkeys(("connect", "read", "write", "pool"), 4)
+    assert client.timeout == 25
 
 
 @pytest.mark.anyio
