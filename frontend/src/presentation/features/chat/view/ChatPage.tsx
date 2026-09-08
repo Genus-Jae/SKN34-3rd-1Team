@@ -60,28 +60,47 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   const hasReadinessNotice = readiness.isInitialLoading || readiness.isError
     || readiness.data?.searchState !== 'SEARCHABLE'
   const hasConfirmedSearch = confirmedContext.query !== null
-  const hasSearchToReset = hasConfirmedSearch || conversationCount > 0 || draft.length > 0
+  const hasSearchToReset = hasConfirmedSearch || conversationCount > 0
 
-  const searchContextControls = hasSearchToReset ? (
+  const searchContextControls = hasConfirmedSearch ? (
     <div className={chatPageStyles.searchContextControls}>
-      {hasConfirmedSearch ? (
-        <p id="support-program-current-conditions" className={chatPageStyles.currentConditions}>
-          적용 중인 조건: {formatSearchOptions(searchOptions)}
-        </p>
-      ) : null}
-      <button type="button" className={chatPageStyles.newSearchButton}
-        title="대화와 적용 조건을 초기화합니다"
-        onClick={handleStartNewConversation}>새 검색</button>
+      <p id="support-program-current-conditions" className={chatPageStyles.currentConditions}>
+        적용 중인 조건: {formatSearchOptions(searchOptions)}
+      </p>
     </div>
   ) : null
 
   const introBlock = (
     <div className={chatPageStyles.intro}>
-      <h1 className={chatPageStyles.introTitle}>GovBiz에게 물어보세요</h1>
+      <span className={chatPageStyles.introBadge}>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3Z" />
+          <path d="M20 2v4M18 4h4" />
+        </svg>
+        AI 맞춤 검색
+      </span>
+      <h1 className={chatPageStyles.introTitle}>
+        상황만 입력하면, AI가<br />
+        우리 회사 지원사업을 찾아드립니다.
+      </h1>
       <p className={chatPageStyles.introDescription}>
-        지역·업종·설립일 같은 조건을 자연어로 말하면 현재 접수 중인 정부지원사업을 찾아 드립니다.
-        검색 결과는 기업마당 공식 공고와 원문 링크를 기반으로 합니다.
+        공고를 하나하나 찾아보는 대신, 우리 회사 이야기를 한 줄로 적어주세요.
+        <br className="max-chat:hidden" /> 지역·업종·지원 목적에 맞는 공고를 함께 찾아볼게요.
       </p>
+    </div>
+  )
+
+  const composerFooter = (
+    <div className={chatPageStyles.composerFooter}>
+      <small className={chatPageStyles.composerHint}>
+        Enter로 전송 · Shift+Enter로 줄바꿈
+        <span className="block text-[0.68rem]">검색 전 조건을 확인해요.</span>
+      </small>
+      {hasSearchToReset ? (
+        <button type="button" className={chatPageStyles.newSearchButton}
+          title="대화와 적용 조건을 초기화합니다"
+          onClick={handleStartNewConversation}>새 검색</button>
+      ) : null}
     </div>
   )
 
@@ -89,7 +108,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
       <div className={chatPageStyles.composerInputGroup}>
         <textarea
           ref={composerInputRef}
-          className={chatPageStyles.composerInput}
+          className={`${chatPageStyles.composerInput} ${layout === 'landing' ? chatPageStyles.landingComposerInput : chatPageStyles.workspaceComposerInput}`}
           aria-label="지원사업 검색어"
           aria-describedby={[
             hasReadinessNotice ? 'support-program-search-readiness' : null,
@@ -101,25 +120,36 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           onKeyDown={handleInputKeyDown}
-          placeholder="예: 서울에서 AI 창업지원 사업을 찾아줘"
-          rows={1}
+          placeholder={layout === 'landing'
+            ? '예: 서울에서 AI 서비스를 만드는 창업기업입니다. 사업화 지원을 받을 수 있을까요?'
+            : '찾고 싶은 지원사업이나 변경할 조건을 알려주세요.'}
+          rows={layout === 'landing' ? 3 : 1}
         />
+        {composerFooter}
         {isBusy ? (
           <button
+            key="cancel"
             type="button"
             className={chatPageStyles.cancelSearchButton}
-            onClick={cancelSearch}
+            onClick={(event) => {
+              // 취소 후 전송 버튼으로 바뀌어도 이 클릭이 폼을 다시 제출하지 않게 합니다.
+              event.preventDefault()
+              cancelSearch()
+            }}
           >
             취소
           </button>
         ) : (
           <button
+            key="submit"
             type="submit"
             className={chatPageStyles.submitButton}
             aria-label="검색 전송"
             disabled={!isReadyToSubmit}
           >
-            ↑
+            <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 19V5m-7 7 7-7 7 7" />
+            </svg>
           </button>
         )}
       </div>
@@ -149,13 +179,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
             </div>
           ) : null}
     </>
-  )
-
-  const composerHint = (
-      <small className={chatPageStyles.composerHint}>
-        Enter로 전송 · Shift+Enter로 줄바꿈 · 검색 전 조건을 확인해요.
-        <span className="block">개인정보·비밀정보는 입력하지 마세요.</span>
-      </small>
   )
 
   const suggestionChips = (
@@ -192,7 +215,9 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
       >
         {searchStatusAnnouncement}
       </p>
-      {messages.map((message) => {
+      {messages.map((message, index) => {
+        // 공개 첫 화면은 소개 영역이 환영 안내를 대신합니다. 대화 상태 자체는 유지합니다.
+        if (layout === 'landing' && index === 0) return null
         const isUser = message.role === 'user'
 
         return (
@@ -280,9 +305,9 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           <form className={chatPageStyles.composerWorkspace} onSubmit={handleSubmit}>
             {readinessNotice}
             {searchContextControls}
-            {composerErrors}
             {composerInputGroup}
-            {composerHint}
+            {composerErrors}
+            <small className={chatPageStyles.privacyHint}>개인정보·비밀정보는 입력하지 마세요.</small>
           </form>
         </section>
       </main>
@@ -297,11 +322,17 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           {searchContextControls}
           {composerInputGroup}
           {composerErrors}
-          {composerHint}
         </form>
         {suggestionChips}
-        {timeline}
+        <p className={chatPageStyles.sourceHint}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m12 3 8 4v5c0 5-8 9-8 9s-8-4-8-9V7l8-4Z" /><path d="m8 12 3 3 5-6" />
+          </svg>
+          기업마당 공식 공고 기반 · 최종 신청 조건은 원문에서 확인하세요.
+        </p>
+        <small className={chatPageStyles.privacyHint}>개인정보·비밀정보는 입력하지 마세요.</small>
         {readinessNotice}
+        {timeline}
       </section>
     </main>
   )

@@ -124,7 +124,7 @@ describe('App navigation', () => {
 
   it('헤더의 로그인을 누르면 헤더 없는 로그인 화면으로 이동한다', () => {
     renderApp(createAppStore())
-    expect(screen.getByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /상황만 입력하면, AI가.*우리 회사 지원사업을 찾아드립니다/ })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('link', { name: '로그인' }))
 
@@ -142,7 +142,7 @@ describe('App navigation', () => {
 
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'GovBiz에게 물어보세요' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /상황만 입력하면, AI가.*우리 회사 지원사업을 찾아드립니다/ })).toBeNull()
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })).toBeTruthy()
   })
@@ -403,7 +403,7 @@ describe('App navigation', () => {
     renderApp(appStore)
 
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
-    const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
+    const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '서울 AI 지원사업' } })
 
     fireEvent.click(screen.getByRole('link', { name: /상태관리 비교 예제/ }))
@@ -460,7 +460,7 @@ describe('App navigation', () => {
 
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
     expect(
-      (screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘') as HTMLTextAreaElement)
+      (screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement)
         .value,
     ).toBe('서울 AI 지원사업')
   })
@@ -486,7 +486,7 @@ describe('App navigation', () => {
 
     renderApp(createAppStore())
 
-    const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
+    const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '서울 AI' } })
     await submitConfirmedSearch(chatInput)
 
@@ -859,7 +859,7 @@ describe('App navigation', () => {
 
     renderApp(createAppStore())
 
-    const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
+    const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '동일 ID' } })
     await submitConfirmedSearch(chatInput)
 
@@ -903,7 +903,7 @@ describe('App navigation', () => {
 
     renderApp(createAppStore())
 
-    const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
+    const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '서울 AI' } })
     fireEvent.compositionStart(chatInput)
     fireEvent.keyDown(chatInput, { isComposing: true, key: 'Enter' })
@@ -924,7 +924,7 @@ describe('App navigation', () => {
 
     renderApp(createAppStore())
 
-    const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
+    const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '서울 AI' } })
     fireEvent.compositionStart(chatInput)
     fireEvent.compositionEnd(chatInput)
@@ -940,7 +940,7 @@ describe('App navigation', () => {
     renderApp(createAppStore())
 
     const overlongQuery = '가'.repeat(501)
-    const chatInput = screen.getByPlaceholderText('예: 서울에서 AI 창업지원 사업을 찾아줘')
+    const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: overlongQuery } })
     await submitConfirmedSearch(chatInput)
 
