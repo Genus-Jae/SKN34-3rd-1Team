@@ -1,16 +1,23 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
+import type { Account } from './domain/entities/Account'
+import { loginMessages } from './presentation/features/auth/viewmodel/useLoginViewModel'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => ({
   CoreApiConnectionStatus: () => null,
 }))
+
+const memberAccount: Account = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true }
+const adminAccount: Account = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true }
 
 beforeEach(() => {
   // 작업 화면 진입 후 readiness 확인도 실제 서버에 연결하지 않습니다.
@@ -72,7 +79,7 @@ describe('계정 화면', () => {
     expect(screen.getByRole('alert').textContent).toContain('일치')
   })
 
-  it('유효한 가입 입력을 확인하면 계정을 생성하지 않고 데모 작업 화면으로 이동한다', () => {
+  it('유효한 가입 입력을 확인하면 계정을 생성하지 않고 로그인 화면으로 안내한다', () => {
     renderApp('/signup')
     const form = screen.getByRole('form', { name: '회원가입' })
     fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
@@ -81,8 +88,9 @@ describe('계정 화면', () => {
     expect(fetch).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '가입 입력 확인 · 데모' }))
 
-    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
-    expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
+    // 가입 API가 아직 없어 세션이 생기지 않으므로, 회원 전용 작업 화면 대신 로그인 화면으로 안내합니다.
+    expect(screen.getByRole('heading', { name: '다시 오셨군요' })).toBeTruthy()
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
     for (const [url, options] of vi.mocked(fetch).mock.calls) {
       expect(String(url)).not.toMatch(/demo@example|Demo1234/)
       expect(options?.body).toBeUndefined()
@@ -101,28 +109,104 @@ describe('계정 화면', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it.each(['/login', '/signup'])('인증 데모 안내와 모바일에서도 보이는 공개 검색 링크를 제공한다: %s', (path) => {
-    renderApp(path)
+  it('회원가입 데모 안내와 모바일에서도 보이는 공개 검색 링크를 제공한다', () => {
+    renderApp('/signup')
     const form = screen.getByRole('form')
     expect(within(form).getByText(/입력값은 전송·저장되지 않습니다/)).toBeTruthy()
     expect(within(form).getByRole('link', { name: /없이 지원사업 검색/ }).getAttribute('href')).toBe('/')
     expect(within(form).getByLabelText('비밀번호').getAttribute('autocomplete')).toBe('off')
   })
 
-  it.each(['', 'invalid-email'])('로그인 데모도 빈 값과 잘못된 이메일을 차단한다: %s', (email) => {
+  it.each(['', 'invalid-email'])('로그인은 빈 값과 잘못된 이메일을 서버에 보내지 않는다: %s', (email) => {
+    const execute = vi.spyOn(appContainer.resolve('logInUseCase'), 'execute')
     renderApp('/login')
     const form = screen.getByRole('form', { name: '로그인' })
     fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: email } })
     fireEvent.submit(form)
     expect(screen.getByRole('alert').textContent).toContain('이메일')
     expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
-    expect(fetch).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('로그인에 성공하면 세션을 올리고 사이드바가 있는 작업 화면으로 이동한다', async () => {
+    const execute = vi.spyOn(appContainer.resolve('logInUseCase'), 'execute').mockResolvedValue({
+      outcome: 'session',
+      session: { expiresAt: '2026-10-06T12:00:00+09:00', account: memberAccount },
+    })
+    renderApp('/login')
+    const form = screen.getByRole('form', { name: '로그인' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: ' Member@GovBiz.local ' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'govbiz-admin1' } })
+    fireEvent.click(within(form).getByLabelText('로그인 상태 유지'))
+    fireEvent.click(within(form).getByRole('button', { name: '로그인' }))
+
+    await waitFor(() => expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy())
+    expect(execute).toHaveBeenCalledWith({ email: 'Member@GovBiz.local', password: 'govbiz-admin1', rememberMe: true })
+    expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
+    expect(within(screen.getByRole('complementary', { name: '작업 사이드바' })).getByText('member@govbiz.local')).toBeTruthy()
+  })
+
+  it('잘못된 비밀번호·정지·시도 제한은 화면에 구분해 안내한다', async () => {
+    const execute = vi.spyOn(appContainer.resolve('logInUseCase'), 'execute')
+      .mockResolvedValueOnce({ outcome: 'invalid-credentials' })
+      .mockResolvedValueOnce({ outcome: 'suspended' })
+      .mockResolvedValueOnce({ outcome: 'rate-limited', retryAfterSeconds: 30 })
+    renderApp('/login')
+    const form = screen.getByRole('form', { name: '로그인' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'member@govbiz.local' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'wrong' } })
+
+    for (const message of [loginMessages.invalidCredentials, loginMessages.suspended, loginMessages.rateLimited(30)]) {
+      fireEvent.click(within(form).getByRole('button', { name: '로그인' }))
+      await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(message))
+    }
+    expect(execute).toHaveBeenCalledTimes(3)
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
+  })
+
+  it('비로그인으로 작업 화면에 들어가면 로그인으로 보내고 로그인 뒤 원래 화면으로 돌아간다', async () => {
+    vi.spyOn(appContainer.resolve('logInUseCase'), 'execute').mockResolvedValue({
+      outcome: 'session',
+      session: { expiresAt: '2026-10-06T12:00:00+09:00', account: memberAccount },
+    })
+    renderApp('/partners', null)
+
+    const form = screen.getByRole('form', { name: '로그인' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'member@govbiz.local' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'govbiz-admin1' } })
+    fireEvent.click(within(form).getByRole('button', { name: '로그인' }))
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: '함께 신청할 기업 찾기' })).toBeTruthy())
+  })
+
+  it('로그인 상태에서 로그인·회원가입 화면은 작업 화면으로 돌려보낸다', () => {
+    renderApp('/login', memberAccount)
+    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
+    expect(screen.queryByRole('form', { name: '로그인' })).toBeNull()
+  })
+
+  it('사이드바에서 로그아웃하면 공개 화면으로 돌아간다', async () => {
+    vi.spyOn(appContainer.resolve('logOutUseCase'), 'execute').mockResolvedValue(undefined)
+    renderApp('/chat')
+
+    fireEvent.click(within(screen.getByRole('complementary', { name: '작업 사이드바' })).getByRole('button', { name: '로그아웃' }))
+
+    await waitFor(() => expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy())
+  })
+
+  it('관리자 메뉴와 화면은 관리자에게만 보인다', () => {
+    renderApp('/admin/members', memberAccount)
+    // 회원은 관리자 화면 대신 작업 채팅으로 돌아가고 메뉴도 보지 못합니다.
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '회원·기업 목록' })).toBeNull()
+    expect(within(sidebar).getByText('회원 · 기업 미등록')).toBeTruthy()
   })
 })
 
 describe('작업 화면 사이드바', () => {
   it('사이드바로 파트너 모집과 관리자 목록을 오간다', () => {
-    renderApp('/chat')
+    renderApp('/chat', adminAccount)
 
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     fireEvent.click(within(sidebar).getByRole('link', { name: '파트너 모집' }))
@@ -367,18 +451,30 @@ describe('관리자 회원·기업 목록', () => {
   it('관리자 예시 조치와 단일 페이지 이전·다음은 실행 가능한 버튼으로 표시하지 않는다', () => {
     renderApp('/admin/members')
     expect(screen.getByText(/회원·정책은 예시이며/)).toBeTruthy()
-    for (const button of screen.getAllByRole('button')) expect((button as HTMLButtonElement).disabled).toBe(true)
+    // 사이드바의 로그아웃은 실제 동작이므로 화면 본문의 버튼만 봅니다.
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    for (const button of screen.getAllByRole('button').filter((element) => !sidebar.contains(element))) {
+      expect((button as HTMLButtonElement).disabled).toBe(true)
+    }
     expect(screen.getByRole('region', { name: '회원·기업 표 가로 스크롤' }).tabIndex).toBe(0)
     expect(fetch).not.toHaveBeenCalled()
   })
 })
 
-function renderApp(initialEntry: string) {
+/** 로그인 전 화면은 비로그인으로, 작업 화면은 회원으로 시작합니다. `account`를 넘기면 그 계정으로 고정합니다. */
+function renderApp(initialEntry: string, account: Account | null = defaultAccountFor(initialEntry)) {
+  const store = createAppStore()
+  store.dispatch(sessionRestored(account))
   return render(
-    <Provider store={createAppStore()}>
+    <Provider store={store}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <App />
       </MemoryRouter>
     </Provider>,
   )
+}
+
+function defaultAccountFor(initialEntry: string): Account | null {
+  if (initialEntry.startsWith('/login') || initialEntry.startsWith('/signup')) return null
+  return initialEntry.startsWith('/admin') ? adminAccount : memberAccount
 }

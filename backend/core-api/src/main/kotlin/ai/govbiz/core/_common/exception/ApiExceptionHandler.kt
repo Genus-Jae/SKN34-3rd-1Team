@@ -1,13 +1,18 @@
 package ai.govbiz.core._common.exception
 
+import ai.govbiz.core.account.service.exception.AccountSuspendedException
+import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
+import ai.govbiz.core.account.service.exception.InvalidCredentialsException
+import ai.govbiz.core.account.service.exception.LoginRateLimitedException
+import ai.govbiz.core.account.service.exception.SessionOriginRejectedException
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceUnavailableException
 import ai.govbiz.core.supportprogram.service.admission.exception.SupportProgramRequestRejectedException
 import jakarta.servlet.http.HttpServletRequest
 import java.net.URI
-import org.springframework.http.HttpStatus
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -103,13 +108,100 @@ class ApiExceptionHandler {
     ): ResponseEntity<ProblemDetail> =
         problemResponse(definitionFor(exception.failure), request)
 
+    @ExceptionHandler(LoginRateLimitedException::class)
+    fun handleLoginRateLimitedException(
+        exception: LoginRateLimitedException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val response = problemResponse(
+            ProblemDefinition(
+                HttpStatus.TOO_MANY_REQUESTS,
+                URI.create("urn:govbiz:problem:login-rate-limited"),
+                "Login Rate Limited",
+                "Too many login attempts. Please retry later.",
+                "LOGIN_RATE_LIMITED",
+            ),
+            request,
+        )
+        response.body?.setProperty("retryAfterSeconds", exception.retryAfterSeconds)
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header(HttpHeaders.RETRY_AFTER, exception.retryAfterSeconds.toString())
+            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .body(response.body)
+    }
+
+    @ExceptionHandler(SessionOriginRejectedException::class)
+    fun handleSessionOriginRejectedException(
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.FORBIDDEN,
+                URI.create("urn:govbiz:problem:session-origin-rejected"),
+                "Session Origin Rejected",
+                "The request origin is not allowed to use the session cookie.",
+                "SESSION_ORIGIN_REJECTED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(AccountSuspendedException::class)
+    fun handleAccountSuspendedException(
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.FORBIDDEN,
+                URI.create("urn:govbiz:problem:account-suspended"),
+                "Account Suspended",
+                "The account is suspended.",
+                "ACCOUNT_SUSPENDED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(InvalidCredentialsException::class)
+    fun handleInvalidCredentialsException(
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNAUTHORIZED,
+                URI.create("urn:govbiz:problem:invalid-credentials"),
+                "Invalid Credentials",
+                "The email or password is incorrect.",
+                "INVALID_CREDENTIALS",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(AuthenticationRequiredException::class)
+    fun handleAuthenticationRequiredException(
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val response = problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNAUTHORIZED,
+                URI.create("urn:govbiz:problem:authentication-required"),
+                "Authentication Required",
+                "A valid session token is required.",
+                "AUTHENTICATION_REQUIRED",
+            ),
+            request,
+        )
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+            .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .body(response.body)
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleMethodArgumentNotValidException(
         exception: MethodArgumentNotValidException,
         request: HttpServletRequest,
     ): ResponseEntity<ProblemDetail> {
         val errors = java.util.List.copyOf(
-            exception.bindingResult.fieldErrors.map(::toValidationError),
+            exception.bindingResult.fieldErrors.map(::toValidationError).distinct(),
         )
 
         return validationProblem(

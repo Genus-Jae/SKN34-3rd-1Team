@@ -15,6 +15,8 @@ import { ReduxSampleItemPage } from './presentation/features/sample-item/view/Re
 import { SampleItemPage } from './presentation/features/sample-item/view/SampleItemPage'
 import { AppHeader } from './presentation/shared/app-header/AppHeader'
 import { WorkspaceLayout } from './presentation/shared/app-sidebar/WorkspaceLayout'
+import { useRestoreAuthSession } from './presentation/shared/auth/hooks/useAuthSession'
+import { GuestOnly, RequireAuth } from './presentation/shared/auth/RouteGuards'
 
 /** 로그인 전 화면들의 레이아웃입니다. 공용 헤더가 브랜드와 로그인 진입점을 담당합니다. */
 function PublicLayout() {
@@ -30,9 +32,12 @@ function PublicLayout() {
 /**
  * GovBiz의 첫 진입점은 공고를 찾는 채팅 화면입니다.
  * 로그인 전 화면은 공용 헤더를, 로그인 뒤 작업 화면은 사이드바를 씁니다.
- * 로그인·회원가입은 둘 다 쓰지 않는 단독 화면입니다.
+ * 로그인·회원가입은 둘 다 쓰지 않는 단독 화면이며 로그인 상태에서는 작업 화면으로 돌려보냅니다.
+ * 작업 화면은 회원 이상, 관리자 화면은 관리자만 들어갑니다.
  */
 function App() {
+  useRestoreAuthSession()
+
   return (
     <Routes>
       <Route element={<PublicLayout />}>
@@ -50,16 +55,25 @@ function App() {
         <Route path="/examples/sample-item/redux" element={<ReduxSampleItemPage />} />
       </Route>
 
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
+      <Route element={<GuestOnly />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+      </Route>
 
-      <Route element={<WorkspaceLayout />}>
-        <Route path="/chat" element={<ChatPage layout="workspace" />} />
-        <Route path="/partners" element={<PartnerRecruitmentListPage />} />
-        <Route path="/partners/new" element={<PartnerRecruitmentCreatePage />} />
-        <Route path="/partners/detail" element={<PartnerRecruitmentDetailPage />} />
-        <Route path="/profile" element={<CompanyProfilePage />} />
-        <Route path="/admin/members" element={<AdminMembersPage />} />
+      <Route element={<RequireAuth />}>
+        <Route element={<WorkspaceLayout />}>
+          <Route path="/chat" element={<ChatPage layout="workspace" />} />
+          <Route path="/partners" element={<PartnerRecruitmentListPage />} />
+          <Route path="/partners/new" element={<PartnerRecruitmentCreatePage />} />
+          <Route path="/partners/detail" element={<PartnerRecruitmentDetailPage />} />
+          <Route path="/profile" element={<CompanyProfilePage />} />
+        </Route>
+      </Route>
+
+      <Route element={<RequireAuth minimumTier="ADMIN" />}>
+        <Route element={<WorkspaceLayout />}>
+          <Route path="/admin/members" element={<AdminMembersPage />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate replace to="/" />} />

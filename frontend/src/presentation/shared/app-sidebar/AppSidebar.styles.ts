@@ -36,7 +36,6 @@ export const appSidebarStyles = {
   pendingBadge:
     'ml-auto inline-flex rounded-full bg-[#e9ecef] px-[0.45rem] py-[0.1rem] text-[0.62rem] font-bold text-sample-muted',
   account: 'mt-auto flex flex-col gap-[0.6rem] max-chat:mt-4',
-  demoNotice: 'm-0 text-xs leading-relaxed text-sample-muted',
   accountCard:
     'flex items-center gap-[0.65rem] rounded-[0.7rem] bg-[#f6f7f8] p-3',
   accountAvatar:
@@ -44,7 +43,9 @@ export const appSidebarStyles = {
   accountName: 'block text-[0.8rem] font-bold text-app-ink',
   accountCompany:
     'mt-[0.1rem] block overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-sample-muted',
-  publicSearchLink: 'pl-[0.35rem] text-[0.72rem] font-semibold text-brand-primary no-underline hover:underline',
+  accountActions: 'flex items-center gap-3 pl-[0.35rem]',
+  accountLink: 'text-[0.72rem] font-semibold text-brand-primary no-underline hover:underline',
+  logoutButton: 'cursor-pointer border-0 bg-transparent p-0 text-[0.72rem] font-semibold text-sample-muted hover:text-brand-primary hover:underline',
   workspace: '@container/workspace flex min-h-0 min-w-0 flex-col overflow-y-auto max-chat:overflow-visible',
 } as const
 

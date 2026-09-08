@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { createAppStore } from './app/store'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramInterpretation } from './domain/entities/SupportProgramConversation'
 
@@ -602,6 +603,10 @@ async function submitMessage(message: string) {
 
 function renderConversationApp(path = '/') {
   const store = createAppStore()
+  // 작업 채팅(/chat)은 회원 세션이 있어야 열립니다. 세션 복원 요청은 보내지 않습니다.
+  store.dispatch(sessionRestored(
+    path.startsWith('/chat') ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true } : null,
+  ))
   const tree = <Provider store={store}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></Provider>
   return { ...render(tree), store, tree }
 }

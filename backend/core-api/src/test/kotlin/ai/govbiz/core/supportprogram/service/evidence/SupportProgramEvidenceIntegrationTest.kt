@@ -47,6 +47,7 @@ import tools.jackson.databind.json.JsonMapper
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
+        "app.account.jwt-secret=test-jwt-secret-0123456789abcdef0123456789",
         "app.bizinfo.sync.enabled=false",
         "app.support-program-index.enabled=false",
         "app.ai-service.base-url=http://127.0.0.1:1",

@@ -46,8 +46,25 @@ export const appHeaderStyles = {
     'border-sample-border bg-white text-sample-muted hover:bg-[#f6f7f8] hover:text-brand-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
     'max-chat:px-[0.6rem] max-chat:text-[0.66rem]',
   ),
+  /* 로그인 뒤 계정 영역입니다. 개발 로그인 버튼은 로그인 버튼 아래에 겹쳐 놓아 헤더 높이를 바꾸지 않습니다. */
+  account: 'relative flex items-center gap-2',
+  accountEmail: 'max-w-[12rem] truncate text-[0.74rem] font-bold text-app-ink max-chat:hidden',
   loginButton: classes(
     'whitespace-nowrap rounded-full border-0 bg-brand-primary px-[0.9rem] py-[0.5rem] text-[0.74rem] font-extrabold text-white no-underline',
     'hover:bg-[#066538] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary max-chat:px-[0.7rem] max-chat:text-[0.66rem]',
+  ),
+  logoutButton: classes(
+    'cursor-pointer whitespace-nowrap rounded-full border px-[0.8rem] py-[0.45rem] text-[0.74rem] font-bold',
+    'border-sample-border bg-white text-sample-muted hover:bg-[#f6f7f8] hover:text-brand-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+    'max-chat:px-[0.6rem] max-chat:text-[0.66rem]',
+  ),
+  devLogin: 'absolute top-[calc(100%+0.15rem)] right-0 flex items-center gap-2 whitespace-nowrap',
+  devLoginButton: classes(
+    'cursor-pointer border-0 bg-transparent p-0 text-[0.62rem] font-bold text-sample-muted underline underline-offset-2',
+    'hover:text-brand-primary disabled:cursor-not-allowed disabled:opacity-50',
+  ),
+  devLoginError: classes(
+    'absolute top-full right-0 z-[6] mt-1 w-[16rem] rounded-[0.6rem] border px-3 py-2 text-left text-[0.66rem] leading-5',
+    'border-[#f0cfd4] bg-[#fff5f6] text-[#9a3947]',
   ),
 } as const
