@@ -10,6 +10,7 @@ import { LogInUseCase } from '../../domain/usecases/LogInUseCase'
 import { LogOutUseCase } from '../../domain/usecases/LogOutUseCase'
 import { PrepareSampleItemUseCase } from '../../domain/usecases/PrepareSampleItemUseCase'
 import { SearchSupportProgramsUseCase } from '../../domain/usecases/SearchSupportProgramsUseCase'
+import { SignUpUseCase } from '../../domain/usecases/SignUpUseCase'
 import { InterpretSupportProgramConversationUseCase } from '../../domain/usecases/InterpretSupportProgramConversationUseCase'
 import type { AppContainer, AppCradle } from './types'
 
@@ -41,6 +42,7 @@ export function registerUseCases(container: AppContainer) {
     searchSupportProgramsUseCase: asFunction(
       createSearchSupportProgramsUseCase,
     ).singleton(),
+    signUpUseCase: asFunction(createSignUpUseCase).singleton(),
   })
 }
 
@@ -66,6 +68,12 @@ function createLogInUseCase({
   accountRepository,
 }: Pick<AppCradle, 'accountRepository'>): LogInUseCase {
   return new LogInUseCase(accountRepository)
+}
+
+function createSignUpUseCase({
+  accountRepository,
+}: Pick<AppCradle, 'accountRepository'>): SignUpUseCase {
+  return new SignUpUseCase(accountRepository)
 }
 
 function createLogOutUseCase({

@@ -111,6 +111,45 @@ class AccountAuthFlowIntegrationTest {
     }
 
     @Test
+    fun signsUpIssuesASessionRejectsTheSameEmailAgainAndAllowsLoginWithThePassword() {
+        val response = mockMvc.perform(
+            post("/api/v1/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"email":"New.Member@Company.co.kr","password":"welcome-12"}"""),
+        )
+            .andExpect(status().isCreated())
+            .andExpect(cookie().httpOnly(SessionCookieHelper.COOKIE_NAME, true))
+            .andExpect(cookie().maxAge(SessionCookieHelper.COOKIE_NAME, -1))
+            .andExpect(jsonPath("$.account.email").value("new.member@company.co.kr"))
+            .andExpect(jsonPath("$.account.tier").value("MEMBER"))
+            .andExpect(jsonPath("$.account.emailVerified").value(false))
+            .andReturn().response
+        val session = requireNotNull(response.getCookie(SessionCookieHelper.COOKIE_NAME))
+
+        mockMvc.perform(get("/api/v1/auth/me").cookie(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.account.email").value("new.member@company.co.kr"))
+        assertEquals(
+            1,
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM account WHERE email = 'new.member@company.co.kr' AND email_verified_at IS NULL AND terms_agreed_at IS NOT NULL",
+                Int::class.java,
+            ),
+        )
+
+        mockMvc.perform(
+            post("/api/v1/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"email":"NEW.MEMBER@company.co.kr","password":"another-12"}"""),
+        )
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_REGISTERED"))
+            .andExpect(cookie().doesNotExist(SessionCookieHelper.COOKIE_NAME))
+
+        logIn("new.member@company.co.kr", "welcome-12", rememberMe = false)
+    }
+
+    @Test
     fun endsAnIdleSessionAndBlocksASuspendedAccount() {
         val session = logIn("manager@company.co.kr", "password1", rememberMe = true)
 

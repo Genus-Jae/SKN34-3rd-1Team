@@ -3,13 +3,16 @@ package ai.govbiz.core.account.controller
 import ai.govbiz.core.account.controller.dto.AuthSessionResponse
 import ai.govbiz.core.account.controller.dto.CurrentAccountResponse
 import ai.govbiz.core.account.controller.dto.LoginRequest
+import ai.govbiz.core.account.controller.dto.SignupRequest
 import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.account.service.AccountLoginService
 import ai.govbiz.core.account.service.AccountSessionService
+import ai.govbiz.core.account.service.AccountSignupService
 import ai.govbiz.core.account.helper.SessionCookieHelper
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/auth")
 class AccountAuthController(
     private val loginService: AccountLoginService,
+    private val signupService: AccountSignupService,
     private val sessionService: AccountSessionService,
     private val cookieHelper: SessionCookieHelper,
 ) {
@@ -33,6 +37,18 @@ class AccountAuthController(
     ): ResponseEntity<AuthSessionResponse> {
         val result = loginService.logIn(request.email, request.password, httpRequest.remoteAddr, request.rememberMe)
         return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, cookieHelper.issue(result.sessionToken, result.rememberMe).toString())
+            .body(AuthSessionResponse.from(result))
+    }
+
+    /** 계정을 만들고 바로 브라우저 세션 쿠키를 발급합니다. 이메일이 이미 있으면 409입니다. */
+    @PostMapping("/signup")
+    fun signUp(
+        @RequestBody @Valid request: SignupRequest,
+        httpRequest: HttpServletRequest,
+    ): ResponseEntity<AuthSessionResponse> {
+        val result = signupService.signUp(request.email, request.password, httpRequest.remoteAddr)
+        return ResponseEntity.status(HttpStatus.CREATED)
             .header(HttpHeaders.SET_COOKIE, cookieHelper.issue(result.sessionToken, result.rememberMe).toString())
             .body(AuthSessionResponse.from(result))
     }

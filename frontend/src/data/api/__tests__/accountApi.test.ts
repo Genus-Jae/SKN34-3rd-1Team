@@ -8,6 +8,7 @@ import {
   getCurrentAccountApi,
   logInApi,
   logOutApi,
+  signUpApi,
 } from '../accountApi'
 
 afterEach(() => {
@@ -17,6 +18,28 @@ afterEach(() => {
 const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false }
 const sessionResponse = { expiresAt: '2026-10-06T12:00:00+09:00', account }
 const logInCommand = { email: 'manager@company.co.kr', password: 'password1', rememberMe: true }
+
+describe('signUpApi', () => {
+  it('posts the signup command as JSON with cookies and accepts the created session response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(sessionResponse, 201))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(signUpApi({ email: 'manager@company.co.kr', password: 'password1' })).resolves.toEqual(sessionResponse)
+
+    const [requestUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(new URL(requestUrl).pathname).toBe('/api/v1/auth/signup')
+    expect(init.method).toBe('POST')
+    expect(init.credentials).toBe('include')
+    expect(JSON.parse(String(init.body))).toEqual({ email: 'manager@company.co.kr', password: 'password1' })
+  })
+
+  it('returns the conflict code of a duplicate email', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(409, 'EMAIL_ALREADY_REGISTERED')))
+
+    await expect(signUpApi({ email: 'manager@company.co.kr', password: 'password1' }))
+      .rejects.toMatchObject({ name: 'AccountApiError', status: 409, code: 'EMAIL_ALREADY_REGISTERED' })
+  })
+})
 
 describe('logInApi and devLogInApi', () => {
   it('posts the login command as JSON with cookies and validates the session response', async () => {
@@ -113,6 +136,24 @@ describe('AccountRepositoryImpl', () => {
     await expect(repository.logInAsDeveloper('ADMIN')).resolves.toEqual(sessionResponse)
     expect(storage.hasSession()).toBe(true)
     await expect(repository.logInAsDeveloper('ADMIN')).rejects.toMatchObject({ name: 'AccountApiError', status: 404 })
+  })
+
+  it('maps a duplicate email and rate limits to signup outcomes, marks the hint only on success', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(problemResponse(409, 'EMAIL_ALREADY_REGISTERED'))
+      .mockResolvedValueOnce(problemResponse(429, 'LOGIN_RATE_LIMITED', { retryAfterSeconds: 30 }))
+      .mockResolvedValueOnce(problemResponse(400, 'VALIDATION_FAILED'))
+      .mockResolvedValueOnce(jsonResponse(sessionResponse, 201)))
+    const storage = createMemorySessionHintStorage()
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+    const command = { email: 'manager@company.co.kr', password: 'password1' }
+
+    await expect(repository.signUp(command)).resolves.toEqual({ outcome: 'email-taken' })
+    await expect(repository.signUp(command)).resolves.toEqual({ outcome: 'rate-limited', retryAfterSeconds: 30 })
+    await expect(repository.signUp(command)).rejects.toBeInstanceOf(AccountApiError)
+    expect(storage.hasSession()).toBe(false)
+    await expect(repository.signUp(command)).resolves.toEqual({ outcome: 'session', session: sessionResponse })
+    expect(storage.hasSession()).toBe(true)
   })
 
   it('maps 401, suspension, and rate limits to login outcomes and rethrows other failures', async () => {

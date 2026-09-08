@@ -3,6 +3,9 @@ package ai.govbiz.core.account.service.exception
 /** 이메일 또는 비밀번호가 맞지 않을 때 발생합니다. 두 경우를 구분하지 않습니다. */
 class InvalidCredentialsException : RuntimeException()
 
+/** 가입하려는 이메일이 이미 등록되어 있을 때 발생합니다. 탈퇴한 계정의 이메일도 포함합니다. */
+class EmailAlreadyRegisteredException : RuntimeException()
+
 /** 세션 쿠키가 없거나 만료·삭제됐을 때 발생합니다. */
 class AuthenticationRequiredException : RuntimeException()
 

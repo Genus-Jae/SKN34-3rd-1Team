@@ -8,9 +8,11 @@ import ai.govbiz.core.account.helper.AccountTestHelper.NOW
 import ai.govbiz.core.account.service.AccountDevLoginService
 import ai.govbiz.core.account.service.AccountLoginService
 import ai.govbiz.core.account.service.AccountSessionService
+import ai.govbiz.core.account.service.AccountSignupService
 import ai.govbiz.core.account.service.dto.AccountSessionResult
 import ai.govbiz.core.account.service.exception.AccountSuspendedException
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
+import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
 import ai.govbiz.core.account.web.AuthenticatedAccountArgumentResolver
@@ -48,6 +50,9 @@ class AccountAuthControllerTest {
     private lateinit var loginService: AccountLoginService
 
     @Mock
+    private lateinit var signupService: AccountSignupService
+
+    @Mock
     private lateinit var sessionService: AccountSessionService
 
     @Mock
@@ -61,7 +66,7 @@ class AccountAuthControllerTest {
     fun setUp() {
         mockMvc = MockMvcBuilders
             .standaloneSetup(
-                AccountAuthController(loginService, sessionService, cookieHelper),
+                AccountAuthController(loginService, signupService, sessionService, cookieHelper),
                 AccountDevLoginController(devLoginService, cookieHelper),
             )
             .setCustomArgumentResolvers(AuthenticatedAccountArgumentResolver(sessionService))
@@ -95,6 +100,58 @@ class AccountAuthControllerTest {
             .andExpect(jsonPath("$.account.emailVerified").value(false))
             .andExpect(content().string(not(containsString("session-token"))))
             .andExpect(content().string(not(containsString("password"))))
+    }
+
+    @Test
+    fun signUpCreatesTheAccountAndIssuesABrowserSessionCookieWithoutTheTokenInTheBody() {
+        doReturn(sessionResult(rememberMe = false)).`when`(signupService)
+            .signUp("manager@company.co.kr", "password1", "127.0.0.1")
+
+        mockMvc.perform(
+            post(SIGNUP_PATH)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"email":"manager@company.co.kr","password":"password1"}"""),
+        )
+            .andExpect(status().isCreated())
+            .andExpect(cookie().value(SessionCookieHelper.COOKIE_NAME, "session-token"))
+            .andExpect(cookie().httpOnly(SessionCookieHelper.COOKIE_NAME, true))
+            .andExpect(cookie().maxAge(SessionCookieHelper.COOKIE_NAME, -1))
+            .andExpect(jsonPath("$.account.email").value("manager@company.co.kr"))
+            .andExpect(jsonPath("$.account.tier").value("MEMBER"))
+            .andExpect(jsonPath("$.account.emailVerified").value(false))
+            .andExpect(content().string(not(containsString("session-token"))))
+            .andExpect(content().string(not(containsString("password"))))
+    }
+
+    @Test
+    fun signUpRejectsShortPasswordsAndMalformedEmailsBeforeTheService() {
+        for (body in listOf(
+            """{"email":"manager@company.co.kr","password":"short1"}""",
+            """{"email":"not-an-email","password":"password1"}""",
+            """{"email":"manager@company.co.kr","password":"${"p".repeat(73)}"}""",
+        )) {
+            mockMvc.perform(post(SIGNUP_PATH).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(cookie().doesNotExist(SessionCookieHelper.COOKIE_NAME))
+                .andExpect(content().string(not(containsString("password1"))))
+        }
+
+        verifyNoInteractions(signupService)
+    }
+
+    @Test
+    fun signUpMapsADuplicateEmailToAStableConflictProblem() {
+        doThrow(EmailAlreadyRegisteredException()).`when`(signupService).signUp("taken@company.co.kr", "password1", "127.0.0.1")
+
+        mockMvc.perform(
+            post(SIGNUP_PATH)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"email":"taken@company.co.kr","password":"password1"}"""),
+        )
+            .andExpect(status().isConflict())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_REGISTERED"))
+            .andExpect(cookie().doesNotExist(SessionCookieHelper.COOKIE_NAME))
     }
 
     @Test
@@ -295,6 +352,7 @@ class AccountAuthControllerTest {
 
     private companion object {
         const val LOGIN_PATH = "/api/v1/auth/login"
+        const val SIGNUP_PATH = "/api/v1/auth/signup"
         const val LOGOUT_PATH = "/api/v1/auth/logout"
         const val ME_PATH = "/api/v1/auth/me"
         const val DEV_LOGIN_PATH = "/api/v1/auth/dev-login"

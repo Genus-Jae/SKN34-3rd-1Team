@@ -4,7 +4,9 @@ import type { AuthSession } from '../../domain/entities/AuthSession'
 import type {
   AccountLogIn,
   AccountRepository,
+  AccountSignUp,
   LogInResult,
+  SignUpResult,
 } from '../../domain/repositories/AccountRepository'
 import {
   AccountApiError,
@@ -12,6 +14,7 @@ import {
   getCurrentAccountApi,
   logInApi,
   logOutApi,
+  signUpApi,
 } from '../api/accountApi'
 import { toAccount, toAuthSession, type AuthSessionResponseDto } from '../models/AccountDto'
 import type { SessionHintStorage } from '../storage/sessionHintStorage'
@@ -25,6 +28,19 @@ export class AccountRepositoryImpl implements AccountRepository {
 
   constructor({ sessionHintStorage }: Pick<AppCradle, 'sessionHintStorage'>) {
     this.sessionHintStorage = sessionHintStorage
+  }
+
+  /** 409(이미 가입된 이메일)·429는 화면이 구분해 안내하는 업무 결과이고, 그 외 실패는 예외로 둡니다. */
+  async signUp(command: AccountSignUp, signal?: AbortSignal): Promise<SignUpResult> {
+    try {
+      return { outcome: 'session', session: this.rememberSession(await signUpApi(command, signal)) }
+    } catch (error) {
+      if (error instanceof AccountApiError) {
+        if (error.status === 409) return { outcome: 'email-taken' }
+        if (error.status === 429) return { outcome: 'rate-limited', retryAfterSeconds: error.retryAfterSeconds }
+      }
+      throw error
+    }
   }
 
   /** 401·403·429는 화면이 구분해 안내하는 업무 결과이고, 그 외 실패는 예외로 둡니다. */

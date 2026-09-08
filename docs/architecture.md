@@ -426,7 +426,9 @@ C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 
 
 ## 계정과 세션
 
-계정 흐름은 `AccountAuthController → AccountLoginService · AccountSessionService → AccountRepository → MySQL`입니다.
+계정 흐름은 `AccountAuthController → AccountSignupService · AccountLoginService · AccountSessionService → AccountRepository → MySQL`입니다.
+회원가입은 이메일·비밀번호만 받아 BCrypt 해시와 약관 동의 시각을 저장하고 같은 요청에서 세션을 발급합니다. 이메일 중복은 DB unique
+제약의 `DuplicateKeyException`을 Service가 409로 바꿉니다.
 로그인 성공 시 `SessionTokenHelper`가 계정 ID를 `sub`로 하는 HS256 JWT를 발급하고, DB에는 토큰의 SHA-256 해시와
 만료 시각만 저장합니다. 로그인이 필요한 Controller는 `Account` 파라미터를 선언하며
 `AuthenticatedAccountArgumentResolver`가 HttpOnly 세션 쿠키(`govbiz_session`)의 서명·만료를 검사한 뒤 세션 행으로 계정을

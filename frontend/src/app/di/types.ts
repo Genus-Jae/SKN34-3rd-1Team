@@ -13,6 +13,7 @@ import type { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSu
 import type { GetSupportProgramSearchReadinessUseCase } from '../../domain/usecases/GetSupportProgramSearchReadinessUseCase'
 import type { LogInUseCase } from '../../domain/usecases/LogInUseCase'
 import type { LogOutUseCase } from '../../domain/usecases/LogOutUseCase'
+import type { SignUpUseCase } from '../../domain/usecases/SignUpUseCase'
 import type { PrepareSampleItemUseCase } from '../../domain/usecases/PrepareSampleItemUseCase'
 import type { SearchSupportProgramsUseCase } from '../../domain/usecases/SearchSupportProgramsUseCase'
 import type { InterpretSupportProgramConversationUseCase } from '../../domain/usecases/InterpretSupportProgramConversationUseCase'
@@ -36,6 +37,7 @@ export type AppCradle = {
   sampleItemRepository: SampleItemRepository
   searchSupportProgramsUseCase: SearchSupportProgramsUseCase
   sessionHintStorage: SessionHintStorage
+  signUpUseCase: SignUpUseCase
   supportProgramRepository: SupportProgramRepository
 }
 

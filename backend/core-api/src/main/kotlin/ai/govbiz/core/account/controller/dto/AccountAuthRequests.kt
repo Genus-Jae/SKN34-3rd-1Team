@@ -20,6 +20,19 @@ class LoginRequest(
     override fun toString(): String = "LoginRequest(email=$email, rememberMe=$rememberMe)"
 }
 
+/** 회원가입 요청입니다. 비밀번호는 길이(8~72자)만 검사하고, 약관 동의 시각은 서버가 요청 시각으로 기록합니다. */
+class SignupRequest(
+    @field:NotBlank
+    @field:Email
+    @field:Size(max = 320)
+    val email: String,
+    @field:NotBlank
+    @field:Size(min = 8, max = 72)
+    val password: String,
+) {
+    override fun toString(): String = "SignupRequest(email=$email)"
+}
+
 /** 개발용 로그인에서 어떤 시드 계정으로 들어갈지 고릅니다. 본문이 없으면 관리자입니다. */
 data class DevLoginRequest(
     val role: AccountRole = AccountRole.ADMIN,

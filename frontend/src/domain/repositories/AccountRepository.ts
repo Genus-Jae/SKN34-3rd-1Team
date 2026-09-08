@@ -8,6 +8,17 @@ export type AccountLogIn = {
   rememberMe: boolean
 }
 
+export type AccountSignUp = {
+  email: string
+  password: string
+}
+
+/** 가입 실패 사유도 화면이 다른 안내를 보여야 하므로 결과로 구분합니다. 성공하면 서버가 바로 세션을 발급합니다. */
+export type SignUpResult =
+  | { outcome: 'session'; session: AuthSession }
+  | { outcome: 'email-taken' }
+  | { outcome: 'rate-limited'; retryAfterSeconds: number | null }
+
 /** 로그인 실패 사유는 화면이 다른 안내를 보여야 하므로 예외가 아닌 결과로 구분합니다. */
 export type LogInResult =
   | { outcome: 'session'; session: AuthSession }
@@ -17,6 +28,7 @@ export type LogInResult =
 
 /** 계정 기능이 Data Layer의 HTTP·저장소 세부사항과 분리되도록 하는 Domain 포트입니다. */
 export interface AccountRepository {
+  signUp(command: AccountSignUp, signal?: AbortSignal): Promise<SignUpResult>
   logIn(command: AccountLogIn, signal?: AbortSignal): Promise<LogInResult>
   /** 개발 환경 전용. Core API가 개발용 로그인을 켰을 때만 성공하며, 역할별 시드 계정으로 들어갑니다. */
   logInAsDeveloper(role: AccountRole, signal?: AbortSignal): Promise<AuthSession>
