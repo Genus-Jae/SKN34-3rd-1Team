@@ -82,6 +82,7 @@ describe('Awilix application container and Service Locator', () => {
   it('injects a repository override into the real search use case', async () => {
     const search = vi.fn().mockResolvedValue([supportPrograms[3]])
     const repository: SupportProgramRepository = {
+      browseCatalog: vi.fn(),
       interpretConversation: vi.fn(),
       answerEvidenceQuestion: vi.fn(),
       getDetail: vi.fn(),

@@ -138,6 +138,20 @@ Agent가 번호를 공식 API 본문의 `{field, quote}`로 복원하며 Core와
 AI Service가 부적격 항목을 최종 응답에 넣으면 Core는 이를 응답 계약 위반으로 거부합니다.
 결과가 0개인 것은 정상일 수 있으며 관련 없는 공고로 5개를 채우지 않습니다.
 
+직접 필터 검색은 AI 추천과 분리된 공개 목록 경로입니다.
+
+```text
+필터 검색 탭 → ViewModel → BrowseSupportProgramsUseCase → Repository → GET /api/v1/support-programs/catalog
+  → SupportProgramCatalogController → SupportProgramCatalogService
+  → SupportProgramRepository.findPublishedPresent → MyBatis Mapper → Mapper XML → MySQL
+```
+
+공개 DB 스냅샷을 한 번 조회해 키워드·지역·분야·접수 상태로 필터링하고 정렬·페이지 처리를 합니다.
+AI·임베딩·Qdrant·외부 제공처 API를 호출하지 않으며 색인 장애 후에도 이미 공개된 목록을 읽을 수 있습니다.
+지역·분야는 제공처의 정확한 태그 일치이지 기업 자격 판정이 아닙니다. 결과에는 추천 점수나 자격 판정을 넣지 않습니다.
+현재 규모에서는 기존 전체 스냅샷 조회를 재사용하며 DB 스키마·SQL은 바꾸지 않았습니다. 트래픽·데이터 증가 시
+실측에 따라 DB 필터/페이지 조회를 검토합니다. 입력·정렬·응답 계약은 [직접 조건 검색](support-program-catalog.md)을 참고하세요.
+
 검색 카드의 상세 링크는 `/support-programs/detail?sourceCode={sourceCode}&sourceProgramId={id}`로
 이동합니다. 상세 화면은 해당 URL의 식별자로 공개 상세 API를 다시 호출하므로 직접 진입·새로고침이 가능합니다.
 

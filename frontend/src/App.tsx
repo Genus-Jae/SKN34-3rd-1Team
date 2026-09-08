@@ -3,7 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
 import { SignupPage } from './presentation/features/auth/view/SignupPage'
-import { ChatPage } from './presentation/features/chat/view/ChatPage'
+import { SupportProgramSearchPage } from './presentation/features/support-program-catalog/view/SupportProgramSearchPage'
 import { CompanyProfilePage } from './presentation/features/company-profile/view/CompanyProfilePage'
 import { PartnerRecruitmentCreatePage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentCreatePage'
 import { PartnerRecruitmentDetailPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentDetailPage'
@@ -44,7 +44,7 @@ function App() {
     <Routes>
       <Route element={<PublicLayout />}>
         <Route element={<PublicOnly />}>
-          <Route path={publicPaths.landing} element={<ChatPage />} />
+          <Route path={publicPaths.landing} element={<SupportProgramSearchPage />} />
           <Route path={publicPaths.pricing} element={<PricingPage />} />
           <Route path={publicPaths.partners} element={<PublicPartnerRecruitmentListPage />} />
           <Route path={publicPaths.partnerDetail} element={<PublicPartnerRecruitmentDetailPage />} />
@@ -63,7 +63,7 @@ function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<WorkspaceLayout />}>
-          <Route path={appPaths.chat} element={<ChatPage layout="workspace" />} />
+          <Route path={appPaths.chat} element={<SupportProgramSearchPage layout="workspace" />} />
           <Route path={appPaths.pricing} element={<PricingPage layout="workspace" />} />
           <Route path={appPaths.partners} element={<PartnerRecruitmentListPage />} />
           <Route path={appPaths.partnerNew} element={<PartnerRecruitmentCreatePage />} />

@@ -36,6 +36,7 @@ export function isAppPath(pathname: string): boolean {
  */
 export function toAppPath(pathname: string, search = ''): string {
   const trimmed = pathname.replace(/\/+$/, '') || '/'
+  if (trimmed === publicPaths.landing) return `${appPaths.chat}${search}`
   const mirrored = [
     publicPaths.pricing,
     publicPaths.partners,

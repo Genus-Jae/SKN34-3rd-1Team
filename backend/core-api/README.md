@@ -107,6 +107,7 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `GET /api/v1/health` | Core API 자체 생존 상태 |
 | `GET /api/v1/health/ai-service` | AI Service의 내부 Health 응답 확인 |
 | `GET /api/v1/support-programs/readiness` | 공개 공고 스냅샷·검색 색인·최근 동기화 결과 상태 |
+| `GET /api/v1/support-programs/catalog` | AI 없이 키워드·지역·분야·접수 상태로 공고 목록을 필터링·정렬·페이지 조회 |
 | `GET /api/v1/support-programs/search` | 현재 MySQL 공고 카탈로그의 검색 또는 최신 목록 |
 | `POST /api/v1/support-programs/search` | 이번 검색에만 기업 조건을 반영한 자연어 검색 |
 | `POST /api/v1/support-programs/conversation/interpret` | 현재 발화로 조건 변경 초안을 만들며 사용자 확인 전에는 검색하지 않음 |
@@ -117,6 +118,21 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `POST /api/v1/auth/logout` | 세션 행 삭제와 쿠키 만료 |
 | `GET /api/v1/auth/me` | 세션 쿠키로 현재 계정·권한 단계 조회 |
 | `POST /api/v1/auth/dev-login` | `ACCOUNT_DEV_LOGIN_ENABLED=true`일 때만 등록되는 개발용 시드 로그인 |
+
+### 직접 조건으로 찾기
+
+`SupportProgramCatalogController → SupportProgramCatalogService → SupportProgramRepository → MyBatis Mapper → MySQL`
+흐름으로 이미 공개된 DB 공고를 읽습니다. 기존 `findPublishedPresent()`를 사용하며 AI Service·OpenAI·Qdrant·
+기업마당 외부 API를 호출하지 않습니다. 이후 색인 장애와 무관하게 목록을 읽고, AI 요청량 제한 슬롯은 사용하지 않습니다.
+
+`keyword`는 공고명 또는 기관명의 대소문자를 구분하지 않는 단순 포함 검색이며, `region`·`category`는 제공처
+태그의 정확한 일치입니다. 필터는 AND로 결합합니다. 지역 선택은 자격 판정이 아니며 서울을 선택해도 전국 태그를
+자동 포함하지 않습니다. `status` 기본값은 `OPEN`, `sort`는 `RECENT`, `page`는 1, `pageSize`는 12입니다.
+접수 상태는 기존 Repository의 서울 기준 현재 날짜 계산을 그대로 사용합니다.
+
+현재는 한 번 읽은 공개 스냅샷을 Service에서 필터링·정렬·페이지 분할합니다. 응답에는 총건수와 전체 스냅샷의
+지역·분야 선택지도 함께 포함하며, 목록에 AI 추천 이유·점수·자격 검토를 붙이지 않습니다. 목록 요청의 페이지 크기는
+최대 50입니다. 요청·응답·정렬 및 확장 시 고려사항은 [직접 조건 검색 계약](../../docs/support-program-catalog.md)에 있습니다.
 
 ### 후속 대화 조건 해석
 
