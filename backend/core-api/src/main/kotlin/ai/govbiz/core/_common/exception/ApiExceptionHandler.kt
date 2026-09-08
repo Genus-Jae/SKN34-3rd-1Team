@@ -2,6 +2,7 @@ package ai.govbiz.core._common.exception
 
 import ai.govbiz.core.account.service.exception.AccountSuspendedException
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
+import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
 import ai.govbiz.core.account.service.exception.SessionOriginRejectedException
@@ -157,6 +158,21 @@ class ApiExceptionHandler {
                 "Account Suspended",
                 "The account is suspended.",
                 "ACCOUNT_SUSPENDED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(EmailAlreadyRegisteredException::class)
+    fun handleEmailAlreadyRegisteredException(
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:email-already-registered"),
+                "Email Already Registered",
+                "An account with this email already exists.",
+                "EMAIL_ALREADY_REGISTERED",
             ),
             request,
         )

@@ -114,6 +114,7 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `GET /api/v1/support-programs/detail` | 제공처 코드와 원본 ID로 현재 공고 상세 조회 |
 | `POST /api/v1/support-programs/detail/answers` | 특정 공고의 공식 원문 근거 질문·답변 |
 | `POST /api/v1/sample-items/prepare` | 계층 연결 학습용 예제 |
+| `POST /api/v1/auth/signup` | 이메일·비밀번호 회원가입(201). 계정을 만들고 바로 브라우저 세션 쿠키 발급, 중복 이메일은 409 |
 | `POST /api/v1/auth/login` | 이메일·비밀번호 로그인. 세션 JWT를 HttpOnly 쿠키로만 내려줌 |
 | `POST /api/v1/auth/logout` | 세션 행 삭제와 쿠키 만료 |
 | `GET /api/v1/auth/me` | 세션 쿠키로 현재 계정·권한 단계 조회 |
@@ -315,7 +316,7 @@ supportprogram/
 account/
 ├── controller            # 로그인·로그아웃·내 계정, 개발용 관리자 로그인 HTTP 진입점
 │   └── dto               # 공개 요청·응답 계약
-├── service               # 로그인 검증·시도 제한, JWT 세션 발급·확인, 개발용 관리자 계정 생성
+├── service               # 회원가입, 로그인 검증·시도 제한, JWT 세션 발급·확인, 개발용 관리자 계정 생성
 ├── repository            # 계정·세션 저장과 조회, DbRow 변환
 │   └── mapper            # MyBatis Mapper, DbRow
 ├── domain                # 계정·역할·세션 업무 모델

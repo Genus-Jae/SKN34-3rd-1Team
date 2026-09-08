@@ -77,6 +77,24 @@ JWT는 HS256이며 `sub`=계정 ID, `iat`·`exp`=초 단위 epoch, `jti`=무작�
    curl로 세션 쿠키를 흉내낼 때는 허용 origin을 함께 보냅니다. Compose 기본값은
    `-H "Origin: http://127.0.0.1:5173"`입니다. 세션 쿠키가 없는 요청은 검사하지 않습니다.
 
+## 회원가입
+
+```http
+POST /api/v1/auth/signup
+Content-Type: application/json
+
+{ "email": "manager@company.co.kr", "password": "password1" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `email` | 이메일 형식, 320자 이하. Core가 앞뒤 공백 제거·소문자로 정규화해 저장하며 같은 이메일(탈퇴 계정 포함)은 409 |
+| `password` | 8~72자. 길이만 검사하고 문자 종류는 강제하지 않음. BCrypt 해시만 저장 |
+
+성공하면 201과 함께 아래 로그인과 같은 세션 응답을 돌려주고 브라우저 세션 쿠키(`rememberMe=false`와 같음)를
+발급합니다. 계정은 `role=USER`, `tier=MEMBER`, `emailVerified=false`로 만들어지고 약관 동의 시각은 요청 시각으로
+기록합니다. 이메일 인증은 별도 단계입니다. 가입 시도는 로그인과 같은 접속 주소 한도(분당 20회)를 함께 씁니다.
+
 ## 로그인
 
 ```http
@@ -106,7 +124,7 @@ Content-Type: application/json
 | `expiresAt` | 세션 절대 만료 시각(서울 offset). `rememberMe=true`면 쿠키의 Max-Age와 같음 |
 | `account.role` | `USER` 또는 `ADMIN`. 가입 시에는 항상 `USER` |
 | `account.tier` | 권한 단계 `MEMBER`·`COMPANY`·`ADMIN` |
-| `account.emailVerified` | 이메일 인증 완료 여부. 가입 API가 붙기 전에는 시드 계정만 `true` |
+| `account.emailVerified` | 이메일 인증 완료 여부. 가입 직후에는 `false`이고 시드 계정만 `true` |
 
 ### 로그인 시도 제한
 
@@ -158,10 +176,11 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 |---|---:|---|
 | 이메일 형식·비밀번호 누락 등 요청 검증 실패 | 400 | `REQUEST_VALIDATION_FAILED` (`errors[].field`) |
 | 이메일 없음 또는 비밀번호 불일치 | 401 | `INVALID_CREDENTIALS` |
+| 이미 가입된(또는 탈퇴한) 이메일로 회원가입 | 409 | `EMAIL_ALREADY_REGISTERED` |
 | 세션 쿠키 없음·서명 오류·절대/유휴 만료·로그아웃된 세션·삭제된 계정 | 401 | `AUTHENTICATION_REQUIRED` (`WWW-Authenticate: Bearer`) |
 | 정지된 계정의 로그인 또는 세션 사용 | 403 | `ACCOUNT_SUSPENDED` |
 | 세션 쿠키가 붙은 상태 변경 요청의 Origin이 없거나 허용 목록에 없음 | 403 | `SESSION_ORIGIN_REJECTED` |
-| 로그인 시도 한도 초과 | 429 | `LOGIN_RATE_LIMITED` (`Retry-After`, `retryAfterSeconds`) |
+| 로그인·회원가입 시도 한도 초과 | 429 | `LOGIN_RATE_LIMITED` (`Retry-After`, `retryAfterSeconds`) |
 
 ```json
 {

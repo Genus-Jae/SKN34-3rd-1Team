@@ -6,7 +6,7 @@ import { authPageStyles } from './AuthPage.styles'
 
 /**
  * 회원가입 화면입니다. 로그인 화면과 같은 껍데기를 쓰고 이메일과 비밀번호만 받습니다.
- * 기업 정보와 약관 동의는 가입 뒤 프로필 단계에서 받습니다.
+ * 기업 정보는 가입 뒤 프로필 단계에서 받고, 약관 동의는 가입 버튼 아래 안내로 갈음해 가입 시각을 서버가 기록합니다.
  */
 export function SignupPage() {
   const {
@@ -14,6 +14,7 @@ export function SignupPage() {
     password,
     passwordConfirmation,
     error,
+    isSubmitting,
     updateEmail,
     updatePassword,
     updatePasswordConfirmation,
@@ -30,9 +31,8 @@ export function SignupPage() {
             <p className={authPageStyles.cardEyebrow}>회원가입</p>
             <h1 className={authPageStyles.cardTitle}>기업 계정 만들기</h1>
             <p className={authPageStyles.cardDescription}>
-              회원가입 화면 데모입니다. 입력을 확인해도 실제 계정은 생성되지 않습니다.
+              이메일과 비밀번호만으로 시작합니다. 기업 정보는 가입 뒤 프로필에서 등록합니다.
             </p>
-            <p className={authPageStyles.fieldHint}>입력값은 전송·저장되지 않습니다. 실제 비밀번호를 입력하지 마세요.</p>
           </div>
 
           <div className={authPageStyles.fields}>
@@ -42,7 +42,7 @@ export function SignupPage() {
                 className={authPageStyles.fieldControl}
                 type="email"
                 name="email"
-                autoComplete="off"
+                autoComplete="email"
                 required
                 aria-invalid={error?.field === 'email'}
                 aria-describedby={error?.field === 'email' ? 'signup-error' : undefined}
@@ -59,16 +59,17 @@ export function SignupPage() {
                 id="signup-password"
                 type="password"
                 name="password"
-                autoComplete="off"
+                autoComplete="new-password"
                 required
                 minLength={8}
+                maxLength={72}
                 aria-invalid={error?.field === 'password'}
                 aria-describedby={error?.field === 'password' ? 'signup-password-hint signup-error' : 'signup-password-hint'}
                 placeholder="비밀번호 입력"
                 value={password}
                 onChange={(event) => updatePassword(event.target.value)}
               />
-              <span id="signup-password-hint" className={authPageStyles.fieldHint}>8자 이상, 영문과 숫자를 포함합니다.</span>
+              <span id="signup-password-hint" className={authPageStyles.fieldHint}>8자 이상 72자 이하로 입력합니다.</span>
             </div>
 
             <label className={authPageStyles.field}>
@@ -77,7 +78,7 @@ export function SignupPage() {
                 className={authPageStyles.fieldControl}
                 type="password"
                 name="passwordConfirmation"
-                autoComplete="off"
+                autoComplete="new-password"
                 required
                 aria-invalid={error?.field === 'passwordConfirmation'}
                 aria-describedby={error?.field === 'passwordConfirmation' ? 'signup-error' : undefined}
@@ -89,9 +90,10 @@ export function SignupPage() {
           </div>
 
           {error ? <p id="signup-error" className={authPageStyles.fieldError} role="alert">{error.message}</p> : null}
-          <button className={authPageStyles.submitButton} type="submit">
-            가입 입력 확인 · 데모
+          <button className={authPageStyles.submitButton} type="submit" disabled={isSubmitting}>
+            {isSubmitting ? '가입 중…' : '가입하고 시작하기'}
           </button>
+          <p className={authPageStyles.fieldHint}>가입하면 이용약관과 개인정보 처리방침에 동의한 것으로 봅니다.</p>
 
           <div className={authPageStyles.divider}>
             <span className={authPageStyles.dividerLine} aria-hidden="true" />

@@ -30,14 +30,26 @@ class AccountLoginAttemptGuard(
             if (failure?.lockedUntil != null && failure.lockedUntil.isAfter(now)) {
                 throw LoginRateLimitedException(secondsUntil(now, failure.lockedUntil))
             }
-
-            val attempts = addressAttempts.getOrPut(clientAddress) { ArrayDeque() }
-            while (attempts.isNotEmpty() && Duration.between(attempts.first, now) >= WINDOW) attempts.removeFirst()
-            if (attempts.size >= ADDRESS_PER_MINUTE) {
-                throw LoginRateLimitedException(secondsUntil(now, attempts.first.plus(WINDOW)))
-            }
-            attempts.addLast(now)
+            recordAddressAttempt(clientAddress, now)
         }
+    }
+
+    /** 계정 잠금과 무관하게 접속 주소 한도만 검사합니다. 회원가입처럼 아직 계정이 없는 시도에 씁니다. */
+    fun checkAddressAllowed(clientAddress: String) {
+        synchronized(lock) {
+            val now = Instant.now(clock)
+            pruneIfLarge(now)
+            recordAddressAttempt(clientAddress, now)
+        }
+    }
+
+    private fun recordAddressAttempt(clientAddress: String, now: Instant) {
+        val attempts = addressAttempts.getOrPut(clientAddress) { ArrayDeque() }
+        while (attempts.isNotEmpty() && Duration.between(attempts.first, now) >= WINDOW) attempts.removeFirst()
+        if (attempts.size >= ADDRESS_PER_MINUTE) {
+            throw LoginRateLimitedException(secondsUntil(now, attempts.first.plus(WINDOW)))
+        }
+        attempts.addLast(now)
     }
 
     fun recordFailure(email: String) {

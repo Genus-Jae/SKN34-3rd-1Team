@@ -72,6 +72,15 @@ class AccountLoginAttemptGuardTest {
         assertDoesNotThrow { guard.checkAllowed("another@company.co.kr", ADDRESS) }
     }
 
+    @Test
+    fun addressOnlyChecksShareTheSameWindowAsLoginAttempts() {
+        repeat(AccountLoginAttemptGuard.ADDRESS_PER_MINUTE - 1) { guard.checkAddressAllowed(ADDRESS) }
+        assertDoesNotThrow { guard.checkAllowed(EMAIL, ADDRESS) }
+
+        assertThrows(LoginRateLimitedException::class.java) { guard.checkAddressAllowed(ADDRESS) }
+        assertDoesNotThrow { guard.checkAddressAllowed("10.0.0.2") }
+    }
+
     private companion object {
         const val EMAIL = "manager@company.co.kr"
         const val ADDRESS = "10.0.0.1"

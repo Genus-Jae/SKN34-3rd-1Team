@@ -85,7 +85,7 @@ pnpm dev
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
 | `/examples/sample-item/redux` | 헤더 | Redux 상태 유지 예제 |
 | `/login` | 없음 | 이메일·비밀번호 로그인, 로그인 상태 유지, `?next=` 복귀 경로 |
-| `/signup` | 없음 | 이메일·비밀번호만 받는 회원가입 입력 |
+| `/signup` | 없음 | 이메일·비밀번호만 받는 회원가입. 성공하면 세션이 생겨 작업 채팅으로 이동 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
 | `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
 | `/app/partners` | 사이드바 | 파트너 모집 목록·필터·프로필 기반 추천 |
@@ -98,8 +98,11 @@ pnpm dev
 `/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,
 잘못된 비밀번호·정지 계정·시도 제한(429)을 구분해 안내합니다. 개발 빌드의 헤더에는 `개발 로그인 · 관리자`와
 `개발 로그인 · 회원` 버튼이 있어 회원가입 없이 시드 계정으로 들어갈 수 있습니다(Core의 `ACCOUNT_DEV_LOGIN_ENABLED`).
-`/signup` `/partners` `/partners/detail` `/app/partners` `/app/profile` `/app/admin/members`는 화면만 있는 **데모 단계**입니다. 가입·모집·회원 API가
-없어 ViewModel이 예시 값을 돌려주고, 가입은 입력 형식을 검사한 뒤 로그인 화면으로 안내할 뿐 계정을 만들지 않습니다.
+`/signup`은 `SignUpUseCase → AccountRepository → accountApi`로 실제 계정을 만들고 서버가 발급한 세션으로 바로 작업 채팅에
+들어갑니다. 비밀번호는 8~72자 길이만 검사하며 이미 가입된 이메일(409)·시도 제한(429)을 구분해 안내합니다. 약관 동의는 가입 버튼
+아래 안내 문구로 갈음하고 서버가 가입 시각을 기록합니다.
+`/partners` `/partners/detail` `/app/partners` `/app/profile` `/app/admin/members`는 화면만 있는 **데모 단계**입니다. 모집·회원 API가
+없어 ViewModel이 예시 값을 돌려줍니다.
 모집 작성도 입력을 검사한 뒤 목록으로 이동하며 등록·임시 저장하지 않습니다. 저장·제안 발송·회원 정지 등
 연결되지 않은 동작은 준비 중으로 비활성화했습니다. 프로필의 선택은 화면 안에서만 유지되고 추천에 전달되지 않습니다.
 준비된 모집 상세 하나만 `recruitmentId=ai-labeling`으로 연결하고, 다른 모집글을 그 상세로 대체하지 않습니다.

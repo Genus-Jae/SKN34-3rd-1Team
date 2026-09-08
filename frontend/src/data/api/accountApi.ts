@@ -1,5 +1,5 @@
 import type { AccountRole } from '../../domain/entities/Account'
-import type { AccountLogIn } from '../../domain/repositories/AccountRepository'
+import type { AccountLogIn, AccountSignUp } from '../../domain/repositories/AccountRepository'
 import { getCoreApiBaseUrl } from './coreApiConfig'
 import {
   accountDtoSchema,
@@ -9,6 +9,7 @@ import {
   type AuthSessionResponseDto,
 } from '../models/AccountDto'
 
+const SIGNUP_PATH = '/api/v1/auth/signup'
 const LOGIN_PATH = '/api/v1/auth/login'
 const DEV_LOGIN_PATH = '/api/v1/auth/dev-login'
 const LOGOUT_PATH = '/api/v1/auth/logout'
@@ -32,6 +33,23 @@ export class AccountApiError extends Error {
 
 /** 세션은 HttpOnly 쿠키로 오가므로 모든 계정 요청은 쿠키를 함께 보냅니다. Core API의 CORS가 자격 증명을 허용합니다. */
 const withSessionCookie: RequestCredentials = 'include'
+
+/** 가입 성공(201)도 로그인과 같은 세션 응답을 돌려주고 세션 쿠키를 함께 내려줍니다. */
+export async function signUpApi(
+  command: AccountSignUp,
+  signal?: AbortSignal,
+): Promise<AuthSessionResponseDto> {
+  const response = await fetch(`${getCoreApiBaseUrl()}${SIGNUP_PATH}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(command),
+    credentials: withSessionCookie,
+    signal,
+  })
+  await rejectFailedResponse(response)
+
+  return authSessionResponseDtoSchema.parse(await response.json())
+}
 
 export async function logInApi(
   command: AccountLogIn,

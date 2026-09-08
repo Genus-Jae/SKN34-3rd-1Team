@@ -10,6 +10,7 @@ import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
 import type { Account } from './domain/entities/Account'
 import { loginMessages } from './presentation/features/auth/viewmodel/useLoginViewModel'
+import { signupMessages } from './presentation/features/auth/viewmodel/useSignupViewModel'
 import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => ({
@@ -61,11 +62,13 @@ describe('계정 화면', () => {
     expect(screen.getByText('비밀번호 재설정 · 준비 중')).toBeTruthy()
   })
 
-  it('회원가입 입력이 비어 있으면 데모 작업 화면으로 이동하지 않는다', () => {
+  it('회원가입 입력이 비어 있으면 서버에 보내지 않고 이메일부터 안내한다', () => {
+    const execute = vi.spyOn(appContainer.resolve('signUpUseCase'), 'execute')
     renderApp('/signup')
     fireEvent.submit(screen.getByRole('form', { name: '회원가입' }))
     expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
     expect(screen.getByRole('alert').textContent).toContain('이메일')
+    expect(execute).not.toHaveBeenCalled()
   })
 
   it('비밀번호 확인이 다르면 입력 화면에서 설명한다', () => {
@@ -79,25 +82,49 @@ describe('계정 화면', () => {
     expect(screen.getByRole('alert').textContent).toContain('일치')
   })
 
-  it('유효한 가입 입력을 확인하면 계정을 생성하지 않고 로그인 화면으로 안내한다', () => {
+  it('가입에 성공하면 세션 계정으로 작업 채팅에 들어간다', async () => {
+    const execute = vi.spyOn(appContainer.resolve('signUpUseCase'), 'execute').mockResolvedValue({
+      outcome: 'session',
+      session: { expiresAt: '2026-09-07T00:00:00+09:00', account: { email: 'new@example.test', role: 'USER', tier: 'MEMBER', emailVerified: false } },
+    })
     renderApp('/signup')
     const form = screen.getByRole('form', { name: '회원가입' })
-    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
-    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'Demo1234' } })
-    fireEvent.change(within(form).getByLabelText('비밀번호 확인'), { target: { value: 'Demo1234' } })
-    expect(fetch).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: '가입 입력 확인 · 데모' }))
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'New@Example.test' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'welcome-12' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호 확인'), { target: { value: 'welcome-12' } })
+    fireEvent.click(screen.getByRole('button', { name: '가입하고 시작하기' }))
 
-    // 가입 API가 아직 없어 세션이 생기지 않으므로, 회원 전용 작업 화면 대신 로그인 화면으로 안내합니다.
-    expect(screen.getByRole('heading', { name: '다시 오셨군요' })).toBeTruthy()
-    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
-    for (const [url, options] of vi.mocked(fetch).mock.calls) {
-      expect(String(url)).not.toMatch(/demo@example|Demo1234/)
-      expect(options?.body).toBeUndefined()
-    }
+    expect(execute).toHaveBeenCalledWith({ email: 'New@Example.test', password: 'welcome-12' })
+    const sidebar = await screen.findByRole('complementary', { name: '작업 사이드바' })
+    expect(within(sidebar).getByText('new@example.test')).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
   })
 
-  it.each(['short1', 'abcdefgh', '12345678'])('안내한 비밀번호 조건을 충족하지 못하면 이동하지 않는다: %s', (password) => {
+  it('이미 가입된 이메일과 시도 제한은 화면에 구분해 안내하고 머문다', async () => {
+    const execute = vi.spyOn(appContainer.resolve('signUpUseCase'), 'execute')
+      .mockResolvedValueOnce({ outcome: 'email-taken' })
+      .mockResolvedValueOnce({ outcome: 'rate-limited', retryAfterSeconds: 45 })
+      .mockRejectedValueOnce(new Error('network'))
+    renderApp('/signup')
+    const form = screen.getByRole('form', { name: '회원가입' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'taken@example.test' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'welcome-12' } })
+    fireEvent.change(within(form).getByLabelText('비밀번호 확인'), { target: { value: 'welcome-12' } })
+
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(signupMessages.emailTaken))
+    expect(within(form).getByLabelText('이메일').getAttribute('aria-invalid')).toBe('true')
+
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(signupMessages.rateLimited(45)))
+
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(signupMessages.requestFailed))
+    expect(execute).toHaveBeenCalledTimes(3)
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
+  })
+
+  it.each(['short1', 'p'.repeat(73)])('비밀번호 길이 조건을 충족하지 못하면 보내지 않는다: %s', (password) => {
     renderApp('/signup')
     const form = screen.getByRole('form', { name: '회원가입' })
     fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
@@ -109,12 +136,13 @@ describe('계정 화면', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('회원가입 데모 안내와 모바일에서도 보이는 공개 검색 링크를 제공한다', () => {
+  it('약관 안내와 모바일에서도 보이는 공개 검색 링크를 제공하고 새 비밀번호 자동완성을 쓴다', () => {
     renderApp('/signup')
     const form = screen.getByRole('form')
-    expect(within(form).getByText(/입력값은 전송·저장되지 않습니다/)).toBeTruthy()
+    expect(within(form).getByText(/이용약관과 개인정보 처리방침에 동의한 것으로/)).toBeTruthy()
+    expect(within(form).queryByText(/데모/)).toBeNull()
     expect(within(form).getByRole('link', { name: /없이 지원사업 검색/ }).getAttribute('href')).toBe('/')
-    expect(within(form).getByLabelText('비밀번호').getAttribute('autocomplete')).toBe('off')
+    expect(within(form).getByLabelText('비밀번호').getAttribute('autocomplete')).toBe('new-password')
   })
 
   it.each(['', 'invalid-email'])('로그인은 빈 값과 잘못된 이메일을 서버에 보내지 않는다: %s', (email) => {
