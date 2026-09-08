@@ -3,18 +3,18 @@
 export const adminMembersPageStyles = {
   statRow: 'flex flex-wrap gap-3',
   statCell:
-    'flex min-w-40 flex-1 flex-col gap-[0.2rem] rounded-[1.4rem] border border-[#dbe9e0] bg-white px-4 py-[0.85rem]',
+    'flex min-w-40 flex-1 flex-col gap-[0.2rem] rounded-[1.4rem] border border-sample-border bg-white px-4 py-[0.85rem]',
   statValue: 'text-[1.35rem] font-bold tracking-[-0.03em]',
   statLabel: 'text-[0.7rem] text-sample-muted',
   toolbar: 'flex flex-wrap items-center gap-2',
   search:
-    'flex min-h-10 w-[260px] max-w-full items-center gap-2 rounded-[1rem] border border-[#b8d8c5] bg-white px-[0.9rem] text-[0.8rem] text-[#708679]',
+    'flex min-h-10 w-[260px] max-w-full items-center gap-2 rounded-[1rem] border border-sample-border bg-white px-[0.9rem] text-[0.8rem] text-[#838a93]',
   resultCount: 'ml-auto text-[0.78rem] text-sample-muted',
   tableScroll: 'w-full overflow-x-auto',
   emailCell: 'text-[0.74rem] [overflow-wrap:anywhere]',
-  policyRow: 'flex items-start gap-3 rounded-[0.85rem] bg-[#f1f7f3] px-3 py-[0.6rem]',
-  policyLabel: 'w-28 shrink-0 text-[0.75rem] font-bold text-[#203d2c]',
-  policyValue: 'text-[0.75rem] leading-[1.5] text-[#52685c]',
+  policyRow: 'flex items-start gap-3 rounded-[0.85rem] bg-[#f6f7f8] px-3 py-[0.6rem]',
+  policyLabel: 'w-28 shrink-0 text-[0.75rem] font-bold text-app-ink',
+  policyValue: 'text-[0.75rem] leading-[1.5] text-sample-muted',
 } as const
 
 /** 요약 수치가 나타내는 상태입니다. 색이 아니라 의미로 고르도록 이름을 상태로 둡니다. */
@@ -22,7 +22,7 @@ export type AdminStatTone = 'neutral' | 'ok' | 'warn' | 'danger'
 
 const statValueTones: Record<AdminStatTone, string> = {
   neutral: 'text-app-ink',
-  ok: 'text-[#147d58]',
+  ok: 'text-[#087f46]',
   warn: 'text-[#8a5a00]',
   danger: 'text-[#9a3947]',
 }

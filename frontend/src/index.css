@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --color-app-canvas: #f0f9f3;
-  --color-app-ink: #15271f;
-  --color-brand-accent: #c8ead8;
-  --color-brand-primary: #147d58;
-  --color-sample-primary: #147d58;
-  --color-sample-heading: #15271f;
-  --color-sample-muted: #52685c;
-  --color-sample-border: #dbe9e0;
+  --color-app-canvas: #f5f6f7;
+  --color-app-ink: #202124;
+  --color-brand-accent: #e7f6ed;
+  --color-brand-primary: #087f46;
+  --color-sample-primary: #087f46;
+  --color-sample-heading: #202124;
+  --color-sample-muted: #606770;
+  --color-sample-border: #e3e5e8;
   --breakpoint-chat: 47.5rem;
   --breakpoint-sample: 45rem;
   --animate-connection-pulse: connection-pulse 1s ease-in-out infinite alternate;
@@ -36,7 +36,7 @@
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
-    background: linear-gradient(180deg, #f0f9f3 0%, #f9fdfb 65%, #fff 100%);
+    background: #fff;
   }
 
   button,
