@@ -90,7 +90,7 @@ export function LoginPage() {
           </Link>
 
           <p className={authPageStyles.cardFooter}>
-            <Link to="/">로그인 없이 지원사업 검색</Link>
+            <Link className={authPageStyles.helperLink} to="/">로그인 없이 지원사업 검색</Link>
           </p>
         </form>
       </section>

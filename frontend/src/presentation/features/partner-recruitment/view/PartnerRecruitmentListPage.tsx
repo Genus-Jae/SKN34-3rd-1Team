@@ -128,10 +128,13 @@ export function PartnerRecruitmentListPage() {
 
   return (
     <>
-      <header className={workspacePageStyles.header}>
-        <div className={workspacePageStyles.headerTitleGroup}>
-          <p className={workspacePageStyles.eyebrow}>파트너 모집</p>
-          <h1 className={workspacePageStyles.title}>함께 신청할 기업 찾기</h1>
+      <header className={partnerRecruitmentStyles.listHeader}>
+        <div className={partnerRecruitmentStyles.listTitleGroup}>
+          <p className={partnerRecruitmentStyles.listBadge}>파트너 모집</p>
+          <h1 className={partnerRecruitmentStyles.listTitle}>함께 신청할 기업 찾기</h1>
+          <p className={partnerRecruitmentStyles.listDescription}>
+            공고와 기업의 역량을 한눈에 살펴보세요.
+          </p>
         </div>
         <div className={workspacePageStyles.headerActions}>
           <Link className={workspacePageStyles.primaryButton} to="/partners/new">
