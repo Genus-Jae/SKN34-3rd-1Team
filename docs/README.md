@@ -45,6 +45,8 @@ C01 문서의 수동 조건 입력 UI와 개발 전략의 최초 UI 계획은 �
 | [원문 우선 자격 판정](source-first-eligibility-review.md) | 태그와 신청 요건 구분, 본문 인용 검증, 확인 필요 공고 분리와 검증 한계 |
 | [C02 후속 대화 조건 갱신](conversation-condition-update.md) | 작은 대화 상태·조건 변경 제안·확인 질문·사용자 확인 검색과 검증 범위 |
 | [검색 랭킹 시간 초과 수정](support-program-ranking-timeout-fix.md) | 랭킹 전용 시간 예산, 504 구분과 검색 재시도, 장애 관측·검증 기록 |
+| [검색 지연 개선과 실제 비교](search-latency-20260908.md) | 정확일치 캐시·동시 요청 재사용, Fast 비교와 미채택 실험, 호출 한도·검증 |
+| [지역 충돌 판정·Fast 상시 설정](region-conflict-fast-20260908.md) | 서울·안산 충돌과 실제 이전 예외 구분, 고정 회귀 검사·공개 공고 재검사·배포 기록 |
 | [지역 자격 범위·근거 개선](region-eligibility-scope-fix.md) | 상·하위 소재지 구분, 지역을 뒷받침하는 인용 선택, 합성 지역 평가와 실제 검증 |
 | [검색문·관련도·대화 초기화 개선](search-relevance-v5-fix.md) | 시스템 검색어 오염 제거, v5 관련도·자격 분리, 새 검색·현재 조건 표시, 검증과 한계 |
 | [판정·검토 도구](../evaluation/support-program-search/review/README.md) | AI-only·혼합·사람 검토 모드 선택과 출처 관리 |

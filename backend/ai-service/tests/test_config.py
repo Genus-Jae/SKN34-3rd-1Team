@@ -16,6 +16,24 @@ def configure_required_openai_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LLM_RANKING_RUN_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("OPENAI_RANKING_MODEL", raising=False)
     monkeypatch.delenv("OPENAI_RANKING_REASONING_EFFORT", raising=False)
+    monkeypatch.delenv("OPENAI_RANKING_SERVICE_TIER", raising=False)
+
+
+def test_ranking_latency_options_are_explicit_and_default_to_standard_processing(monkeypatch):
+    baseline = Settings.from_environment()
+    assert baseline.openai_ranking_service_tier == "default"
+    monkeypatch.setenv("OPENAI_RANKING_SERVICE_TIER", " priority ")
+    changed = Settings.from_environment()
+    assert changed.openai_ranking_service_tier == "priority"
+
+
+@pytest.mark.parametrize("name,value", [
+    ("OPENAI_RANKING_SERVICE_TIER", "flex"), ("OPENAI_RANKING_SERVICE_TIER", ""),
+])
+def test_invalid_latency_option_is_not_silently_enabled(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(SettingsConfigurationError, match=name):
+        Settings.from_environment()
 
 
 def test_reads_trimmed_openai_settings(monkeypatch: pytest.MonkeyPatch) -> None:

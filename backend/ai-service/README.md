@@ -140,14 +140,15 @@ Core의 별도 색인 스케줄러 (기본 PT1M)
 사용자 검색 → Core가 현재 검색 가능한 MySQL 공고 ID·해시 전달
 → HTTP search API → SupportProgramIndexService
 → 요청한 모든 현재 버전이 색인됐는지 정확한 count 검증
-→ OpenAI로 검색어 임베딩
+→ 정확히 같은 질의의 검증된 임베딩 재사용, 없으면 OpenAI 호출
 → Qdrant HasId 필터로 해당 ID·해시만 검색 → 관련 후보 Response
-→ 기존 HTTP ranking API → Service → Agent → OpenAI → Response
+→ 기존 HTTP ranking API → Service의 정확일치 응답 캐시, 없으면 Agent → OpenAI → 검증 → Response
 ```
 
 Qdrant는 ID·해시·제공처와 벡터만 보관합니다. 공식 공고 내용과 접수 상태의 기준은 MySQL이며,
-닫힌 공고나 미노출 공고를 제외할 책임은 Core에 있습니다. AI Service는 Core가 지정한 현재
-ID·해시 목록만 검색하여 이전 버전이 추천 후보로 섞이지 않게 합니다.
+닫힌 공고나 미노출 공고를 제외할 책임은 Core에 있습니다. 매 검색마다 Core가 현재 MySQL 공고·접수 상태를
+확인하고 AI가 collection 존재·모든 ID/해시의 색인·Qdrant 후보를 다시 검증합니다. 질의 임베딩만
+서비스 인스턴스별 최대 **256개·300초** 재사용하며, 준비 검증 이전에는 캐시도 유료 임베딩도 사용하지 않습니다.
 
 색인이 없거나 현재 공고 중 하나라도 아직 색인되지 않았다면 `503`과
 `{"detail":{"code":"INDEX_NOT_READY"}}`를 반환합니다. 부분 색인이나 최신 20개 조회로 대체하지
@@ -287,13 +288,24 @@ Service는 제외·점수 미달 후보까지 모두 해당 후보의 지정 본
 조건 유무 두 경로의 ScriptedModel 회귀로 전달·인용·UNKNOWN 보존을 검증합니다. 모델의 의미 판단 정확도 보장은 아닙니다.
 인용 존재 검증은 인용의 논리적 충분성까지 보장하지 않습니다. 자격의 의미 판단은 여전히 모델이 수행합니다.
 
-지역 판정 지침과 내부 `regionAssessment` schema 설명에는 소재지 범위의 포함 방향을 명시합니다.
+지역 판정 지침과 내부 `regionAssessment` schema 설명은 먼저 제한 주체를 일반 회사·특정 사업장·개인으로
+구분합니다. 회사 `region`을 본점·공장 각각의 주소나 대표자 거주지로 대입하지 않습니다. 예를 들어 서울 회사라는
+정보만으로 `대구지역 여성` 조건과의 충돌을 확정할 수 없으므로 개인 지역 자격은 UNKNOWN입니다.
+같은 주체의 확인된 주소끼리 비교할 때는 소재지 범위의 포함 방향을 적용합니다.
 서울만 확인됐는데 서초구 한정이면 UNKNOWN, 서초구 소재가 확인되고 서울 전체 대상이면 MATCH,
-다른 구로 확인됐고 예외 없이 서초구만 허용하면 INCOMPATIBLE입니다. 실제 지역 허용·제한을 표현하는
+다른 구로 확인됐고 예외 없이 서초구만 허용하면 INCOMPATIBLE입니다. 하위 주소 미확인 규칙은
+공고 제한 지역이 확인된 회사 지역 **내부**에 있을 때만 적용합니다. 서울 기업과 안산 관내 기업 한정은
+주소 상세도의 차이가 아니라 지역 충돌이므로 INCOMPATIBLE입니다. 원문에 없는 지점·이전 경로를
+가정하지 않고, 본문이 실제 허용한 대안은 구분합니다. `서울 소재 또는 서울 이전 예정`이라면 서울 기업은
+이전 의사 확인 없이 지역 MATCH이고, 타 지역 기업의 이전 의사가 미확인인 경우는 UNKNOWN입니다.
+`본점·지점·공장 중 하나`가 허용된 경우에도 회사 소재지 하나만으로 다른 사업장의 부재를 단정하지 않습니다.
+충족 경로 없이 미확인 경로가 남으면 UNKNOWN이며, 모든 허용 경로의 불충족을 확인해야 INCOMPATIBLE입니다.
+실제 지역 허용·제한을 표현하는
 구절을 선택해야 하며, 전국 태그·기관 주소·행사 장소·일반 대상 문구만으로 지역을 확정하지 않습니다.
 본문의 전국 무제한 신청은 구분하여 MATCH를 허용하고 이전 확약 미확인은 UNKNOWN을 유지합니다.
 이는 모델 지침이며 서버의 독립적인 행정구역 증명 규칙은 아닙니다.
-[지역 범위·근거 개선 기록](../../docs/region-eligibility-scope-fix.md)에 실제 검증과 한계를 정리합니다.
+[지역 범위·근거 개선 기록](../../docs/region-eligibility-scope-fix.md)은 이전 검증을 보존하며,
+후속 지침·schema 전제 보완과 Fast 설정은 [지역 충돌·Fast 기록](../../docs/region-conflict-fast-20260908.md)을 참고하세요.
 
 LLM 내부에서는 인용 문구를 생성하지 않고 후보별 `evidenceOptions`의 번호만 선택합니다.
 Agent가 전체 `summary`·`targetDescription`을 그대로 전달하면서 두 필드의 원문 조각을
@@ -358,6 +370,8 @@ Core API
 → support_program_ranking/router.py
    → SupportProgramRankingRequest로 요청 검증
 → SupportProgramRankingService.rank()
+   ├→ 전체 입력이 같은 검증된 캐시 응답이면 복사 반환
+   └→ 캐시가 없으면 같은 진행 요청에 합류하거나 아래 평가 실행
 → SupportProgramRecommendationAgent.rank()
 → OpenAI Agents SDK Runner.run(max_turns=1)
    ├→ prompt.py의 평가 기준 사용
@@ -372,6 +386,16 @@ Core API
 → SupportProgramRankingResponse
 → Core API
 ```
+
+랭킹 응답은 서비스 인스턴스별 최대 **128개·300초** 보관합니다. 질의·회사 조건·기준일·전체 후보의
+본문/메타데이터/순서·개수·결과 제한·scoringVersion을 함께 해시하므로 하나라도 달라지면 다시 평가합니다.
+모델·프롬프트·임베딩 전처리는 인스턴스 수명 동안 고정되며 두 캐시는 다른 프로세스와 공유하지 않습니다.
+둘 다 성공 검증 후부터 TTL을 계산하고 오래 사용하지 않은 항목부터 제거하며 반환값을 복사합니다.
+TTL은 재사용 기한으로, 만료 즉시 메모리에서 물리 삭제됨을 보장하지 않습니다. 전체 검색 결과 캐시는
+아니므로 현재 DB·Qdrant 검증과 후보 선택은 매번 실행합니다. 후보·배점·모델·시간 상한은 유지합니다.
+동일 입력의 동시 요청은 합류합니다. 랭킹은 한 대기자의 취소로 공유 작업을 중단하지 않고 마지막 대기자가
+취소하면 작업도 취소합니다. 임베딩 수행 요청이 취소되면 남은 대기자가 다시 실행합니다. 실패는 캐시하지
+않고 기존 오류를 전달합니다. 세부 검증은 [검색 지연 개선 기록](../../docs/search-latency-20260908.md)에 있습니다.
 
 예를 들어 Core가 두 공고를 보내고 `resultLimit=1`을 지정하면 Agent는 두 후보를 모두 점수화합니다.
 Service는 누락·추가·중복 ID를 거부한 뒤 최소 기준을 통과한 공고 중 가장 높은 한 건만 Core에 반환합니다.
@@ -444,6 +468,9 @@ OpenAI 거부·기타 SDK 오류·structured output 오류
 유효하지 않은 AI 출력을 정상 결과로 보정하지 않습니다. 재시도·fallback은 추가하지 않습니다.
 순위화 실패 로그에는 `failure_kind`, 고정 `reason_code`, 오류 클래스명, 후보 수, 경과 시간만 기록합니다.
 질문·기업 조건·프롬프트·응답 본문·API key·원문 예외 메시지와 traceback은 기록하지 않습니다.
+`app` INFO 로그에는 의미 검색의 준비·임베딩·Qdrant 시간, 랭킹의 준비·모델·검증 시간과 캐시 상태·후보 수·
+총시간만 남깁니다. 캐시 키도 기록하지 않습니다. lifespan이 기존 app/root handler를 재사용하거나 stderr
+handler 하나를 추가하므로 기본 Uvicorn에서도 출력되며, OpenAI·HTTP 라이브러리 로그 수준은 바꾸지 않습니다.
 조건 해석도 시간 초과는 내부 504, 그 외 실패는 503으로 구분합니다. 상세 근거 답변의 오류 정책은 유지합니다.
 `reason_code`는 후보 집합 불일치 `CANDIDATE_SET_MISMATCH`, 절단 본문의 확정 판정
 `TRUNCATED_SOURCE_KNOWN_ELIGIBILITY`, 확정 판정 근거 누락 `MISSING_KNOWN_EVIDENCE`, 지정 본문
@@ -457,9 +484,10 @@ OpenAI 거부·기타 SDK 오류·structured output 오류
 ```dotenv
 OPENAI_API_KEY=필수
 OPENAI_MODEL=gpt-5.6-luna
-# 랭킹의 정확도 우선 권장 프로필. 추가 비용·지연을 확인하고 적용합니다.
+# 랭킹의 정확도·속도 우선 프로필. Fast는 Sol 일반 처리 대비 토큰 단가 2배입니다.
 OPENAI_RANKING_MODEL=gpt-5.6-sol
 OPENAI_RANKING_REASONING_EFFORT=low
+OPENAI_RANKING_SERVICE_TIER=priority
 LLM_MODEL_TIMEOUT_SECONDS=25.0
 LLM_RUN_TIMEOUT_SECONDS=30.0
 LLM_RANKING_MODEL_TIMEOUT_SECONDS=45.0
@@ -481,10 +509,15 @@ EMBEDDING_TIMEOUT_SECONDS=15
 보장하지 않습니다. 대화·RAG·임베딩 모델과 호출 횟수·재시도 정책은 변경하지 않습니다.
 직접 생성하는 `SupportProgramRecommendationAgent`의 추론 기본값도 `none`으로 유지합니다.
 이는 시작 시 선택하는 명시적 설정이며, 장애 시 다른 모델로 재시도하는 fallback이 아닙니다.
-랭킹 모델·추론 분리 후 전체 AI 테스트 **616개**, 검색 평가 도구 테스트 **108개**가 통과했습니다
-(2026-09-08). 설정 상속·랭킹만 Sol/low 적용·대화/RAG 모델 보존, 실제 SDK 요청 형식과 고정 평가의
-모델 기록 검증을 포함합니다. 이 테스트는 외부 OpenAI 호출 없이 실행한 코드 회귀 검증이며 실제
-모델 정확도나 응답시간을 보장하지 않습니다.
+출력 축약은 미채택이며 기존 후보 ID·필드명·출력 계약을 유지합니다. 실험 구현은 평가 경로에만 보존합니다.
+`OPENAI_RANKING_SERVICE_TIER` 미설정 시 코드·Compose 기본값은 `default`입니다. 위 예제와 루트
+`.env.example`은 사용자 승인에 따른 Fast 상시 사용 프로필인 `priority`를 명시합니다.
+현재 Sol의 Fast 토큰 단가는 대응하는 일반 처리의 2배입니다.
+[OpenAI 공식 Fast 문서](https://developers.openai.com/api/docs/guides/fast-mode)를 참고하세요.
+이 설정은 랭킹 요청에만 적용하며 대화 해석·RAG 답변·임베딩 설정은 바꾸지 않습니다.
+모델·추론·후보 수·배점·출력/시간 상한·HTTP 계약도 유지합니다. 일반 처리로 돌아가려면
+`default`를 명시하고 AI Service를 재시작하거나 Compose 컨테이너를 재생성합니다.
+배포·실측 상태는 [지역 충돌·Fast 기록](../../docs/region-conflict-fast-20260908.md)에서 별도로 확인합니다.
 
 순위화만 모델·HTTP `45s` < 전체 Agent `50s` < Core 순위화 읽기 `55s`의 별도 기본 제한을 사용합니다.
 두 `LLM_RANKING_*` 값은 유한한 0초 초과·60초 이하이며 모델 제한이 전체 제한보다 작아야 합니다.
@@ -554,31 +587,9 @@ prune 차단, 다른 제공처 보존, 비정상 임베딩 거부를 검증합�
 
 Agent 확장 원칙은 [AI Agent 모듈 구조](docs/agent-structure.md)를 참고하세요.
 
-C02 구현 후 Windows Python 3.12.13 환경에서 전체 `python -m pytest` **459개**가 통과했습니다
-(2026-09-07, 기존 319 + 신규 140). 현재 메시지 인용·날짜 창작 거부·UTF-16 경계·초안 병합·부재 필드 보존,
-실제 SDK strict schema와 Compose 대역 8개 시나리오를 포함합니다. 유료 모델 호출이나 실제 의미 품질 평가가
-아니며, 테스트의 OpenAI HTTP 통신은 모두 mock transport입니다.
-
-순위화 시간 제한 분리 후 같은 Windows Python 3.12.13 환경에서 전체 `python -m pytest`
-**491개**가 통과했습니다(2026-09-07, 기존 459 + 신규 32). 실제 SDK와 MockTransport로 순위화
-HTTP 45초·같은 client/model의 조건 해석 및 근거 답변 HTTP 25초 보존, 모델·HTTP·전체 실행 시간
-초과의 분류, 504/503 및 민감정보 없는 실패 로그를 확인했습니다. 유료 호출·재시작·배포는 하지 않았습니다.
-
-고정 실패 진단 코드 추가 후 전체 **508개**가 통과했습니다(같은 환경, 2026-09-07, 기존 491 + 신규 17).
-다섯 발생 지점과 일반 오류 기본값·임의 진단 문자열의 로그 제외를 검증했습니다. 이는 관측 개선이며
-실제 실패한 모델 출력의 원인을 확정하거나 인용 오류 자체를 해결했다는 의미는 아닙니다.
-
-인용 번호 선택·원문 복원 변경 후 전체 **564개**가 통과했습니다(같은 환경, 2026-09-07, 기존 508 + 신규 56).
-최대 6,000/2,000자 본문의 끝부분 보존, Unicode·제어문자 경계, 후보별 번호와 필드 복원, 잘못된 번호·known
-빈 근거 거부, 제외 후보까지 검증, 기존 exact 인용 검증을 포함합니다. 옵션 수 0~19가 섞인 20후보의 실제
-SDK strict schema 직렬화·복원을 MockTransport로 확인했습니다. 별도 Compose 대역 **24개**(랭킹 16,
-조건 해석 8)도 통과했습니다. 이 검증은 유료 모델 호출 없이 수행했으며 실제 검색 품질·응답시간을 보장하지 않습니다.
-
-지역 범위·인용 근거 지침 보강 후 전체 **571개**가 통과했습니다(Windows Python 3.12.13,
-2026-09-07, 22.65초, 기존 564 + 신규 7). 상·하위 지역 예시·지역 구절 필요 지침과 실제 SDK schema의
-설명 전달, 적용 지역 보존, UNKNOWN 복원 계약을 확인했습니다. 이 모의 검증과 실제 의미 평가는 구분합니다.
-
-후속 OR 대안 보강 후 최신 전체 **572개**가 통과했습니다(같은 환경, 16.40초). 현재 소재지 경로를
-충족하면 이전 의사를 더 요구하지 않고, 이전 의사 미확인을 불충족으로 단정하지 않도록 지침과 내부
-schema 설명을 보강했습니다. 실제 합성 검증의 22/24와 보완 후 부분집합 16/16 결과 및 AI만 재빌드·재시작한 로컬 반영 상태는
-[별도 기록](../../docs/region-eligibility-scope-fix.md)을 참고하세요.
+캐시 회귀는 전체 입력 변경·TTL 경계·LRU·반환값 변경 방어·동시 요청·취소·실패 재시도와 캐시가 있어도
+현재 Qdrant를 다시 확인하는지 검증합니다. 별도 프로세스의 Uvicorn 설정으로 실제 stderr 출력·handler
+중복 방지·라이브러리 INFO 비활성도 확인합니다. 이 검증은 실제 모델 품질·운영 부하 측정과 구분합니다.
+과거 실행 수치와 실호출 범위는 [C02 기록](../../docs/conversation-condition-update.md),
+[순위화 timeout·인용 기록](../../docs/support-program-ranking-timeout-fix.md),
+[지역 자격 기록](../../docs/region-eligibility-scope-fix.md)을 참고하세요.

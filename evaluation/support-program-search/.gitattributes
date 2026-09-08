@@ -8,3 +8,5 @@ runs/region-scope-20260907-v1/*.json whitespace=blank-at-eol,blank-at-eof,space-
 runs/region-scope-20260907-v2/*.json whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 # CSV writer의 CRLF도 원본 바이트다. 실제 후행 공백 검사는 유지한다.
 runs/**/*.csv -text !eol whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+# 실제 실행 소스 해시를 보존한다. 이 스냅샷의 원래 EOF 빈 줄만 검사에서 제외한다.
+runs/search-latency-20260908-v1/baseline_agent.py whitespace=blank-at-eol,-blank-at-eof,space-before-tab

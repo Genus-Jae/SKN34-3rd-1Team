@@ -1,6 +1,9 @@
 import asyncio
+import logging
+from collections import OrderedDict
 from hashlib import sha256
 from math import isfinite
+from time import monotonic
 from uuid import NAMESPACE_URL, uuid5
 
 from openai import AsyncOpenAI
@@ -17,6 +20,11 @@ from app.support_program_index.models import (
     SupportProgramIndexSearchRequest,
     SupportProgramIndexSearchResponse,
 )
+
+
+logger = logging.getLogger(__name__)
+_QUERY_EMBEDDING_CACHE_MAX_SIZE = 256
+_QUERY_EMBEDDING_CACHE_TTL_SECONDS = 300
 
 
 class SupportProgramIndexError(RuntimeError):
@@ -47,6 +55,9 @@ class SupportProgramIndexService:
         configuration_hash = sha256(f"{embedding_model}:{embedding_dimensions}:cl100k_base:8191".encode()).hexdigest()[:16]
         self.collection_name = f"govbiz_support_program_v1_{configuration_hash}"
         self._write_lock = asyncio.Lock()
+        # 모델·차원·입력 전처리가 같은 서비스 인스턴스 안에서만 질의 벡터를 재사용한다.
+        self._query_embedding_cache: OrderedDict[str, tuple[float, tuple[float, ...]]] = OrderedDict()
+        self._query_embedding_locks: dict[str, tuple[asyncio.Lock, int]] = {}
 
     async def index_batch(self, request: SupportProgramIndexBatchRequest) -> SupportProgramIndexBatchResponse:
         try:
@@ -124,6 +135,7 @@ class SupportProgramIndexService:
     async def search(self, request: SupportProgramIndexSearchRequest) -> SupportProgramIndexSearchResponse:
         if not request.eligible_documents:
             return SupportProgramIndexSearchResponse(query=request.query, matches=[])
+        started_at = monotonic()
         try:
             async with asyncio.timeout(25):
                 if not await self.qdrant_client.collection_exists(self.collection_name):
@@ -131,7 +143,9 @@ class SupportProgramIndexService:
                 identities = {_point_id(document): document for document in request.eligible_documents}
                 point_ids = list(identities)
                 await self._require_all_indexed(point_ids)
-                vector = (await self._embed([request.query]))[0]
+                ready_at = monotonic()
+                vector, cache_state = await self._embed_query(request.query)
+                embedded_at = monotonic()
                 response = await self.qdrant_client.query_points(
                     collection_name=self.collection_name,
                     query=vector,
@@ -154,7 +168,17 @@ class SupportProgramIndexService:
                 if len(matches) != min(request.limit, len(point_ids)):
                     raise SupportProgramIndexError("INDEX_NOT_READY")
                 matches.sort(key=lambda match: (-match.score, match.id))
-                return SupportProgramIndexSearchResponse(query=request.query, matches=matches)
+                result = SupportProgramIndexSearchResponse(query=request.query, matches=matches)
+                finished_at = monotonic()
+                logger.info(
+                    "support_program_index_search_completed readiness_ms=%d embedding_ms=%d vector_search_ms=%d elapsed_ms=%d cache_state=%s",
+                    int((ready_at - started_at) * 1000),
+                    int((embedded_at - ready_at) * 1000),
+                    int((finished_at - embedded_at) * 1000),
+                    int((finished_at - started_at) * 1000),
+                    cache_state,
+                )
+                return result
         except SupportProgramIndexError:
             raise
         except Exception as error:
@@ -179,6 +203,39 @@ class SupportProgramIndexService:
         vector_config = collection.config.params.vectors
         if not isinstance(vector_config, models.VectorParams) or vector_config.size != self.embedding_dimensions or vector_config.distance != models.Distance.COSINE:
             raise SupportProgramIndexError()
+
+    async def _embed_query(self, query: str) -> tuple[list[float], str]:
+        lock, users = self._query_embedding_locks.get(query, (asyncio.Lock(), 0))
+        self._query_embedding_locks[query] = (lock, users + 1)
+        waited = lock.locked()
+        try:
+            # 서로 다른 질의는 병렬로 처리한다. 소유 요청이 취소되면 다음 요청이 임베딩한다.
+            async with lock:
+                cached = self._query_embedding_cache.get(query)
+                if cached is not None:
+                    expires_at, vector = cached
+                    if expires_at > monotonic():
+                        self._query_embedding_cache.move_to_end(query)
+                        return list(vector), "coalesced" if waited else "hit"
+                    del self._query_embedding_cache[query]
+                vector = (await self._embed([query]))[0]
+                now = monotonic()
+                for key, (expires_at, _) in list(self._query_embedding_cache.items()):
+                    if expires_at <= now:
+                        del self._query_embedding_cache[key]
+                # _embed가 검증한 벡터만 저장하며 Qdrant나 호출부의 변경이 캐시에 닿지 않게 한다.
+                self._query_embedding_cache[query] = (
+                    now + _QUERY_EMBEDDING_CACHE_TTL_SECONDS, tuple(vector),
+                )
+                while len(self._query_embedding_cache) > _QUERY_EMBEDDING_CACHE_MAX_SIZE:
+                    self._query_embedding_cache.popitem(last=False)
+                return list(vector), "miss"
+        finally:
+            _, users = self._query_embedding_locks[query]
+            if users == 1:
+                del self._query_embedding_locks[query]
+            else:
+                self._query_embedding_locks[query] = (lock, users - 1)
 
     async def _embed(self, texts: list[str]) -> list[list[float]]:
         inputs = await asyncio.to_thread(prepare_embedding_inputs, texts)
