@@ -15,7 +15,7 @@ const longProgram = { ...supportPrograms[0], title: `레이아웃검증-${'A'.re
 const detailQuery = new URLSearchParams({ sourceCode: longProgram.sourceCode, sourceProgramId: longProgram.id })
 const detailPath = `/support-programs/detail?${detailQuery}`
 const questionPath = `/support-programs/detail/question?${detailQuery}`
-const paths = ['/', '/chat', '/login', '/signup', '/partners', '/partners/new',
+const paths = ['/', '/pricing', '/chat', '/login', '/signup', '/partners', '/partners/new',
   '/partners/detail?recruitmentId=ai-labeling', '/profile', '/admin/members', detailPath, questionPath,
   '/examples/sample-item/hook', '/examples/sample-item/redux']
 const sizes = [[320, 568], [375, 667], [768, 800], [844, 390], [1024, 800], [1280, 800], [1440, 900]]
@@ -132,6 +132,24 @@ async function main() {
           assert(await input.evaluate(n => n === document.activeElement), `${label}: 새 검색 포커스`)
           assert.equal(await page.getByRole('heading', { name: longProgram.title, exact: true }).count(), 0)
           assert.equal(calls.search, before.search + 1, `${label}: 초기화 자동 검색 금지`)
+          flowsChecked++
+        } else if (path === '/pricing') {
+          const main = page.getByRole('main')
+          for (const name of ['무료', '프로', '팀']) {
+            assert.equal(await main.getByRole('heading', { name, exact: true }).count(), 1)
+          }
+          const pending = main.getByRole('button', { name: '출시 준비 중', exact: true })
+          assert.equal(await pending.count(), 2)
+          for (const button of await pending.all()) assert(await button.isDisabled())
+          const faq = main.locator('details').first()
+          await faq.locator('summary').focus()
+          await faq.locator('summary').press('Enter')
+          assert(await faq.evaluate(node => node.open), `${label}: 키보드로 FAQ 열기`)
+          await checkBounds(page, `${label} FAQ 펼침`)
+          await faq.locator('summary').press('Enter')
+          assert(!(await faq.evaluate(node => node.open)), `${label}: 키보드로 FAQ 닫기`)
+          await main.getByRole('link', { name: '무료로 지원사업 찾기', exact: true }).click()
+          await page.getByRole('textbox', { name: '지원사업 검색어' }).waitFor()
           flowsChecked++
         } else if (path === questionPath) {
           const input = page.getByRole('textbox', { name: '공고 원문에 질문하기' })

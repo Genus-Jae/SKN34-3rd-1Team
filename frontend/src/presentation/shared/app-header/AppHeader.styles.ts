@@ -4,7 +4,7 @@ function classes(...groups: string[]) {
 
 // 색상이나 CSS 속성이 아니라 앱 최상단 헤더에서 맡는 UI 역할을 이름으로 사용합니다.
 export const appHeaderStyles = {
-  // 공개 랜딩에서만 사용하는 변형입니다. 작은 화면에서도 모든 이동 경로를 두 줄로 유지합니다.
+  // 공개 검색·요금제에서 사용하는 변형입니다. 작은 화면에서는 이동 경로를 다음 줄로 배치합니다.
   landingHeader: classes(
     'sticky top-5 z-[5] mx-auto mt-5 grid w-[calc(100%-2.5rem)] max-w-[1400px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-7 gap-y-3',
     'rounded-[2rem] bg-[#102b22] px-6 py-4 text-white shadow-[0_12px_30px_rgb(16_43_34_/_8%)]',
@@ -21,7 +21,7 @@ export const appHeaderStyles = {
   ),
   landingNavLink: classes(
     'inline-flex min-h-8 items-center rounded-lg text-[0.83rem] font-semibold whitespace-nowrap text-[#e2f1e9] no-underline hover:text-white',
-    'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#b9e5ce] max-[400px]:text-[0.68rem] max-[400px]:tracking-[-0.02em]',
+    'aria-[current=page]:text-brand-accent aria-[current=page]:underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#b9e5ce] max-[400px]:text-[0.68rem] max-[400px]:tracking-[-0.02em]',
   ),
   landingAccountLinks: 'flex shrink-0 items-center justify-end gap-2 max-[900px]:col-start-2 max-[900px]:row-start-1 max-[400px]:gap-1.5',
   landingAccountButton: classes(
