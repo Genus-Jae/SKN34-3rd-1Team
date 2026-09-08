@@ -34,7 +34,7 @@ function renderChat(path = '/') {
 describe('참고 이미지 기반 채팅 디자인', () => {
   it('공개 검색은 소개와 넓은 빈 입력으로 시작하고 가짜 이용 한도·기관 수를 표시하지 않는다', () => {
     const fetchMock = renderChat()
-    expect(screen.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 무료로 찾아보세요.' })).toBeTruthy()
     expect(screen.getByText('회사의 지역과 업종, 필요한 지원을 알려주세요. 관련 공고와 확인할 신청 조건을 함께 안내합니다.')).toBeTruthy()
     expect(screen.queryByText('AI 맞춤 검색')).toBeNull()
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement

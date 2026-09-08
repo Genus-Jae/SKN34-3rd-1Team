@@ -16,6 +16,14 @@
   --animate-chat-loading-sweep: chat-loading-sweep 2.1s ease-in-out infinite;
   --animate-search-intro-enter: search-intro-enter 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-search-intro-highlight: search-intro-highlight 3s ease-in-out 450ms both;
+  --animate-search-intro-type: search-intro-type 1ms linear both;
+
+  /* 자식 opacity는 부모의 gradient text를 숨기지 못하므로 글자 공간을 유지하는 visibility를 씁니다. */
+  /* steps(1, end)는 긴 delay 뒤 소수점 오차로 hidden에 멈출 수 있어 짧은 linear 전환을 씁니다. */
+  @keyframes search-intro-type {
+    from { visibility: hidden; }
+    to { visibility: visible; }
+  }
 
   @keyframes search-intro-enter {
     from {

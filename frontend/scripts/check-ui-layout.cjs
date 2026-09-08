@@ -140,6 +140,13 @@ async function main() {
           [sessionHintKey, sessionAccount !== null])
         await page.goto(origin + path)
         await page.locator('h1').first().waitFor({ state: 'attached' })
+        if (path === '/') {
+          // computed animation 종료 여부만으로는 긴 delay 뒤 글자가 hidden에 남는 오류를 잡지 못합니다.
+          await page.waitForFunction(() => {
+            const characters = [...document.querySelectorAll('h1 [data-title-character]')]
+            return characters.length > 0 && characters.every(node => getComputedStyle(node).visibility === 'visible')
+          }, null, { timeout: 5000 })
+        }
         if (path === detailPath) await page.getByRole('heading', { name: longProgram.title, exact: true }).waitFor()
         await checkBounds(page, label)
         pagesChecked++
@@ -149,9 +156,9 @@ async function main() {
           await input.fill('A'.repeat(400) + '\n서울 AI 사업')
           if (path === '/') {
             assert.equal(await input.getAttribute('rows'), '3', `${label}: 초안만으로 배치 전환 금지`)
-            assert.equal(await page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.', exact: true }).count(), 1)
+            assert.equal(await page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 무료로 찾아보세요.', exact: true }).count(), 1)
             assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 0)
-            const animations = await page.locator('h1 span').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).animationName))
+            const animations = await page.locator('h1 [data-title-line], h1 [data-title-highlight]').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).animationName))
             assert.deepEqual(animations, ['search-intro-enter', 'search-intro-enter', 'search-intro-highlight'], `${label}: 제목 진입·강조 효과`)
           }
           const before = { ...calls }
@@ -206,7 +213,7 @@ async function main() {
           assert.equal(calls.search, before.search + 1, `${label}: 초기화 자동 검색 금지`)
           if (path === '/') {
             assert.equal(await input.getAttribute('rows'), '3', `${label}: 초기 중앙 입력창 복귀`)
-            assert.equal(await page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.', exact: true }).count(), 1)
+            assert.equal(await page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 무료로 찾아보세요.', exact: true }).count(), 1)
             assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 0)
           }
           await originalInput.dispose()
@@ -253,16 +260,17 @@ async function main() {
     sessionAccount = null
     await page.evaluate(key => localStorage.removeItem(key), sessionHintKey)
     await page.goto(origin + '/')
-    const staticTitle = page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.', exact: true })
+    const staticTitle = page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 무료로 찾아보세요.', exact: true })
     await staticTitle.waitFor()
     const staticStyles = await staticTitle.locator('span').evaluateAll(nodes => nodes.map(node => {
       const style = getComputedStyle(node)
-      return { animation: style.animationName, opacity: style.opacity, color: style.color }
+      return { animation: style.animationName, opacity: style.opacity, color: style.color, visibility: style.visibility }
     }))
-    assert.equal(staticStyles.length, 3)
+    assert(staticStyles.length > 3, '완성된 제목과 글자 요소가 존재해야 함')
     for (const style of staticStyles) {
       assert.equal(style.animation, 'none', '동작 줄이기에서는 제목 애니메이션 비활성화')
       assert.equal(style.opacity, '1', '동작 줄이기에서는 제목을 즉시 표시')
+      assert.equal(style.visibility, 'visible', '동작 줄이기에서는 모든 글자를 표시')
       assert.notEqual(style.color, 'rgba(0, 0, 0, 0)', '동작 줄이기에서도 제목 색상 유지')
     }
     await checkBounds(page, '동작 줄이기 소개 화면')

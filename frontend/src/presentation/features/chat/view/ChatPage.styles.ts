@@ -80,6 +80,9 @@ export const chatPageStyles = {
   introTitle: 'mt-7 mb-0 break-keep text-[clamp(1.85rem,4vw,3.5rem)] font-extrabold leading-[1.38] tracking-[-0.065em] text-app-ink [text-wrap:balance] max-chat:mt-6',
   introTitleLine: 'inline-block max-w-full motion-safe:animate-search-intro-enter',
   introTitleSecondLine: 'motion-safe:[animation-delay:120ms]',
+  introTitleWord: 'inline-block',
+  introTitleFreeWord: 'inline-block font-black text-brand-primary underline decoration-[#aedcc2] decoration-[0.1em] underline-offset-[0.15em] forced-colors:text-[CanvasText]',
+  introTitleCharacter: 'motion-safe:animate-search-intro-type',
   introTitleHighlight: classes(
     'text-brand-primary',
     'motion-safe:bg-[linear-gradient(110deg,#087f46_20%,#2ea66c_45%,#087f46_70%)] motion-safe:bg-size-[220%_100%]',
