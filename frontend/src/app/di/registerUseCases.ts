@@ -1,8 +1,12 @@
 import { asFunction } from 'awilix/browser'
 
 import { AskSupportProgramEvidenceQuestionUseCase } from '../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
+import { DevLogInUseCase } from '../../domain/usecases/DevLogInUseCase'
+import { GetCurrentAccountUseCase } from '../../domain/usecases/GetCurrentAccountUseCase'
 import { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSupportProgramDetailUseCase'
 import { GetSupportProgramSearchReadinessUseCase } from '../../domain/usecases/GetSupportProgramSearchReadinessUseCase'
+import { LogInUseCase } from '../../domain/usecases/LogInUseCase'
+import { LogOutUseCase } from '../../domain/usecases/LogOutUseCase'
 import { PrepareSampleItemUseCase } from '../../domain/usecases/PrepareSampleItemUseCase'
 import { SearchSupportProgramsUseCase } from '../../domain/usecases/SearchSupportProgramsUseCase'
 import { InterpretSupportProgramConversationUseCase } from '../../domain/usecases/InterpretSupportProgramConversationUseCase'
@@ -17,12 +21,16 @@ export function registerUseCases(container: AppContainer) {
     askSupportProgramEvidenceQuestionUseCase: asFunction(
       createAskSupportProgramEvidenceQuestionUseCase,
     ).singleton(),
+    devLogInUseCase: asFunction(createDevLogInUseCase).singleton(),
+    getCurrentAccountUseCase: asFunction(createGetCurrentAccountUseCase).singleton(),
     getSupportProgramDetailUseCase: asFunction(
       createGetSupportProgramDetailUseCase,
     ).singleton(),
     getSupportProgramSearchReadinessUseCase: asFunction(
       createGetSupportProgramSearchReadinessUseCase,
     ).singleton(),
+    logInUseCase: asFunction(createLogInUseCase).singleton(),
+    logOutUseCase: asFunction(createLogOutUseCase).singleton(),
     prepareSampleItemUseCase: asFunction(
       createPrepareSampleItemUseCase,
     ).singleton(),
@@ -36,6 +44,30 @@ function createAskSupportProgramEvidenceQuestionUseCase({
   supportProgramRepository,
 }: Pick<AppCradle, 'supportProgramRepository'>): AskSupportProgramEvidenceQuestionUseCase {
   return new AskSupportProgramEvidenceQuestionUseCase(supportProgramRepository)
+}
+
+function createDevLogInUseCase({
+  accountRepository,
+}: Pick<AppCradle, 'accountRepository'>): DevLogInUseCase {
+  return new DevLogInUseCase(accountRepository)
+}
+
+function createGetCurrentAccountUseCase({
+  accountRepository,
+}: Pick<AppCradle, 'accountRepository'>): GetCurrentAccountUseCase {
+  return new GetCurrentAccountUseCase(accountRepository)
+}
+
+function createLogInUseCase({
+  accountRepository,
+}: Pick<AppCradle, 'accountRepository'>): LogInUseCase {
+  return new LogInUseCase(accountRepository)
+}
+
+function createLogOutUseCase({
+  accountRepository,
+}: Pick<AppCradle, 'accountRepository'>): LogOutUseCase {
+  return new LogOutUseCase(accountRepository)
 }
 
 function createGetSupportProgramDetailUseCase({

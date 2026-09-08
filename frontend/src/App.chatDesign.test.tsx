@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { createAppStore } from './app/store'
 import { readyConversationProposal, seoulConversationContext } from './data/fixtures/supportProgramConversation'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 vi.mock('./presentation/features/chat/hooks/useSupportProgramSearchReadiness', () => ({
   useSupportProgramSearchReadiness: () => ({
@@ -21,7 +22,12 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 function renderChat(path = '/') {
   const fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
-  render(<Provider store={createAppStore()}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></Provider>)
+  const store = createAppStore()
+  // 작업 채팅(/chat)은 회원 세션이 있어야 열립니다. 세션 복원 요청은 보내지 않습니다.
+  store.dispatch(sessionRestored(
+    path.startsWith('/chat') ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true } : null,
+  ))
+  render(<Provider store={store}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></Provider>)
   return fetchMock
 }
 

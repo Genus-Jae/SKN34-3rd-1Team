@@ -44,7 +44,8 @@ pnpm dev
 
 ## 화면과 현재 동작
 
-로그인 전 화면은 공용 헤더를, 로그인 뒤 작업 화면은 사이드바를 씁니다. 로그인·회원가입은 둘 다 쓰지 않는 단독 화면입니다.
+로그인 전 화면은 공용 헤더를, 로그인 뒤 작업 화면은 사이드바를 씁니다. 로그인·회원가입은 둘 다 쓰지 않는 단독 화면이며,
+로그인 상태에서는 작업 화면으로 돌려보냅니다. 사이드바 화면은 회원 세션이 있어야 열리고 `/admin/members`는 관리자만 엽니다.
 
 | 경로 | 껍데기 | 기능 |
 |---|---|---|
@@ -54,18 +55,20 @@ pnpm dev
 | `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
 | `/examples/sample-item/redux` | 헤더 | Redux 상태 유지 예제 |
-| `/login` | 없음 | 이메일·비밀번호 로그인 입력 |
+| `/login` | 없음 | 이메일·비밀번호 로그인, 로그인 상태 유지, `?next=` 복귀 경로 |
 | `/signup` | 없음 | 이메일·비밀번호만 받는 회원가입 입력 |
 | `/chat` | 사이드바 | 로그인 뒤 작업 채팅 |
 | `/partners` | 사이드바 | 파트너 모집 목록·필터·프로필 기반 추천 |
 | `/partners/new` | 사이드바 | 모집글 작성 |
 | `/partners/detail` | 사이드바 | 모집글 상세·매칭 근거·참여 제안 |
 | `/profile` | 사이드바 | 기업 프로필, 공개 범위, 완성도 체크리스트 |
-| `/admin/members` | 사이드바 | 어드민 회원·기업 목록과 운영 규칙 |
+| `/admin/members` | 사이드바(관리자) | 어드민 회원·기업 목록과 운영 규칙 |
 
-`/login` `/signup` `/partners` `/profile` `/admin/members`는 화면만 있는 **데모 단계**입니다. 계정·모집·회원 API가
-없어 ViewModel이 예시 값을 돌려줍니다. 로그인·가입은 입력 형식을 검사한 뒤 데모 화면으로 이동할 뿐,
-실제 인증·계정 생성·세션 저장을 하지 않습니다. 실제 비밀번호를 입력하지 않습니다.
+`/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,
+잘못된 비밀번호·정지 계정·시도 제한(429)을 구분해 안내합니다. 개발 빌드의 헤더에는 `개발 로그인 · 관리자`와
+`개발 로그인 · 회원` 버튼이 있어 회원가입 없이 시드 계정으로 들어갈 수 있습니다(Core의 `ACCOUNT_DEV_LOGIN_ENABLED`).
+`/signup` `/partners` `/profile` `/admin/members`는 화면만 있는 **데모 단계**입니다. 가입·모집·회원 API가
+없어 ViewModel이 예시 값을 돌려주고, 가입은 입력 형식을 검사한 뒤 로그인 화면으로 안내할 뿐 계정을 만들지 않습니다.
 모집 작성도 입력을 검사한 뒤 목록으로 이동하며 등록·임시 저장하지 않습니다. 저장·제안 발송·회원 정지 등
 연결되지 않은 동작은 준비 중으로 비활성화했습니다. 프로필의 선택은 화면 안에서만 유지되고 추천에 전달되지 않습니다.
 준비된 모집 상세 하나만 `recruitmentId=ai-labeling`으로 연결하고, 다른 모집글을 그 상세로 대체하지 않습니다.
@@ -222,7 +225,7 @@ src/
 ├── presentation/features/partner-recruitment/ # 모집 목록·상세·작성 View와 각 페이지 ViewModel
 ├── presentation/features/company-profile/ # 기업 프로필 View와 ViewModel
 ├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
-├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
+├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture
 ```
@@ -248,6 +251,10 @@ IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 �
 `WorkspaceLayout`이 헤더 대신 사이드바를 놓습니다. 어떤 화면이 어느 껍데기를 쓰는지는 `App`의 라우트가 결정합니다.
 파트너 모집·기업 프로필·어드민이 함께 쓰는 카드·태그·표·버튼 스타일과 켬·끔 스위치는
 `presentation/shared/workspace`에 둡니다. 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
+로그인 상태는 `presentation/shared/auth`의 Redux `auth` slice와 `useAuthSession`·`useRestoreAuthSession`이 소유합니다.
+`App`은 시작 시 세션을 복원하고, `RequireAuth(minimumTier)`·`GuestOnly` 라우트 래퍼가 복원이 끝나기 전(`unknown`)에는
+리다이렉트하지 않다가 회원·관리자 단계에 따라 화면을 나눕니다. 단계(`tier`)는 서버의 `/auth/me`가 계산해 내려 주며
+로그인 화면의 `useLoginViewModel`은 `LogInUseCase → AccountRepository → accountApi` 경로로 세션을 받습니다.
 새 검색 시작·현재 적용 조건 요약은
 채팅 입력창 위에 간결하게 둡니다. 정상 공고 데이터 통계 패널은 표시하지 않습니다.
 화면 전용 상태와 DOM ref는 Redux에 넣지 않고 Hook 로컬로 유지합니다.

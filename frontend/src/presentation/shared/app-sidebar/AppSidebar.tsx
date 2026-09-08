@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 
+import type { Account } from '../../../domain/entities/Account'
+import { useAuthSession } from '../auth/hooks/useAuthSession'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
-import { sidebarAccount } from './sidebarAccountPlaceholder'
 
 type MenuIcon = 'search' | 'bookmark' | 'users' | 'building' | 'shield' | 'pricing'
 
@@ -15,7 +16,7 @@ type MenuItem = {
   matches?: (pathname: string) => boolean
 }
 
-type MenuGroup = { title: string; items: MenuItem[] }
+type MenuGroup = { title: string; items: MenuItem[]; adminOnly?: boolean }
 
 const menuGroups: MenuGroup[] = [
   {
@@ -45,6 +46,7 @@ const menuGroups: MenuGroup[] = [
   },
   {
     title: '관리자',
+    adminOnly: true,
     items: [
       {
         label: '회원·기업',
@@ -105,12 +107,20 @@ function MenuIconGraphic({ name }: { name: MenuIcon }) {
   )
 }
 
+/** 계정 카드에 보여 줄 단계 문구입니다. 기업 등록이 붙기 전까지 회원은 등록 안내를 함께 봅니다. */
+function tierLabel(account: Account): string {
+  if (account.tier === 'ADMIN') return '관리자'
+  if (account.tier === 'COMPANY') return '기업 회원'
+  return account.emailVerified ? '회원 · 기업 미등록' : '회원 · 이메일 미인증'
+}
+
 /**
  * 로그인 뒤 작업 화면의 사이드바입니다. 공용 헤더를 대신해 화면 이동과 계정 진입점을 담당합니다.
- * 세션 연결 전까지는 계정 정보를 예시 값으로 표시하고, 화면이 없는 메뉴는 링크로 만들지 않습니다.
+ * 계정 정보는 세션에서 읽고, 관리자 메뉴는 관리자에게만 그리며, 화면이 없는 메뉴는 링크로 만들지 않습니다.
  */
 export function AppSidebar() {
   const { pathname } = useLocation()
+  const { account, logOut } = useAuthSession()
 
   return (
     <aside className={appSidebarStyles.sidebar} aria-label="작업 사이드바">
@@ -122,53 +132,61 @@ export function AppSidebar() {
         </span>
       </Link>
 
-      {menuGroups.map((group) => (
-        <nav className={appSidebarStyles.menuGroup} key={group.title} aria-label={group.title}>
-          <p className={appSidebarStyles.menuGroupTitle}>{group.title}</p>
-          {group.items.map((item) =>
-            item.to ? (
-              <Link
-                className={sidebarMenuItemClassName(
-                  item.matches?.(pathname) ? 'active' : 'inactive',
-                )}
-                key={item.label}
-                to={item.to}
-                aria-current={item.matches?.(pathname) ? 'page' : undefined}
-              >
-                <MenuIconGraphic name={item.icon} />
-                <span>{item.label}</span>
-                {item.badge ? <span className={appSidebarStyles.menuBadge}>{item.badge}</span> : null}
-              </Link>
-            ) : (
-              <span
-                className={sidebarMenuItemClassName('pending')}
-                key={item.label}
-                aria-disabled="true"
-              >
-                <MenuIconGraphic name={item.icon} />
-                <span>{item.label}</span>
-                {item.badge ? <span className={appSidebarStyles.pendingBadge}>{item.badge}</span> : null}
-              </span>
-            ),
-          )}
-        </nav>
-      ))}
+      {menuGroups
+        .filter((group) => !group.adminOnly || account?.tier === 'ADMIN')
+        .map((group) => (
+          <nav className={appSidebarStyles.menuGroup} key={group.title} aria-label={group.title}>
+            <p className={appSidebarStyles.menuGroupTitle}>{group.title}</p>
+            {group.items.map((item) =>
+              item.to ? (
+                <Link
+                  className={sidebarMenuItemClassName(
+                    item.matches?.(pathname) ? 'active' : 'inactive',
+                  )}
+                  key={item.label}
+                  to={item.to}
+                  aria-current={item.matches?.(pathname) ? 'page' : undefined}
+                >
+                  <MenuIconGraphic name={item.icon} />
+                  <span>{item.label}</span>
+                  {item.badge ? <span className={appSidebarStyles.menuBadge}>{item.badge}</span> : null}
+                </Link>
+              ) : (
+                <span
+                  className={sidebarMenuItemClassName('pending')}
+                  key={item.label}
+                  aria-disabled="true"
+                >
+                  <MenuIconGraphic name={item.icon} />
+                  <span>{item.label}</span>
+                  {item.badge ? <span className={appSidebarStyles.pendingBadge}>{item.badge}</span> : null}
+                </span>
+              ),
+            )}
+          </nav>
+        ))}
 
-      <div className={appSidebarStyles.account}>
-        <p className={appSidebarStyles.demoNotice}>예시 계정 · 인증 미연결</p>
-        <div className={appSidebarStyles.accountCard}>
-          <span className={appSidebarStyles.accountAvatar} aria-hidden="true">
-            {sidebarAccount.initial}
-          </span>
-          <span className="min-w-0">
-            <strong className={appSidebarStyles.accountName}>{sidebarAccount.name}</strong>
-            <span className={appSidebarStyles.accountCompany}>{sidebarAccount.companyName}</span>
-          </span>
+      {account ? (
+        <div className={appSidebarStyles.account}>
+          <div className={appSidebarStyles.accountCard}>
+            <span className={appSidebarStyles.accountAvatar} aria-hidden="true">
+              {account.email.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <strong className={appSidebarStyles.accountName} title={account.email}>{account.email}</strong>
+              <span className={appSidebarStyles.accountCompany}>{tierLabel(account)}</span>
+            </span>
+          </div>
+          <div className={appSidebarStyles.accountActions}>
+            <Link className={appSidebarStyles.accountLink} to="/">
+              공개 검색으로
+            </Link>
+            <button className={appSidebarStyles.logoutButton} type="button" onClick={() => void logOut()}>
+              로그아웃
+            </button>
+          </div>
         </div>
-        <Link className={appSidebarStyles.publicSearchLink} to="/">
-          공개 검색으로
-        </Link>
-      </div>
+      ) : null}
     </aside>
   )
 }

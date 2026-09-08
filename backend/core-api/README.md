@@ -113,6 +113,10 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `GET /api/v1/support-programs/detail` | 제공처 코드와 원본 ID로 현재 공고 상세 조회 |
 | `POST /api/v1/support-programs/detail/answers` | 특정 공고의 공식 원문 근거 질문·답변 |
 | `POST /api/v1/sample-items/prepare` | 계층 연결 학습용 예제 |
+| `POST /api/v1/auth/login` | 이메일·비밀번호 로그인. 세션 JWT를 HttpOnly 쿠키로만 내려줌 |
+| `POST /api/v1/auth/logout` | 세션 행 삭제와 쿠키 만료 |
+| `GET /api/v1/auth/me` | 세션 쿠키로 현재 계정·권한 단계 조회 |
+| `POST /api/v1/auth/dev-login` | `ACCOUNT_DEV_LOGIN_ENABLED=true`일 때만 등록되는 개발용 시드 로그인 |
 
 ### 후속 대화 조건 해석
 
@@ -219,6 +223,15 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `SUPPORT_PROGRAM_REQUEST_GLOBAL_PER_MINUTE` | `60` | 한 Core 프로세스의 검색·근거 답변 최근 60초 한도 |
 | `SUPPORT_PROGRAM_REQUEST_MAX_CONCURRENT` | `4` | 검색·근거 답변 동시 처리 한도 |
 | `DATA_GO_KR_SERVICE_KEY` | 빈 값 | 기업마당 수집용 공공데이터포털 키 |
+| `ACCOUNT_SESSION_TTL` | `P30D` | "로그인 상태 유지"를 켠 세션의 절대 만료 기간 |
+| `ACCOUNT_SESSION_SHORT_TTL` | `PT12H` | "로그인 상태 유지"를 끈 세션의 절대 만료 기간. 쿠키는 브라우저 세션 쿠키 |
+| `ACCOUNT_SESSION_IDLE_TTL` | `P7D` | 마지막 사용 뒤 세션을 끝내는 유휴 기간 |
+| `ACCOUNT_JWT_SECRET` | 없음(필수) | 세션 JWT HS256 서명 비밀키(32자 이상). 코드에 기본값이 없어 비어 있으면 기동 실패. Compose·`.env.example`은 로컬 개발용 값을 넣음 |
+| `ACCOUNT_COOKIE_SECURE` | `true` | 세션 쿠키 `Secure` 속성. HTTPS가 없는 로컬 개발에서만 `false` |
+| `ACCOUNT_DEV_LOGIN_ENABLED` | `false` | `true`이면 `POST /api/v1/auth/dev-login`이 등록되어 비밀번호 없이 시드 계정 세션 발급 |
+| `ACCOUNT_DEV_LOGIN_EMAIL` | `admin@govbiz.local` | 개발용 관리자 시드 계정 이메일. 없으면 ADMIN 역할·이메일 인증 완료로 생성 |
+| `ACCOUNT_DEV_LOGIN_MEMBER_EMAIL` | `member@govbiz.local` | `{"role":"USER"}`로 부를 때 쓰는 회원 시드 계정 이메일 |
+| `ACCOUNT_DEV_LOGIN_PASSWORD` | `govbiz-admin1` | 시드 계정 생성 시 저장하는 비밀번호 |
 | `BIZINFO_API_BASE_URL` | `https://apis.data.go.kr` | 기업마당 API 주소 |
 | `BIZINFO_API_CONNECT_TIMEOUT` | `2s` | 기업마당 연결 제한시간 |
 | `BIZINFO_API_READ_TIMEOUT` | `10s` | 기업마당 응답 제한시간 |
@@ -282,12 +295,21 @@ supportprogram/
 ├── repository            # 도메인↔DB 행 변환·트랜잭션·저장·조회
 │   └── mapper            # MyBatis Mapper, DbRow
 ├── domain                 # 업무 모델·서울 날짜 기준 접수 상태 규칙
-├── helper                 # 지원사업 하위 흐름이 함께 쓰는 보조 작업
-└── config                 # 지원사업 공용 시계 설정
+└── helper                 # 지원사업 하위 흐름이 함께 쓰는 보조 작업
+account/
+├── controller            # 로그인·로그아웃·내 계정, 개발용 관리자 로그인 HTTP 진입점
+│   └── dto               # 공개 요청·응답 계약
+├── service               # 로그인 검증·시도 제한, JWT 세션 발급·확인, 개발용 관리자 계정 생성
+├── repository            # 계정·세션 저장과 조회, DbRow 변환
+│   └── mapper            # MyBatis Mapper, DbRow
+├── domain                # 계정·역할·세션 업무 모델
+├── helper                # HS256 JWT 발급·검증·해시, 세션 쿠키 발급·읽기, 이메일 정규화
+├── web                   # Account 파라미터 resolver, Origin 검사 interceptor와 MVC 등록
+└── config                # BCrypt, 세션·개발 로그인 설정
 _health                    # Core API Health
 _health_ai_service         # AI Service Health의 Controller → Service → Client
 _sampleitem                # 학습 예제
-_common                    # 실제 공유하는 HTTP·AI 설정·JSON·CORS·오류 처리
+_common                    # 실제 공유하는 HTTP·AI 설정·JSON·CORS·서울 기준 시계·오류 처리
 ```
 
 외부 호출의 기본 흐름은 `Controller → Service → Facade → Client`입니다. Facade는 하위 호출·검증·변환을
@@ -313,7 +335,9 @@ SQL은 [`SupportProgramMapper.xml`](src/main/resources/mybatis/supportprogram/re
   [V2](src/main/resources/db/migration/V2__add_support_program_sync_generation.sql)는 최신 수집 시작 세대,
   [V3](src/main/resources/db/migration/V3__create_support_program_source_document.sql)는 공고별 공식 원문
   테이블, [V4](src/main/resources/db/migration/V4__create_support_program_sync_status.sql)는 공개 스냅샷의
-  세대·지문·공고 수·색인 준비와 최근 동기화 결과를 만듭니다. 적용된 migration은 수정하지 않고 새 버전을 추가합니다.
+  세대·지문·공고 수·색인 준비와 최근 동기화 결과,
+  [V5](src/main/resources/db/migration/V5__create_account.sql)는 계정과 세션 테이블을 만듭니다.
+  적용된 migration은 수정하지 않고 새 버전을 추가합니다.
 - 전체 수집·검증·색인이 끝난 뒤 최신 시작 세대만 공개합니다. BIZINFO 행 미노출 처리와 UPSERT를
   하나의 짧은 DB transaction으로 묶고, 같은 transaction에서 스냅샷 지문·공고 수·`indexReady=true`·성공
   시각을 기록합니다. 외부 HTTP 호출은 transaction 밖에서 수행합니다.
