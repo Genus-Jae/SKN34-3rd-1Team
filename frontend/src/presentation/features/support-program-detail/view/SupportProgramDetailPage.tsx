@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 
+import { isAppPath, supportProgramQuestionPath } from '../../../shared/routes/appPaths'
+
 import type { SupportProgram, SupportProgramStatus } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import { useSupportProgramDetailViewModel } from '../viewmodel/useSupportProgramDetailViewModel'
@@ -88,6 +90,8 @@ function SupportProgramDetail({ program, searchReturnTo }: {
   program: SupportProgram
   searchReturnTo: SupportProgramSearchReturnTo
 }) {
+  // 작업 채팅에서 연 상세는 질문 화면도 사이드바 안(/app)에서 열리도록 현재 경로로 판단합니다.
+  const inApp = isAppPath(useLocation().pathname)
   return (
     <main className={supportProgramDetailStyles.page}>
       <header className={supportProgramDetailStyles.header}>
@@ -172,10 +176,10 @@ function SupportProgramDetail({ program, searchReturnTo }: {
             <Link
               className={supportProgramDetailStyles.questionLink}
               state={{ searchReturnTo }}
-              to={`/support-programs/detail/question?${new URLSearchParams({
-                sourceCode: program.sourceCode,
-                sourceProgramId: program.id,
-              })}`}
+              to={supportProgramQuestionPath(
+                { sourceCode: program.sourceCode, sourceProgramId: program.id },
+                inApp,
+              )}
             >
               이 공고에 질문하기
             </Link>

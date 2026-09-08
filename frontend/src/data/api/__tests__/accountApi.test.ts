@@ -1,0 +1,185 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { AccountRepositoryImpl } from '../../repositories/AccountRepositoryImpl'
+import { createMemorySessionHintStorage } from '../../storage/sessionHintStorage'
+import {
+  AccountApiError,
+  devLogInApi,
+  getCurrentAccountApi,
+  logInApi,
+  logOutApi,
+} from '../accountApi'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false }
+const sessionResponse = { expiresAt: '2026-10-06T12:00:00+09:00', account }
+const logInCommand = { email: 'manager@company.co.kr', password: 'password1', rememberMe: true }
+
+describe('logInApi and devLogInApi', () => {
+  it('posts the login command as JSON with cookies and validates the session response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(sessionResponse))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(logInApi(logInCommand)).resolves.toEqual(sessionResponse)
+
+    const [requestUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(new URL(requestUrl).pathname).toBe('/api/v1/auth/login')
+    expect(init.method).toBe('POST')
+    expect(init.credentials).toBe('include')
+    expect(init.headers).toEqual({ Accept: 'application/json', 'Content-Type': 'application/json' })
+    expect(JSON.parse(String(init.body))).toEqual(logInCommand)
+  })
+
+  it('posts the developer login with the requested seed role', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(sessionResponse))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(devLogInApi('USER')).resolves.toEqual(sessionResponse)
+
+    const [requestUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(new URL(requestUrl).pathname).toBe('/api/v1/auth/dev-login')
+    expect(init.method).toBe('POST')
+    expect(init.credentials).toBe('include')
+    expect(JSON.parse(String(init.body))).toEqual({ role: 'USER' })
+  })
+
+  it('rejects a session response without an expiry, tier, or with an unknown role', async () => {
+    const { tier: _tier, ...accountWithoutTier } = account
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ account }))
+      .mockResolvedValueOnce(jsonResponse({ ...sessionResponse, account: accountWithoutTier }))
+      .mockResolvedValueOnce(jsonResponse({ ...sessionResponse, account: { ...account, role: 'ROOT' } })))
+
+    await expect(logInApi(logInCommand)).rejects.toThrow()
+    await expect(logInApi(logInCommand)).rejects.toThrow()
+    await expect(logInApi(logInCommand)).rejects.toThrow()
+  })
+
+  it('returns the status, problem code, and retry hint of a failed login', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('gateway', { status: 502 }))
+      .mockResolvedValueOnce(problemResponse(429, 'LOGIN_RATE_LIMITED', { retryAfterSeconds: 30 })))
+
+    await expect(logInApi(logInCommand))
+      .rejects.toMatchObject({ status: 502, code: null, retryAfterSeconds: null })
+    await expect(logInApi(logInCommand))
+      .rejects.toMatchObject({ status: 429, code: 'LOGIN_RATE_LIMITED', retryAfterSeconds: 30 })
+  })
+})
+
+describe('logOutApi and getCurrentAccountApi', () => {
+  it('sends the session cookie instead of a bearer header and unwraps the current account', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ account }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getCurrentAccountApi()).resolves.toEqual(account)
+    await expect(logOutApi()).resolves.toBeUndefined()
+
+    const [, meInit] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const [logoutUrl, logoutInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(meInit.headers).toEqual({ Accept: 'application/json' })
+    expect(meInit.credentials).toBe('include')
+    expect(meInit.cache).toBe('no-store')
+    expect(new URL(logoutUrl).pathname).toBe('/api/v1/auth/logout')
+    expect(logoutInit.method).toBe('POST')
+    expect(logoutInit.credentials).toBe('include')
+  })
+})
+
+describe('AccountRepositoryImpl', () => {
+  it('marks the session hint after a successful login', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(sessionResponse)))
+    const storage = createMemorySessionHintStorage()
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+
+    const result = await repository.logIn(logInCommand)
+
+    expect(result).toEqual({ outcome: 'session', session: sessionResponse })
+    expect(storage.hasSession()).toBe(true)
+  })
+
+  it('marks the hint after the developer login and surfaces a disabled endpoint as an error', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse(sessionResponse))
+      .mockResolvedValueOnce(new Response(null, { status: 404 })))
+    const storage = createMemorySessionHintStorage()
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+
+    await expect(repository.logInAsDeveloper('ADMIN')).resolves.toEqual(sessionResponse)
+    expect(storage.hasSession()).toBe(true)
+    await expect(repository.logInAsDeveloper('ADMIN')).rejects.toMatchObject({ name: 'AccountApiError', status: 404 })
+  })
+
+  it('maps 401, suspension, and rate limits to login outcomes and rethrows other failures', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(problemResponse(401, 'INVALID_CREDENTIALS'))
+      .mockResolvedValueOnce(problemResponse(403, 'ACCOUNT_SUSPENDED'))
+      .mockResolvedValueOnce(problemResponse(429, 'LOGIN_RATE_LIMITED', { retryAfterSeconds: 60 }))
+      .mockResolvedValueOnce(problemResponse(403, 'SESSION_ORIGIN_REJECTED'))
+      .mockResolvedValueOnce(problemResponse(500, null)))
+    const storage = createMemorySessionHintStorage()
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+
+    await expect(repository.logIn(logInCommand)).resolves.toEqual({ outcome: 'invalid-credentials' })
+    await expect(repository.logIn(logInCommand)).resolves.toEqual({ outcome: 'suspended' })
+    await expect(repository.logIn(logInCommand)).resolves.toEqual({ outcome: 'rate-limited', retryAfterSeconds: 60 })
+    await expect(repository.logIn(logInCommand)).rejects.toBeInstanceOf(AccountApiError)
+    await expect(repository.logIn(logInCommand)).rejects.toBeInstanceOf(AccountApiError)
+    expect(storage.hasSession()).toBe(false)
+  })
+
+  it('restores the account when the hint is set and clears the hint when the session is gone or suspended', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ account }))
+      .mockResolvedValueOnce(problemResponse(401, 'AUTHENTICATION_REQUIRED'))
+      .mockResolvedValueOnce(problemResponse(403, 'ACCOUNT_SUSPENDED')))
+    const storage = createMemorySessionHintStorage(true)
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+
+    await expect(repository.getCurrentAccount()).resolves.toEqual(account)
+    await expect(repository.getCurrentAccount()).resolves.toBeNull()
+    expect(storage.hasSession()).toBe(false)
+
+    storage.markSignedIn()
+    await expect(repository.getCurrentAccount()).resolves.toBeNull()
+    expect(storage.hasSession()).toBe(false)
+  })
+
+  it('does not call the API without a session hint', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: createMemorySessionHintStorage() })
+
+    await expect(repository.getCurrentAccount()).resolves.toBeNull()
+    await expect(repository.logOut()).resolves.toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('clears the hint on logout even if the server session is already gone', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(problemResponse(401, 'AUTHENTICATION_REQUIRED')))
+    const storage = createMemorySessionHintStorage(true)
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+
+    await expect(repository.logOut()).resolves.toBeUndefined()
+    expect(storage.hasSession()).toBe(false)
+  })
+})
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function problemResponse(status: number, code: string | null, extra: Record<string, unknown> = {}) {
+  return new Response(JSON.stringify({ status, code, ...extra }), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  })
+}

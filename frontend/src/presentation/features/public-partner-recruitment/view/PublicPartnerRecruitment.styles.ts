@@ -1,0 +1,60 @@
+function classes(...groups: string[]) {
+  return groups.join(' ')
+}
+
+// 색상이나 CSS 속성이 아니라 로그인 전 공개 파트너 모집 화면에서 맡는 UI 역할을 이름으로 사용합니다.
+// 태그·버튼처럼 작업 화면과 같은 조각은 shared/workspace의 스타일을 쓰고 여기서는 공개 화면 배치만 다룹니다.
+export const publicPartnerRecruitmentStyles = {
+  page: classes(
+    'mx-auto flex w-[min(1180px,calc(100%_-_3rem))] min-w-0 flex-col gap-10 pt-[clamp(2.5rem,5vw,4rem)] pb-16 text-app-ink',
+    'max-chat:w-[calc(100%_-_2rem)] max-chat:gap-8 max-chat:pb-10',
+  ),
+  hero: 'flex flex-col gap-3',
+  eyebrow: 'm-0 inline-flex w-fit items-center gap-2 rounded-full bg-brand-accent px-4 py-2 text-[0.8rem] font-bold text-brand-primary',
+  title: 'm-0 text-[clamp(1.7rem,3.2vw,2.4rem)] font-extrabold leading-[1.25] tracking-[-0.04em]',
+  description: 'm-0 max-w-[62ch] text-[0.95rem] leading-[1.7] text-sample-muted',
+  columns: 'grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-chat:grid-cols-1',
+  column: 'flex min-w-0 flex-col gap-5',
+  toolbar: 'flex flex-wrap items-center justify-between gap-3',
+  resultCount: 'text-[0.8rem] text-sample-muted',
+  cardGrid: 'grid grid-cols-2 gap-4 max-chat:grid-cols-1',
+  card: classes(
+    'flex flex-col gap-[0.9rem] rounded-[1.4rem] border border-sample-border bg-white p-[1.35rem]',
+    'shadow-[0_8px_24px_rgb(32_33_36_/_5%)]',
+  ),
+  cardTop: 'flex items-center justify-between gap-3',
+  cardDeadline: 'text-[0.74rem] font-extrabold text-[#b75561]',
+  cardTitle: 'm-0 text-[1.02rem] font-bold leading-[1.4] tracking-[-0.025em] [overflow-wrap:anywhere]',
+  cardProgram: 'm-0 text-[0.75rem] leading-[1.5] text-sample-muted',
+  authorRow: 'flex items-center gap-2 rounded-[0.85rem] bg-[#f6f7f8] px-3 py-[0.6rem]',
+  authorAvatar: 'grid size-7 shrink-0 place-items-center rounded-[0.5rem] bg-brand-primary text-[0.75rem] font-extrabold text-white',
+  authorName: 'block text-[0.78rem] font-bold',
+  authorSummary: 'mt-[0.05rem] block text-[0.68rem] text-sample-muted',
+  tagRow: 'flex flex-wrap gap-[0.35rem]',
+  cardFooter: 'flex items-center justify-between gap-3 pt-1',
+  cardFooterNote: 'text-[0.72rem] text-sample-muted',
+  moreRow: 'flex justify-center pt-2',
+  ctaCard: classes(
+    'flex flex-col gap-[0.9rem] rounded-[1.4rem] border border-[#b4ddc7] bg-[#e4f2e9] p-[1.35rem]',
+  ),
+  ctaTitle: 'm-0 text-[1.05rem] font-bold tracking-[-0.025em]',
+  ctaList: 'm-0 flex list-disc flex-col gap-[0.35rem] pl-5 text-[0.8rem] leading-[1.6] text-[#365947]',
+  ctaButtons: 'flex flex-col gap-2',
+  ctaNote: 'm-0 text-[0.72rem] leading-[1.55] text-[#52685c]',
+  noticeCard: 'flex flex-col gap-[0.6rem] rounded-[1.4rem] border border-sample-border bg-white p-[1.2rem]',
+  noticeText: 'm-0 text-[0.78rem] leading-[1.6] text-sample-muted',
+  backLink: 'inline-flex w-fit items-center gap-[0.3rem] text-[0.8rem] font-bold text-brand-primary no-underline hover:underline',
+  detailTitle: 'm-0 text-[clamp(1.4rem,2.6vw,1.9rem)] font-bold leading-[1.35] tracking-[-0.03em] [overflow-wrap:anywhere]',
+  conditionGrid: 'grid grid-cols-3 gap-[0.6rem] max-chat:grid-cols-1',
+  conditionCell: 'flex flex-col gap-[0.2rem] rounded-[0.85rem] border border-sample-border px-[0.85rem] py-[0.7rem]',
+  conditionLabel: 'text-[0.68rem] font-bold text-sample-muted',
+  conditionValue: 'text-[0.85rem] font-bold',
+  rawBox: 'flex flex-col gap-1 rounded-[0.85rem] bg-[#f6f7f8] p-[0.7rem] text-[0.75rem] text-[#4d597c]',
+  rawBoxLabel: 'font-bold text-app-ink',
+  bodyParagraph: 'm-0 text-[0.88rem] leading-[1.7]',
+  preparationItem: 'flex items-center gap-2 text-[0.8rem]',
+  preparationDot: 'inline-block size-[6px] shrink-0 rounded-full bg-brand-primary',
+  disclaimer: 'm-0 text-[0.72rem] leading-[1.55] text-sample-muted',
+  flowRow: 'flex flex-wrap items-center gap-[0.35rem] text-[0.72rem] font-bold text-[#4d597c]',
+  flowStep: 'inline-flex rounded-[0.35rem] border border-sample-border bg-white px-[0.45rem] py-[0.25rem]',
+} as const

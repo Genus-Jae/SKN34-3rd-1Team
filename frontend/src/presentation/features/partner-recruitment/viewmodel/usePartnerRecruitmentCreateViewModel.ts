@@ -1,7 +1,8 @@
 import { type FormEvent, type KeyboardEvent, useState } from 'react'
 import { useNavigate } from 'react-router'
 
-import { ownCompany, selectedProgram } from './partnerRecruitmentPlaceholders'
+import { ownCompany, selectedProgram } from '../../../shared/partner-recruitment/partnerRecruitmentPlaceholders'
+import { appPaths } from '../../../shared/routes/appPaths'
 
 const titleMaxLength = 80
 // 날짜 입력에는 시간이 없으므로 '마감일 이전'의 마지막 허용일은 전날입니다.
@@ -47,7 +48,7 @@ export function usePartnerRecruitmentCreateViewModel() {
       setError({ field: 'body', message: '모집 소개 본문을 입력해 주세요.' })
       return
     }
-    navigate('/partners')
+    navigate(appPaths.partners)
   }
 
   /** 같은 역량을 두 번 넣지 않고, 빈 값은 무시합니다. */

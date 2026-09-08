@@ -3,6 +3,7 @@ import { Link, useLocation, useSearchParams } from 'react-router'
 
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCatalogFilters } from '../../../../domain/entities/SupportProgramCatalog'
+import { isAppPath, supportProgramDetailPath } from '../../../shared/routes/appPaths'
 import { defaultCatalogFilters, readCatalogFilters, writeCatalogFilters } from '../../../shared/support-program/catalogSearchParams'
 import { useSupportProgramCatalogViewModel } from '../viewmodel/useSupportProgramCatalogViewModel'
 
@@ -48,7 +49,7 @@ export function SupportProgramCatalogPanel() {
               <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_10rem_10rem] gap-5 bg-[#f7f8f9] px-5 py-3 text-xs font-semibold text-sample-muted max-chat:hidden">
                 <span>지원사업명 · 분야</span><span>기관</span><span>접수 상태 · 신청 기간</span>
               </div>
-              {catalog.data.programs.map((program) => <CatalogRow key={JSON.stringify([program.sourceCode, program.id])} program={program} returnTo={returnTo} />)}
+              {catalog.data.programs.map((program) => <CatalogRow key={JSON.stringify([program.sourceCode, program.id])} program={program} returnTo={returnTo} inApp={isAppPath(pathname)} />)}
             </div>
           ) : <div className="rounded-2xl border border-sample-border p-10 text-center">
             <h3 className="m-0 text-base font-bold">{catalog.data?.total ? '이 페이지에는 공고가 없어요.' : '조건에 맞는 공고가 없어요.'}</h3>
@@ -125,13 +126,13 @@ function CatalogFilterChoices({ label, name, options, selected, onSelect }: {
   </fieldset>
 }
 
-function CatalogRow({ program, returnTo }: { program: SupportProgram; returnTo: string }) {
-  const detailParams = new URLSearchParams({ sourceCode: program.sourceCode, sourceProgramId: program.id })
+function CatalogRow({ program, returnTo, inApp }: { program: SupportProgram; returnTo: string; inApp: boolean }) {
+  const detailPath = supportProgramDetailPath({ sourceCode: program.sourceCode, sourceProgramId: program.id }, inApp)
   return <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_10rem_10rem] gap-5 border-t border-sample-border px-5 py-5 first:border-t-0 hover:bg-[#fafcfb] max-chat:grid-cols-1 max-chat:gap-2 max-chat:px-4">
     <div className="min-w-0">
       <p className="mt-0 mb-2 truncate text-xs font-semibold text-brand-primary">{program.categories.join(' · ') || '분야 미분류'} <span className="font-normal text-sample-muted">{program.regions.length ? ` / ${program.regions.join(' · ')}` : ''}</span></p>
       <h3 className="m-0 text-sm font-bold leading-relaxed [overflow-wrap:anywhere]"><Link className="rounded hover:text-brand-primary focus-visible:outline-2 focus-visible:outline-brand-primary"
-        to={`/support-programs/detail?${detailParams}`} state={{ searchReturnTo: returnTo }}>{program.title}</Link></h3>
+        to={detailPath} state={{ searchReturnTo: returnTo }}>{program.title}</Link></h3>
     </div>
     <p className="m-0 self-center text-xs leading-relaxed text-sample-muted [overflow-wrap:anywhere]">{program.organization || program.sourceName}</p>
     <div className="self-center max-chat:flex max-chat:flex-wrap max-chat:items-center max-chat:gap-2">

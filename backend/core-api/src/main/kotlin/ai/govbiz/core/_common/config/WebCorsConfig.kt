@@ -17,5 +17,7 @@ class WebCorsConfig(
             .allowedMethods("GET", "POST")
             .allowedHeaders("*")
             .exposedHeaders("Retry-After")
+            // 세션 쿠키가 다른 origin의 개발 서버에서 온 요청에도 붙도록 허용합니다. origin이 고정돼 있어 안전합니다.
+            .allowCredentials(true)
     }
 }

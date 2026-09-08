@@ -348,6 +348,12 @@ V4 적용 전부터 있던 공고는 과거 공개 세대를 복원하지 않습
 한해, 전체 복구 색인이 성공한 뒤 그때 읽은 지문·공고 수를 sentinel 세대 `0`으로 조건부 채택할 수 있습니다.
 빈 초기 DB는 `PREPARING`, 복구 전 legacy 공고는 `UNAVAILABLE`이며, 실제 지문이 있는 새 스냅샷은 bootstrap이 덮어쓰지 않습니다.
 
+`account`·`account_session`(V5)은 회원 계정을 저장합니다. `account`는 소문자로 정규화한 이메일을 고유키로 두고
+비밀번호 해시, 역할(`USER`·`ADMIN`), 이메일 인증·정지·삭제 시각과 약관 동의 시각을 저장합니다. 삭제된 계정은 모든
+조회에서 제외하고 정지된 계정은 로그인과 세션 확인을 403으로 막습니다. `account_session`은 세션 JWT의 SHA-256
+해시와 절대 만료·마지막 사용 시각만 저장하고 계정 삭제 시 함께 삭제됩니다. 이메일 중복은 DB UNIQUE 제약이 막고,
+절대·유휴 만료 여부는 서울 기준 시계로 조회 시점에 판단합니다. 기업 테이블은 기업 등록 단계에서 추가합니다.
+
 접수 상태는 `SupportProgramStatusResolver`가 읽을 때 계산합니다. 파싱된 시작일 전은 `UPCOMING`,
 종료일 이후는 `CLOSED`, 시작일·종료일 범위 안은 `OPEN`입니다. 날짜 경계는 포함합니다.
 날짜만으로 결정되지 않은 경우 예정 표현, 남아 있는 종료일, 명시적 종료 표현, 상시 접수 표현 등의
@@ -367,8 +373,9 @@ Awilix의 `app/di`에서 Repository·UseCase·외부 함수를 구성하고 `app
 제공합니다. ViewModel 또는 내부 Hook은 UseCase·외부 함수 토큰을 조회하며 Repository를 직접 생성하지 않습니다.
 `data/api`의 함수가 요청 URL·Fetch·Zod 응답 검증을 담당합니다.
 
-화면 기능은 `presentation/features/chat`의 채팅 검색과 `presentation/features/support-program-detail`의
-상세 조회·원문 근거 질문으로 나눕니다. 각 feature가 전용 View·스타일·ViewModel·테스트를 소유하고,
+화면 기능은 `presentation/features/chat`의 채팅 검색, `presentation/features/support-program-detail`의
+상세 조회·원문 근거 질문, 그리고 `auth`(로그인·회원가입)·`pricing`·`partner-recruitment`·`company-profile`·`admin`의
+계정 관련 화면으로 나눕니다. 각 feature가 전용 View·스타일·ViewModel·테스트를 소유하고,
 서로의 화면 구현을 import하지 않습니다. 검색 카드와 상세 화면은 기존 상세 URL·복합 식별자로 연결합니다.
 검색과 근거 질문이 함께 쓰는 안전한 오류 문구는 `presentation/shared/support-program`에 둡니다.
 `support-program-detail` 안에서도 상세 조회와 질문은 별도 페이지입니다. `SupportProgramDetailPage`는
@@ -379,15 +386,15 @@ Awilix의 `app/di`에서 Repository·UseCase·외부 함수를 구성하고 `app
 기업 조건은 폼에서 직접 적용하거나 C02 변경 제안을 확인해 적용하며 현재 대화의 메모리에만 보관합니다.
 검색 요청마다 그 시점의 적용 조건을 사용하고, 새 대화·브라우저 새로고침으로 초기화됩니다.
 C02는 작은 현재 상태와 새 발화만 해석하며 화면의 전체 메시지를 다시 전송하지 않습니다.
-미확정 초안·질문·검색 의도와 적용 조건을 구분합니다. 로그인·프로필 영속 저장은 후속 범위입니다.
+미확정 초안·질문·검색 의도와 적용 조건을 구분합니다. 로그인 세션은 아래 계정과 세션 절에 있고 프로필 영속 저장은 후속 범위입니다.
 `ChatPage`는 페이지 ViewModel인 `viewmodel/useChatPageViewModel` 하나를 사용합니다. 이 ViewModel은
 `hooks/useSupportProgramChat`의 Redux 상태·검색 요청 수명과 `hooks/useSupportProgramSearchReadiness`의
 준비 상태 조회·polling을 조합합니다. 페이지 ViewModel은
 검색 확인·검색 재시도만 준비 상태에 따라 제한하며 메시지 제출·추천 질문·다시 해석은 이와 독립적으로 처리합니다.
 페이지 ViewModel은 DOM 참조·입력 조합·
 포커스·스크롤도 Hook 로컬로 관리합니다. View는 렌더링·이벤트 연결·순수 표시용 포맷을 담당합니다.
-React Router는 검색 화면,
-지원사업 상세와 두 SampleItem 예제 화면을 연결합니다. SampleItem은 업무 기능이 아니라 같은 UseCase의
+React Router는 `/` 아래 공개 화면(검색·요금제·공개 파트너 모집·지원사업 상세), 로그인·회원가입, `/app` 아래 회원 세션이 필요한
+작업 화면(작업 채팅·요금제·파트너 모집·프로필·관리자)과 두 SampleItem 예제 화면을 연결합니다. SampleItem은 업무 기능이 아니라 같은 UseCase의
 Hook 상태와 Redux 상태 차이를 비교하는 예제입니다.
 
 Core의 공개 계약은 기능별 `controller/dto`, 외부 계약은 시스템별 `client/dto`, 검증된 실행 결과는
@@ -416,6 +423,28 @@ AI Health도 Core의 기존 공유 읽기 설정을 사용합니다. 공고 의�
 `30s`이며, 검색 화면은 의미 검색과 점수화의 순차 호출을 고려해 `90s` 후 요청을 취소합니다.
 C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 검색 요청에 해석을 합치지 않습니다.
 이 값은 시간 예산이며 성능 목표가 아닙니다. 랭킹의 전용 RestClient 외에는 기존 의존 방향을 유지합니다.
+
+## 계정과 세션
+
+계정 흐름은 `AccountAuthController → AccountLoginService · AccountSessionService → AccountRepository → MySQL`입니다.
+로그인 성공 시 `SessionTokenHelper`가 계정 ID를 `sub`로 하는 HS256 JWT를 발급하고, DB에는 토큰의 SHA-256 해시와
+만료 시각만 저장합니다. 로그인이 필요한 Controller는 `Account` 파라미터를 선언하며
+`AuthenticatedAccountArgumentResolver`가 HttpOnly 세션 쿠키(`govbiz_session`)의 서명·만료를 검사한 뒤 세션 행으로 계정을
+채웁니다. 토큰은 응답 본문에 싣지 않고 쿠키로만 전달하며, 쿠키가 붙은 상태 변경 요청은 `SameSite=Lax`와
+`SessionOriginInterceptor`의 Origin 검사로 CSRF를 막습니다. 로그인 시도는 `AccountLoginAttemptGuard`가 계정·접속 주소
+기준으로 제한합니다. 세션 행이 없으면(로그아웃) JWT가 유효해도 401이고, "로그인 상태 유지" 여부에 따라 30일 또는 12시간의
+절대 만료와 7일 유휴 만료를 함께 검사합니다. 화면 권한 단계(`tier`)는 `Account`가 역할·인증 상태로 계산해 `/me`에
+내려 주고, 프런트의 `RequireAuth`는 이 값으로만 `/app` 아래 라우트를 나누며 서버가 모든 쓰기 API에서 다시 검사합니다.
+Spring Security filter chain은 쓰지 않고 `spring-security-crypto`의 BCrypt만 사용합니다. 개발용 시드 로그인은
+설정이 켜졌을 때만 별도 Controller가 등록되며 관리자·회원 시드 계정을 만듭니다.
+
+Frontend에서 로그인 상태는 헤더와 여러 화면이 함께 읽으므로 `presentation/shared/auth`의 Redux slice와
+`useAuthSession`·`useRestoreAuthSession` Hook이 소유하고, 로그인 화면은 `presentation/features/auth`가 소유합니다.
+세션 토큰은 브라우저의 HttpOnly 쿠키가 관리하므로 앱은 다루지 않고, `data/storage`에는 앱 시작 시 `/me`를 부를지
+정하는 힌트만 둡니다. Repository가 로그인·로그아웃과 함께 힌트를 저장·삭제합니다.
+화면은 로그인 전 `/` 아래 공개 경로(공용 헤더)와 로그인 뒤 `/app` 아래 내부 경로(사이드바)로 나뉩니다. `PublicOnly`는
+로그인한 사용자를 공개 URL에서 같은 내용의 `/app` 화면으로, `GuestOnly`는 로그인·회원가입에서 복귀 경로로, `RequireAuth`는
+비로그인 사용자를 `/login?next=`로 보냅니다. 경로 상수와 공개↔내부 대응은 `presentation/shared/routes/appPaths.ts`가 소유합니다.
 
 ## 오류 경계
 

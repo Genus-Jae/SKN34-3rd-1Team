@@ -12,13 +12,14 @@
 | 영역 | 기술·설정 | 역할 | 기준 파일 |
 |---|---|---|---|
 | 웹 런타임 | Node.js 24.x, pnpm 11.22.x | 개발·빌드 환경 | [package.json](../frontend/package.json) |
-| 화면 | React 19, TypeScript 6, React Router 8 | 채팅·상세 화면과 URL 라우팅 | [package.json](../frontend/package.json) |
+| 화면 | React 19, TypeScript 6, React Router 8 | 채팅·상세·계정 화면과 로그인 여부에 따른 URL 라우팅 | [package.json](../frontend/package.json) |
 | 웹 도구 | Vite 8, Tailwind CSS 4 | 개발 서버, 번들링, 스타일 | [package.json](../frontend/package.json) |
 | 상태·연결 | Redux Toolkit 2, Awilix 13 | 대화 상태, UseCase·Repository 생성과 연결 | [app 구성](../frontend/src/app) |
 | 웹 검증 | Zod 4, React Hook Form 7 | HTTP 응답과 예제 폼 검증 | [Frontend 안내](../frontend/README.md) |
 | 공개 API | JDK 21, Kotlin 2.4.10, Spring Boot 4.1.0 | HTTP 계약, 업무 흐름, 외부 통신 | [build.gradle](../backend/core-api/build.gradle) |
 | DB 접근 | MyBatis Spring Boot Starter 4.0.0, Flyway | XML SQL 실행과 스키마 버전 관리 | [build.gradle](../backend/core-api/build.gradle) |
 | 원문 파싱 | jsoup 1.23.2 | 기업마당 상세 HTML의 제목 확인과 공고 본문 추출 | [build.gradle](../backend/core-api/build.gradle) |
+| 비밀번호 해시 | spring-security-crypto(BCrypt) | 회원 비밀번호 해시·비교. Security filter chain은 사용하지 않음 | [build.gradle](../backend/core-api/build.gradle) |
 | AI API | Python 3.11(Docker·CI), FastAPI 0.139.x, Pydantic 2 | 내부 API와 구조화된 요청·응답 검증 | [pyproject.toml](../backend/ai-service/pyproject.toml) |
 | AI 호출 | OpenAI SDK 3.x, Agents SDK 0.22.x, tiktoken | 임베딩, 후보 점수화, 입력 토큰 제한 | [pyproject.toml](../backend/ai-service/pyproject.toml) |
 | 공고 저장 | MySQL 8.4 | 현재 공고와 원본 식별자, 신청 기간 저장 | [Compose 설정](../infrastructure/compose.yaml) |
@@ -48,6 +49,8 @@ MySQL의 `support_program`은 `(source_code, source_program_id)`를 고유키로
 공식 HTML에서 정규화한 원문·URL·해시·수집 시각을 저장하며, 공고를 FK로 참조하고 조회 시 공개 상태를 확인합니다.
 이 원문 테이블은 명시적 기업마당 원문 질문에서 원문 수집·검증이 성공했을 때 채워집니다.
 `support_program_sync_status`는 공개 스냅샷·색인 준비·최근 동기화 결과를 분리해 기록합니다.
+`account`는 이메일(고유)·BCrypt 비밀번호 해시·역할·이메일 인증·정지·삭제 시각을, `account_session`은 세션 JWT의
+SHA-256 해시·만료·마지막 사용 시각을 계정 FK와 함께 저장합니다.
 스키마는 [Flyway migration](../backend/core-api/src/main/resources/db/migration)으로 관리합니다.
 
 접수 상태는 DB에 고정 저장하지 않고 조회 시 `Asia/Seoul`의 오늘 날짜로 계산합니다. 파싱된 날짜를

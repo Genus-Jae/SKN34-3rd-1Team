@@ -12,6 +12,7 @@ import { conditionMatchedProgram, relocationReviewRequiredProgram, supportProgra
 import { emptyConversationContext, readyConversationProposal } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramSearchReadiness } from './domain/entities/SupportProgramSearchReadiness'
 import { supportProgramEvidenceQuestionTimeoutMilliseconds } from './presentation/features/support-program-detail/viewmodel/useSupportProgramEvidenceQuestionViewModel'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => ({
   CoreApiConnectionStatus: () => null,
@@ -69,10 +70,11 @@ describe('App navigation', () => {
     expect(screen.getAllByRole('link', { name: '상세 조건 보기' })).toHaveLength(supportPrograms.length + 1)
     expect(detailUrlSerialization).toHaveBeenCalledOnce()
     expect(fetchMock).toHaveBeenCalledTimes(2)
-  })
+  // 파일의 첫 테스트라 모듈 변환·초기화 시간이 포함되므로 전체 실행 부하에서도 넉넉히 둡니다.
+  }, 15_000)
 
-  it.each(['/', '/chat', '/chat/'])('%s 검색에서 상세·질문을 왕복하면 원래 배치와 서버 결과 순서를 보존한다', async (path) => {
-    const returnPath = path === '/' ? '/' : '/chat'
+  it.each(['/', '/app/chat', '/app/chat/'])('%s 검색에서 상세·질문을 왕복하면 원래 배치와 서버 결과 순서를 보존한다', async (path) => {
+    const returnPath = path === '/' ? '/' : '/app/chat'
     const programs = [relocationReviewRequiredProgram, conditionMatchedProgram]
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ query: '서울 AI', programs }))
@@ -95,7 +97,7 @@ describe('App navigation', () => {
     fireEvent.click(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }))
     const cards = screen.getByRole('region', { name: '지원사업 검색 결과' }).querySelectorAll('article')
     expect(Array.from(cards).map(card => card.querySelector('h2')?.textContent)).toEqual(programs.map(p => p.title))
-    expect(Boolean(screen.queryByRole('complementary', { name: '작업 사이드바' }))).toBe(returnPath === '/chat')
+    expect(Boolean(screen.queryByRole('complementary', { name: '작업 사이드바' }))).toBe(returnPath === '/app/chat')
     expect(store.getState().chat.messages).toEqual(messages)
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
@@ -133,21 +135,28 @@ describe('App navigation', () => {
     expect(screen.getByRole('link', { name: '기업 계정 만들기' })).toBeTruthy()
   })
 
-  it('데모 입력을 확인하면 인증 없이 사이드바가 있는 작업 채팅 화면으로 이동한다', () => {
+  it('로그인에 성공하면 사이드바가 있는 작업 채팅 화면으로 이동한다', async () => {
+    vi.spyOn(appContainer.resolve('logInUseCase'), 'execute').mockResolvedValue({
+      outcome: 'session',
+      session: {
+        expiresAt: '2026-10-06T12:00:00+09:00',
+        account: { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true },
+      },
+    })
     renderApp(createAppStore(), '/login')
 
-    fireEvent.change(screen.getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
-    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'Demo1234' } })
-    fireEvent.click(screen.getByRole('button', { name: '입력 확인 후 데모 보기' }))
+    fireEvent.change(screen.getByLabelText('이메일'), { target: { value: 'member@govbiz.local' } })
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'govbiz-admin1' } })
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
 
+    await waitFor(() => expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy())
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
-    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: /상황만 입력하면, AI가.*우리 회사 지원사업을 찾아드립니다/ })).toBeNull()
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })).toBeTruthy()
   })
 
-  it.each(['/', '/chat'])('%s 채팅 화면은 수동 조건 패널 없이 메시지 입력으로 시작한다', (path) => {
+  it.each(['/', '/app/chat'])('%s 채팅 화면은 수동 조건 패널 없이 메시지 입력으로 시작한다', (path) => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     renderApp(createAppStore(), path)
@@ -169,7 +178,7 @@ describe('App navigation', () => {
   })
 
   it.each([
-    ['/', 1550], ['/chat', 1550], ['/', 0], ['/chat', 0],
+    ['/', 1550], ['/app/chat', 1550], ['/', 0], ['/app/chat', 0],
   ] as const)('%s에서 검색 가능 공고가 %i건이면 운영 상태 패널 없이 입력창을 표시한다', (path, programCount) => {
     readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
       data: {
@@ -398,7 +407,7 @@ describe('App navigation', () => {
     vi.stubGlobal('fetch', fetchMock)
     const appStore = createAppStore()
 
-    expect(Object.keys(appStore.getState())).toEqual(['chat', 'sampleItem'])
+    expect(Object.keys(appStore.getState())).toEqual(['auth', 'chat', 'sampleItem'])
 
     renderApp(appStore)
 
@@ -1028,7 +1037,7 @@ describe('App navigation', () => {
       .toBe(false)
   })
 
-  it.each(['/', '/chat'])('%s에서 상태 조회 실패는 간단히 안내하고 재조회 성공 시 안내와 접근성 참조를 제거한다', async (path) => {
+  it.each(['/', '/app/chat'])('%s에서 상태 조회 실패는 간단히 안내하고 재조회 성공 시 안내와 접근성 참조를 제거한다', async (path) => {
     const refetch = vi.fn()
     readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
       data: undefined, canSearch: false, isError: true, refetch,
@@ -1348,6 +1357,12 @@ function renderApp(
   appStore: ReturnType<typeof createAppStore>,
   initialEntry = '/',
 ) {
+  // 공개 화면은 비로그인, 작업 채팅(/chat)은 회원 세션으로 시작합니다. 세션 복원 요청은 보내지 않습니다.
+  appStore.dispatch(sessionRestored(
+    initialEntry.startsWith('/app/chat')
+      ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true }
+      : null,
+  ))
   return render(
     <Provider store={appStore}>
       <MemoryRouter initialEntries={[initialEntry]}>

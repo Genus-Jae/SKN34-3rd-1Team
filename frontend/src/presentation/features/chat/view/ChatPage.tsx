@@ -1,6 +1,8 @@
 import { Fragment, memo } from 'react'
 import { Link, useLocation } from 'react-router'
 
+import { appPaths, isAppPath, publicPaths } from '../../../shared/routes/appPaths'
+
 import type { SupportProgram, SupportProgramEligibilityAxis } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramConversationContext, SupportProgramInterpretation } from '../../../../domain/entities/SupportProgramConversation'
 import type { SupportProgramSearchReadiness } from '../../../../domain/entities/SupportProgramSearchReadiness'
@@ -544,7 +546,8 @@ const ProgramResults = memo(function ProgramResults({ programs }: { programs: Su
 
 function ProgramCard({ program }: { program: SupportProgram }) {
   const { pathname } = useLocation()
-  const searchReturnTo = pathname.replace(/\/+$/, '') === '/chat' ? '/chat' : '/'
+  const inApp = isAppPath(pathname)
+  const searchReturnTo = inApp ? appPaths.chat : '/'
   const review = program.eligibilityReview
   return (
     <article className={chatPageStyles.programCard}>
@@ -593,7 +596,7 @@ function ProgramCard({ program }: { program: SupportProgram }) {
       <div className={chatPageStyles.programActions}>
         <Link
           className={chatPageStyles.programDetailsButton}
-          to={createSupportProgramDetailPath(program)}
+          to={createSupportProgramDetailPath(program, inApp)}
           state={{ searchReturnTo }}
         >
           상세 조건 보기
@@ -640,12 +643,12 @@ function formatSearchOptions(options: ChatSearchOptions) {
     ...(conditions.length ? [] : ['기업 조건 미입력'])].join(' · ')
 }
 
-function createSupportProgramDetailPath(program: SupportProgram) {
+function createSupportProgramDetailPath(program: SupportProgram, inApp: boolean) {
   const searchParams = new URLSearchParams({
     sourceCode: program.sourceCode,
     sourceProgramId: program.id,
   })
-  return `/support-programs/detail?${searchParams.toString()}`
+  return `${inApp ? appPaths.supportProgramDetail : publicPaths.supportProgramDetail}?${searchParams.toString()}`
 }
 
 function formatApplicationDeadline(program: SupportProgram) {

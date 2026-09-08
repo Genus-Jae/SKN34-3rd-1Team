@@ -118,9 +118,9 @@ View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 �
 [SupportProgramEvidenceQuestionPage.tsx](../../frontend/src/presentation/features/support-program-detail/view/SupportProgramEvidenceQuestionPage.tsx)는
 `useSupportProgramEvidenceQuestionViewModel`을 사용합니다. 각 페이지의 View·스타일·ViewModel·테스트를
 함께 배치하고, 채팅 feature의 화면 구현이나 상태에 의존하지 않습니다.
-기업마당 상세의 **이 공고에 질문하기** 링크로 `/support-programs/detail/question`에 제공처·원본 ID를 전달합니다.
+기업마당 상세의 **이 공고에 질문하기** 링크로 `/support-programs/detail/question`(사이드바 안에서는 `/app/support-programs/detail/question`)에 제공처·원본 ID를 전달합니다.
 질문 페이지는 URL 식별자를 검증해 직접 접속·새로고침과 상세로 돌아가기를 지원하며, 명시적 질문 제출 때만 API를 호출합니다.
-채팅은 상세 URL의 제공처·원본 공고 ID와 라우트 상태의 원래 검색 경로(`/` 또는 `/chat`)를 전달합니다.
+채팅은 상세 URL의 제공처·원본 공고 ID와 라우트 상태의 원래 검색 경로(`/` 또는 `/app/chat`)를 전달합니다.
 상세·질문은 채팅의 ViewModel이나 Store를 조회하지 않고 허용된 복귀 경로만 왕복 전달합니다.
 두 feature가 공유하는 오류 안내 문구는
 `presentation/shared/support-program`에 두며 Domain·UseCase·Repository·DI 경계는 그대로 유지합니다.
@@ -178,10 +178,12 @@ Core 상태 조회와 두 SampleItem 요청에는 10초 상한을 적용합니�
 
 ### 화면 데모와 실제 서비스 경계
 
-계정·파트너 모집·기업 프로필·관리자는 현재 로컬 예시 데이터와 입력을 가진 화면 데모입니다.
-입력 검증이나 페이지 이동을 인증·저장·전송 성공으로 표시하지 않습니다. 미연결 동작은 준비 중으로
+로그인·세션·로그아웃과 라우트 보호(`RequireAuth`·`GuestOnly`·`PublicOnly`)는 Core API 세션에 연결되어 있습니다.
+회원가입·파트너 모집·기업 프로필·관리자는 현재 로컬 예시 데이터와 입력을 가진 화면 데모입니다.
+입력 검증이나 페이지 이동을 저장·전송 성공으로 표시하지 않습니다. 미연결 동작은 준비 중으로
 비활성화하며, 실제 API가 없는 기능에 형식적인 UseCase·Repository 계층을 추가하지 않습니다.
-이 화면들은 실제 인증·권한 검사가 구현되었다는 뜻이 아니며 서버 세션·권한·저장 연결은 별도 출시 조건입니다.
+로그인 전 화면은 `/` 아래 공개 경로를 공용 헤더와, 로그인 뒤 화면은 `/app` 아래 내부 경로를 사이드바와 함께 쓰며
+공개 파트너 모집(`/partners`)은 읽기 전용 별도 feature입니다. 데모 화면의 서버 저장·권한 검사는 별도 출시 조건입니다.
 
 공용 작업 레이아웃은 이름 있는 `workspace` 컨테이너를 제공하고 페이지는 실제 가용 너비에 따라 열을 접습니다.
 페이지 내부 `column` 컨테이너는 각 카드·폼 열을 제어합니다. 사이드바가 차지하는 너비를 무시한 viewport

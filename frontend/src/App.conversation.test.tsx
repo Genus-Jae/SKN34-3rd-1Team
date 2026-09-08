@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { createAppStore } from './app/store'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramInterpretation } from './domain/entities/SupportProgramConversation'
 
@@ -26,7 +27,7 @@ beforeEach(() => { readiness.canSearch = true })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
-  it.each(['/', '/chat'])('%s에서 새 검색은 초안 입력만으로 나타나지 않고 대화가 시작되면 입력창 아래 안내 옆에 표시된다', async (path) => {
+  it.each(['/', '/app/chat'])('%s에서 새 검색은 초안 입력만으로 나타나지 않고 대화가 시작되면 입력창 아래 안내 옆에 표시된다', async (path) => {
     const network = mockConversationNetwork([readyConversationProposal(seoulConversationContext)])
     renderConversationApp(path)
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
@@ -48,8 +49,8 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
   it.each([
     { path: '/', phase: 'interpretation' },
     { path: '/', phase: 'search' },
-    { path: '/chat', phase: 'interpretation' },
-    { path: '/chat', phase: 'search' },
+    { path: '/app/chat', phase: 'interpretation' },
+    { path: '/app/chat', phase: 'search' },
   ] as const)('$path에서 $phase 중 취소 클릭은 요청을 다시 제출하지 않고 입력을 복원하며 늦은 응답을 무시한다', async ({ path, phase }) => {
     let complete!: (response: Response) => void
     const pending = new Promise<Response>((resolve) => { complete = resolve })
@@ -104,7 +105,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(fetchMock).toHaveBeenCalledTimes(requestCount)
   })
 
-  it.each(['/', '/chat'])('%s에서 새 검색 버튼은 대화와 조건을 초기화하고 다음 메시지를 빈 맥락으로 보낸다', async (path) => {
+  it.each(['/', '/app/chat'])('%s에서 새 검색 버튼은 대화와 조건을 초기화하고 다음 메시지를 빈 맥락으로 보낸다', async (path) => {
     const context = { ...seoulConversationContext, acceptingOnly: false }
     const next = { ...emptyConversationContext, query: '수출 지원' }
     const network = mockConversationNetwork([readyConversationProposal(context), readyConversationProposal(next)])
@@ -602,6 +603,10 @@ async function submitMessage(message: string) {
 
 function renderConversationApp(path = '/') {
   const store = createAppStore()
+  // 작업 채팅(/chat)은 회원 세션이 있어야 열립니다. 세션 복원 요청은 보내지 않습니다.
+  store.dispatch(sessionRestored(
+    path.startsWith('/app/chat') ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true } : null,
+  ))
   const tree = <Provider store={store}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></Provider>
   return { ...render(tree), store, tree }
 }

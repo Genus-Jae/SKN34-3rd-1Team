@@ -1,9 +1,9 @@
 import type {
   PartnerRecruitment,
   PartnerRecruitmentDetail,
-} from '../../../../domain/entities/PartnerRecruitment'
+} from '../../../domain/entities/PartnerRecruitment'
 
-// 화면을 먼저 만드는 단계에서 ViewModel이 쓰는 예시 값입니다. 실제 공고·기업이 아닙니다.
+// 화면을 먼저 만드는 단계에서 공개·내부 파트너 모집 ViewModel이 함께 쓰는 예시 값입니다. 실제 공고·기업이 아닙니다.
 // API가 생기면 이 상수 대신 UseCase 호출 결과를 반환합니다. 테스트용 fixture는 data/fixtures가 따로 맡습니다.
 export const partnerRecruitments: PartnerRecruitment[] = [
   {

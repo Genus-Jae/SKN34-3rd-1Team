@@ -46,7 +46,7 @@ pnpm dev
 
 ### 직접 필터 검색
 
-`/`와 `/chat`의 검색 방식 탭에서 **AI 대화 검색** 또는 **필터 검색**을 선택합니다.
+`/`와 `/app/chat`의 검색 방식 탭에서 **AI 대화 검색** 또는 **필터 검색**을 선택합니다.
 기본은 기존 AI 대화이며 탭 전환만으로 AI 검색을 실행하거나 대화를 초기화하지 않습니다.
 
 - 필터 검색은 공고명·기관명 키워드, 지역·분야, 접수 상태를 선택하고 **검색**으로 적용합니다.
@@ -55,6 +55,7 @@ pnpm dev
 - 최초 접수 중 목록, 최신순·마감일순, 12개씩 페이지 이동과 초기화를 제공합니다. 최신순은 제공처의 수정 시각을
   우선하고 등록 시각을 보조로 사용한 기존 정렬 값 기준입니다.
 - URL에 적용 조건과 페이지를 보존하며 새로고침·뒤로 가기·상세/원문 질문 왕복 시 복원합니다.
+  로그인 상태로 공개 필터 URL을 열어도 조건을 유지한 채 `/app/chat`으로 이동하며, 내부 상세·질문에서는 사이드바를 유지합니다.
 - 편집 중인 필터는 검색 전까지 적용하지 않습니다. 지역·분야는 실제 저장된 전체 공고의 분류를 사용하며,
   지역 ‘서울’에 ‘전국’을 자동 포함하지 않습니다. 태그 필터는 기업 자격 판정이 아닙니다.
 - `BrowseSupportProgramsUseCase → Repository → GET /api/v1/support-programs/catalog`로 조회합니다.
@@ -68,33 +69,42 @@ pnpm dev
 
 ### 전체 화면
 
-로그인 전 화면은 공용 헤더를, 로그인 뒤 작업 화면은 사이드바를 씁니다. 로그인·회원가입은 둘 다 쓰지 않는 단독 화면입니다.
+로그인 전 화면은 `/` 아래 공개 경로를 공용 헤더와 함께, 로그인 뒤 화면은 `/app` 아래 내부 경로를 사이드바와 함께 씁니다.
+로그인한 사용자가 공개 URL(`/`, `/pricing`, `/partners`, 공고 상세)에 오면 같은 내용의 `/app` 화면으로 보내고, 비로그인으로
+`/app`에 오면 `/login?next=`로 보냅니다. 로그인·회원가입은 둘 다 쓰지 않는 단독 화면이며 로그인 상태에서는 작업 화면으로
+돌려보냅니다. `/app/admin/members`는 관리자만 엽니다. 경로 상수와 공개↔내부 대응은 `presentation/shared/routes/appPaths.ts`에 있습니다.
 
 | 경로 | 껍데기 | 기능 |
 |---|---|---|
 | `/` | 헤더 | AI 대화 검색·필터 검색 탭, 자연어 조건 해석·제안 확인, 결과 카드 |
 | `/?mode=filter` | 헤더 | 키워드·지역·분야·접수 상태 필터, 최신순·마감순, 페이지 이동 |
 | `/pricing` | 헤더 | 무료·프로·팀 요금제 소개, 출시 예정 안내, FAQ, 무료 검색 진입 |
+| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 읽기 전용이며 제안·작성은 로그인 안내 |
 | `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 헤더 | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
 | `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
 | `/examples/sample-item/redux` | 헤더 | Redux 상태 유지 예제 |
-| `/login` | 없음 | 이메일·비밀번호 로그인 입력 |
+| `/login` | 없음 | 이메일·비밀번호 로그인, 로그인 상태 유지, `?next=` 복귀 경로 |
 | `/signup` | 없음 | 이메일·비밀번호만 받는 회원가입 입력 |
-| `/chat` | 사이드바 | 작업 채팅·필터 검색 탭 (`?mode=filter`) |
-| `/partners` | 사이드바 | 파트너 모집 목록·필터·프로필 기반 추천 |
-| `/partners/new` | 사이드바 | 모집글 작성 |
-| `/partners/detail` | 사이드바 | 모집글 상세·매칭 근거·참여 제안 |
-| `/profile` | 사이드바 | 기업 프로필, 공개 범위, 완성도 체크리스트 |
-| `/admin/members` | 사이드바 | 어드민 회원·기업 목록과 운영 규칙 |
+| `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
+| `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
+| `/app/partners` | 사이드바 | 파트너 모집 목록·필터·프로필 기반 추천 |
+| `/app/partners/new` | 사이드바 | 모집글 작성 |
+| `/app/partners/detail?recruitmentId=...` | 사이드바 | 모집글 상세·매칭 근거·참여 제안 |
+| `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
+| `/app/profile` | 사이드바 | 기업 프로필, 공개 범위, 완성도 체크리스트 |
+| `/app/admin/members` | 사이드바(관리자) | 어드민 회원·기업 목록과 운영 규칙 |
 
-`/login` `/signup` `/partners` `/profile` `/admin/members`는 화면만 있는 **데모 단계**입니다. 계정·모집·회원 API가
-없어 ViewModel이 예시 값을 돌려줍니다. 로그인·가입은 입력 형식을 검사한 뒤 데모 화면으로 이동할 뿐,
-실제 인증·계정 생성·세션 저장을 하지 않습니다. 실제 비밀번호를 입력하지 않습니다.
+`/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,
+잘못된 비밀번호·정지 계정·시도 제한(429)을 구분해 안내합니다. 개발 빌드의 헤더에는 `개발 로그인 · 관리자`와
+`개발 로그인 · 회원` 버튼이 있어 회원가입 없이 시드 계정으로 들어갈 수 있습니다(Core의 `ACCOUNT_DEV_LOGIN_ENABLED`).
+`/signup` `/partners` `/partners/detail` `/app/partners` `/app/profile` `/app/admin/members`는 화면만 있는 **데모 단계**입니다. 가입·모집·회원 API가
+없어 ViewModel이 예시 값을 돌려주고, 가입은 입력 형식을 검사한 뒤 로그인 화면으로 안내할 뿐 계정을 만들지 않습니다.
 모집 작성도 입력을 검사한 뒤 목록으로 이동하며 등록·임시 저장하지 않습니다. 저장·제안 발송·회원 정지 등
 연결되지 않은 동작은 준비 중으로 비활성화했습니다. 프로필의 선택은 화면 안에서만 유지되고 추천에 전달되지 않습니다.
 준비된 모집 상세 하나만 `recruitmentId=ai-labeling`으로 연결하고, 다른 모집글을 그 상세로 대체하지 않습니다.
-사이드바의 **공개 검색으로**는 화면 이동이며 로그아웃 동작이 아닙니다. 실제 인증·권한 검사는 출시 전에 별도 구현해야 합니다.
+공개 파트너 모집 화면은 `presentation/features/public-partner-recruitment`에 따로 두어 매칭·제안 폼 없이 읽기만 제공하고,
+두 파트너 feature가 함께 쓰는 예시 값은 `presentation/shared/partner-recruitment`에 둡니다.
 아직 화면이 없는 관심 공고함은 사이드바에서
 링크가 아니라 "준비 중" 표시로 둡니다. 새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
 
@@ -117,7 +127,7 @@ pnpm dev
 실제 구현된 정책이 아니므로 표시하지 않습니다. 브랜드는 GovBiz를 유지합니다.
 
 요금제(`/pricing`)는 무료·프로·팀 3개 카드와 자주 묻는 질문을 제공하는 공개 소개 화면입니다.
-무료 카드와 하단 버튼은 공개 검색으로 이동하며, 프로·팀 가격은 출시 예정으로 표시하고 신청 버튼은
+무료 카드와 하단 버튼은 공개 검색으로(사이드바 안 `/app/pricing`에서는 작업 채팅으로) 이동하며, 프로·팀 가격은 출시 예정으로 표시하고 신청 버튼은
 비활성화합니다. 결제·구독·카드 등록·사용량 제한을 구현한 화면이 아닙니다. 월간/연간 할인이나
 제공 횟수를 임의로 표시하지 않습니다. 상단 메뉴와 작업 사이드바에서 요금제에 진입할 수 있으며,
 페이지 조회와 FAQ 열기에는 API 요청이 발생하지 않습니다.
@@ -217,7 +227,7 @@ HTML 해석 없이 텍스트로 보여 줍니다. 점수·기존 관련 검색 �
 재평가로 표시하지 않으며 검색 화면으로 돌아오면 기존 판정을 유지합니다.
 잘못된 주소, 없는 공고, 조회 실패, 로딩 상태를 구분합니다.
 일시 실패·시간 초과는 상세 화면 안에서 수동으로 다시 조회할 수 있습니다. 상세·질문 왕복에는
-원래 검색 경로(`/` 또는 `/chat`)를 라우트 상태로 보존합니다. `/chat/`도 `/chat`으로 정규화하며,
+원래 검색 경로(`/` 또는 `/app/chat`)를 라우트 상태로 보존합니다. 두 값 외의 경로와
 임의의 외부 주소는 복귀 경로로 사용하지 않습니다. 직접 진입 시 기본 복귀 경로는 `/`입니다.
 원문 링크는 제공처 코드별 공식 도메인 allowlist와 `http(s)` 스킴을 함께 검증합니다. 현재
 `BIZINFO`의 기업마당 도메인과 `KSTARTUP`의 `k-startup.go.kr` 도메인 및 하위 도메인을 허용합니다.
@@ -233,7 +243,7 @@ K-Startup API 연동은 아직 추가하지 않았으며 URL 허용 목록만 �
 
 검색 요청에는 사용자가 확인한 검색 의도와 기업 조건을 전달합니다. C02는 현재 확정 상태·새 메시지와
 필요한 경우 마지막 질문·미확정 초안만 해석하며, 전체 대화 이력을 분석하거나 확인 없이 조건을 자동 적용하지 않습니다.
-로그인, 북마크, 알림, 대화 이력의 서버 저장은 아직 구현하지 않았습니다.
+북마크, 알림, 대화 이력의 서버 저장은 아직 구현하지 않았습니다.
 
 ## 구조와 상태 책임
 
@@ -244,10 +254,11 @@ src/
 ├── presentation/features/support-program-detail/ # 상세·질문 페이지와 각 페이지 ViewModel
 ├── presentation/features/sample-item/ # 상태관리 비교 예제
 ├── presentation/features/auth/ # 로그인·회원가입 View와 각 페이지 ViewModel
-├── presentation/features/partner-recruitment/ # 모집 목록·상세·작성 View와 각 페이지 ViewModel
+├── presentation/features/partner-recruitment/ # 로그인 뒤 모집 목록·상세·작성 View와 각 페이지 ViewModel
+├── presentation/features/public-partner-recruitment/ # 로그인 전 공개 모집 목록·상세 View와 ViewModel
 ├── presentation/features/company-profile/ # 기업 프로필 View와 ViewModel
 ├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
-├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
+├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 공용 예시 값, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture
 ```
@@ -273,6 +284,12 @@ IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 �
 `WorkspaceLayout`이 헤더 대신 사이드바를 놓습니다. 어떤 화면이 어느 껍데기를 쓰는지는 `App`의 라우트가 결정합니다.
 파트너 모집·기업 프로필·어드민이 함께 쓰는 카드·태그·표·버튼 스타일과 켬·끔 스위치는
 `presentation/shared/workspace`에 둡니다. 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
+로그인 상태는 `presentation/shared/auth`의 Redux `auth` slice와 `useAuthSession`·`useRestoreAuthSession`이 소유합니다.
+`App`은 시작 시 세션을 복원하고, `RequireAuth(minimumTier)`·`GuestOnly`·`PublicOnly` 라우트 래퍼가 복원이 끝나기 전(`unknown`)에는
+리다이렉트하지 않다가 회원·관리자 단계에 따라 화면을 나눕니다. `PublicOnly`는 로그인한 사용자를 공개 URL에서 같은 내용의
+`/app` 화면으로 보내는 래퍼로, 단계는 보지 않습니다. 같은 내용을 두 세계에서 보여 줄 때 할 수 있는 일이 같으면
+`layout` prop 하나로(요금제·채팅), 할 수 있는 일이 다르면 별도 feature로(파트너 모집) 만듭니다. 단계(`tier`)는 서버의 `/auth/me`가 계산해 내려 주며
+로그인 화면의 `useLoginViewModel`은 `LogInUseCase → AccountRepository → accountApi` 경로로 세션을 받습니다.
 새 검색 시작·현재 적용 조건 요약은
 채팅 입력창 위에 간결하게 둡니다. 정상 공고 데이터 통계 패널은 표시하지 않습니다.
 화면 전용 상태와 DOM ref는 Redux에 넣지 않고 Hook 로컬로 유지합니다.
@@ -394,7 +411,8 @@ $env:UI_TEST_BASE_URL='http://127.0.0.1:5173'
 node scripts/check-ui-layout.cjs
 ```
 
-Edge에서 **13경로 × 7화면 크기 = 91개 화면, 28개 동작 흐름**을 통과했습니다.
+스크립트의 `paths` 목록을 7가지 화면 크기로 방문하고, `/app` 경로는 세션 힌트와 `/auth/me` 응답을 심어 회원(관리자 화면은 관리자)으로
+엽니다. 마지막 기록은 `/app` 분리 전 Edge에서 13경로 × 7화면 크기 = 91개 화면, 28개 동작 흐름 통과이며 분리 뒤 결과는 다시 기록해야 합니다.
 가로 넘침·좁아진 폼·작업 화면 외부 세로 넘침·제안 표시·검색·초기화 포커스·긴 답변·역량 칩을 확인합니다.
 수정한 활성 안내문·placeholder 토큰은 실제 렌더링된 단색 배경에서 대비도 검사합니다.
 모든 `/api/**` 요청은 가상 응답으로 대체하며 외부 네트워크는 차단합니다. 실제 API 호출과 AI 품질 검증은 없습니다.

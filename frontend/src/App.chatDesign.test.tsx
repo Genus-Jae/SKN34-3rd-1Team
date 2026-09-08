@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { createAppStore } from './app/store'
 import { readyConversationProposal, seoulConversationContext } from './data/fixtures/supportProgramConversation'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 vi.mock('./presentation/features/chat/hooks/useSupportProgramSearchReadiness', () => ({
   useSupportProgramSearchReadiness: () => ({
@@ -21,7 +22,12 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 function renderChat(path = '/') {
   const fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
-  render(<Provider store={createAppStore()}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></Provider>)
+  const store = createAppStore()
+  // 작업 채팅(/chat)은 회원 세션이 있어야 열립니다. 세션 복원 요청은 보내지 않습니다.
+  store.dispatch(sessionRestored(
+    path.startsWith('/app/chat') ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true } : null,
+  ))
+  render(<Provider store={store}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></Provider>)
   return fetchMock
 }
 
@@ -57,7 +63,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     for (const id of ids) expect(document.getElementById(id)).toBeTruthy()
     expect(screen.getByText(/Enter로 전송 · Shift\+Enter로 줄바꿈/)).toBeTruthy()
     expect(screen.getByRole('link', { name: '지원사업 찾기' }).getAttribute('href')).toBe('/')
-    expect(screen.getByRole('link', { name: '파트너 모집 (데모)' }).getAttribute('href')).toBe('/partners')
+    expect(screen.getByRole('link', { name: '파트너 모집' }).getAttribute('href')).toBe('/partners')
   })
 
   it('빈 초안·공백·500자 초과 입력의 제출은 소개 화면을 유지하고 요청하지 않는다', () => {
@@ -229,7 +235,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
   })
 
   it('작업 채팅은 기존 사이드바와 단일 입력·대화 영역을 유지한다', () => {
-    renderChat('/chat')
+    renderChat('/app/chat')
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: '지원사업 채팅' })).toBeTruthy()
     expect(screen.getAllByRole('textbox', { name: '지원사업 검색어' })).toHaveLength(1)

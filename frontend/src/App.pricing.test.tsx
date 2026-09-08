@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { createAppStore } from './app/store'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
@@ -17,9 +18,14 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function renderApp(path: string) {
+function renderApp(path: string, signedIn = path.startsWith('/app')) {
+  const store = createAppStore()
+  // 작업 화면(/partners 등)은 회원 세션이 있어야 열립니다. 세션 복원 요청은 보내지 않습니다.
+  store.dispatch(sessionRestored(
+    signedIn ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true } : null,
+  ))
   render(
-    <Provider store={createAppStore()}>
+    <Provider store={store}>
       <MemoryRouter initialEntries={[path]}><App /></MemoryRouter>
     </Provider>,
   )
@@ -54,15 +60,25 @@ describe('공개 요금제', () => {
     expect(screen.getByRole('heading', { level: 1, name: '기업의 다음 단계에 맞는 요금제' })).toBeTruthy()
   })
 
-  it('작업 사이드바에서 요금제로 이동하고 무료 버튼으로 공개 검색에 돌아간다', () => {
-    renderApp('/partners')
+  it('작업 사이드바에서 요금제를 열면 사이드바 안에 머물고 무료 버튼은 작업 채팅으로 간다', () => {
+    renderApp('/app/partners')
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     fireEvent.click(within(sidebar).getByRole('link', { name: '요금제' }))
 
-    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
+    expect(screen.getByRole('heading', { level: 1, name: '기업의 다음 단계에 맞는 요금제' })).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
+    expect(within(sidebar).getByRole('link', { name: '요금제' }).getAttribute('aria-current')).toBe('page')
     expect(fetch).not.toHaveBeenCalled()
+    expect(screen.getByRole('link', { name: '무료로 지원사업 찾기' }).getAttribute('href')).toBe('/app/chat')
     fireEvent.click(screen.getByRole('link', { name: '무료로 지원사업 찾기' }))
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: '기업의 다음 단계에 맞는 요금제' })).toBeNull()
+    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
+  })
+
+  it('로그인 상태로 공개 요금제 주소에 오면 사이드바 안의 요금제로 보낸다', () => {
+    renderApp('/pricing', true)
+    expect(screen.getByRole('heading', { level: 1, name: '기업의 다음 단계에 맞는 요금제' })).toBeTruthy()
+    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
+    expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
   })
 })

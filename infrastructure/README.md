@@ -1,7 +1,8 @@
 # GovBiz Docker Compose
 
 Docker Compose는 React 개발 서버, Core API, AI Service, 원본 카탈로그용 MySQL과 의미 검색용
-Qdrant를 함께 실행하는 로컬 개발 구성입니다. 운영 배포·TLS·인증 구성은 포함하지 않습니다.
+Qdrant를 함께 실행하는 로컬 개발 구성입니다. 회원 세션은 동작하지만 개발용 시드 로그인이 켜져 있고 쿠키 `Secure`가
+꺼져 있으므로 운영 배포·TLS·운영 인증 구성으로 쓰지 않습니다.
 전체 기술 선택과 데이터 흐름은 [프로젝트 기술 문서](../docs/technology.md)를 참고하세요.
 
 ```text
@@ -54,6 +55,15 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `BIZINFO_SYNC_ENABLED` | `true` | `false`이면 기업마당 공고 자동 동기화를 실행하지 않음 |
 | `BIZINFO_SYNC_INITIAL_DELAY` | `PT0S` | 앱 시작 시 스케줄러의 첫 동기화까지의 ISO-8601 기간. 기본값은 즉시 실행 |
 | `BIZINFO_SYNC_FIXED_DELAY` | `PT6H` | 이전 동기화가 끝난 뒤 다음 동기화까지의 ISO-8601 기간 |
+| `ACCOUNT_SESSION_TTL` | `P30D` | "로그인 상태 유지"를 켠 세션의 절대 만료 기간 |
+| `ACCOUNT_SESSION_SHORT_TTL` | `PT12H` | "로그인 상태 유지"를 끈 세션의 절대 만료 기간 |
+| `ACCOUNT_SESSION_IDLE_TTL` | `P7D` | 마지막 사용 뒤 세션을 끝내는 유휴 기간 |
+| `ACCOUNT_JWT_SECRET` | 로컬 개발용 문자열 | 세션 JWT 서명 비밀키(32자 이상). Core API 코드에는 기본값이 없으며 운영 환경에서는 반드시 교체 |
+| `ACCOUNT_COOKIE_SECURE` | `false` | 세션 쿠키 `Secure` 속성. Compose는 http라 끄고, HTTPS 운영에서는 `true` |
+| `ACCOUNT_DEV_LOGIN_ENABLED` | `true` | Compose 개발 환경에서는 `POST /api/v1/auth/dev-login`으로 관리자(`admin@govbiz.local`) 또는 회원(`member@govbiz.local`) 시드 세션을 바로 발급. 운영에서는 `false` |
+| `ACCOUNT_DEV_LOGIN_EMAIL` | `admin@govbiz.local` | 개발용 관리자 시드 계정 이메일 |
+| `ACCOUNT_DEV_LOGIN_MEMBER_EMAIL` | `member@govbiz.local` | 개발용 회원 시드 계정 이메일 |
+| `ACCOUNT_DEV_LOGIN_PASSWORD` | `govbiz-admin1` | 시드 계정을 만들 때 저장하는 비밀번호. 로그인 폼으로도 쓸 수 있으므로 공유 환경에서는 교체 |
 | `OPENAI_API_KEY` | 없음(필수) | AI Service만 사용하는 OpenAI 인증키 |
 | `OPENAI_MODEL` | `gpt-5.6-luna` | 대화·원문 답변의 모델, 랭킹 전용 모델 미설정 시 상속 |
 | `OPENAI_RANKING_MODEL` | 미설정 | 랭킹 전용 모델. `.env.example`은 정확도 우선 `gpt-5.6-sol` 설정 |

@@ -8,6 +8,7 @@ import App from './App'
 import { createAppStore } from './app/store'
 import { supportPrograms } from './data/fixtures/supportPrograms'
 import { getSupportProgramSearchReturnTo } from './presentation/features/support-program-detail/view/supportProgramNavigation'
+import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => ({ CoreApiConnectionStatus: () => null }))
 vi.mock('./presentation/features/chat/hooks/useSupportProgramSearchReadiness', () => ({ useSupportProgramSearchReadiness: () => ({
@@ -18,14 +19,15 @@ const program = { ...supportPrograms[0], title: '서울 수출 바우처', categ
 const catalog = { programs: [program], total: 1, page: 1, pageSize: 12, totalPages: 1, regions: ['서울', '경북', '전국'], categories: ['수출', '기술'] }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers() })
 function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
-function start(path = '/?mode=filter') {
+function start(path = '/?mode=filter', authenticated = path.startsWith('/app/')) {
   const store = createAppStore()
+  store.dispatch(sessionRestored(authenticated ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true } : null))
   render(<Provider store={store}><MemoryRouter initialEntries={[path]}><App /><Location /></MemoryRouter></Provider>)
   return store
 }
 
 describe('지원사업 직접 필터 검색', () => {
-  it.each(['/', '/chat'])('%s에서 대화 입력 보존·키보드 탭 전환·AI 없이 조회한다', async (path) => {
+  it.each(['/', '/app/chat'])('%s에서 대화 입력 보존·키보드 탭 전환·AI 없이 조회한다', async (path) => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json(catalog))
     vi.stubGlobal('fetch', fetchMock)
     start(path)
@@ -118,18 +120,46 @@ describe('지원사업 직접 필터 검색', () => {
     expect((screen.getByRole('radio', { name: '전체 분야' }) as HTMLInputElement).checked).toBe(true)
   })
 
-  it('공고 상세 왕복 시 필터 탭과 조건을 복원한다', async () => {
+  it.each(['/', '/app/chat'])('%s에서 공고 상세·질문 왕복 시 필터 탭과 조건을 복원한다', async (path) => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => Response.json(url.includes('/catalog?') ? catalog : program)))
-    start('/?mode=filter&region=%EC%84%9C%EC%9A%B8&category=%EC%88%98%EC%B6%9C')
+    start(`${path}?mode=filter&region=%EC%84%9C%EC%9A%B8&category=%EC%88%98%EC%B6%9C`)
+    const detailPath = path.startsWith('/app') ? '/app/support-programs/detail' : '/support-programs/detail'
+    expect((await screen.findByRole('link', { name: program.title })).getAttribute('href')).toContain(`${detailPath}?`)
     fireEvent.click(await screen.findByRole('link', { name: program.title }))
     await screen.findByRole('heading', { name: program.title })
+    fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
+    expect(screen.getByTestId('location').textContent).toContain(`${detailPath}/question?`)
+    fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
+    await screen.findByRole('heading', { name: program.title })
     const back = screen.getByRole('link', { name: '← 검색 결과로 돌아가기' })
-    expect(back.getAttribute('href')).toContain('mode=filter')
+    expect(back.getAttribute('href')).toContain(`${path}?mode=filter`)
     fireEvent.click(back)
     await screen.findByRole('link', { name: program.title })
     expect(screen.getByRole('tab', { name: '필터 검색' }).getAttribute('aria-selected')).toBe('true')
     expect((screen.getByRole('radio', { name: '서울' }) as HTMLInputElement).checked).toBe(true)
     expect((screen.getByRole('radio', { name: '수출' }) as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('로그인한 사용자의 공개 필터 URL을 조건과 함께 작업 화면으로 옮긴다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(catalog)))
+    start('/?mode=filter&region=%EC%84%9C%EC%9A%B8&category=%EC%88%98%EC%B6%9C', true)
+    await screen.findByRole('link', { name: program.title })
+    expect(screen.getByTestId('location').textContent).toBe('/app/chat?mode=filter&region=%EC%84%9C%EC%9A%B8&category=%EC%88%98%EC%B6%9C')
+    expect((screen.getByRole('radio', { name: '서울' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: '수출' }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
+  })
+
+  it('비로그인 사용자는 내부 필터 화면 대신 복귀 조건을 보존한 로그인 화면으로 보낸다', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const path = '/app/chat?mode=filter&region=%EC%84%9C%EC%9A%B8'
+    start(path, false)
+    const location = new URL(screen.getByTestId('location').textContent!, 'https://app.example')
+    expect(location.pathname).toBe('/login')
+    expect(location.searchParams.get('next')).toBe(path)
+    expect(screen.queryByRole('tab', { name: '필터 검색' })).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('현재 목록에 없는 URL 조건도 선택 상태를 잃지 않는다', async () => {
@@ -194,7 +224,7 @@ describe('지원사업 직접 필터 검색', () => {
     expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true)
   })
 
-  it.each(['//evil.example/?mode=filter', 'https://evil.example', '/admin?mode=filter', '/chat/../admin?mode=filter'])('외부·허용되지 않은 복귀 주소를 차단한다 %s', (searchReturnTo) => {
+  it.each(['//evil.example/?mode=filter', 'https://evil.example', '/admin?mode=filter', '/app/chat/../admin?mode=filter', '/app/admin?mode=filter'])('외부·허용되지 않은 복귀 주소를 차단한다 %s', (searchReturnTo) => {
     expect(getSupportProgramSearchReturnTo({ searchReturnTo })).toBe('/')
   })
 })
