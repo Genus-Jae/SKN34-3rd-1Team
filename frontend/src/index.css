@@ -12,6 +12,24 @@
   --breakpoint-chat: 47.5rem;
   --breakpoint-sample: 45rem;
   --animate-connection-pulse: connection-pulse 1s ease-in-out infinite alternate;
+  --animate-chat-loading-dot: chat-loading-dot 1.4s ease-in-out infinite;
+  --animate-chat-loading-sweep: chat-loading-sweep 2.1s ease-in-out infinite;
+
+  @keyframes chat-loading-dot {
+    0%, 60%, 100% {
+      transform: translateY(0);
+      opacity: 0.4;
+    }
+    30% {
+      transform: translateY(-3px);
+      opacity: 1;
+    }
+  }
+
+  @keyframes chat-loading-sweep {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(310%); }
+  }
 
   @keyframes connection-pulse {
     to {

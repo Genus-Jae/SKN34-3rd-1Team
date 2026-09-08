@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from '../../fixtures/supportProgramConversation'
 import { SupportProgramRepositoryImpl } from '../../repositories/SupportProgramRepositoryImpl'
-import { interpretSupportProgramConversationApi } from '../supportProgramApi'
+import { interpretSupportProgramConversationApi, SupportProgramApiError, SupportProgramInterpretationApiError } from '../supportProgramApi'
 import { SupportProgramRequestError } from '../../../domain/errors/SupportProgramRequestError'
+import { SupportProgramInterpretationError } from '../../../domain/errors/SupportProgramInterpretationError'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -32,12 +33,83 @@ describe('공개 조건 해석 HTTP 경계', () => {
     await expect(new SupportProgramRepositoryImpl().interpretConversation(command)).rejects.toThrow()
   })
 
-  it('해석도 기존 요청 제한 계약을 안전한 도메인 오류로 전달한다', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ type: 'urn:limited', title: 'Limited', status: 429,
-      detail: 'private', instance: '/api/v1/support-programs/conversation/interpret', code: 'SUPPORT_PROGRAM_RATE_LIMITED', retryAfterSeconds: 10,
-    }), { status: 429, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '10' } })))
+  it.each([
+    [429, 'SUPPORT_PROGRAM_RATE_LIMITED', 'rate-limited'],
+    [503, 'SUPPORT_PROGRAM_BUSY', 'busy'],
+  ] as const)('해석도 기존 %s 요청 제한 계약을 안전한 도메인 오류로 전달한다', async (status, code, reason) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ type: 'urn:limited', title: 'Limited', status,
+      detail: 'private', instance: '/api/v1/support-programs/conversation/interpret', code, retryAfterSeconds: 10,
+    }), { status, headers: { 'Content-Type': 'application/problem+json', 'Retry-After': '10' } }))
+    vi.stubGlobal('fetch', fetchMock)
     await expect(new SupportProgramRepositoryImpl().interpretConversation(command))
-      .rejects.toEqual(new SupportProgramRequestError('rate-limited', 10))
+      .rejects.toEqual(new SupportProgramRequestError(reason, 10))
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it.each(['timeout', 'unavailable'] as const)('검증된 %s만 안전한 해석 도메인 오류로 변환하고 재시도하지 않는다', async (reason) => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(interpretationFailureResponse(reason)))
+    vi.stubGlobal('fetch', fetchMock)
+    const apiError = await interpretSupportProgramConversationApi(command).catch((failure: unknown) => failure)
+    expect(apiError).toBeInstanceOf(SupportProgramInterpretationApiError)
+    expect(apiError).toMatchObject({ reason })
+    const domainError = await new SupportProgramRepositoryImpl().interpretConversation(command).catch((failure: unknown) => failure)
+    expect(domainError).toBeInstanceOf(SupportProgramInterpretationError)
+    expect(domainError).toMatchObject({ reason })
+    for (const error of [apiError, domainError]) {
+      expect(error).not.toHaveProperty('status')
+      expect(error).not.toHaveProperty('code')
+      expect(error).not.toHaveProperty('detail')
+      expect(String(error)).not.toContain('private server detail')
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ['timeout', { code: 'AI_SERVICE_UNAVAILABLE' }],
+    ['unavailable', { code: 'AI_SERVICE_TIMEOUT' }],
+    ['timeout', { status: 503 }],
+    ['unavailable', { status: 504 }],
+    ['timeout', { type: 'urn:govbiz:problem:ai-service-unavailable' }],
+    ['unavailable', { type: 'urn:govbiz:problem:ai-service-timeout' }],
+    ['timeout', { instance: '/api/v1/support-programs/search' }],
+    ['unavailable', { instance: '/another-endpoint' }],
+    ['timeout', { title: '' }],
+    ['unavailable', { detail: undefined }],
+  ] as const)('잘못되거나 해석 endpoint와 다른 %s 계약은 일반 오류로 남긴다: %o', async (reason, changes) => {
+    const fetchMock = vi.fn().mockResolvedValue(interpretationFailureResponse(reason, changes))
+    vi.stubGlobal('fetch', fetchMock)
+    const error = await new SupportProgramRepositoryImpl().interpretConversation(command).catch((failure: unknown) => failure)
+    expect(error).toBeInstanceOf(SupportProgramApiError)
+    expect(error).not.toBeInstanceOf(SupportProgramInterpretationApiError)
+    expect(error).not.toBeInstanceOf(SupportProgramInterpretationError)
+    expect(String(error)).not.toContain('private server detail')
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['timeout', 'text/html'], ['unavailable', 'text/html'],
+    ['timeout', 'application/json'], ['unavailable', 'application/json'],
+  ] as const)('%s의 Content-Type이 %s이면 검증된 AI 장애로 인정하지 않는다', async (reason, contentType) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(interpretationFailureResponse(reason, {}, contentType)))
+    const error = await new SupportProgramRepositoryImpl().interpretConversation(command).catch((failure: unknown) => failure)
+    expect(error).toBeInstanceOf(SupportProgramApiError)
+    expect(error).not.toBeInstanceOf(SupportProgramInterpretationError)
+  })
+
+  it.each(['timeout', 'unavailable'] as const)('%s의 HTTP 상태가 다르거나 JSON이 손상되면 일반 오류를 유지한다', async (reason) => {
+    const status = reason === 'timeout' ? 504 : 503
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(interpretationFailureResponse(reason, {}, 'application/problem+json', status === 504 ? 503 : 504))
+      .mockResolvedValueOnce(new Response('private server detail', { status, headers: { 'Content-Type': 'application/problem+json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const error = await new SupportProgramRepositoryImpl().interpretConversation(command).catch((failure: unknown) => failure)
+      expect(error).toBeInstanceOf(SupportProgramApiError)
+      expect(error).not.toBeInstanceOf(SupportProgramInterpretationApiError)
+      expect(error).not.toBeInstanceOf(SupportProgramInterpretationError)
+      expect(String(error)).not.toContain('private server detail')
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('요청 취소를 숨기지 않는다', async () => {
@@ -50,3 +122,20 @@ describe('공개 조건 해석 HTTP 경계', () => {
     await expect(promise).rejects.toMatchObject({ name: 'AbortError' })
   })
 })
+
+function interpretationFailureResponse(
+  reason: 'timeout' | 'unavailable',
+  changes: Record<string, unknown> = {},
+  contentType = 'application/problem+json; charset=UTF-8',
+  httpStatus = reason === 'timeout' ? 504 : 503,
+) {
+  return new Response(JSON.stringify({
+    type: `urn:govbiz:problem:ai-service-${reason}`,
+    title: 'AI Service failure',
+    status: reason === 'timeout' ? 504 : 503,
+    detail: 'private server detail',
+    instance: '/api/v1/support-programs/conversation/interpret',
+    code: reason === 'timeout' ? 'AI_SERVICE_TIMEOUT' : 'AI_SERVICE_UNAVAILABLE',
+    ...changes,
+  }), { status: httpStatus, headers: { 'Content-Type': contentType } })
+}

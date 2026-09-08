@@ -9,6 +9,8 @@ import { createAppStore } from '../../../../app/store'
 import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from '../../../../data/fixtures/supportProgramConversation'
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
 import type { SupportProgramInterpretation } from '../../../../domain/entities/SupportProgramConversation'
+import { SupportProgramInterpretationError } from '../../../../domain/errors/SupportProgramInterpretationError'
+import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
 import type { InterpretSupportProgramConversationUseCase } from '../../../../domain/usecases/InterpretSupportProgramConversationUseCase'
 import type { SearchSupportProgramsUseCase } from '../../../../domain/usecases/SearchSupportProgramsUseCase'
 import { useSupportProgramChat } from './useSupportProgramChat'
@@ -164,8 +166,9 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     act(() => vi.advanceTimersByTime(39_999))
     expect(result.current.isInterpreting).toBe(true)
     act(() => vi.advanceTimersByTime(1))
-    expect(result.current.interpretation.error).toContain('시간이 초과')
+    expect(result.current.interpretation.error).toBe('조건 해석 시간이 초과되었습니다. 다시 해석해 주세요.')
     expect(interpret.mock.calls[0][1].aborted).toBe(true)
+    expect(interpret).toHaveBeenCalledOnce()
     await act(async () => result.current.retryInterpretation())
     expect(interpret.mock.calls[1][0]).toEqual(interpret.mock.calls[0][0])
     expect(result.current.interpretation.status).toBe('ready')
@@ -195,6 +198,56 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     act(() => result.current.updateDraft('부산으로 변경'))
     await act(async () => result.current.retrySearch())
     expect(search).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    [new SupportProgramInterpretationError('timeout'), '조건 해석 응답이 지연되어 시간이 초과되었습니다. 잠시 후 다시 해석해 주세요.'],
+    [new SupportProgramInterpretationError('unavailable'), '조건 해석 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 해석해 주세요.'],
+    [new Error('private server detail'), '메시지의 조건 변경을 해석하지 못했습니다. 다시 해석해 주세요.'],
+    [new SupportProgramRequestError('rate-limited', 10), '짧은 시간에 요청이 많아 잠시 제한되었습니다. 약 10초 후 직접 다시 시도해 주세요.'],
+    [new SupportProgramRequestError('busy', 10), '현재 다른 요청을 처리하고 있어 새 요청을 시작할 수 없습니다. 약 10초 후 직접 다시 시도해 주세요.'],
+  ] as const)('해석 오류 %s를 구분하고 사용자가 다시 해석하기 전에는 재요청하지 않는다', async (failure, message) => {
+    vi.useFakeTimers()
+    const interpret = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(readyConversationProposal(seoulConversationContext))
+    const { result, search } = renderConversation(interpret)
+    act(() => result.current.updateDraft('서울 SW 사업화'))
+    await act(async () => result.current.submitMessage())
+    expect(result.current.interpretation.status).toBe('failed')
+    expect(result.current.interpretation.error).toBe(message)
+    expect(result.current.interpretation.error).not.toContain('private server detail')
+    expect(result.current.pendingClarification).toBeNull()
+    expect(result.current.confirmedContext).toEqual(emptyConversationContext)
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => vi.advanceTimersByTimeAsync(40_000))
+    expect(interpret).toHaveBeenCalledOnce()
+    expect(result.current.interpretation.error).toBe(message)
+    expect(search).not.toHaveBeenCalled()
+
+    await act(async () => result.current.retryInterpretation())
+    expect(interpret).toHaveBeenCalledTimes(2)
+    expect(interpret.mock.calls[1][0]).toEqual(interpret.mock.calls[0][0])
+    expect(result.current.interpretation.status).toBe('ready')
+    expect(search).not.toHaveBeenCalled()
+  })
+
+  it.each(['timeout', 'unavailable'] as const)('취소 후 늦게 도착한 해석 %s 오류는 화면에 반영하지 않는다', async (reason) => {
+    const pending = deferred<SupportProgramInterpretation>()
+    const interpret = vi.fn().mockReturnValue(pending.promise)
+    const { result, search } = renderConversation(interpret)
+    act(() => result.current.updateDraft('서울 SW'))
+    let request!: Promise<void>
+    act(() => { request = result.current.submitMessage() })
+    act(() => result.current.cancelInterpretation())
+    await act(async () => {
+      pending.reject(new SupportProgramInterpretationError(reason))
+      await request
+    })
+    expect(interpret.mock.calls[0][1].aborted).toBe(true)
+    expect(result.current.interpretation.status).toBe('idle')
+    expect(result.current.interpretation.error).toBeUndefined()
+    expect(result.current.draft).toBe('서울 SW')
+    expect(interpret).toHaveBeenCalledOnce()
+    expect(search).not.toHaveBeenCalled()
   })
 
   it('해석 장애는 추가 질문이나 단문 검색으로 바꾸지 않으며 수정한 입력은 새 요청이다', async () => {

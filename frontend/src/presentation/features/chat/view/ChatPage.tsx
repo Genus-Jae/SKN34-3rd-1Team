@@ -271,8 +271,22 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           <span className={chatPageStyles.assistantAvatar}>
             G
           </span>
-          <div className={chatPageStyles.searchingBubble}>
-            {isInterpreting ? '조건 변경안을 해석하고 있어요. 아직 검색하지 않았습니다…' : '공고를 찾아보고 있어요…'}
+          <div className={chatPageStyles.searchingBubble} role="group"
+            aria-label={isInterpreting ? '조건 해석 진행 중' : '지원사업 검색 진행 중'}>
+            <div className={chatPageStyles.loadingHeader}>
+              <strong className={chatPageStyles.loadingLabel}>{isInterpreting ? '조건 해석 중' : '지원사업 검색 중'}</strong>
+              <span className={chatPageStyles.loadingDots} aria-hidden="true">
+                {[0, 160, 320].map((delay) => (
+                  <span key={delay} className={chatPageStyles.loadingDot} style={{ animationDelay: `${delay}ms` }} />
+                ))}
+              </span>
+            </div>
+            <p className={chatPageStyles.loadingDescription}>
+              {isInterpreting ? '조건 변경안을 해석하고 있어요. 아직 검색하지 않았습니다…' : '공고를 찾아보고 있어요…'}
+            </p>
+            <div className={chatPageStyles.loadingTrack} aria-hidden="true">
+              <span className={chatPageStyles.loadingSweep} />
+            </div>
           </div>
         </div>
       ) : null}

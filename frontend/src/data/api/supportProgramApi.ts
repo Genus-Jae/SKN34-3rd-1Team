@@ -27,17 +27,26 @@ const SEARCH_SUPPORT_PROGRAMS_PATH = '/api/v1/support-programs/search'
 const SUPPORT_PROGRAM_SEARCH_READINESS_PATH = '/api/v1/support-programs/readiness'
 const SUPPORT_PROGRAM_DETAIL_PATH = '/api/v1/support-programs/detail'
 const SUPPORT_PROGRAM_EVIDENCE_ANSWER_PATH = '/api/v1/support-programs/detail/answers'
+const SUPPORT_PROGRAM_INTERPRETATION_PATH = '/api/v1/support-programs/conversation/interpret'
 
 export async function interpretSupportProgramConversationApi(command: SupportProgramInterpretRequest, signal?: AbortSignal) {
-  const response = await fetch(`${getCoreApiBaseUrl()}/api/v1/support-programs/conversation/interpret`, {
+  const response = await fetch(`${getCoreApiBaseUrl()}${SUPPORT_PROGRAM_INTERPRETATION_PATH}`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
     signal,
   })
   if (!response.ok) {
-    const rejection = await readRequestRejection(response)
+    // 503은 요청 제한과 AI 일시 장애에 모두 쓰이므로 뒤의 판정에도 본문을 남깁니다.
+    const rejection = await readRequestRejection(response.status === 503 ? response.clone() : response)
     if (rejection) throw rejection
+    if ((response.status === 503 || response.status === 504)
+      && response.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase() === 'application/problem+json') {
+      const failure = interpretationFailureProblemSchema.safeParse(await response.json().catch(() => null))
+      if (failure.success && failure.data.status === response.status) {
+        throw new SupportProgramInterpretationApiError(failure.data.status === 504 ? 'timeout' : 'unavailable')
+      }
+    }
     throw new SupportProgramApiError('Core API could not interpret the conversation message.')
   }
   return supportProgramInterpretationDtoSchema.parse(await response.json())
@@ -47,6 +56,36 @@ export class SupportProgramApiError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'SupportProgramApiError'
+  }
+}
+
+const interpretationFailureProblemSchema = z.discriminatedUnion('status', [
+  z.object({
+    type: z.literal('urn:govbiz:problem:ai-service-timeout'),
+    title: z.string().min(1),
+    status: z.literal(504),
+    detail: z.string(),
+    instance: z.literal(SUPPORT_PROGRAM_INTERPRETATION_PATH),
+    code: z.literal('AI_SERVICE_TIMEOUT'),
+  }),
+  z.object({
+    type: z.literal('urn:govbiz:problem:ai-service-unavailable'),
+    title: z.string().min(1),
+    status: z.literal(503),
+    detail: z.string(),
+    instance: z.literal(SUPPORT_PROGRAM_INTERPRETATION_PATH),
+    code: z.literal('AI_SERVICE_UNAVAILABLE'),
+  }),
+])
+
+/** 검증된 해석 장애 종류만 보관하며 서버의 원문 오류 본문은 전달하지 않습니다. */
+export class SupportProgramInterpretationApiError extends SupportProgramApiError {
+  readonly reason: 'timeout' | 'unavailable'
+
+  constructor(reason: 'timeout' | 'unavailable') {
+    super('Core API could not complete the conversation interpretation.')
+    this.name = 'SupportProgramInterpretationApiError'
+    this.reason = reason
   }
 }
 

@@ -8,6 +8,7 @@ import type { InterpretSupportProgramConversationUseCase } from '../../../../dom
 import type { SupportProgramInterpretRequest } from '../../../../domain/entities/SupportProgramConversation'
 import type { SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
 import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
+import { SupportProgramInterpretationError } from '../../../../domain/errors/SupportProgramInterpretationError'
 import { SupportProgramSearchTimeoutError } from '../../../../domain/errors/SupportProgramSearchTimeoutError'
 import { supportProgramRequestFailureMessage } from '../../../shared/support-program/supportProgramRequestFailureMessage'
 import {
@@ -250,7 +251,11 @@ export function useSupportProgramChat(
       } catch (error) {
         if (!controller.signal.aborted) dispatch(interpretationFailed({ requestId, message:
           error instanceof SupportProgramRequestError ? supportProgramRequestFailureMessage(error)
-            : '메시지의 조건 변경을 해석하지 못했습니다. 다시 해석해 주세요.',
+            : error instanceof SupportProgramInterpretationError
+              ? error.reason === 'timeout'
+                ? '조건 해석 응답이 지연되어 시간이 초과되었습니다. 잠시 후 다시 해석해 주세요.'
+                : '조건 해석 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 해석해 주세요.'
+              : '메시지의 조건 변경을 해석하지 못했습니다. 다시 해석해 주세요.',
         }))
       } finally {
         if (activeInterpretationRequest.current?.requestId === requestId) {
