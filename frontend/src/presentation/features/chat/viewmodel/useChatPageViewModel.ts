@@ -3,6 +3,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
+  useMemo,
   useRef,
 } from 'react'
 
@@ -28,7 +29,7 @@ export function useChatPageViewModel() {
     interpretationStatus: chat.interpretation.status,
     isSearching: chat.isSearching,
   })
-  const searchStatusAnnouncement = chat.isInterpreting
+  const searchStatusAnnouncement = useMemo(() => chat.isInterpreting
     ? '메시지의 조건 변경을 해석하고 있습니다. 아직 검색하지 않았습니다.'
     : chat.interpretation.status === 'ready'
       ? '조건 변경안이 준비되었습니다. 확인 버튼을 눌러야 검색합니다.'
@@ -38,7 +39,8 @@ export function useChatPageViewModel() {
     ? '지원사업 공고를 검색하고 있습니다.'
     : latestMessage?.role === 'assistant' && latestMessage.programs
       ? `지원사업 검색 결과 ${latestMessage.programs.length}건: ${formatSupportProgramEligibilityCounts(latestMessage.programs)}을 표시했습니다.`
-      : ''
+      : '', [chat.isInterpreting, chat.interpretation.status, chat.interpretation.result?.clarificationQuestion,
+        chat.isSearching, latestMessage])
 
   useEffect(() => {
     const previous = previousTimelineState.current

@@ -42,6 +42,35 @@ afterEach(() => {
 })
 
 describe('App navigation', () => {
+  it('초안을 수정해도 기존 검색 결과 카드의 상세 URL을 다시 만들지 않고 새 검색 결과는 표시한다', async () => {
+    const nextProgram = { ...supportPrograms[0], id: 'next-result', title: '다음 검색의 공고' }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ query: '서울 AI', programs: supportPrograms }))
+      .mockResolvedValueOnce(jsonResponse({ query: '다음 검색', programs: [nextProgram] }))
+    vi.stubGlobal('fetch', fetchMock)
+    renderApp(createAppStore())
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    fireEvent.change(input, { target: { value: '서울 AI' } })
+    await submitConfirmedSearch(input)
+    await screen.findByRole('heading', { name: supportPrograms[0].title })
+
+    // 각 카드의 렌더에서 생성하는 상세 URL 횟수로 기존 결과의 반복 작업을 관찰합니다.
+    const detailUrlSerialization = vi.spyOn(URLSearchParams.prototype, 'toString')
+    for (let index = 1; index <= 20; index += 1) {
+      fireEvent.change(input, { target: { value: `다음 검색 ${index}` } })
+    }
+    expect(detailUrlSerialization).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(screen.getAllByRole('link', { name: '상세 조건 보기' })).toHaveLength(supportPrograms.length)
+
+    fireEvent.change(input, { target: { value: '다음 검색' } })
+    await submitConfirmedSearch(input)
+    await screen.findByRole('heading', { name: nextProgram.title })
+    expect(screen.getAllByRole('link', { name: '상세 조건 보기' })).toHaveLength(supportPrograms.length + 1)
+    expect(detailUrlSerialization).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it.each(['/', '/chat', '/chat/'])('%s 검색에서 상세·질문을 왕복하면 원래 배치와 서버 결과 순서를 보존한다', async (path) => {
     const returnPath = path === '/' ? '/' : '/chat'
     const programs = [relocationReviewRequiredProgram, conditionMatchedProgram]

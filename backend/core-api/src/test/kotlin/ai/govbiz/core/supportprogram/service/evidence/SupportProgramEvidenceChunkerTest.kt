@@ -52,6 +52,27 @@ class SupportProgramEvidenceChunkerTest {
         }
     }
 
+    @Test
+    fun packsManyShortSectionsWithTheSameSeparatorsAndChunkBoundaries() {
+        val source = List(10_000) { "가" }.joinToString("\n")
+
+        val chunks = SupportProgramEvidenceChunker.chunk(sourceDocument(source))
+
+        val expectedChunk = List(500) { "가" }.joinToString("\n\n")
+        assertEquals(List(20) { expectedChunk }, chunks.map { it.text })
+    }
+
+    @Test
+    fun keepsAnExactlyFullChunkAndStartsTheNextSectionWithoutLeadingSeparators() {
+        val first = "가".repeat(749)
+        val second = "나".repeat(749)
+
+        val chunks = SupportProgramEvidenceChunker.chunk(sourceDocument("$first\n$second\n끝"))
+
+        assertEquals(listOf("$first\n\n$second", "끝"), chunks.map { it.text })
+        assertEquals(1_500, chunks.first().text.length)
+    }
+
     private fun sourceDocument(content: String): SupportProgramSourceDocument =
         SupportProgramSourceDocument(
             sourceCode = "BIZINFO",
