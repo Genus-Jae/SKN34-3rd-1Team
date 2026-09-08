@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from 'react-router'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 
 import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
@@ -18,11 +18,12 @@ import { WorkspaceLayout } from './presentation/shared/app-sidebar/WorkspaceLayo
 
 /** 로그인 전 화면들의 레이아웃입니다. 공용 헤더가 브랜드와 로그인 진입점을 담당합니다. */
 function PublicLayout() {
+  const { pathname } = useLocation()
   return (
-    <>
+    <div className={pathname === '/' ? 'flex h-dvh flex-col overflow-hidden bg-white' : undefined}>
       <AppHeader />
       <Outlet />
-    </>
+    </div>
   )
 }
 

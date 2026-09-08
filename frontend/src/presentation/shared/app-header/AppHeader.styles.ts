@@ -6,7 +6,7 @@ function classes(...groups: string[]) {
 export const appHeaderStyles = {
   // 공개 검색·요금제에서 사용하는 변형입니다. 작은 화면에서는 이동 경로를 다음 줄로 배치합니다.
   landingHeader: classes(
-    'sticky top-5 z-[5] mx-auto mt-5 grid w-[calc(100%-2.5rem)] max-w-[1400px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-7 gap-y-3',
+    'sticky top-5 z-[5] mx-auto mt-5 grid w-[calc(100%-2.5rem)] max-w-[1400px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-7 gap-y-3',
     'rounded-[2rem] border border-sample-border bg-white px-6 py-4 text-app-ink shadow-[0_8px_24px_rgb(32_33_36_/_5%)]',
     'min-[640px]:top-6 min-[640px]:mt-6 min-[640px]:w-[calc(100%-3rem)]',
     'max-[900px]:grid-cols-[minmax(0,1fr)_auto] max-[900px]:gap-x-3 max-[900px]:px-3',
