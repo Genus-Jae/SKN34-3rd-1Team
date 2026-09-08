@@ -3,7 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
 import { SignupPage } from './presentation/features/auth/view/SignupPage'
-import { ChatPage } from './presentation/features/chat/view/ChatPage'
+import { SupportProgramSearchPage } from './presentation/features/support-program-catalog/view/SupportProgramSearchPage'
 import { CompanyProfilePage } from './presentation/features/company-profile/view/CompanyProfilePage'
 import { PartnerRecruitmentCreatePage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentCreatePage'
 import { PartnerRecruitmentDetailPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentDetailPage'
@@ -36,7 +36,7 @@ function App() {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
-        <Route path="/" element={<ChatPage />} />
+        <Route path="/" element={<SupportProgramSearchPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route
           path="/support-programs/detail"
@@ -54,7 +54,7 @@ function App() {
       <Route path="/signup" element={<SignupPage />} />
 
       <Route element={<WorkspaceLayout />}>
-        <Route path="/chat" element={<ChatPage layout="workspace" />} />
+        <Route path="/chat" element={<SupportProgramSearchPage layout="workspace" />} />
         <Route path="/partners" element={<PartnerRecruitmentListPage />} />
         <Route path="/partners/new" element={<PartnerRecruitmentCreatePage />} />
         <Route path="/partners/detail" element={<PartnerRecruitmentDetailPage />} />

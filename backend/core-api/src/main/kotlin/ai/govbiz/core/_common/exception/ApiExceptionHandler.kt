@@ -20,6 +20,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.HandlerMethodValidationException
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 
 @RestControllerAdvice
 class ApiExceptionHandler {
@@ -162,6 +163,21 @@ class ApiExceptionHandler {
             "One or more request fields are invalid.",
             "REQUEST_VALIDATION_FAILED",
             listOf(ValidationError(exception.parameterName, "INVALID_VALUE")),
+            request,
+        )
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleMethodArgumentTypeMismatchException(
+        exception: MethodArgumentTypeMismatchException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> =
+        validationProblem(
+            HttpStatus.BAD_REQUEST,
+            URI.create("urn:govbiz:problem:request-validation-failed"),
+            "Request Validation Failed",
+            "One or more request fields are invalid.",
+            "REQUEST_VALIDATION_FAILED",
+            listOf(ValidationError(exception.name, "INVALID_VALUE")),
             request,
         )
 

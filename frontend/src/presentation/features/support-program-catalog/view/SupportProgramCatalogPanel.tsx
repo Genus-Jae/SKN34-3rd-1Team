@@ -1,0 +1,142 @@
+import { useState } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router'
+
+import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
+import type { SupportProgramCatalogFilters } from '../../../../domain/entities/SupportProgramCatalog'
+import { defaultCatalogFilters, readCatalogFilters, writeCatalogFilters } from '../../../shared/support-program/catalogSearchParams'
+import { useSupportProgramCatalogViewModel } from '../viewmodel/useSupportProgramCatalogViewModel'
+
+const inputStyle = 'min-h-11 w-full min-w-0 rounded-xl border border-sample-border bg-white px-3 text-sm text-app-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary'
+const buttonStyle = 'min-h-11 cursor-pointer rounded-xl px-5 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:cursor-not-allowed disabled:opacity-40'
+const statusLabels = { ALL: '전체 접수 상태', OPEN: '접수 중', UPCOMING: '접수 예정', CLOSED: '접수 마감', UNKNOWN: '상태 미확인' }
+
+/** 자연어 추천과 구분되는 DB 목록 화면입니다. AI 자격 판정을 표시하지 않습니다. */
+export function SupportProgramCatalogPanel() {
+  const [params, setParams] = useSearchParams()
+  const filters = readCatalogFilters(params)
+  const { pathname } = useLocation()
+  const catalog = useSupportProgramCatalogViewModel(filters)
+  const apply = (next: SupportProgramCatalogFilters) => setParams(writeCatalogFilters(next))
+  const returnTo = `${pathname}?${writeCatalogFilters(filters)}`
+  const pageStart = Math.max(1, Math.min(filters.page - 2, (catalog.data?.totalPages ?? 1) - 4))
+  return (
+    <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white text-app-ink">
+      <div className="mx-auto grid w-full max-w-6xl gap-6 px-6 pt-6 pb-12 max-chat:gap-5 max-chat:px-4 max-chat:pt-4">
+        <header>
+          <p className="m-0 text-xs font-bold text-brand-primary">필터로 빠르게 찾기</p>
+          <h1 className="mt-2 mb-2 text-3xl font-bold tracking-tight max-chat:text-2xl">원하는 지원사업을 직접 골라보세요.</h1>
+          <p className="m-0 text-sm leading-relaxed text-sample-muted">분야와 지역을 선택하면 저장된 공고를 바로 볼 수 있어요.</p>
+        </header>
+        <CatalogFilters key={JSON.stringify(filters)} filters={filters} regions={catalog.regions} categories={catalog.categories} phase={catalog.phase} onApply={apply} />
+        <section aria-label="필터 검색 결과" className="min-w-0">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="m-0 text-base font-bold" aria-live="polite">{catalog.data ? <>검색 결과 <span className="text-brand-primary">{catalog.data.total.toLocaleString()}건</span></> : '검색 결과'}</h2>
+            <label className="flex items-center gap-2 text-xs text-sample-muted">정렬
+              <select aria-label="공고 정렬" className={`${inputStyle} !min-h-9 !w-auto !text-xs`} value={filters.sort}
+                onChange={(event) => apply({ ...filters, sort: event.target.value as SupportProgramCatalogFilters['sort'], page: 1 })}>
+                <option value="RECENT">최신순</option><option value="DEADLINE">마감일순</option>
+              </select>
+            </label>
+          </div>
+          {catalog.phase === 'loading' ? <div role="status" className="rounded-2xl border border-sample-border px-5 py-14 text-center text-sm text-sample-muted">
+            <span className="mx-auto mb-3 block size-6 rounded-full border-2 border-brand-accent border-t-brand-primary motion-safe:animate-spin" aria-hidden="true" />공고를 불러오고 있어요…
+          </div> : catalog.phase === 'failed' ? <div role="alert" className="rounded-2xl border border-sample-border p-8 text-center">
+            <p className="text-sm text-sample-muted">공고 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
+            <button type="button" className={`${buttonStyle} bg-brand-primary text-white`} onClick={catalog.retry}>다시 불러오기</button>
+          </div> : catalog.data?.programs.length ? (
+            <div className="overflow-hidden rounded-2xl border border-sample-border">
+              <div aria-hidden="true" className="grid grid-cols-[minmax(0,1fr)_10rem_10rem] gap-5 bg-[#f7f8f9] px-5 py-3 text-xs font-semibold text-sample-muted max-chat:hidden">
+                <span>지원사업명 · 분야</span><span>기관</span><span>접수 상태 · 신청 기간</span>
+              </div>
+              {catalog.data.programs.map((program) => <CatalogRow key={JSON.stringify([program.sourceCode, program.id])} program={program} returnTo={returnTo} />)}
+            </div>
+          ) : <div className="rounded-2xl border border-sample-border p-10 text-center">
+            <h3 className="m-0 text-base font-bold">{catalog.data?.total ? '이 페이지에는 공고가 없어요.' : '조건에 맞는 공고가 없어요.'}</h3>
+            <p className="text-sm text-sample-muted">{catalog.data?.total ? '공고 목록이 바뀌었을 수 있어요. 첫 페이지를 확인해 주세요.' : '검색어를 줄이거나 지역·분야·접수 상태를 넓혀보세요.'}</p>
+            <button type="button" className={`${buttonStyle} border border-sample-border bg-white`} onClick={() => apply(catalog.data?.total ? { ...filters, page: 1 } : { ...defaultCatalogFilters, status: 'ALL' })}>
+              {catalog.data?.total ? '첫 페이지로' : '전체 공고 보기'}
+            </button>
+          </div>}
+          {catalog.data && catalog.data.totalPages > 1 ? <nav aria-label="공고 페이지" className="mt-6 flex flex-wrap justify-center gap-1.5">
+            <button type="button" className={`${buttonStyle} !px-3 text-sample-muted`} disabled={filters.page <= 1} onClick={() => apply({ ...filters, page: filters.page - 1 })}>이전</button>
+            {Array.from({ length: Math.min(5, catalog.data.totalPages) }, (_, index) => pageStart + index).map((page) => (
+              <button type="button" key={page} aria-label={`${page}페이지`} aria-current={page === filters.page ? 'page' : undefined}
+                className={`${buttonStyle} !px-3.5 ${page === filters.page ? 'bg-brand-primary text-white' : 'text-sample-muted hover:bg-[#f5f6f7]'}`}
+                onClick={() => apply({ ...filters, page })}>{page}</button>
+            ))}
+            <button type="button" className={`${buttonStyle} !px-3 text-sample-muted`} disabled={filters.page >= catalog.data.totalPages} onClick={() => apply({ ...filters, page: filters.page + 1 })}>다음</button>
+          </nav> : null}
+        </section>
+        <p className="m-0 text-xs leading-relaxed text-sample-muted">지역·분야는 제공처의 공고 분류입니다. 전국 공고는 ‘전국’을 선택해 확인하세요. 신청 자격은 공고 원문에서 확인해 주세요.</p>
+      </div>
+    </main>
+  )
+}
+
+function CatalogFilters({ filters, regions, categories, phase, onApply }: {
+  filters: SupportProgramCatalogFilters; regions: string[]; categories: string[]; phase: 'loading' | 'ready' | 'failed'; onApply: (filters: SupportProgramCatalogFilters) => void
+}) {
+  const [draft, setDraft] = useState(filters)
+  return <form aria-label="공고 필터" className="grid gap-4 rounded-3xl border border-sample-border bg-white p-5 shadow-[0_4px_24px_rgb(32_33_36_/_3%)] max-chat:p-4"
+    onSubmit={(event) => { event.preventDefault(); onApply({ ...draft, keyword: draft.keyword.trim(), page: 1 }) }}>
+    <div className="flex items-end gap-2">
+      <label className="grid min-w-0 flex-1 gap-2 text-xs font-semibold text-sample-muted">검색어
+        <input type="search" className={inputStyle} aria-label="공고명 또는 기관명" placeholder="공고명이나 기관명을 입력하세요" maxLength={100}
+          value={draft.keyword} onChange={(event) => setDraft({ ...draft, keyword: event.target.value })} />
+      </label>
+      <button type="submit" className={`${buttonStyle} shrink-0 bg-brand-primary text-white hover:bg-[#066538]`}>검색</button>
+    </div>
+    <div className="grid gap-4 border-t border-sample-border pt-4">
+      <CatalogFilterChoices label="지역" name="catalog-region" options={regions} selected={draft.region} onSelect={(region) => setDraft({ ...draft, region })} />
+      <CatalogFilterChoices label="분야" name="catalog-category" options={categories} selected={draft.category} onSelect={(category) => setDraft({ ...draft, category })} />
+      {(!regions.length || !categories.length) && phase !== 'ready' ? <p role="status" className="m-0 text-xs leading-relaxed text-sample-muted">
+        {phase === 'loading' ? '지역·분야 선택지를 불러오고 있어요…' : '지역·분야 선택지를 불러오지 못했어요. 아래에서 다시 불러오기를 눌러주세요.'}
+      </p> : null}
+      <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">접수 상태
+        <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as SupportProgramCatalogFilters['status'] })}>
+          {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+    </div>
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sample-border pt-3">
+      <p className="m-0 text-xs text-sample-muted">필터를 바꾼 뒤 검색을 눌러주세요.</p>
+      <button type="button" className="cursor-pointer rounded px-1 py-1 text-xs font-semibold text-brand-primary focus-visible:outline-2 focus-visible:outline-brand-primary"
+        onClick={() => { setDraft({ ...defaultCatalogFilters }); onApply({ ...defaultCatalogFilters }) }}>필터 초기화</button>
+    </div>
+  </form>
+}
+
+function CatalogFilterChoices({ label, name, options, selected, onSelect }: {
+  label: string; name: string; options: string[]; selected: string; onSelect: (value: string) => void
+}) {
+  const choices = selected && !options.includes(selected) ? [selected, ...options] : options
+  return <fieldset className="m-0 min-w-0 border-0 p-0">
+    <legend className="sr-only">{label}</legend>
+    <div className="flex gap-3 max-chat:flex-col max-chat:gap-2">
+      <span aria-hidden="true" className="w-13 shrink-0 pt-2.5 text-xs font-semibold text-sample-muted max-chat:pt-0">{label}</span>
+      <div className="flex min-w-0 flex-wrap gap-1.5">
+        {['', ...choices].map((value) => <label key={value} className="relative min-w-0 max-w-full cursor-pointer">
+          <input type="radio" name={name} value={value} aria-label={value || `전체 ${label}`} checked={selected === value}
+            onChange={() => onSelect(value)} className="peer sr-only" />
+          <span className="flex min-h-9 items-center justify-center rounded-lg border border-sample-border bg-white px-2.5 text-xs leading-relaxed text-sample-muted transition-colors [overflow-wrap:anywhere] hover:border-brand-primary hover:text-brand-primary peer-checked:border-brand-primary peer-checked:bg-brand-primary peer-checked:font-bold peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-primary motion-reduce:transition-none">{value || '전체'}</span>
+        </label>)}
+      </div>
+    </div>
+  </fieldset>
+}
+
+function CatalogRow({ program, returnTo }: { program: SupportProgram; returnTo: string }) {
+  const detailParams = new URLSearchParams({ sourceCode: program.sourceCode, sourceProgramId: program.id })
+  return <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_10rem_10rem] gap-5 border-t border-sample-border px-5 py-5 first:border-t-0 hover:bg-[#fafcfb] max-chat:grid-cols-1 max-chat:gap-2 max-chat:px-4">
+    <div className="min-w-0">
+      <p className="mt-0 mb-2 truncate text-xs font-semibold text-brand-primary">{program.categories.join(' · ') || '분야 미분류'} <span className="font-normal text-sample-muted">{program.regions.length ? ` / ${program.regions.join(' · ')}` : ''}</span></p>
+      <h3 className="m-0 text-sm font-bold leading-relaxed [overflow-wrap:anywhere]"><Link className="rounded hover:text-brand-primary focus-visible:outline-2 focus-visible:outline-brand-primary"
+        to={`/support-programs/detail?${detailParams}`} state={{ searchReturnTo: returnTo }}>{program.title}</Link></h3>
+    </div>
+    <p className="m-0 self-center text-xs leading-relaxed text-sample-muted [overflow-wrap:anywhere]">{program.organization || program.sourceName}</p>
+    <div className="self-center max-chat:flex max-chat:flex-wrap max-chat:items-center max-chat:gap-2">
+      <span className={`inline-block rounded-full px-2 py-1 text-[0.68rem] font-bold ${program.status === 'OPEN' ? 'bg-brand-accent text-brand-primary' : 'bg-[#f1f3f4] text-sample-muted'}`}>{statusLabels[program.status]}</span>
+      <p className="mt-1 mb-0 text-xs leading-relaxed text-sample-muted [overflow-wrap:anywhere]">{program.applicationPeriod}</p>
+    </div>
+  </article>
+}

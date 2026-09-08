@@ -10,6 +10,8 @@ import {
   SupportProgramSearchTimeoutApiError,
 } from '../api/supportProgramApi'
 import { toSupportProgram } from '../models/SupportProgramDto'
+import { browseSupportProgramsApi } from '../api/supportProgramCatalogApi'
+import type { SupportProgramCatalogFilters } from '../../domain/entities/SupportProgramCatalog'
 import { toSupportProgramEvidenceAnswer } from '../models/SupportProgramEvidenceAnswerDto'
 import { toSupportProgramSearchReadiness } from '../models/SupportProgramSearchReadinessDto'
 import { toSupportProgramInterpretation } from '../models/SupportProgramConversationDto'
@@ -29,6 +31,11 @@ import type {
 
 /** Core API DTO를 검증된 Domain 공고로 변환하는 Repository adapter입니다. */
 export class SupportProgramRepositoryImpl implements SupportProgramRepository {
+  async browseCatalog(command: SupportProgramCatalogFilters, signal?: AbortSignal) {
+    const response = await browseSupportProgramsApi(command, signal)
+    return { ...response, programs: response.programs.map(toSupportProgram), regions: [...response.regions], categories: [...response.categories] }
+  }
+
   async interpretConversation(command: SupportProgramInterpretRequest, signal?: AbortSignal) {
     try {
       return toSupportProgramInterpretation(await interpretSupportProgramConversationApi(command, signal))

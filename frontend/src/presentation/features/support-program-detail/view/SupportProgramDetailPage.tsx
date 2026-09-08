@@ -5,7 +5,7 @@ import type { SupportProgram, SupportProgramStatus } from '../../../../domain/en
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import { useSupportProgramDetailViewModel } from '../viewmodel/useSupportProgramDetailViewModel'
 import { supportProgramDetailStyles } from './SupportProgramDetailPage.styles'
-import { getSupportProgramSearchReturnTo } from './supportProgramNavigation'
+import { getSupportProgramSearchReturnTo, type SupportProgramSearchReturnTo } from './supportProgramNavigation'
 
 /** URL의 제공처·원본 공고 ID로 최신 상세 정보를 조회하는 화면입니다. */
 export function SupportProgramDetailPage() {
@@ -37,7 +37,7 @@ export function SupportProgramDetailPage() {
 
 function SupportProgramDetailContent({ identity, searchReturnTo }: {
   identity: SupportProgramIdentity
-  searchReturnTo: '/' | '/chat'
+  searchReturnTo: SupportProgramSearchReturnTo
 }) {
   const detail = useSupportProgramDetailViewModel(identity)
 
@@ -67,7 +67,7 @@ function SupportProgramDetailContent({ identity, searchReturnTo }: {
   return <SupportProgramDetail program={detail.program} searchReturnTo={searchReturnTo} />
 }
 
-function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: '/' | '/chat' }) {
+function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: SupportProgramSearchReturnTo }) {
   return (
     <main className={supportProgramDetailStyles.unavailablePage} aria-live="polite">
       <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
@@ -86,7 +86,7 @@ function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: '/' |
 
 function SupportProgramDetail({ program, searchReturnTo }: {
   program: SupportProgram
-  searchReturnTo: '/' | '/chat'
+  searchReturnTo: SupportProgramSearchReturnTo
 }) {
   return (
     <main className={supportProgramDetailStyles.page}>
@@ -218,7 +218,7 @@ function UnavailableSupportProgramDetail({
 }: {
   description: string
   retry?: () => void
-  searchReturnTo: '/' | '/chat'
+  searchReturnTo: SupportProgramSearchReturnTo
   title: string
 }) {
   return (
