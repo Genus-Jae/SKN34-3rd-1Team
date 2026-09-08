@@ -26,12 +26,12 @@ describe('상세 오류 복구와 검색 화면 복귀', () => {
 
   it('상세·질문을 왕복해도 원래 작업 채팅으로 복귀한다', async () => {
     vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(supportPrograms[0])
-    renderDetail({ searchReturnTo: '/chat' })
-    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/chat')
+    renderDetail({ searchReturnTo: '/app/chat' })
+    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/app/chat')
     fireEvent.click(await screen.findByRole('link', { name: '이 공고에 질문하기' }))
     fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
     await screen.findByRole('heading', { name: supportPrograms[0].title })
-    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/chat')
+    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/app/chat')
   })
 
   it.each([null, {}, { searchReturnTo: 'https://example.com' }, { searchReturnTo: '//example.com' }, { searchReturnTo: '/admin' }])(
@@ -46,9 +46,9 @@ describe('상세 오류 복구와 검색 화면 복귀', () => {
 
   it('잘못된 식별자는 조회하지 않고 원래 검색 화면의 복귀 링크를 유지한다', () => {
     const detail = vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(null)
-    renderDetail({ searchReturnTo: '/chat' }, '?sourceCode=BIZINFO')
+    renderDetail({ searchReturnTo: '/app/chat' }, '?sourceCode=BIZINFO')
     expect(screen.getByRole('heading', { name: '공고 정보를 찾을 수 없습니다' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/chat')
+    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/app/chat')
     expect(detail).not.toHaveBeenCalled()
   })
 })

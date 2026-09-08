@@ -1,4 +1,4 @@
-import { partnerRecruitmentDetail, partnerRecruitments, remainingRecruitmentCount } from './partnerRecruitmentPlaceholders'
+import { partnerRecruitmentDetail, partnerRecruitments, remainingRecruitmentCount } from '../../../shared/partner-recruitment/partnerRecruitmentPlaceholders'
 
 /**
  * 파트너 모집 목록의 대표 ViewModel입니다. 목록과 사이드 요약이 쓸 값을 모아 돌려줍니다.

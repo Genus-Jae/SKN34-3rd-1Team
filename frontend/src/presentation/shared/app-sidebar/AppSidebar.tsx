@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router'
 
 import type { Account } from '../../../domain/entities/Account'
 import { useAuthSession } from '../auth/hooks/useAuthSession'
+import { appPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 
 type MenuIcon = 'search' | 'bookmark' | 'users' | 'building' | 'shield' | 'pricing'
@@ -25,23 +26,23 @@ const menuGroups: MenuGroup[] = [
       {
         label: '지원사업 검색',
         icon: 'search',
-        to: '/chat',
-        matches: (pathname) => pathname === '/chat' || pathname.startsWith('/support-programs'),
+        to: appPaths.chat,
+        matches: (pathname) => pathname === appPaths.chat || pathname.startsWith(appPaths.supportProgramDetail),
       },
       { label: '관심 공고함', icon: 'bookmark', badge: '준비 중' },
       {
         label: '파트너 모집',
         icon: 'users',
-        to: '/partners',
-        matches: (pathname) => pathname.startsWith('/partners'),
+        to: appPaths.partners,
+        matches: (pathname) => pathname.startsWith(appPaths.partners),
       },
       {
         label: '내 프로필',
         icon: 'building',
-        to: '/profile',
-        matches: (pathname) => pathname.startsWith('/profile'),
+        to: appPaths.profile,
+        matches: (pathname) => pathname.startsWith(appPaths.profile),
       },
-      { label: '요금제', icon: 'pricing', to: '/pricing' },
+      { label: '요금제', icon: 'pricing', to: appPaths.pricing, matches: (pathname) => pathname === appPaths.pricing },
     ],
   },
   {
@@ -51,8 +52,8 @@ const menuGroups: MenuGroup[] = [
       {
         label: '회원·기업',
         icon: 'shield',
-        to: '/admin/members',
-        matches: (pathname) => pathname.startsWith('/admin'),
+        to: appPaths.adminMembers,
+        matches: (pathname) => pathname.startsWith(appPaths.admin),
       },
     ],
   },
@@ -117,6 +118,7 @@ function tierLabel(account: Account): string {
 /**
  * 로그인 뒤 작업 화면의 사이드바입니다. 공용 헤더를 대신해 화면 이동과 계정 진입점을 담당합니다.
  * 계정 정보는 세션에서 읽고, 관리자 메뉴는 관리자에게만 그리며, 화면이 없는 메뉴는 링크로 만들지 않습니다.
+ * 로그인한 사용자는 `/app` 아래에만 머무르므로 공개 화면으로 가는 링크는 두지 않습니다.
  */
 export function AppSidebar() {
   const { pathname } = useLocation()
@@ -124,7 +126,7 @@ export function AppSidebar() {
 
   return (
     <aside className={appSidebarStyles.sidebar} aria-label="작업 사이드바">
-      <Link className={appSidebarStyles.brand} to="/chat">
+      <Link className={appSidebarStyles.brand} to={appPaths.chat}>
         <span className={appSidebarStyles.brandMark} aria-hidden="true">G</span>
         <span>
           <strong className={appSidebarStyles.brandTitle}>GovBiz</strong>
@@ -178,9 +180,6 @@ export function AppSidebar() {
             </span>
           </div>
           <div className={appSidebarStyles.accountActions}>
-            <Link className={appSidebarStyles.accountLink} to="/">
-              공개 검색으로
-            </Link>
             <button className={appSidebarStyles.logoutButton} type="button" onClick={() => void logOut()}>
               로그아웃
             </button>

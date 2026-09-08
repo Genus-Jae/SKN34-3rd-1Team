@@ -1,6 +1,8 @@
 import type { FormEvent } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 
+import { isAppPath, supportProgramDetailPath } from '../../../shared/routes/appPaths'
+
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import {
   maximumSupportProgramEvidenceQuestionLength,
@@ -11,7 +13,8 @@ import { getSupportProgramSearchReturnTo } from './supportProgramNavigation'
 
 /** URL로 지정한 공고의 원문 근거 질문을 담당하는 페이지입니다. */
 export function SupportProgramEvidenceQuestionPage() {
-  const searchReturnTo = getSupportProgramSearchReturnTo(useLocation().state)
+  const location = useLocation()
+  const searchReturnTo = getSupportProgramSearchReturnTo(location.state)
   const [searchParams] = useSearchParams()
   const sourceCode = searchParams.get('sourceCode')
   const sourceProgramId = searchParams.get('sourceProgramId')
@@ -33,7 +36,7 @@ export function SupportProgramEvidenceQuestionPage() {
   }
 
   const identity = { sourceCode, sourceProgramId }
-  const detailUrl = `/support-programs/detail?${new URLSearchParams(identity)}`
+  const detailUrl = supportProgramDetailPath(identity, isAppPath(location.pathname))
 
   return (
     <main className={supportProgramEvidenceQuestionStyles.page}>

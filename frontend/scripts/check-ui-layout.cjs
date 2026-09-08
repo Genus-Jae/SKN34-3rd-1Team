@@ -15,9 +15,14 @@ const longProgram = { ...supportPrograms[0], title: `레이아웃검증-${'A'.re
 const detailQuery = new URLSearchParams({ sourceCode: longProgram.sourceCode, sourceProgramId: longProgram.id })
 const detailPath = `/support-programs/detail?${detailQuery}`
 const questionPath = `/support-programs/detail/question?${detailQuery}`
-const paths = ['/', '/pricing', '/chat', '/login', '/signup', '/partners', '/partners/new',
-  '/partners/detail?recruitmentId=ai-labeling', '/profile', '/admin/members', detailPath, questionPath,
-  '/examples/sample-item/hook', '/examples/sample-item/redux']
+const paths = ['/', '/pricing', '/app/chat', '/app/pricing', '/login', '/signup', '/partners', '/app/partners', '/app/partners/new',
+  '/partners/detail?recruitmentId=ai-labeling', '/app/partners/detail?recruitmentId=ai-labeling', '/app/profile',
+  '/app/admin/members', detailPath, questionPath, '/examples/sample-item/hook', '/examples/sample-item/redux']
+// `/app` 경로는 회원 세션이 있어야 열립니다. 앱이 세션 힌트를 보고 부르는 /auth/me 응답을 경로별로 심습니다.
+const sessionHintKey = 'govbiz.hasSession'
+const memberAccount = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true }
+const adminAccount = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true }
+let sessionAccount = null
 const sizes = [[320, 568], [375, 667], [768, 800], [844, 390], [1024, 800], [1280, 800], [1440, 900]]
 const chatOnlySizes = [[375, 400], [900, 700], [901, 700]]
 
@@ -100,7 +105,11 @@ async function main() {
       const url = new URL(request.url())
       if (!url.pathname.startsWith('/api/')) return url.origin === origin ? route.continue() : route.abort()
       let json
-      if (url.pathname.endsWith('/readiness')) json = { ...source, sources: [source] }
+      if (url.pathname.endsWith('/auth/me')) {
+        if (sessionAccount) json = { account: sessionAccount }
+        else return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ code: 'AUTHENTICATION_REQUIRED' }) })
+      } else if (url.pathname.endsWith('/auth/logout')) return route.fulfill({ status: 204, body: '' })
+      else if (url.pathname.endsWith('/readiness')) json = { ...source, sources: [source] }
       else if (url.pathname.endsWith('/interpret')) {
         calls.interpret++
         const command = request.postDataJSON()
@@ -125,12 +134,16 @@ async function main() {
       const checkedPaths = chatOnlySizes.some(size => size[0] === width && size[1] === height) ? ['/'] : paths
       for (const path of checkedPaths) {
         const label = `${width}x${height} ${path}`
+        sessionAccount = path.startsWith('/app/admin') ? adminAccount : path.startsWith('/app') ? memberAccount : null
+        if (!page.url().startsWith(origin)) await page.goto(origin + '/login')
+        await page.evaluate(([key, hasSession]) => hasSession ? localStorage.setItem(key, '1') : localStorage.removeItem(key),
+          [sessionHintKey, sessionAccount !== null])
         await page.goto(origin + path)
         await page.locator('h1').first().waitFor({ state: 'attached' })
         if (path === detailPath) await page.getByRole('heading', { name: longProgram.title, exact: true }).waitFor()
         await checkBounds(page, label)
         pagesChecked++
-        if (path === '/' || path === '/chat') {
+        if (path === '/' || path === '/app/chat') {
           const input = page.getByRole('textbox', { name: '지원사업 검색어' })
           const originalInput = await input.elementHandle()
           await input.fill('A'.repeat(400) + '\n서울 AI 사업')
@@ -157,7 +170,7 @@ async function main() {
           assert(await timeline.evaluate(n => n.scrollWidth <= n.clientWidth + 1), `${label}: 긴 대화 가로 넘침`)
           const bubble = timeline.locator('article.justify-end > div > div').first()
           assert.equal(await bubble.evaluate(n => getComputedStyle(n).whiteSpace), 'pre-wrap', `${label}: 줄바꿈 보존`)
-          if (path === '/chat' && width >= 760) {
+          if (path === '/app/chat' && width >= 760) {
             const inputBox = await input.boundingBox()
             assert(inputBox && inputBox.y >= 0 && inputBox.y + inputBox.height <= height, `${label}: 데스크톱 입력창 고정`)
           }
@@ -222,7 +235,7 @@ async function main() {
           await page.getByText('D'.repeat(1000), { exact: true }).waitFor()
           await checkBounds(page, `${label} 긴 답변·근거`)
           flowsChecked++
-        } else if (path === '/partners/new') {
+        } else if (path === '/app/partners/new') {
           const input = page.getByRole('textbox', { name: '필요 역량', exact: true })
           await input.fill('F'.repeat(200))
           await input.press('Enter')

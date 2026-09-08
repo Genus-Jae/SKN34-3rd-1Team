@@ -6,6 +6,7 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { appPaths } from '../../../shared/routes/appPaths'
 import { usePartnerRecruitmentListViewModel } from '../viewmodel/usePartnerRecruitmentListViewModel'
 import {
   partnerRecruitmentStyles,
@@ -101,7 +102,7 @@ function RecruitmentCard({ recruitment, availableDetailId }: { recruitment: Part
               ? workspacePageStyles.secondaryButton
               : workspacePageStyles.primaryButton
           }
-          to={`/partners/detail?${new URLSearchParams({ recruitmentId: recruitment.id })}`}
+          to={`${appPaths.partnerDetail}?${new URLSearchParams({ recruitmentId: recruitment.id })}`}
         >
           {recruitment.isMine ? '제안 관리' : '자세히 보기'}
         </Link> : <span className={workspacePageStyles.pendingLink} aria-disabled="true">
@@ -137,7 +138,7 @@ export function PartnerRecruitmentListPage() {
           </p>
         </div>
         <div className={workspacePageStyles.headerActions}>
-          <Link className={workspacePageStyles.primaryButton} to="/partners/new">
+          <Link className={workspacePageStyles.primaryButton} to={appPaths.partnerNew}>
             <svg
               width="16"
               height="16"

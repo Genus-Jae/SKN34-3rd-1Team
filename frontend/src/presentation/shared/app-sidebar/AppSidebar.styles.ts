@@ -44,7 +44,6 @@ export const appSidebarStyles = {
   accountCompany:
     'mt-[0.1rem] block overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-sample-muted',
   accountActions: 'flex items-center gap-3 pl-[0.35rem]',
-  accountLink: 'text-[0.72rem] font-semibold text-brand-primary no-underline hover:underline',
   logoutButton: 'cursor-pointer border-0 bg-transparent p-0 text-[0.72rem] font-semibold text-sample-muted hover:text-brand-primary hover:underline',
   workspace: '@container/workspace flex min-h-0 min-w-0 flex-col overflow-y-auto max-chat:overflow-visible',
 } as const

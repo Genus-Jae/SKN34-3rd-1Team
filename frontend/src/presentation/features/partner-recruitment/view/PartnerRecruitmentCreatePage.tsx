@@ -4,6 +4,7 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { appPaths } from '../../../shared/routes/appPaths'
 import { WorkspaceToggle } from '../../../shared/workspace/WorkspaceToggle'
 import { usePartnerRecruitmentCreateViewModel } from '../viewmodel/usePartnerRecruitmentCreateViewModel'
 import {
@@ -57,7 +58,7 @@ export function PartnerRecruitmentCreatePage() {
     <>
       <header className={workspacePageStyles.header}>
         <div className={workspacePageStyles.headerTitleGroup}>
-          <Link className={workspacePageStyles.headerBackLink} to="/partners">
+          <Link className={workspacePageStyles.headerBackLink} to={appPaths.partners}>
             <svg
               width="14"
               height="14"
@@ -393,7 +394,7 @@ export function PartnerRecruitmentCreatePage() {
                 입력 형식을 확인한 뒤 예시 목록으로 이동합니다. 실제 모집글은 등록되지 않습니다.
               </p>
               <div className={partnerRecruitmentStyles.formActionButtons}>
-                <Link className={partnerRecruitmentStyles.formCancelButton} to="/partners">
+                <Link className={partnerRecruitmentStyles.formCancelButton} to={appPaths.partners}>
                   취소
                 </Link>
                 <button className={partnerRecruitmentStyles.formSubmitButton} type="submit">

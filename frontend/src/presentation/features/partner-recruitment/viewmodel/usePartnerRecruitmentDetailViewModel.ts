@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
-import { partnerRecruitmentDetail } from './partnerRecruitmentPlaceholders'
+import { partnerRecruitmentDetail } from '../../../shared/partner-recruitment/partnerRecruitmentPlaceholders'
 
 const proposalMessageMaxLength = 500
 
