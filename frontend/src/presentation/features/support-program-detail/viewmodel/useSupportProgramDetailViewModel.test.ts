@@ -34,10 +34,10 @@ describe('useSupportProgramDetailViewModel', () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(requestSignal?.aborted).toBe(true)
-    expect(result.current).toEqual({ status: 'failed', program: null })
+    expect(result.current).toMatchObject({ status: 'failed', program: null })
 
     await act(async () => pending.resolve(supportPrograms[0]))
-    expect(result.current).toEqual({ status: 'failed', program: null })
+    expect(result.current).toMatchObject({ status: 'failed', program: null })
     expect(vi.getTimerCount()).toBe(0)
   })
 
@@ -67,8 +67,8 @@ describe('useSupportProgramDetailViewModel', () => {
       detailUseCase,
     ))
 
-    expect(result.current).toEqual({ status: 'loading', program: null })
-    await waitFor(() => expect(result.current).toEqual({
+    expect(result.current).toMatchObject({ status: 'loading', program: null })
+    await waitFor(() => expect(result.current).toMatchObject({
       status: 'ready',
       program: supportPrograms[0],
     }))
@@ -83,7 +83,44 @@ describe('useSupportProgramDetailViewModel', () => {
       detailUseCase,
     ))
 
-    await waitFor(() => expect(result.current).toEqual({ status: 'not-found', program: null }))
+    await waitFor(() => expect(result.current).toMatchObject({ status: 'not-found', program: null }))
+  })
+
+  it('allows a manual retry after timeout and discards the original late response', async () => {
+    vi.useFakeTimers()
+    const pending = deferredProgram()
+    const execute = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValueOnce(supportPrograms[0])
+    const detailUseCase = createDetailUseCase(execute)
+    const { result } = renderHook(() => useSupportProgramDetailViewModel(getIdentity(), detailUseCase))
+    await act(async () => vi.advanceTimersByTimeAsync(supportProgramDetailTimeoutMilliseconds))
+    expect(result.current.status).toBe('failed')
+    expect(execute).toHaveBeenCalledOnce()
+    await act(async () => result.current.retry())
+    expect(result.current).toMatchObject({ status: 'ready', program: supportPrograms[0] })
+    expect(execute).toHaveBeenCalledTimes(2)
+    await act(async () => pending.resolve(supportPrograms[1]))
+    expect(result.current).toMatchObject({ status: 'ready', program: supportPrograms[0] })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('aborts the old identity request and discards its late response after an identity change', async () => {
+    const pending = deferredProgram()
+    const signals: AbortSignal[] = []
+    const execute = vi.fn((_identity: SupportProgramIdentity, signal?: AbortSignal) => {
+      signals.push(signal!)
+      return signals.length === 1 ? pending.promise : Promise.resolve(supportPrograms[1])
+    })
+    const detailUseCase = createDetailUseCase(execute)
+    const { result, rerender } = renderHook(
+      (identity: SupportProgramIdentity) => useSupportProgramDetailViewModel(identity, detailUseCase),
+      { initialProps: getIdentity() },
+    )
+    const next = { sourceCode: supportPrograms[1].sourceCode, sourceProgramId: supportPrograms[1].id }
+    rerender(next)
+    expect(signals[0].aborted).toBe(true)
+    await waitFor(() => expect(result.current.program).toEqual(supportPrograms[1]))
+    await act(async () => pending.resolve(supportPrograms[0]))
+    expect(result.current.program).toEqual(supportPrograms[1])
   })
 
   it('aborts the in-flight detail request when the page unmounts', async () => {

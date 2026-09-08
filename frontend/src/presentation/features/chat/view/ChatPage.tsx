@@ -1,4 +1,4 @@
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 
 import type { SupportProgram, SupportProgramEligibilityAxis } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramConversationContext, SupportProgramInterpretation } from '../../../../domain/entities/SupportProgramConversation'
@@ -179,6 +179,9 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
         layout === 'workspace' ? chatPageStyles.workspaceTimeline : chatPageStyles.timeline
       }
       ref={timelineRef}
+      role="region"
+      aria-label="대화 내역"
+      tabIndex={0}
     >
       <p
         className={chatPageStyles.searchStatus}
@@ -270,6 +273,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     // 로그인 뒤의 작업 화면은 대화와 하단 입력창으로 구성합니다.
     return (
       <main className={chatPageStyles.workspacePage}>
+        <h1 className="sr-only">지원사업 채팅</h1>
         <section className={chatPageStyles.workspaceShell}>
           {timeline}
           <form className={chatPageStyles.composerWorkspace} onSubmit={handleSubmit}>
@@ -382,8 +386,9 @@ function SupportProgramSearchReadinessNotice({
           type="button"
           className={chatPageStyles.readinessRetryButton}
           onClick={onRetry}
+          disabled={isRefreshing}
         >
-          상태 다시 확인
+          {isRefreshing ? '확인 중…' : '상태 다시 확인'}
         </button>
       </section>
     )
@@ -449,6 +454,8 @@ function ProgramResults({ programs }: { programs: SupportProgram[] }) {
 }
 
 function ProgramCard({ program }: { program: SupportProgram }) {
+  const { pathname } = useLocation()
+  const searchReturnTo = pathname.replace(/\/+$/, '') === '/chat' ? '/chat' : '/'
   const review = program.eligibilityReview
   return (
     <article className={chatPageStyles.programCard}>
@@ -498,6 +505,7 @@ function ProgramCard({ program }: { program: SupportProgram }) {
         <Link
           className={chatPageStyles.programDetailsButton}
           to={createSupportProgramDetailPath(program)}
+          state={{ searchReturnTo }}
         >
           상세 조건 보기
         </Link>

@@ -34,9 +34,9 @@ export const chatPageStyles = {
   userMessageRow: 'justify-end',
   assistantAvatar:
     'grid size-8 shrink-0 place-items-center self-start rounded-[0.7rem] bg-brand-accent font-black text-app-ink',
-  messageContent: 'max-w-[min(700px,90%)] max-chat:max-w-[88%]',
+  messageContent: 'min-w-0 max-w-[min(700px,90%)] [overflow-wrap:anywhere] max-chat:max-w-[88%]',
   messageBubble:
-    'px-[1.1rem] py-4 leading-[1.65] shadow-[0_10px_30px_rgb(47_67_129_/_7%)]',
+    'whitespace-pre-wrap px-[1.1rem] py-4 leading-[1.65] shadow-[0_10px_30px_rgb(47_67_129_/_7%)]',
   userMessageBubble: 'rounded-[1rem_1rem_0.25rem_1rem] bg-brand-primary text-white',
   assistantMessageBubble: 'rounded-[1rem_1rem_1rem_0.25rem] bg-white text-[#293454]',
   suggestedQuestions: 'mt-[0.85rem] flex flex-wrap gap-2',
@@ -53,11 +53,11 @@ export const chatPageStyles = {
   reviewRequiredTag: 'rounded-[0.35rem] bg-[#fff4df] px-[0.48rem] py-1 text-[0.68rem] font-extrabold text-[#805a20]',
   searchingBubble: classes(
     'rounded-[1rem_1rem_1rem_0.25rem] bg-white px-[1.1rem] py-4 leading-[1.65]',
-    'text-[#6d7898] shadow-[0_10px_30px_rgb(47_67_129_/_7%)]',
+    'text-sample-muted shadow-[0_10px_30px_rgb(47_67_129_/_7%)]',
   ),
   intro: 'mx-auto w-[min(860px,calc(100%_-_2rem))] pt-9 max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-6',
   introTitle: 'm-0 text-[1.45rem] font-bold tracking-[-0.04em] text-[#151d3a] max-chat:text-[1.2rem]',
-  introDescription: 'mt-2 mb-0 text-[0.86rem] leading-[1.6] text-[#6d7898]',
+  introDescription: 'mt-2 mb-0 text-[0.86rem] leading-[1.6] text-sample-muted',
   composer:
     'mx-auto w-[min(860px,calc(100%_-_2rem))] pt-6 pb-7 max-chat:w-[calc(100%_-_1.2rem)] max-chat:pt-4 max-chat:pb-5',
   suggestions: 'mx-auto mb-4 flex w-[min(860px,calc(100%_-_2rem))] flex-wrap gap-2 max-chat:w-[calc(100%_-_1.2rem)]',
@@ -86,7 +86,7 @@ export const chatPageStyles = {
     'shrink-0 cursor-pointer rounded-[0.45rem] border border-[#dcaab2] bg-white px-2 py-[0.3rem] text-[0.72rem] font-bold text-[#8f3340]',
   composerInput: classes(
     'min-h-[4.25rem] w-full resize-none rounded-2xl border bg-white',
-    'pt-[1.35rem] pr-[3.4rem] pb-[1.75rem] pl-5 text-[#1b2544]',
+    'pt-[1.35rem] pr-[3.4rem] pb-[1.75rem] pl-5 text-[#1b2544] placeholder:text-sample-muted',
     'border-[#d7dcef] shadow-[0_10px_28px_rgb(47_67_129_/_7%)] outline-0',
     'focus:border-[#7774d7] focus:shadow-[0_0_0_3px_rgb(119_116_215_/_15%)]',
   ),
@@ -99,7 +99,7 @@ export const chatPageStyles = {
     'absolute top-[0.65rem] right-[0.65rem] rounded-[0.7rem] border-0 px-3 py-[0.58rem]',
     'cursor-pointer bg-[#eef0fb] text-[0.75rem] font-bold text-[#49557a]',
   ),
-  composerHint: 'mt-[0.45rem] ml-[0.35rem] block text-[0.68rem] text-[#8a94ae]',
+  composerHint: 'mt-[0.45rem] ml-[0.35rem] block text-[0.68rem] text-[#626d89]',
   programCard:
     'rounded-2xl border border-[#e4e8f5] bg-white p-[1.1rem] shadow-[0_12px_30px_rgb(47_67_129_/_7%)]',
   programCardHeader: 'flex flex-wrap items-center justify-between gap-3',
@@ -108,7 +108,7 @@ export const chatPageStyles = {
   programDeadline: 'text-[0.74rem] font-extrabold text-[#b75561]',
   programTitle:
     'mt-3 mb-[0.18rem] text-[1.02rem] font-bold tracking-[-0.025em] text-app-ink',
-  programOrganization: 'm-0 text-[0.75rem] text-[#7883a3]',
+  programOrganization: 'm-0 text-[0.75rem] text-sample-muted',
   programSummary: 'my-3 text-[0.82rem] leading-[1.55] text-[#5c6785]',
   programDetails: classes(
     'flex flex-col items-start justify-between gap-1 rounded-[0.65rem] p-[0.7rem]',

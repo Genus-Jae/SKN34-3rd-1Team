@@ -16,6 +16,8 @@ const initialState: CoreApiHealthState = {
   isLoading: true,
 }
 
+const coreApiHealthTimeoutMilliseconds = 10_000
+
 /** Core API Health 요청과 화면 수명에 따른 취소를 직접 관리합니다. */
 export function useCoreApiHealth(
   fetchCoreApiHealth: FetchCoreApiHealth = appContainer.resolve(
@@ -23,11 +25,13 @@ export function useCoreApiHealth(
   ),
 ) {
   const activeController = useRef<AbortController | null>(null)
+  const activeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeRequestId = useRef(0)
   const isMounted = useRef(false)
   const [state, setState] = useState<CoreApiHealthState>(initialState)
 
   const refetch = useCallback(async () => {
+    if (activeTimeout.current !== null) clearTimeout(activeTimeout.current)
     activeController.current?.abort()
 
     const controller = new AbortController()
@@ -35,10 +39,18 @@ export function useCoreApiHealth(
     activeController.current = controller
     activeRequestId.current = requestId
     setState({ data: undefined, isError: false, isLoading: true })
+    const timeoutId = setTimeout(() => {
+      if (!isMounted.current || activeRequestId.current !== requestId) return
+      activeController.current = null
+      activeTimeout.current = null
+      controller.abort()
+      setState({ data: undefined, isError: true, isLoading: false })
+    }, coreApiHealthTimeoutMilliseconds)
+    activeTimeout.current = timeoutId
 
     try {
       const data = await fetchCoreApiHealth(controller.signal)
-      if (!isMounted.current || activeRequestId.current !== requestId) return
+      if (!isMounted.current || activeRequestId.current !== requestId || controller.signal.aborted) return
       setState({ data, isError: false, isLoading: false })
     } catch {
       if (
@@ -47,6 +59,12 @@ export function useCoreApiHealth(
         || controller.signal.aborted
       ) return
       setState({ data: undefined, isError: true, isLoading: false })
+    } finally {
+      clearTimeout(timeoutId)
+      if (activeRequestId.current === requestId) {
+        activeController.current = null
+        activeTimeout.current = null
+      }
     }
   }, [fetchCoreApiHealth])
 
@@ -57,6 +75,8 @@ export function useCoreApiHealth(
     return () => {
       isMounted.current = false
       activeRequestId.current += 1
+      if (activeTimeout.current !== null) clearTimeout(activeTimeout.current)
+      activeTimeout.current = null
       activeController.current?.abort()
     }
   }, [refetch])

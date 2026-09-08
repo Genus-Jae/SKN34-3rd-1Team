@@ -42,6 +42,47 @@ afterEach(() => {
 })
 
 describe('App navigation', () => {
+  it.each(['/', '/chat', '/chat/'])('%s 검색에서 상세·질문을 왕복하면 원래 배치와 서버 결과 순서를 보존한다', async (path) => {
+    const returnPath = path === '/' ? '/' : '/chat'
+    const programs = [relocationReviewRequiredProgram, conditionMatchedProgram]
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ query: '서울 AI', programs }))
+      .mockImplementation(async () => jsonResponse(programs[0]))
+    vi.stubGlobal('fetch', fetchMock)
+    const store = createAppStore()
+    renderApp(store, path)
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
+    fireEvent.change(input, { target: { value: '서울 AI' } })
+    await submitConfirmedSearch(input)
+    await screen.findByRole('heading', { name: programs[0].title })
+    const messages = store.getState().chat.messages
+    fireEvent.click(screen.getAllByRole('link', { name: '상세 조건 보기' })[0])
+    await screen.findByText('자격 미평가 · 공고 상세 정보')
+    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe(returnPath)
+    fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
+    fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
+    await screen.findByText('자격 미평가 · 공고 상세 정보')
+    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe(returnPath)
+    fireEvent.click(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }))
+    const cards = screen.getByRole('region', { name: '지원사업 검색 결과' }).querySelectorAll('article')
+    expect(Array.from(cards).map(card => card.querySelector('h2')?.textContent)).toEqual(programs.map(p => p.title))
+    expect(Boolean(screen.queryByRole('complementary', { name: '작업 사이드바' }))).toBe(returnPath === '/chat')
+    expect(store.getState().chat.messages).toEqual(messages)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('준비 상태 재확인 중 오류 안내의 버튼을 비활성화한다', () => {
+    const refetch = vi.fn()
+    readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
+      isError: true, isRefreshing: true, canSearch: false, refetch,
+    }))
+    renderApp(createAppStore())
+    const button = screen.getByRole('button', { name: '확인 중…' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    fireEvent.click(button)
+    expect(refetch).not.toHaveBeenCalled()
+  })
+
   it('공용 헤더 가운데에 현재 화면 이름을 표시한다', () => {
     renderApp(createAppStore())
 
@@ -63,10 +104,12 @@ describe('App navigation', () => {
     expect(screen.getByRole('link', { name: '기업 계정 만들기' })).toBeTruthy()
   })
 
-  it('로그인하면 헤더 대신 사이드바가 있는 작업 채팅 화면으로 이동한다', () => {
+  it('데모 입력을 확인하면 인증 없이 사이드바가 있는 작업 채팅 화면으로 이동한다', () => {
     renderApp(createAppStore(), '/login')
 
-    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+    fireEvent.change(screen.getByLabelText('이메일'), { target: { value: 'demo@example.test' } })
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'Demo1234' } })
+    fireEvent.click(screen.getByRole('button', { name: '입력 확인 후 데모 보기' }))
 
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()

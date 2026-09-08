@@ -20,6 +20,14 @@ export function PartnerRecruitmentDetailPage() {
     proposalFlowSteps,
   } = usePartnerRecruitmentDetailViewModel()
 
+  if (!recruitment) {
+    return <div className={workspacePageStyles.content}>
+      <h1 className={workspacePageStyles.title}>준비되지 않은 모집글 상세입니다</h1>
+      <p className={workspacePageStyles.emptyNote}>요청한 모집글의 상세 예시가 없습니다. 다른 모집글로 대신 표시하지 않습니다.</p>
+      <Link className={workspacePageStyles.secondaryButton} to="/partners">파트너 모집 목록</Link>
+    </div>
+  }
+
   return (
     <>
       <header className={workspacePageStyles.header}>
@@ -43,16 +51,17 @@ export function PartnerRecruitmentDetailPage() {
           <h1 className={workspacePageStyles.title}>모집글 상세</h1>
         </div>
         <div className={workspacePageStyles.headerActions}>
-          <button className={workspacePageStyles.secondaryButton} type="button">
-            모집글 저장
+          <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+            모집글 저장 · 준비 중
           </button>
-          <button className={workspacePageStyles.secondaryButton} type="button">
-            링크 복사
+          <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+            링크 복사 · 준비 중
           </button>
         </div>
       </header>
 
       <div className={workspacePageStyles.content}>
+        <p className={workspacePageStyles.emptyNote}>모집글 상세 데모입니다. 매칭은 예시이며 제안은 전송되지 않습니다. 입력은 화면을 나가면 사라집니다.</p>
         <div className={workspacePageStyles.columns}>
           <div className={workspacePageStyles.column}>
             <section className={workspacePageStyles.card} aria-label="모집 조건">
@@ -148,8 +157,8 @@ export function PartnerRecruitmentDetailPage() {
                 >
                   공식 원문 보기
                 </a>
-                <button className={partnerRecruitmentStyles.pillLink} type="button">
-                  관심 공고에 추가
+                <button className={partnerRecruitmentStyles.pillLink} type="button" disabled>
+                  관심 공고에 추가 · 준비 중
                 </button>
               </div>
             </section>
@@ -178,11 +187,11 @@ export function PartnerRecruitmentDetailPage() {
               </p>
 
               <div className={partnerRecruitmentStyles.linkRow}>
-                <button className={workspacePageStyles.mutedLink} type="button">
-                  이 모집글 숨기기
+                <button className={workspacePageStyles.mutedLink} type="button" disabled>
+                  이 모집글 숨기기 · 준비 중
                 </button>
-                <button className={workspacePageStyles.dangerLink} type="button">
-                  신고
+                <button className={workspacePageStyles.dangerLink} type="button" disabled>
+                  신고 · 준비 중
                 </button>
               </div>
             </section>
@@ -257,8 +266,8 @@ export function PartnerRecruitmentDetailPage() {
                 </label>
               </div>
 
-              <button className={partnerRecruitmentStyles.proposalSubmit} type="submit">
-                참여 제안 보내기
+              <button className={partnerRecruitmentStyles.proposalSubmit} type="submit" disabled>
+                참여 제안 보내기 · 준비 중
               </button>
 
               <p className={partnerRecruitmentStyles.disclaimer}>

@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 
 import type { SupportProgram, SupportProgramStatus } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import { useSupportProgramDetailViewModel } from '../viewmodel/useSupportProgramDetailViewModel'
 import { supportProgramDetailStyles } from './SupportProgramDetailPage.styles'
+import { getSupportProgramSearchReturnTo } from './supportProgramNavigation'
 
 /** URL의 제공처·원본 공고 ID로 최신 상세 정보를 조회하는 화면입니다. */
 export function SupportProgramDetailPage() {
+  const searchReturnTo = getSupportProgramSearchReturnTo(useLocation().state)
   const [searchParams] = useSearchParams()
   const identity = getSupportProgramIdentity(
     searchParams.get('sourceCode') ?? undefined,
@@ -17,6 +19,7 @@ export function SupportProgramDetailPage() {
   if (!identity) {
     return (
       <UnavailableSupportProgramDetail
+        searchReturnTo={searchReturnTo}
         description="공고 주소가 올바르지 않습니다. 검색 결과에서 공고를 다시 선택해 주세요."
         title="공고 정보를 찾을 수 없습니다"
       />
@@ -27,20 +30,25 @@ export function SupportProgramDetailPage() {
     <SupportProgramDetailContent
       key={JSON.stringify([identity.sourceCode, identity.sourceProgramId])}
       identity={identity}
+      searchReturnTo={searchReturnTo}
     />
   )
 }
 
-function SupportProgramDetailContent({ identity }: { identity: SupportProgramIdentity }) {
+function SupportProgramDetailContent({ identity, searchReturnTo }: {
+  identity: SupportProgramIdentity
+  searchReturnTo: '/' | '/chat'
+}) {
   const detail = useSupportProgramDetailViewModel(identity)
 
   if (detail.status === 'loading') {
-    return <LoadingSupportProgramDetail />
+    return <LoadingSupportProgramDetail searchReturnTo={searchReturnTo} />
   }
 
   if (detail.status === 'not-found') {
     return (
       <UnavailableSupportProgramDetail
+        searchReturnTo={searchReturnTo}
         description="존재하지 않거나 더 이상 제공되지 않는 공고입니다. 검색 결과에서 다른 공고를 확인해 주세요."
         title="공고 정보를 찾을 수 없습니다"
       />
@@ -49,18 +57,20 @@ function SupportProgramDetailContent({ identity }: { identity: SupportProgramIde
 
   if (detail.status === 'failed') {
     return <UnavailableSupportProgramDetail
+      searchReturnTo={searchReturnTo}
+      retry={detail.retry}
       description="공고 상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
       title="공고 정보를 불러오지 못했습니다"
     />
   }
 
-  return <SupportProgramDetail program={detail.program} />
+  return <SupportProgramDetail program={detail.program} searchReturnTo={searchReturnTo} />
 }
 
-function LoadingSupportProgramDetail() {
+function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: '/' | '/chat' }) {
   return (
     <main className={supportProgramDetailStyles.unavailablePage} aria-live="polite">
-      <Link className={supportProgramDetailStyles.backLink} to="/">
+      <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
         ← 검색 결과로 돌아가기
       </Link>
       <section className={supportProgramDetailStyles.unavailableCard}>
@@ -74,11 +84,14 @@ function LoadingSupportProgramDetail() {
   )
 }
 
-function SupportProgramDetail({ program }: { program: SupportProgram }) {
+function SupportProgramDetail({ program, searchReturnTo }: {
+  program: SupportProgram
+  searchReturnTo: '/' | '/chat'
+}) {
   return (
     <main className={supportProgramDetailStyles.page}>
       <header className={supportProgramDetailStyles.header}>
-        <Link className={supportProgramDetailStyles.backLink} to="/">
+        <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
           ← 검색 결과로 돌아가기
         </Link>
         <span className={supportProgramDetailStyles.sourceBadge}>{program.sourceName}</span>
@@ -104,7 +117,7 @@ function SupportProgramDetail({ program }: { program: SupportProgram }) {
         </div>
       </section>
 
-      <p className={supportProgramDetailStyles.sourceDescription}>
+      <p className={supportProgramDetailStyles.qualificationNotice}>
         상세 조회는 검색 당시 기업 조건으로 자격을 다시 평가하지 않습니다.
         검색 결과의 조건 확인 상태와 인용은 검색 화면에서 확인하세요.
         지역·분야 태그만으로 신청 자격을 판단하지 마세요.
@@ -158,6 +171,7 @@ function SupportProgramDetail({ program }: { program: SupportProgram }) {
             </p>
             <Link
               className={supportProgramDetailStyles.questionLink}
+              state={{ searchReturnTo }}
               to={`/support-programs/detail/question?${new URLSearchParams({
                 sourceCode: program.sourceCode,
                 sourceProgramId: program.id,
@@ -198,20 +212,29 @@ function SupportProgramDetail({ program }: { program: SupportProgram }) {
 
 function UnavailableSupportProgramDetail({
   description,
+  retry,
+  searchReturnTo,
   title,
 }: {
   description: string
+  retry?: () => void
+  searchReturnTo: '/' | '/chat'
   title: string
 }) {
   return (
     <main className={supportProgramDetailStyles.unavailablePage}>
-      <Link className={supportProgramDetailStyles.backLink} to="/">
+      <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
         ← 검색 결과로 돌아가기
       </Link>
       <section className={supportProgramDetailStyles.unavailableCard}>
         <p className={supportProgramDetailStyles.eyebrow}>지원사업 상세</p>
         <h1 className={supportProgramDetailStyles.title}>{title}</h1>
         <p className={supportProgramDetailStyles.unavailableDescription}>{description}</p>
+        {retry ? (
+          <button type="button" className={supportProgramDetailStyles.retryButton} onClick={retry}>
+            상세 정보 다시 불러오기
+          </button>
+        ) : null}
       </section>
     </main>
   )

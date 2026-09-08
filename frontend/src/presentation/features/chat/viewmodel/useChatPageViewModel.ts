@@ -22,6 +22,12 @@ export function useChatPageViewModel() {
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
   const focusAfterReset = useRef(false)
   const latestMessage = chat.messages.at(-1)
+  const previousTimelineState = useRef({
+    isInitial: true,
+    latestMessageId: latestMessage?.id,
+    interpretationStatus: chat.interpretation.status,
+    isSearching: chat.isSearching,
+  })
   const searchStatusAnnouncement = chat.isInterpreting
     ? '메시지의 조건 변경을 해석하고 있습니다. 아직 검색하지 않았습니다.'
     : chat.interpretation.status === 'ready'
@@ -35,11 +41,32 @@ export function useChatPageViewModel() {
       : ''
 
   useEffect(() => {
-    const timeline = timelineRef.current
-    if (timeline) timeline.scrollTop = timeline.scrollHeight
+    const previous = previousTimelineState.current
+    const latestMessageId = chat.messages.at(-1)?.id
+    const hasNewContent = (latestMessageId !== previous.latestMessageId && chat.messages.length > 1)
+      || (chat.isSearching && !previous.isSearching)
+      || (chat.interpretation.status !== previous.interpretationStatus
+        && ['pending', 'ready', 'clarification'].includes(chat.interpretation.status))
+    previousTimelineState.current = {
+      isInitial: false,
+      latestMessageId,
+      interpretationStatus: chat.interpretation.status,
+      isSearching: chat.isSearching,
+    }
     if (focusAfterReset.current) {
       focusAfterReset.current = false
       composerInputRef.current?.focus()
+      return
+    }
+    if (!hasNewContent && !previous.isInitial) return
+    const timeline = timelineRef.current
+    if (!timeline) return
+    const overflowY = getComputedStyle(timeline).overflowY
+    if (timeline.scrollHeight > timeline.clientHeight && ['auto', 'scroll'].includes(overflowY)) {
+      timeline.scrollTop = timeline.scrollHeight
+    } else if (hasNewContent) {
+      // 공개 화면·모바일은 타임라인 내부가 아닌 문서 전체가 스크롤됩니다.
+      timeline.lastElementChild?.scrollIntoView?.({ block: 'start' })
     }
   }, [chat.messages, chat.isSearching, chat.interpretation.status])
 

@@ -25,7 +25,7 @@ export function useAdminMembersViewModel() {
       { label: '인증', isActive: false },
       { label: '신고 접수만', isActive: false },
     ],
-    // 운영 규칙은 코드에 고정된 값이라 이 화면에서는 읽기만 합니다. 값 변경은 설정 화면이 맡습니다.
+    // 적용 예정인 규칙의 화면 예시입니다. 서버 정책 구현이나 운영 설정은 아직 없습니다.
     operationPolicies: [
       { label: '모집 마감일', value: '공고 접수 마감 이전만 허용 · 공고 마감 시 자동 종료' },
       { label: '제안 유효기간', value: '7일 무응답 시 자동 종료' },

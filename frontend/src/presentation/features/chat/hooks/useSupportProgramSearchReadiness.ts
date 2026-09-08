@@ -51,7 +51,6 @@ export function useSupportProgramSearchReadiness(
     activeRequestId.current = requestId
     setState((currentState) => ({
       ...currentState,
-      isError: false,
       isInitialLoading: currentState.data === undefined,
       isRefreshing: currentState.data !== undefined,
     }))

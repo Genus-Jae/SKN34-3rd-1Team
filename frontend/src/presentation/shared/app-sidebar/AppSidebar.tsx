@@ -148,6 +148,7 @@ export function AppSidebar() {
       ))}
 
       <div className={appSidebarStyles.account}>
+        <p className={appSidebarStyles.demoNotice}>예시 계정 · 인증 미연결</p>
         <div className={appSidebarStyles.accountCard}>
           <span className={appSidebarStyles.accountAvatar} aria-hidden="true">
             {sidebarAccount.initial}
@@ -157,8 +158,8 @@ export function AppSidebar() {
             <span className={appSidebarStyles.accountCompany}>{sidebarAccount.companyName}</span>
           </span>
         </div>
-        <Link className={appSidebarStyles.logoutLink} to="/">
-          로그아웃
+        <Link className={appSidebarStyles.publicSearchLink} to="/">
+          공개 검색으로
         </Link>
       </div>
     </aside>

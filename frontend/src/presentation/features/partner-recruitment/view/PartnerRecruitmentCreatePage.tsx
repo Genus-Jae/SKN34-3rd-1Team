@@ -30,6 +30,7 @@ export function PartnerRecruitmentCreatePage() {
     seekingCompanyAge,
     updateSeekingCompanyAge,
     recruitmentDeadline,
+    maximumRecruitmentDeadline,
     updateRecruitmentDeadline,
     capabilities,
     capabilityDraft,
@@ -40,6 +41,7 @@ export function PartnerRecruitmentCreatePage() {
     titleMaxLength,
     updateTitle,
     body,
+    error,
     updateBody,
     proposalSettings,
     toggleProposalSetting,
@@ -79,8 +81,9 @@ export function PartnerRecruitmentCreatePage() {
       </header>
 
       <div className={workspacePageStyles.content}>
+        <p className={workspacePageStyles.emptyNote}>모집글 작성 데모입니다. 입력은 저장·등록되지 않으며 화면을 나가면 사라집니다.</p>
         <div className={workspacePageStyles.columns}>
-          <form className={partnerRecruitmentStyles.form} onSubmit={submit} aria-label="모집글 작성">
+          <form className={partnerRecruitmentStyles.form} onSubmit={submit} aria-label="모집글 작성" noValidate>
             <section className={partnerRecruitmentStyles.formSection}>
               <div className={partnerRecruitmentStyles.formSectionHeader}>
                 <div className={partnerRecruitmentStyles.formSectionTitleGroup}>
@@ -107,8 +110,8 @@ export function PartnerRecruitmentCreatePage() {
                     {selectedProgram.organization} · {selectedProgram.selectedFrom}
                   </span>
                 </span>
-                <button className={workspacePageStyles.secondaryButton} type="button">
-                  공고 변경
+                <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+                  공고 변경 · 준비 중
                 </button>
               </div>
 
@@ -243,7 +246,10 @@ export function PartnerRecruitmentCreatePage() {
                     id="recruitment-deadline"
                     type="date"
                     name="recruitmentDeadline"
-                    max={selectedProgram.deadlineDate}
+                    max={maximumRecruitmentDeadline}
+                    required
+                    aria-invalid={error?.field === 'recruitmentDeadline'}
+                    aria-describedby={error?.field === 'recruitmentDeadline' ? 'recruitment-error' : undefined}
                     value={recruitmentDeadline}
                     onChange={(event) => updateRecruitmentDeadline(event.target.value)}
                   />
@@ -277,8 +283,8 @@ export function PartnerRecruitmentCreatePage() {
                   <span className={partnerRecruitmentStyles.formStepBadge} aria-hidden="true">3</span>
                   <h2 className={partnerRecruitmentStyles.formSectionTitle}>소개</h2>
                 </div>
-                <button className={workspacePageStyles.secondaryButton} type="button">
-                  공고 원문에서 참여 요건 초안 가져오기
+                <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+                  참여 요건 초안 가져오기 · 준비 중
                 </button>
               </div>
 
@@ -290,6 +296,9 @@ export function PartnerRecruitmentCreatePage() {
                   type="text"
                   name="title"
                   maxLength={titleMaxLength}
+                  required
+                  aria-invalid={error?.field === 'title'}
+                  aria-describedby={error?.field === 'title' ? 'recruitment-error' : undefined}
                   placeholder="어떤 과제에 어떤 파트너를 찾는지 한 줄로 적어 주세요."
                   value={title}
                   onChange={(event) => updateTitle(event.target.value)}
@@ -305,6 +314,9 @@ export function PartnerRecruitmentCreatePage() {
                   className={`${partnerRecruitmentStyles.fieldControl} ${partnerRecruitmentStyles.fieldTextarea}`}
                   id="recruitment-body"
                   name="body"
+                  required
+                  aria-invalid={error?.field === 'body'}
+                  aria-describedby={error?.field === 'body' ? 'recruitment-error' : undefined}
                   placeholder="우리 기업 소개, 맡을 역할, 상대에게 바라는 역량과 일정을 적어 주세요."
                   value={body}
                   onChange={(event) => updateBody(event.target.value)}
@@ -375,17 +387,17 @@ export function PartnerRecruitmentCreatePage() {
               </div>
             </section>
 
+            {error ? <p id="recruitment-error" className={workspacePageStyles.emptyNote} role="alert">{error.message}</p> : null}
             <div className={partnerRecruitmentStyles.formActions}>
               <p className={partnerRecruitmentStyles.formActionsNote}>
-                등록하면 모집글 목록과 연결 공고의 파트너 탭에 바로 보입니다. 모집 마감 전까지
-                수정하거나 조기 마감할 수 있습니다.
+                입력 형식을 확인한 뒤 예시 목록으로 이동합니다. 실제 모집글은 등록되지 않습니다.
               </p>
               <div className={partnerRecruitmentStyles.formActionButtons}>
                 <Link className={partnerRecruitmentStyles.formCancelButton} to="/partners">
                   취소
                 </Link>
                 <button className={partnerRecruitmentStyles.formSubmitButton} type="submit">
-                  모집글 등록
+                  입력 확인 후 목록으로
                 </button>
               </div>
             </div>

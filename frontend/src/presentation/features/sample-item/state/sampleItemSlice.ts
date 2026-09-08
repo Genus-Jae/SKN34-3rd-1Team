@@ -51,11 +51,11 @@ const sampleItemSlice = createSlice({
       state.isRetrying = false
       state.status = 'idle'
     },
-    preparationFailed(state, action: PayloadAction<{ requestId: string }>) {
+    preparationFailed(state, action: PayloadAction<{ requestId: string; message?: string }>) {
       if (state.activeRequestId !== action.payload.requestId) return
       state.activeRequestId = null
-      state.error =
-        'Core API에 Redux 예제 요청을 전달하지 못했습니다. Core API 상태를 확인한 뒤 다시 요청해 주세요.'
+      state.error = action.payload.message
+        ?? 'Core API에 Redux 예제 요청을 전달하지 못했습니다. Core API 상태를 확인한 뒤 다시 요청해 주세요.'
       state.status = 'failed'
     },
     preparationStarted: {

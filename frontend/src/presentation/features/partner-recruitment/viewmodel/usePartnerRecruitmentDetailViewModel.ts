@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react'
+import { useSearchParams } from 'react-router'
 
 import { partnerRecruitmentDetail } from './partnerRecruitmentPlaceholders'
 
@@ -9,6 +10,10 @@ const proposalMessageMaxLength = 500
  * 제안 전송 API가 생기면 submitProposal에서 UseCase를 호출합니다.
  */
 export function usePartnerRecruitmentDetailViewModel() {
+  const [searchParams] = useSearchParams()
+  const requestedIds = searchParams.getAll('recruitmentId')
+  const hasAvailableDetail = requestedIds.length === 0
+    || (requestedIds.length === 1 && requestedIds[0] === partnerRecruitmentDetail.id)
   const [proposalMessage, setProposalMessage] = useState('')
   const [proposalOptions, setProposalOptions] = useState({
     shareProfile: true,
@@ -24,7 +29,7 @@ export function usePartnerRecruitmentDetailViewModel() {
   }
 
   return {
-    recruitment: partnerRecruitmentDetail,
+    recruitment: hasAvailableDetail ? partnerRecruitmentDetail : null,
     proposalMessage,
     proposalMessageMaxLength,
     updateProposalMessage: setProposalMessage,

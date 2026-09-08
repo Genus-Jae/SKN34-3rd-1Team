@@ -41,7 +41,7 @@ export const sampleItemStyles = {
     'hover:border-[#3664d8] hover:text-sample-primary',
   ),
   field: 'grid gap-2 font-bold text-[#1e2a49]',
-  optionalLabel: 'text-[0.8rem] font-medium not-italic text-[#7a849d]',
+  optionalLabel: 'text-[0.8rem] font-medium not-italic text-sample-muted',
   formControl,
   textareaControl: classes(formControl, 'resize-y'),
   fieldError,

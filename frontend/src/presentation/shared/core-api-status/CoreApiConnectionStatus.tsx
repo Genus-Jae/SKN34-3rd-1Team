@@ -9,7 +9,7 @@ export function CoreApiConnectionStatus() {
 
   if (isLoading) {
     return (
-      <div className={coreApiStatusStyles.root}>
+      <div className={coreApiStatusStyles.root} role="status" aria-atomic="true">
         <span className={coreApiStatusDotClassName('loading')} />
         <div>
           <strong className={coreApiStatusStyles.title}>Core API 연결 확인 중</strong>
@@ -21,7 +21,7 @@ export function CoreApiConnectionStatus() {
 
   if (isError || !data) {
     return (
-      <div className={coreApiStatusStyles.root}>
+      <div className={coreApiStatusStyles.root} role="status" aria-atomic="true">
         <span className={coreApiStatusDotClassName('error')} />
         <div>
           <strong className={coreApiStatusStyles.title}>Core API에 연결할 수 없습니다</strong>
@@ -41,7 +41,7 @@ export function CoreApiConnectionStatus() {
   const isHealthy = data.status === 'up'
 
   return (
-    <div className={coreApiStatusStyles.root}>
+    <div className={coreApiStatusStyles.root} role="status" aria-atomic="true">
       <span
         className={coreApiStatusDotClassName(isHealthy ? 'healthy' : 'error')}
       />
@@ -52,6 +52,15 @@ export function CoreApiConnectionStatus() {
         <p className={coreApiStatusStyles.description}>
           {data.service} · 상태: {data.status}
         </p>
+        {!isHealthy ? (
+          <button
+            type="button"
+            className={coreApiStatusStyles.retryButton}
+            onClick={() => void refetch()}
+          >
+            다시 확인
+          </button>
+        ) : null}
       </div>
     </div>
   )

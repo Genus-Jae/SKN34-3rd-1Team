@@ -5,11 +5,11 @@ export const adminMembersPageStyles = {
   statCell:
     'flex min-w-40 flex-1 flex-col gap-[0.2rem] rounded-xl border border-[#e4e8f5] bg-white px-4 py-[0.85rem]',
   statValue: 'text-[1.35rem] font-bold tracking-[-0.03em]',
-  statLabel: 'text-[0.7rem] text-[#7883a3]',
+  statLabel: 'text-[0.7rem] text-sample-muted',
   toolbar: 'flex flex-wrap items-center gap-2',
   search:
     'flex min-h-10 w-[260px] max-w-full items-center gap-2 rounded-[0.7rem] border border-[#cbd5ec] bg-white px-[0.9rem] text-[0.8rem] text-[#8a94ae]',
-  resultCount: 'ml-auto text-[0.78rem] text-[#7883a3]',
+  resultCount: 'ml-auto text-[0.78rem] text-sample-muted',
   tableScroll: 'w-full overflow-x-auto',
   emailCell: 'text-[0.74rem] [overflow-wrap:anywhere]',
   policyRow: 'flex items-start gap-3 rounded-[0.6rem] bg-[#f7f8fc] px-3 py-[0.6rem]',

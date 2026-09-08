@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import {
@@ -7,9 +7,11 @@ import {
   useSupportProgramEvidenceQuestionViewModel,
 } from '../viewmodel/useSupportProgramEvidenceQuestionViewModel'
 import { supportProgramEvidenceQuestionStyles } from './SupportProgramEvidenceQuestionPage.styles'
+import { getSupportProgramSearchReturnTo } from './supportProgramNavigation'
 
 /** URL로 지정한 공고의 원문 근거 질문을 담당하는 페이지입니다. */
 export function SupportProgramEvidenceQuestionPage() {
+  const searchReturnTo = getSupportProgramSearchReturnTo(useLocation().state)
   const [searchParams] = useSearchParams()
   const sourceCode = searchParams.get('sourceCode')
   const sourceProgramId = searchParams.get('sourceProgramId')
@@ -17,7 +19,7 @@ export function SupportProgramEvidenceQuestionPage() {
   if (!sourceCode?.trim() || !sourceProgramId?.trim()) {
     return (
       <main className={supportProgramEvidenceQuestionStyles.page}>
-        <Link className={supportProgramEvidenceQuestionStyles.backLink} to="/">
+        <Link className={supportProgramEvidenceQuestionStyles.backLink} to={searchReturnTo}>
           ← 검색 결과로 돌아가기
         </Link>
         <section className={supportProgramEvidenceQuestionStyles.evidenceSection}>
@@ -35,7 +37,7 @@ export function SupportProgramEvidenceQuestionPage() {
 
   return (
     <main className={supportProgramEvidenceQuestionStyles.page}>
-      <Link className={supportProgramEvidenceQuestionStyles.backLink} to={detailUrl}>
+      <Link className={supportProgramEvidenceQuestionStyles.backLink} to={detailUrl} state={{ searchReturnTo }}>
         ← 공고 상세로 돌아가기
       </Link>
       <SupportProgramEvidenceQuestionContent
@@ -63,6 +65,7 @@ function SupportProgramEvidenceQuestionContent({
     updateQuestion,
   } = useSupportProgramEvidenceQuestionViewModel(identity)
   const isValidationFailed = state.status === 'validation-failed'
+  const isTooLong = questionLength > maximumSupportProgramEvidenceQuestionLength
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -104,8 +107,8 @@ function SupportProgramEvidenceQuestionContent({
         <textarea
           id="support-program-evidence-question"
           className={supportProgramEvidenceQuestionStyles.evidenceInput}
-          aria-describedby="support-program-evidence-question-hint support-program-evidence-question-count"
-          aria-invalid={isValidationFailed}
+          aria-describedby={`support-program-evidence-question-hint support-program-evidence-question-count${isTooLong ? ' support-program-evidence-question-length-error' : ''}`}
+          aria-invalid={isValidationFailed || isTooLong}
           disabled={isAnswering}
           value={question}
           onChange={(event) => updateQuestion(event.target.value)}
@@ -137,6 +140,11 @@ function SupportProgramEvidenceQuestionContent({
         <small id="support-program-evidence-question-hint" className={supportProgramEvidenceQuestionStyles.evidenceHint}>
           질문은 최대 {maximumSupportProgramEvidenceQuestionLength}자이며, 자동으로 전송되지 않습니다.
         </small>
+        {isTooLong ? (
+          <p id="support-program-evidence-question-length-error" className={supportProgramEvidenceQuestionStyles.evidenceError} role="alert">
+            질문은 {maximumSupportProgramEvidenceQuestionLength}자 이하로 입력해 주세요.
+          </p>
+        ) : null}
       </form>
 
       <EvidenceQuestionFeedback state={state} />

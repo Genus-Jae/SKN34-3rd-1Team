@@ -37,13 +37,14 @@ export function AdminMembersPage() {
           <h1 className={workspacePageStyles.title}>회원·기업 목록</h1>
         </div>
         <div className={workspacePageStyles.headerActions}>
-          <button className={workspacePageStyles.secondaryButton} type="button">
-            CSV 내보내기
+          <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+            CSV 내보내기 · 준비 중
           </button>
         </div>
       </header>
 
       <div className={workspacePageStyles.content}>
+        <p className={workspacePageStyles.emptyNote}>관리자 화면 데모입니다. 회원·정책은 예시이며 조회·정지·메일 발송·내보내기는 연결되지 않았습니다.</p>
         <div className={adminMembersPageStyles.statRow}>
           {stats.map((stat) => (
             <div className={adminMembersPageStyles.statCell} key={stat.label}>
@@ -82,7 +83,7 @@ export function AdminMembersPage() {
             </span>
           </div>
 
-          <div className={adminMembersPageStyles.tableScroll}>
+          <div className={adminMembersPageStyles.tableScroll} role="region" aria-label="회원·기업 표 가로 스크롤" tabIndex={0}>
             <table className={workspacePageStyles.table}>
               <thead>
                 <tr>
@@ -132,15 +133,15 @@ export function AdminMembersPage() {
                       </td>
                       <td className={workspacePageStyles.tableCell}>
                         <span className={workspacePageStyles.tableActionCell}>
-                          <button className={workspacePageStyles.quietLink} type="button">
+                          <button className={workspacePageStyles.quietLink} type="button" disabled title="준비 중">
                             상세
                           </button>
                           {member.isEmailVerified ? (
-                            <button className={workspacePageStyles.dangerLink} type="button">
-                              정지
+                            <button className={workspacePageStyles.dangerLink} type="button" disabled title="준비 중">
+                              {member.status === 'PROPOSAL_BLOCKED' ? '정지 중' : '정지'}
                             </button>
                           ) : (
-                            <button className={workspacePageStyles.mutedLink} type="button">
+                            <button className={workspacePageStyles.mutedLink} type="button" disabled title="준비 중">
                               인증 메일 재발송
                             </button>
                           )}
@@ -158,10 +159,10 @@ export function AdminMembersPage() {
               1–{members.length} / {members.length}명
             </span>
             <span className="flex gap-2">
-              <button className={workspacePageStyles.secondaryButton} type="button">
+              <button className={workspacePageStyles.secondaryButton} type="button" disabled>
                 이전
               </button>
-              <button className={workspacePageStyles.secondaryButton} type="button">
+              <button className={workspacePageStyles.secondaryButton} type="button" disabled>
                 다음
               </button>
             </span>
@@ -173,7 +174,7 @@ export function AdminMembersPage() {
             <div>
               <h2 className={workspacePageStyles.cardTitle}>모집·제안 운영 규칙</h2>
               <p className={workspacePageStyles.cardDescription}>
-                코드에 고정된 정책입니다. 값 변경은 설정 화면에서만 할 수 있습니다.
+                구현 예정인 운영 규칙 예시입니다. 현재 서비스에 적용된 정책이나 변경 가능한 설정이 아닙니다.
               </p>
             </div>
           </div>
