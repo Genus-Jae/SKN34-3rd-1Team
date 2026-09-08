@@ -115,6 +115,31 @@ describe('useChatPageViewModel', () => {
     expect(harness.scrollIntoView).not.toHaveBeenCalled()
   })
 
+  it.each([
+    { overflowY: 'auto', clientHeight: 400, scrollHeight: 400 },
+    { overflowY: 'auto', clientHeight: 600, scrollHeight: 400 },
+    { overflowY: 'scroll', clientHeight: 400, scrollHeight: 400 },
+    { overflowY: 'scroll', clientHeight: 600, scrollHeight: 400 },
+  ] as const)('내용이 넘치지 않는 내부 $overflowY 화면($clientHeight/$scrollHeight)은 첫 로딩에서도 문서를 스크롤하지 않는다', (dimensions) => {
+    const initial = createChatHook()
+    const harness = renderScrollHarness(initial, true, dimensions)
+    const timeline = harness.model().timelineRef.current!
+    expect(timeline.clientHeight).toBeGreaterThanOrEqual(timeline.scrollHeight)
+    expect(harness.scrollIntoView).not.toHaveBeenCalled()
+    timeline.scrollTop = 0
+
+    harness.rerender({
+      ...initial,
+      messages: [...initial.messages, { id: 'first-question', role: 'user', text: '서울' }],
+      isInterpreting: true,
+      isBusy: true,
+      interpretation: { status: 'pending' },
+    })
+
+    expect(timeline.scrollTop).toBe(dimensions.scrollHeight)
+    expect(harness.scrollIntoView).not.toHaveBeenCalled()
+  })
+
   it('scrollIntoView가 없는 테스트 DOM에서도 새로운 제안 표시가 실패하지 않는다', () => {
     const initial = createChatHook()
     const harness = renderScrollHarness(initial)
@@ -314,7 +339,11 @@ function createSubmitEvent() {
   }
 }
 
-function renderScrollHarness(initial: ChatHook, internal = false) {
+function renderScrollHarness(
+  initial: ChatHook,
+  internal = false,
+  dimensions: { overflowY?: 'auto' | 'scroll'; clientHeight?: number; scrollHeight?: number } = {},
+) {
   let chat = initial
   let viewModel!: ReturnType<typeof useChatPageViewModel>
   const scrollIntoView = vi.fn()
@@ -327,10 +356,10 @@ function renderScrollHarness(initial: ChatHook, internal = false) {
       createElement('div', { ref: (element: HTMLDivElement | null) => {
         viewModel.timelineRef.current = element
         if (!element) return
-        element.style.overflowY = internal ? 'auto' : 'visible'
+        element.style.overflowY = internal ? dimensions.overflowY ?? 'auto' : 'visible'
         Object.defineProperties(element, {
-          clientHeight: { value: internal ? 400 : 1_000, configurable: true },
-          scrollHeight: { value: 1_000, configurable: true },
+          clientHeight: { value: dimensions.clientHeight ?? (internal ? 400 : 1_000), configurable: true },
+          scrollHeight: { value: dimensions.scrollHeight ?? 1_000, configurable: true },
         })
       } }, createElement('article', { ref: (element: HTMLElement | null) => {
         if (element && !Object.hasOwn(element, 'scrollIntoView')) element.scrollIntoView = scrollIntoView

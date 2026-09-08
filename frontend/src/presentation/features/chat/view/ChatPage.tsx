@@ -19,7 +19,7 @@ const companyConditionFields = [
   { key: 'supportPurpose', label: '지원 목적' },
 ] as const
 
-/** `landing`은 첫 진입 화면(입력창 상단), `workspace`는 로그인 뒤 원래 채팅 배치(입력창 하단)입니다. */
+/** 공개 검색은 첫 전송 후 중앙 소개에서 하단 입력 배치로 전환하며, 작업 채팅은 하단 배치를 유지합니다. */
 export type ChatPageLayout = 'landing' | 'workspace'
 
 export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
@@ -61,6 +61,8 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     || readiness.data?.searchState !== 'SEARCHABLE'
   const hasConfirmedSearch = confirmedContext.query !== null
   const hasSearchToReset = hasConfirmedSearch || conversationCount > 0
+  const isLandingIntro = layout === 'landing' && conversationCount === 0
+  const isDockedLanding = layout === 'landing' && !isLandingIntro
 
   const searchContextControls = hasConfirmedSearch ? (
     <div className={chatPageStyles.searchContextControls}>
@@ -91,8 +93,8 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   )
 
   const composerFooter = (
-    <div className={chatPageStyles.composerFooter}>
-      <small className={chatPageStyles.composerHint}>
+    <div className={`${chatPageStyles.composerFooter} ${isDockedLanding ? chatPageStyles.dockedComposerFooter : ''}`}>
+      <small className={`${chatPageStyles.composerHint} ${isDockedLanding ? chatPageStyles.dockedComposerHint : ''}`}>
         Enter로 전송 · Shift+Enter로 줄바꿈
         <span className="block text-[0.68rem]">검색 전 조건을 확인해요.</span>
       </small>
@@ -108,7 +110,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
       <div className={chatPageStyles.composerInputGroup}>
         <textarea
           ref={composerInputRef}
-          className={`${chatPageStyles.composerInput} ${layout === 'landing' ? chatPageStyles.landingComposerInput : chatPageStyles.workspaceComposerInput}`}
+          className={`${chatPageStyles.composerInput} ${isLandingIntro ? chatPageStyles.landingComposerInput : chatPageStyles.workspaceComposerInput} ${isDockedLanding ? chatPageStyles.dockedComposerInput : ''}`}
           aria-label="지원사업 검색어"
           aria-describedby={[
             hasReadinessNotice ? 'support-program-search-readiness' : null,
@@ -120,10 +122,11 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           onKeyDown={handleInputKeyDown}
-          placeholder={layout === 'landing'
+          placeholder={isLandingIntro
             ? '예: 서울에서 AI 서비스를 만드는 창업기업입니다. 사업화 지원을 받을 수 있을까요?'
-            : '찾고 싶은 지원사업이나 변경할 조건을 알려주세요.'}
-          rows={layout === 'landing' ? 3 : 1}
+            : isDockedLanding ? '지원사업·조건을 입력해 주세요.'
+              : '찾고 싶은 지원사업이나 변경할 조건을 알려주세요.'}
+          rows={isLandingIntro ? 3 : 1}
         />
         {composerFooter}
         {isBusy ? (
@@ -200,12 +203,13 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   const timeline = (
     <div
       className={
-        layout === 'workspace' ? chatPageStyles.workspaceTimeline : chatPageStyles.timeline
+        layout === 'workspace' ? chatPageStyles.workspaceTimeline
+          : isLandingIntro ? chatPageStyles.emptyTimeline : chatPageStyles.timeline
       }
       ref={timelineRef}
       role="region"
       aria-label="대화 내역"
-      tabIndex={0}
+      tabIndex={isLandingIntro ? -1 : 0}
     >
       <p
         className={chatPageStyles.searchStatus}
@@ -316,23 +320,26 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
 
   return (
     <main className={chatPageStyles.page}>
-      <section className={chatPageStyles.workspace}>
-        {introBlock}
-        <form className={chatPageStyles.composer} onSubmit={handleSubmit}>
+      <section className={`${chatPageStyles.workspace} ${isLandingIntro ? chatPageStyles.introWorkspace : chatPageStyles.conversationWorkspace}`}>
+        {isLandingIntro ? introBlock : <h1 className="sr-only">지원사업 채팅</h1>}
+        {timeline}
+        {/* 같은 폼·입력 노드를 유지하여 전환 중 요청 수명과 한글 입력 상태를 보존합니다. */}
+        <form className={isLandingIntro ? chatPageStyles.composer : chatPageStyles.composerDock} onSubmit={handleSubmit}>
+          {!isLandingIntro ? readinessNotice : null}
           {searchContextControls}
           {composerInputGroup}
           {composerErrors}
+          {!isLandingIntro ? <small className={`${chatPageStyles.privacyHint} ${chatPageStyles.dockedComposerHint}`}>개인정보·비밀정보는 입력하지 마세요.</small> : null}
         </form>
-        {suggestionChips}
-        <p className={chatPageStyles.sourceHint}>
+        {isLandingIntro ? suggestionChips : null}
+        {isLandingIntro ? <p className={chatPageStyles.sourceHint}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m12 3 8 4v5c0 5-8 9-8 9s-8-4-8-9V7l8-4Z" /><path d="m8 12 3 3 5-6" />
           </svg>
           기업마당 공식 공고 기반 · 최종 신청 조건은 원문에서 확인하세요.
-        </p>
-        <small className={chatPageStyles.privacyHint}>개인정보·비밀정보는 입력하지 마세요.</small>
-        {readinessNotice}
-        {timeline}
+        </p> : null}
+        {isLandingIntro ? <small className={chatPageStyles.privacyHint}>개인정보·비밀정보는 입력하지 마세요.</small> : null}
+        {isLandingIntro ? readinessNotice : null}
       </section>
     </main>
   )

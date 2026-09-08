@@ -64,10 +64,11 @@ export function useChatPageViewModel() {
     const timeline = timelineRef.current
     if (!timeline) return
     const overflowY = getComputedStyle(timeline).overflowY
-    if (timeline.scrollHeight > timeline.clientHeight && ['auto', 'scroll'].includes(overflowY)) {
+    if (['auto', 'scroll'].includes(overflowY)) {
+      // 짧은 첫 메시지도 문서를 밀어내지 않고, 고정된 대화 영역 안에서만 스크롤합니다.
       timeline.scrollTop = timeline.scrollHeight
     } else if (hasNewContent) {
-      // 공개 화면·모바일은 타임라인 내부가 아닌 문서 전체가 스크롤됩니다.
+      // 문서 스크롤을 사용하는 모바일 작업 화면은 새 내용을 문서 안에서 보여 줍니다.
       timeline.lastElementChild?.scrollIntoView?.({ block: 'start' })
     }
   }, [chat.messages, chat.isSearching, chat.interpretation.status])

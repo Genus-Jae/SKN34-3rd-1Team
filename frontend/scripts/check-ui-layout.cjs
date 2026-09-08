@@ -19,6 +19,31 @@ const paths = ['/', '/pricing', '/chat', '/login', '/signup', '/partners', '/par
   '/partners/detail?recruitmentId=ai-labeling', '/profile', '/admin/members', detailPath, questionPath,
   '/examples/sample-item/hook', '/examples/sample-item/redux']
 const sizes = [[320, 568], [375, 667], [768, 800], [844, 390], [1024, 800], [1280, 800], [1440, 900]]
+const chatOnlySizes = [[375, 400], [900, 700], [901, 700]]
+
+async function checkPublicChatDock(page, label) {
+  const geometry = await page.evaluate(() => {
+    const input = document.querySelector('textarea[aria-label="지원사업 검색어"]')
+    const form = input.form.getBoundingClientRect()
+    const timeline = document.querySelector('[aria-label="대화 내역"]').getBoundingClientRect()
+    const header = document.querySelector('header').getBoundingClientRect()
+    const buttons = [...input.form.querySelectorAll('button')]
+      .filter(button => ['검색 전송', '취소', '새 검색'].includes(button.getAttribute('aria-label') || button.textContent.trim()))
+      .map(button => button.getBoundingClientRect())
+    return { height: innerHeight, documentHeight: document.documentElement.scrollHeight, scrollY,
+      headerBottom: header.bottom, timelineTop: timeline.top, timelineBottom: timeline.bottom,
+      timelineHeight: timeline.height, formTop: form.top, formBottom: form.bottom,
+      buttonsVisible: buttons.every(rect => rect.top >= form.top - 1 && rect.bottom <= form.bottom + 1), rows: input.rows }
+  })
+  assert.equal(geometry.rows, 1, `${label}: 전송 뒤 간결한 입력창`)
+  assert.equal(geometry.scrollY, 0, `${label}: 문서 스크롤 금지`)
+  assert(geometry.documentHeight <= geometry.height + 1, `${label}: 외부 세로 넘침`)
+  assert(geometry.headerBottom <= geometry.timelineTop + 1, `${label}: 헤더와 대화 겹침`)
+  assert(geometry.timelineHeight >= 40, `${label}: 대화 높이 부족`)
+  assert(geometry.timelineBottom <= geometry.formTop + 1, `${label}: 대화와 입력창 겹침`)
+  assert(geometry.formBottom <= geometry.height + 1, `${label}: 하단 폼이 화면 안에 있어야 함`)
+  assert(geometry.buttonsVisible, `${label}: 전송·취소·새 검색 버튼이 폼 안에 보여야 함`)
+}
 
 async function checkBounds(page, label) {
   const failures = await page.evaluate(() => {
@@ -95,9 +120,10 @@ async function main() {
     const page = await context.newPage()
     page.on('pageerror', error => errors.push(error.message))
     page.setDefaultTimeout(8000)
-    for (const [width, height] of sizes) {
+    for (const [width, height] of [...sizes, ...chatOnlySizes]) {
       await page.setViewportSize({ width, height })
-      for (const path of paths) {
+      const checkedPaths = chatOnlySizes.some(size => size[0] === width && size[1] === height) ? ['/'] : paths
+      for (const path of checkedPaths) {
         const label = `${width}x${height} ${path}`
         await page.goto(origin + path)
         await page.locator('h1').first().waitFor({ state: 'attached' })
@@ -106,11 +132,21 @@ async function main() {
         pagesChecked++
         if (path === '/' || path === '/chat') {
           const input = page.getByRole('textbox', { name: '지원사업 검색어' })
+          const originalInput = await input.elementHandle()
           await input.fill('A'.repeat(400) + '\n서울 AI 사업')
+          if (path === '/') {
+            assert.equal(await input.getAttribute('rows'), '3', `${label}: 초안만으로 배치 전환 금지`)
+            assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 1)
+          }
           const before = { ...calls }
           await page.getByRole('button', { name: '검색 전송', exact: true }).click()
           const confirm = page.getByRole('button', { name: '이 조건으로 검색', exact: true })
           await confirm.waitFor()
+          if (path === '/') {
+            assert(await input.evaluate((node, original) => node === original, originalInput), `${label}: 같은 입력 DOM 유지`)
+            assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 0)
+            await checkPublicChatDock(page, `${label} 제안`)
+          }
           assert.equal(calls.search, before.search, `${label}: 확인 전 검색 금지`)
           const box = await confirm.boundingBox()
           assert(box && box.y >= 0 && box.y + box.height <= height + 1, `${label}: 확인 버튼이 자동 스크롤로 보여야 함`)
@@ -125,6 +161,26 @@ async function main() {
             const inputBox = await input.boundingBox()
             assert(inputBox && inputBox.y >= 0 && inputBox.y + inputBox.height <= height, `${label}: 데스크톱 입력창 고정`)
           }
+          if (path === '/') {
+            await checkPublicChatDock(page, `${label} 긴 결과`)
+            const formBefore = await input.locator('xpath=ancestor::form').boundingBox()
+            assert(await timeline.evaluate(node => node.scrollHeight > node.clientHeight), `${label}: 대화 내부 스크롤 필요`)
+            await timeline.evaluate(node => { node.scrollTop = 80 })
+            const scrollTop = await timeline.evaluate(node => node.scrollTop)
+            await input.fill('상세 복귀 후 이어 쓸 초안')
+            assert.equal(await timeline.evaluate(node => node.scrollTop), scrollTop, `${label}: 초안 편집으로 대화 스크롤 금지`)
+            const formAfter = await input.locator('xpath=ancestor::form').boundingBox()
+            assert(Math.abs(formBefore.y - formAfter.y) <= 1, `${label}: 대화 스크롤·초안 편집 후 폼 위치 유지`)
+            await page.getByRole('link', { name: '상세 조건 보기', exact: true }).first().click()
+            await page.getByRole('heading', { name: longProgram.title, exact: true }).waitFor()
+            await page.getByRole('link', { name: '이 공고에 질문하기', exact: true }).click()
+            await page.getByRole('link', { name: '← 공고 상세로 돌아가기', exact: true }).click()
+            await page.getByRole('link', { name: '← 검색 결과로 돌아가기', exact: true }).first().click()
+            await input.waitFor()
+            assert.equal(await input.inputValue(), '상세 복귀 후 이어 쓸 초안')
+            await checkPublicChatDock(page, `${label} 상세 왕복`)
+            flowsChecked++
+          }
           assert.equal(calls.interpret, before.interpret + 1)
           assert.equal(calls.search, before.search + 1)
           await page.getByRole('button', { name: '새 검색', exact: true }).click()
@@ -132,6 +188,11 @@ async function main() {
           assert(await input.evaluate(n => n === document.activeElement), `${label}: 새 검색 포커스`)
           assert.equal(await page.getByRole('heading', { name: longProgram.title, exact: true }).count(), 0)
           assert.equal(calls.search, before.search + 1, `${label}: 초기화 자동 검색 금지`)
+          if (path === '/') {
+            assert.equal(await input.getAttribute('rows'), '3', `${label}: 초기 중앙 입력창 복귀`)
+            assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 1)
+          }
+          await originalInput.dispose()
           flowsChecked++
         } else if (path === '/pricing') {
           const main = page.getByRole('main')
@@ -169,7 +230,7 @@ async function main() {
           flowsChecked++
         }
       }
-      console.log(`PASS ${width}x${height}: ${paths.length}개 경로 및 검색·초기화·긴 답변·역량 칩`)
+      console.log(`PASS ${width}x${height}: ${checkedPaths.length}개 경로 및 검색·하단 입력·상세 왕복·초기화`)
     }
     assert.deepEqual(errors, [], '브라우저 미처리 오류')
     console.log(JSON.stringify({ pagesChecked, flowsChecked, mockedCalls: calls, unhandledErrors: errors.length, realApiCalls: 0 }))
