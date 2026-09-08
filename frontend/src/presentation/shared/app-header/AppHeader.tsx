@@ -33,7 +33,9 @@ export function AppHeader() {
 
   return (
     <header className={isMarketingPage ? appHeaderStyles.landingHeader : appHeaderStyles.header} aria-label="앱 헤더">
-      <Link className={isMarketingPage ? appHeaderStyles.landingBrand : appHeaderStyles.brand} to={publicPaths.landing}>
+      {/* 같은 홈 주소에서도 대화·필터 상태를 비우고 처음 화면으로 돌아갑니다. */}
+      <Link className={isMarketingPage ? appHeaderStyles.landingBrand : appHeaderStyles.brand}
+        to={publicPaths.landing} reloadDocument aria-label="GovBiz 홈으로">
         <span className={isMarketingPage ? appHeaderStyles.landingBrandMark : appHeaderStyles.brandMark} aria-hidden="true">G</span>
         <span>
           <strong className={isMarketingPage ? appHeaderStyles.landingBrandTitle : appHeaderStyles.brandTitle}>GovBiz</strong>

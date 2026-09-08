@@ -76,20 +76,15 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
 
   const introBlock = (
     <div className={chatPageStyles.intro}>
-      <span className={chatPageStyles.introBadge}>
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3Z" />
-          <path d="M20 2v4M18 4h4" />
-        </svg>
-        AI 맞춤 검색
-      </span>
       <h1 className={chatPageStyles.introTitle}>
-        상황만 입력하면, AI가<br />
-        우리 회사 지원사업을 찾아드립니다.
+        <span className={chatPageStyles.introTitleLine}>우리 회사에 맞는 지원사업,</span>{' '}<br />
+        <span className={`${chatPageStyles.introTitleLine} ${chatPageStyles.introTitleSecondLine}`}>
+          <span className={chatPageStyles.introTitleHighlight}>AI와 함께 찾아보세요.</span>
+        </span>
       </h1>
       <p className={chatPageStyles.introDescription}>
-        공고를 하나하나 찾아보는 대신, 우리 회사 이야기를 한 줄로 적어주세요.
-        <br className="max-chat:hidden" /> 지역·업종·지원 목적에 맞는 공고를 함께 찾아볼게요.
+        회사의 지역과 업종, 필요한 지원을 알려주세요.
+        <br className="max-chat:hidden" /> 관련 공고와 확인할 신청 조건을 함께 안내합니다.
       </p>
     </div>
   )

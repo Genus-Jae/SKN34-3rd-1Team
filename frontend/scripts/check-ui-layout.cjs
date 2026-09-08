@@ -149,7 +149,10 @@ async function main() {
           await input.fill('A'.repeat(400) + '\n서울 AI 사업')
           if (path === '/') {
             assert.equal(await input.getAttribute('rows'), '3', `${label}: 초안만으로 배치 전환 금지`)
-            assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 1)
+            assert.equal(await page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.', exact: true }).count(), 1)
+            assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 0)
+            const animations = await page.locator('h1 span').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).animationName))
+            assert.deepEqual(animations, ['search-intro-enter', 'search-intro-enter', 'search-intro-highlight'], `${label}: 제목 진입·강조 효과`)
           }
           const before = { ...calls }
           await page.getByRole('button', { name: '검색 전송', exact: true }).click()
@@ -203,7 +206,8 @@ async function main() {
           assert.equal(calls.search, before.search + 1, `${label}: 초기화 자동 검색 금지`)
           if (path === '/') {
             assert.equal(await input.getAttribute('rows'), '3', `${label}: 초기 중앙 입력창 복귀`)
-            assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 1)
+            assert.equal(await page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.', exact: true }).count(), 1)
+            assert.equal(await page.getByText('AI 맞춤 검색', { exact: true }).count(), 0)
           }
           await originalInput.dispose()
           flowsChecked++
@@ -245,6 +249,45 @@ async function main() {
       }
       console.log(`PASS ${width}x${height}: ${checkedPaths.length}개 경로 및 검색·하단 입력·상세 왕복·초기화`)
     }
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    sessionAccount = null
+    await page.evaluate(key => localStorage.removeItem(key), sessionHintKey)
+    await page.goto(origin + '/')
+    const staticTitle = page.getByRole('heading', { level: 1, name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.', exact: true })
+    await staticTitle.waitFor()
+    const staticStyles = await staticTitle.locator('span').evaluateAll(nodes => nodes.map(node => {
+      const style = getComputedStyle(node)
+      return { animation: style.animationName, opacity: style.opacity, color: style.color }
+    }))
+    assert.equal(staticStyles.length, 3)
+    for (const style of staticStyles) {
+      assert.equal(style.animation, 'none', '동작 줄이기에서는 제목 애니메이션 비활성화')
+      assert.equal(style.opacity, '1', '동작 줄이기에서는 제목을 즉시 표시')
+      assert.notEqual(style.color, 'rgba(0, 0, 0, 0)', '동작 줄이기에서도 제목 색상 유지')
+    }
+    await checkBounds(page, '동작 줄이기 소개 화면')
+    const homeInput = page.getByRole('textbox', { name: '지원사업 검색어' })
+    await homeInput.fill('서울 SW 지원금')
+    await page.getByRole('button', { name: '검색 전송', exact: true }).click()
+    await page.getByRole('button', { name: '이 조건으로 검색', exact: true }).waitFor()
+    const beforeLogo = { ...calls }
+    await Promise.all([
+      page.waitForEvent('domcontentloaded'),
+      page.getByRole('link', { name: 'GovBiz 홈으로', exact: true }).click(),
+    ])
+    await staticTitle.waitFor()
+    assert.equal(new URL(page.url()).pathname, '/')
+    assert.equal(new URL(page.url()).search, '')
+    assert.equal(await homeInput.inputValue(), '', '홈 로고는 초안·대화를 초기화')
+    assert.equal(await page.getByRole('button', { name: '이 조건으로 검색', exact: true }).count(), 0)
+    assert.deepEqual(calls, beforeLogo, '홈 이동이 검색·해석·답변을 자동 실행하지 않음')
+    await page.goto(origin + '/pricing')
+    await Promise.all([
+      page.waitForEvent('domcontentloaded'),
+      page.getByRole('link', { name: 'GovBiz 홈으로', exact: true }).click(),
+    ])
+    await staticTitle.waitFor()
+    assert.equal(new URL(page.url()).pathname, '/', '다른 공개 화면에서도 로고는 홈으로 이동')
     assert.deepEqual(errors, [], '브라우저 미처리 오류')
     console.log(JSON.stringify({ pagesChecked, flowsChecked, mockedCalls: calls, unhandledErrors: errors.length, realApiCalls: 0 }))
   } finally {
