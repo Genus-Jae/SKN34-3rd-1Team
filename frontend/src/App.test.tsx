@@ -126,7 +126,7 @@ describe('App navigation', () => {
 
   it('헤더의 로그인을 누르면 헤더 없는 로그인 화면으로 이동한다', () => {
     renderApp(createAppStore())
-    expect(screen.getByRole('heading', { name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '우리 회사에 맞는 지원사업, AI와 함께 무료로 찾아보세요.' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('link', { name: '로그인' }))
 
@@ -151,7 +151,7 @@ describe('App navigation', () => {
 
     await waitFor(() => expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy())
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: '우리 회사에 맞는 지원사업, AI와 함께 찾아보세요.' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '우리 회사에 맞는 지원사업, AI와 함께 무료로 찾아보세요.' })).toBeNull()
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '서울 AI 창업지원 사업 찾아줘' })).toBeTruthy()
   })

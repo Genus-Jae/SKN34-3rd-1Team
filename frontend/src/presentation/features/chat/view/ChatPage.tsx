@@ -7,6 +7,7 @@ import type { SupportProgram, SupportProgramEligibilityAxis } from '../../../../
 import type { SupportProgramConversationContext, SupportProgramInterpretation } from '../../../../domain/entities/SupportProgramConversation'
 import type { SupportProgramSearchReadiness } from '../../../../domain/entities/SupportProgramSearchReadiness'
 import { useChatPageViewModel } from '../viewmodel/useChatPageViewModel'
+import { SearchIntroTitle } from './SearchIntroTitle'
 import type { ChatSearchOptions } from '../state/chatSlice'
 import {
   chatMessageBubbleClassName,
@@ -76,12 +77,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
 
   const introBlock = (
     <div className={chatPageStyles.intro}>
-      <h1 className={chatPageStyles.introTitle}>
-        <span className={chatPageStyles.introTitleLine}>우리 회사에 맞는 지원사업,</span>{' '}<br />
-        <span className={`${chatPageStyles.introTitleLine} ${chatPageStyles.introTitleSecondLine}`}>
-          <span className={chatPageStyles.introTitleHighlight}>AI와 함께 찾아보세요.</span>
-        </span>
-      </h1>
+      <SearchIntroTitle />
       <p className={chatPageStyles.introDescription}>
         회사의 지역과 업종, 필요한 지원을 알려주세요.
         <br className="max-chat:hidden" /> 관련 공고와 확인할 신청 조건을 함께 안내합니다.
