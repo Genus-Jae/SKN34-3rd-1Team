@@ -10,6 +10,37 @@
 
 ## 실행
 
+중복 지원 검토는 `ai.govbiz.core.combinationreview`에 세션 인증 기반 생성·목록·상세·입력 수정 API를 구현했습니다.
+V6는 검토 입력, V7은 실행 스냅샷·원본 파일 이력을 저장합니다. 공식 첨부 자동 수집·PDF/HWPX 파싱과
+단일 Agent 분석을 연결했으며 사용자 화면은 아직 미연결입니다.
+[기능 설계와 구현 경계](../../docs/duplicate-support-review-design.md)를 참고하세요.
+
+| 중복 지원 검토 API | 동작 |
+|---|---|
+| `POST /api/v1/combination-reviews` | 제목·2~3개 사업의 현재 입력 생성. 201과 상세 본문·Location 반환 |
+| `GET /api/v1/combination-reviews?size=20&beforeId=123` | 본인 목록, 생성 ID 내림차순. size 1~50, beforeId 생략 가능 |
+| `GET /api/v1/combination-reviews/{id}` | 본인 상세 입력·버전 조회 |
+| `PUT /api/v1/combination-reviews/{id}/inputs` | 제목·사업 목록 전체 교체. expectedRevision 일치 시 204, 충돌 시 409 |
+| `POST /api/v1/combination-reviews/{id}/runs` | expectedRevision·requestKey·선택적 additionalFacts로 동기 분석. 새 성공 201, 동일 요청 재조회 200 |
+| `GET /api/v1/combination-reviews/{id}/runs` | 본인 실행 목록, size/beforeId 커서 |
+| `GET /api/v1/combination-reviews/{id}/runs/{runId}` | 당시 입력·근거·설정·결과 또는 실패 조회 |
+| `GET /api/v1/combination-reviews/{id}/runs/{runId}/sources/{documentIndex}` | 실행 당시 원본 파일 다운로드. documentIndex는 0부터 시작 |
+
+소유자는 기존 세션 쿠키를 검증한 Account로 결정하며, 관리자도 타인 검토를 조회·수정할 수 없습니다.
+없는 검토와 타인 검토는 같은 404를 반환합니다. 성공 응답은 `Cache-Control: no-store`이며 시각은 `+09:00`입니다.
+쓰기 요청의 기존 Origin 방어를 유지하고 CORS 허용 메서드에 PUT을 추가했습니다. 상세 JSON·오류 코드는 위 설계 문서에 있습니다.
+
+자동 수집은 BIZINFO의 숫자형 `PBLN_...` ID와 세부사업 ID가 없는 공고를 지원합니다. 공식 상세에 직접 연결된
+기업마당 PDF/HWPX 및 중기부 사업공고의 PDF/HWPX를 읽습니다. 사용자 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색은 지원하지 않습니다.
+원문·입력·결과는 실행마다 보존하며 기존 검색 Qdrant 색인과 분리됩니다. 자동 수집 근거를 사람 검수 완료로 표시하지 않습니다.
+같은 요청 키는 AI를 재호출하지 않습니다. 새 실행은 계정 식별자로 기존 공개 요청 제한을 공유하며,
+검토별 DB 동시 실행 1개·Core 프로세스별 중복 검토 2개 한도를 추가로 적용합니다.
+
+`CombinationReviewRunService`는 실행 순서와 저장을, `AiCombinationReviewFacade`는 AI 호출·계약 검증 경계를 담당합니다.
+첨부 파싱·문서 변환과 AI DTO 변환은 각각 `client/mapper/CombinationReviewDocumentMapper`, `AiCombinationReviewMapper`에 둡니다.
+업무 실패는 `domain/exception`, 외부 시스템 실패는 `client/exception`에 두어 Repository·Client가 Service에 역으로 의존하지 않습니다.
+이는 프로젝트의 기능 중심 레이어드 구조이며 범용 port/interface나 전달만 하는 Facade를 추가한 구조는 아닙니다.
+
 JDK 21과 MySQL 8.4가 필요합니다. 실제 공고 동기화·의미 검색에는 실행 중인 AI Service와 Qdrant도
 필요합니다. 전체 서비스를 함께 실행하는 방법은 [인프라 README](../../infrastructure/README.md)를 참고하세요.
 
@@ -353,7 +384,9 @@ SQL은 [`SupportProgramMapper.xml`](src/main/resources/mybatis/supportprogram/re
   [V3](src/main/resources/db/migration/V3__create_support_program_source_document.sql)는 공고별 공식 원문
   테이블, [V4](src/main/resources/db/migration/V4__create_support_program_sync_status.sql)는 공개 스냅샷의
   세대·지문·공고 수·색인 준비와 최근 동기화 결과,
-  [V5](src/main/resources/db/migration/V5__create_account.sql)는 계정과 세션 테이블을 만듭니다.
+  [V5](src/main/resources/db/migration/V5__create_account.sql)는 계정과 세션,
+  [V6](src/main/resources/db/migration/V6__create_combination_review.sql)는 중복 검토 건과 선택 사업,
+  [V7](src/main/resources/db/migration/V7__create_combination_review_run.sql)는 실행 스냅샷과 원본 파일 테이블을 만듭니다.
   적용된 migration은 수정하지 않고 새 버전을 추가합니다.
 - 전체 수집·검증·색인이 끝난 뒤 최신 시작 세대만 공개합니다. BIZINFO 행 미노출 처리와 UPSERT를
   하나의 짧은 DB transaction으로 묶고, 같은 transaction에서 스냅샷 지문·공고 수·`indexReady=true`·성공

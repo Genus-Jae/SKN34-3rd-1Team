@@ -1,3 +1,5 @@
+import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
+import { useReviewSessionIsolation } from './presentation/features/combination-review/viewmodel/useReviewSessionIsolation'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 
 import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
@@ -39,6 +41,7 @@ function PublicLayout() {
  */
 function App() {
   useRestoreAuthSession()
+  useReviewSessionIsolation()
 
   return (
     <Routes>
@@ -63,6 +66,9 @@ function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<WorkspaceLayout />}>
+          <Route path={appPaths.combinationReviews} element={<CombinationReviewListPage />} />
+          <Route path={appPaths.combinationReviewNew} element={<CombinationReviewEditorPage create />} />
+          <Route path={appPaths.combinationReviewDetail} element={<CombinationReviewEditorPage />} />
           <Route path={appPaths.chat} element={<SupportProgramSearchPage layout="workspace" />} />
           <Route path={appPaths.pricing} element={<PricingPage layout="workspace" />} />
           <Route path={appPaths.partners} element={<PartnerRecruitmentListPage />} />

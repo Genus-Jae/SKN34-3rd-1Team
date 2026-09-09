@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="ai.govbiz.core.combinationreview.repository.mapper.CombinationReviewRunMapper">
+    <resultMap id="runRow" type="ai.govbiz.core.combinationreview.repository.mapper.CombinationReviewRunDbRow">
+        <id column="id" property="id" />
+        <result column="review_id" property="reviewId" />
+        <result column="input_revision" property="inputRevision" />
+        <result column="request_key" property="requestKey" />
+        <result column="request_hash" property="requestHash" />
+        <result column="status" property="status" />
+        <result column="input_json" property="inputJson" />
+        <result column="evidence_json" property="evidenceJson" />
+        <result column="configuration_json" property="configurationJson" />
+        <result column="analysis_json" property="analysisJson" />
+        <result column="failure_code" property="failureCode" />
+        <result column="runner_instance_id" property="runnerInstanceId" />
+        <result column="started_at" property="startedAt" />
+        <result column="finished_at" property="finishedAt" />
+    </resultMap>
+    <resultMap id="sourceRow" type="ai.govbiz.core.combinationreview.repository.mapper.CombinationReviewRunSourceDbRow">
+        <id column="run_id" property="runId" />
+        <id column="document_index" property="documentIndex" />
+        <result column="raw_hash" property="rawHash" />
+        <result column="raw_bytes" property="rawBytes" />
+    </resultMap>
+    <sql id="summaryColumns">r.id, r.review_id, r.input_revision, r.request_key, r.request_hash, r.status, r.failure_code, r.runner_instance_id, r.started_at, r.finished_at</sql>
+    <sql id="allColumns"><include refid="summaryColumns" />, r.input_json, r.evidence_json, r.configuration_json, r.analysis_json</sql>
+    <select id="lockOwnedReview" resultType="long">
+        SELECT input_revision FROM combination_review WHERE id = #{reviewId} AND owner_account_id = #{ownerId} FOR UPDATE
+    </select>
+    <select id="findRequest" resultMap="runRow">
+        SELECT <include refid="allColumns" /> FROM combination_review_run r WHERE r.review_id = #{reviewId} AND r.request_key = #{requestKey}
+    </select>
+    <select id="countRunning" resultType="int">
+        SELECT COUNT(*) FROM combination_review_run WHERE review_id = #{reviewId} AND status = 'RUNNING'
+    </select>
+    <insert id="insertRun" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO combination_review_run (review_id, input_revision, request_key, request_hash, status, input_json, runner_instance_id, started_at)
+        VALUES (#{reviewId}, #{inputRevision}, #{requestKey}, #{requestHash}, #{status}, #{inputJson}, #{runnerInstanceId}, #{startedAt})
+    </insert>
+    <select id="findOwned" resultMap="runRow">
+        SELECT <include refid="allColumns" /> FROM combination_review_run r
+        INNER JOIN combination_review c ON c.id = r.review_id
+        WHERE r.id = #{runId} AND r.review_id = #{reviewId} AND c.owner_account_id = #{ownerId}
+    </select>
+    <select id="listOwned" resultMap="runRow">
+        SELECT <include refid="summaryColumns" /> FROM combination_review_run r
+        INNER JOIN combination_review c ON c.id = r.review_id
+        WHERE r.review_id = #{reviewId} AND c.owner_account_id = #{ownerId}
+        <if test="beforeId != null">AND r.id &lt; #{beforeId}</if>
+        ORDER BY r.id DESC LIMIT #{limit}
+    </select>
+    <update id="saveEvidence">
+        UPDATE combination_review_run SET evidence_json = #{evidenceJson}
+        WHERE id = #{runId} AND status = 'RUNNING' AND evidence_json IS NULL
+    </update>
+    <insert id="insertSource">
+        INSERT INTO combination_review_run_source (run_id, document_index, raw_hash, raw_bytes)
+        VALUES (#{runId}, #{documentIndex}, #{rawHash}, #{rawBytes})
+    </insert>
+    <select id="findSource" resultMap="sourceRow">
+        SELECT s.run_id, s.document_index, s.raw_hash, s.raw_bytes FROM combination_review_run_source s
+        INNER JOIN combination_review_run r ON r.id = s.run_id
+        INNER JOIN combination_review c ON c.id = r.review_id
+        WHERE r.review_id = #{reviewId} AND r.id = #{runId} AND c.owner_account_id = #{ownerId} AND s.document_index = #{documentIndex}
+    </select>
+    <update id="saveConfiguration">
+        UPDATE combination_review_run SET configuration_json = #{configurationJson}
+        WHERE id = #{runId} AND status = 'RUNNING' AND configuration_json IS NULL
+    </update>
+    <update id="finish">
+        UPDATE combination_review_run SET status = #{status}, analysis_json = #{analysisJson}, failure_code = #{failureCode}, finished_at = #{finishedAt}
+        WHERE id = #{runId} AND status = 'RUNNING'
+    </update>
+</mapper>

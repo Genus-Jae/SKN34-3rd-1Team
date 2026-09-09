@@ -6,6 +6,12 @@ import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
 import ai.govbiz.core.account.service.exception.SessionOriginRejectedException
+import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewNotFoundException
+import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRevisionConflictException
+import ai.govbiz.core.combinationreview.controller.exception.InvalidCombinationReviewInputException
+import ai.govbiz.core.combinationreview.service.exception.CombinationReviewRunException
+import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRunConflictException
+import ai.govbiz.core.combinationreview.service.exception.ReviewRunFailureCode
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceUnavailableException
@@ -30,6 +36,55 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(CombinationReviewRunConflictException::class)
+    fun handleCombinationReviewRunConflict(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(ProblemDefinition(HttpStatus.CONFLICT, URI.create("urn:govbiz:problem:combination-review-run-conflict"),
+            "Combination Review Run Conflict", "The request key has a different payload or another run is active.", "COMBINATION_REVIEW_RUN_CONFLICT"), request)
+
+    @ExceptionHandler(CombinationReviewRunException::class)
+    fun handleCombinationReviewRunFailure(error: CombinationReviewRunException, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
+        val status = when (error.code) {
+            ReviewRunFailureCode.SOURCE_UNSUPPORTED, ReviewRunFailureCode.SOURCE_TOO_LARGE -> HttpStatus.UNPROCESSABLE_CONTENT
+            ReviewRunFailureCode.RUN_CAPACITY_EXCEEDED, ReviewRunFailureCode.RUN_RATE_LIMITED -> HttpStatus.TOO_MANY_REQUESTS
+            else -> HttpStatus.SERVICE_UNAVAILABLE
+        }
+        val response = problemResponse(ProblemDefinition(status, URI.create("urn:govbiz:problem:combination-review-run-failed"),
+            "Combination Review Run Failed", "The review could not be completed. Inspect the saved run before retrying.", error.code.name), request)
+        error.runId?.let { response.body?.setProperty("runId", it) }
+        error.retryAfterSeconds?.let { seconds ->
+            return ResponseEntity.status(status).headers(response.headers).header(HttpHeaders.RETRY_AFTER, seconds.toString()).body(response.body)
+        }
+        return response
+    }
+
+    @ExceptionHandler(CombinationReviewNotFoundException::class)
+    fun handleCombinationReviewNotFound(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND, URI.create("urn:govbiz:problem:combination-review-not-found"),
+                "Combination Review Not Found", "The requested combination review is not available.",
+                "COMBINATION_REVIEW_NOT_FOUND",
+            ), request,
+        )
+
+    @ExceptionHandler(CombinationReviewRevisionConflictException::class)
+    fun handleCombinationReviewRevisionConflict(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT, URI.create("urn:govbiz:problem:combination-review-revision-conflict"),
+                "Combination Review Revision Conflict", "Reload the current input before editing again.",
+                "COMBINATION_REVIEW_REVISION_CONFLICT",
+            ), request,
+        )
+
+    @ExceptionHandler(InvalidCombinationReviewInputException::class)
+    fun handleInvalidCombinationReviewInput(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        validationProblem(
+            HttpStatus.BAD_REQUEST, URI.create("urn:govbiz:problem:request-validation-failed"),
+            "Request Validation Failed", "The combination review input is invalid.",
+            "REQUEST_VALIDATION_FAILED", emptyList(), request,
+        )
 
     @ExceptionHandler(SupportProgramRequestRejectedException::class)
     fun handleSupportProgramRequestRejectedException(
@@ -346,6 +401,12 @@ class ApiExceptionHandler {
 
         return ResponseEntity.status(definition.status)
             .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .headers { headers ->
+                if (request.requestURI == "/api/v1/combination-reviews" ||
+                    request.requestURI.startsWith("/api/v1/combination-reviews/")) {
+                    headers.cacheControl = "no-store"
+                }
+            }
             .body(problem)
     }
 

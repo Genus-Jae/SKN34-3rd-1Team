@@ -5,6 +5,9 @@
 export const APP_PREFIX = '/app'
 
 export const appPaths = {
+  combinationReviews: `${APP_PREFIX}/combination-reviews`,
+  combinationReviewNew: `${APP_PREFIX}/combination-reviews/new`,
+  combinationReviewDetail: `${APP_PREFIX}/combination-reviews/:reviewId`,
   chat: `${APP_PREFIX}/chat`,
   pricing: `${APP_PREFIX}/pricing`,
   partners: `${APP_PREFIX}/partners`,

@@ -9,6 +9,15 @@ FastAPI, OpenAI 임베딩, Qdrant로 전체 공고에서 관련 후보를 찾고
 
 ## 책임
 
+중복 지원 검토는 `app/combination_review`의 `Router → Service → 구체 Agent → OpenAI → 검증된 응답` 경로를 사용합니다.
+기존 `OPENAI_MODEL`과 일반 모델 시간 제한을 재사용합니다. 도구·handoff 없이 structured output 한 번을 요청하며
+`max_turns=1`, 출력 최대 6,000 tokens, `store=False`, tracing 비활성화를 적용합니다.
+입력은 최대 512블록·120,000자이며 이미지에 이미 포함된 cl100k_base로 계산한 JSON 입력이 100,000 tokens를 넘으면 거절합니다.
+모델 컨텍스트에 맞추려고 본문·각주·붙임을 조용히 잘라내지 않습니다. 이 경로는 임베딩/Qdrant를 사용하지 않습니다.
+근거 ID는 코드가 복원하고, 사업쌍 누락·단계 중복·원문에 없는 인용·기관 확인이 필요한 확정 판단은 기술 오류로 거절합니다.
+구조화 출력의 형태 준수와 실제 판단 품질은 다르며 [공식 안내](https://developers.openai.com/api/docs/guides/structured-outputs)를 참고합니다.
+[실행·원문 관리 계약](../../docs/duplicate-support-review-design.md)과 [무료 검증](../../evaluation/combination-review/README.md)에 범위를 정리했습니다.
+
 AI Service가 하는 일:
 
 - 사용자의 자연어 질문과 Core가 검증한 공고 후보를 함께 읽음
@@ -20,6 +29,7 @@ AI Service가 하는 일:
 - Core가 준비한 공고 상세 원문 청크를 별도 Qdrant collection에 색인하고, 지정된 현재 청크 안에서 근거를 최대 5개 검색
 - 검색된 공고 상세 근거만 사용해 한국어 답변과 인용 청크 ID를 strict structured output으로 반환
 - 새 메시지와 작은 검색 상태를 해석해 사용자 확인 전 조건 변경 패치 또는 확인 질문을 반환
+- Core가 보낸 2~3개 사업의 전체 근거·참여 사실을 단일 Agent로 대조하고 사업쌍별 여섯 단계 판단·질문·정확한 인용을 반환
 
 AI Service가 하지 않는 일:
 
@@ -34,6 +44,8 @@ AI Service가 하지 않는 일:
 
 ```http
 GET /internal/v1/health
+GET /internal/v1/combination-reviews/configuration
+POST /internal/v1/combination-reviews/analyze
 POST /internal/v1/support-program-rankings/rank
 PUT /internal/v1/support-program-index/batch
 POST /internal/v1/support-program-index/prune
