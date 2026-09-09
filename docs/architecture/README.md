@@ -21,7 +21,7 @@ flowchart LR
     Core --> AI[FastAPI AI Service]
     AI --> Vector[(Qdrant 공고·원문 근거 벡터 컬렉션)]
     AI --> OpenAI[OpenAI 임베딩·공고 점수화·근거 답변]
-    Sync[Core 백그라운드 동기화] --> Source[기업마당 공고 API]
+    Sync[Core 백그라운드 동기화] --> Source[기업마당·K-Startup 공고 API]
     Sync --> AI
     Sync --> DB
     EvidenceQuestion[공고 질문 페이지의 명시적 질문] --> Core

@@ -195,11 +195,14 @@ function SupportProgramDetail({ program, searchReturnTo }: {
         <div>
           <p className={supportProgramDetailStyles.sourceEyebrow}>신청 전 확인</p>
           <h2 id="source-information" className={supportProgramDetailStyles.sourceTitle}>
-            원문 공고에서 최종 조건을 확인하세요
+            {program.sourceCode === 'CNTRADE_NOTICE' ? '공식 공지 목록에서 해당 공고를 확인하세요' : '원문 공고에서 최종 조건을 확인하세요'}
           </h2>
           <p className={supportProgramDetailStyles.sourceDescription}>
             지원 자격, 제출 서류, 신청 방법은 공고 원문을 기준으로 합니다.
           </p>
+          {program.sourceCode === 'CNTRADE_NOTICE' ? (
+            <p className={supportProgramDetailStyles.sourceDescription}>제목으로 해당 공지를 확인해 주세요.</p>
+          ) : null}
         </div>
         <a
           className={supportProgramDetailStyles.sourceLink}
@@ -207,7 +210,7 @@ function SupportProgramDetail({ program, searchReturnTo }: {
           target="_blank"
           rel="noreferrer"
         >
-          {program.sourceName} 원문 보기 ↗
+          {program.sourceCode === 'CNTRADE_NOTICE' ? '공식 공지 목록' : `${program.sourceName} 원문 보기`} ↗
         </a>
       </section>
     </main>

@@ -229,6 +229,45 @@ class SupportProgramSearchReadinessServiceTest {
 
     private fun service() = SupportProgramSearchReadinessService(repository, SEOUL_CLOCK)
 
+    @Test
+    fun enabledKStartupIsPreparingBeforeTheFirstSyncWithoutBlockingBizinfo() {
+        stubStatuses(readyStatus("BIZINFO", 12))
+
+        val result = SupportProgramSearchReadinessService(repository, SEOUL_CLOCK, kStartupEnabled = true).get()
+
+        assertEquals(SupportProgramSearchState.SEARCHABLE_WITH_PARTIAL_SOURCES, result.searchState)
+        assertEquals(12, result.programCount)
+        assertEquals(listOf("BIZINFO", "KSTARTUP"), result.sources.map { it.sourceCode })
+        assertEquals(SupportProgramSearchState.PREPARING, result.sources.last().searchState)
+    }
+
+    @Test
+    fun enabledNewSourcesAreNamedAndPreparingWithoutBlockingPublishedPrograms() {
+        stubStatuses(readyStatus("BIZINFO", 12), readyStatus("KSTARTUP", 8))
+
+        val result = SupportProgramSearchReadinessService(
+            repository, SEOUL_CLOCK, kStartupEnabled = true, msitEnabled = true, cnTradeNoticeEnabled = true,
+        ).get()
+
+        assertEquals(SupportProgramSearchState.SEARCHABLE_WITH_PARTIAL_SOURCES, result.searchState)
+        assertEquals(20, result.programCount)
+        val pending = result.sources.filter { it.sourceCode in setOf("MSIT", "CNTRADE_NOTICE") }
+        assertEquals(setOf("과학기술정보통신부", "충청남도 온라인수출지원시스템"), pending.map { it.sourceName }.toSet())
+        assertTrue(pending.all { it.searchState == SupportProgramSearchState.PREPARING })
+    }
+
+    @Test
+    fun stoppedNewCollectorsRetainTheirPublishedStatusAndSourceSpecificFailure() {
+        stubStatuses(readyStatus("BIZINFO", 12), readyStatus("MSIT", 4),
+            readyStatus("CNTRADE_NOTICE", 2).copy(lastSyncOutcome = SupportProgramSyncOutcome.FAILURE))
+
+        val result = service().get()
+
+        assertEquals(SupportProgramSearchState.SEARCHABLE_WITH_SYNC_FAILURE, result.searchState)
+        assertEquals(18, result.programCount)
+        assertEquals("충청남도 온라인수출지원시스템", result.sources.single { it.sourceCode == "CNTRADE_NOTICE" }.sourceName)
+    }
+
     private fun status(
         publishedGeneration: Long,
         programCount: Int,

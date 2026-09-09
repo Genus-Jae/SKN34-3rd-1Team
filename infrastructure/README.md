@@ -55,6 +55,20 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `BIZINFO_SYNC_ENABLED` | `true` | `false`이면 기업마당 공고 자동 동기화를 실행하지 않음 |
 | `BIZINFO_SYNC_INITIAL_DELAY` | `PT0S` | 앱 시작 시 스케줄러의 첫 동기화까지의 ISO-8601 기간. 기본값은 즉시 실행 |
 | `BIZINFO_SYNC_FIXED_DELAY` | `PT6H` | 이전 동기화가 끝난 뒤 다음 동기화까지의 ISO-8601 기간 |
+| `KSTARTUP_API_KEY` | 빈 값 | K-Startup 활용 승인을 받은 공공데이터포털 서비스키. Core에만 주입 |
+| `KSTARTUP_API_BASE_URL` | `https://apis.data.go.kr` | K-Startup 수집 API origin |
+| `KSTARTUP_API_CONNECT_TIMEOUT` / `KSTARTUP_API_READ_TIMEOUT` | `2s` / `10s` | 연결 / 응답 제한시간 |
+| `KSTARTUP_SYNC_ENABLED` | `false` | 초기 임베딩 비용 확인 뒤 켜는 별도 수집기 |
+| `KSTARTUP_SYNC_SCOPE` | `RECENT_YEAR` | 최근 1년 내 접수 시작 공고. `OPEN`은 모집 중 공고만 |
+| `KSTARTUP_SYNC_INITIAL_DELAY` / `KSTARTUP_SYNC_FIXED_DELAY` | `PT0S` / `PT6H` | 첫 수집 지연 / 완료 후 다음 실행까지 지연 |
+| `MSIT_API_KEY` / `CNTRADE_NOTICE_API_KEY` | `DATA_GO_KR_SERVICE_KEY` 재사용 | 각 API 활용 승인이 필요하며 전용 키로 덮어쓸 수 있음 |
+| `MSIT_API_BASE_URL` / `CNTRADE_NOTICE_API_BASE_URL` | `https://apis.data.go.kr` | 제공처별 API origin |
+| `MSIT_API_CONNECT_TIMEOUT` / `CNTRADE_NOTICE_API_CONNECT_TIMEOUT` | `2s` | 연결 제한시간 |
+| `MSIT_API_READ_TIMEOUT` / `CNTRADE_NOTICE_API_READ_TIMEOUT` | `20s` | 응답 제한시간 |
+| `MSIT_SYNC_ENABLED` / `CNTRADE_NOTICE_SYNC_ENABLED` | `false` | 최초 임베딩 비용과 실 API 응답 확인 후 각각 활성화 |
+| `MSIT_SYNC_INITIAL_DELAY` / `CNTRADE_NOTICE_SYNC_INITIAL_DELAY` | `PT0S` | 첫 수집 지연 |
+| `MSIT_SYNC_FIXED_DELAY` / `CNTRADE_NOTICE_SYNC_FIXED_DELAY` | `PT6H` | 해당 수집 완료 후 다음 실행까지 지연 |
+| `CORE_API_HOST_PORT` / `WEB_HOST_PORT` | `8080` / `5173` | loopback 공개 포트. 격리 검증에서는 `18080` / `15173` 사용 |
 | `ACCOUNT_SESSION_TTL` | `P30D` | "로그인 상태 유지"를 켠 세션의 절대 만료 기간 |
 | `ACCOUNT_SESSION_SHORT_TTL` | `PT12H` | "로그인 상태 유지"를 끈 세션의 절대 만료 기간 |
 | `ACCOUNT_SESSION_IDLE_TTL` | `P7D` | 마지막 사용 뒤 세션을 끝내는 유휴 기간 |
@@ -64,6 +78,8 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `ACCOUNT_DEV_LOGIN_EMAIL` | `admin@govbiz.local` | 개발용 관리자 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_MEMBER_EMAIL` | `member@govbiz.local` | 개발용 회원 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_PASSWORD` | `govbiz-admin1` | 시드 계정을 만들 때 저장하는 비밀번호. 로그인 폼으로도 쓸 수 있으므로 공유 환경에서는 교체 |
+| `BIZNO_API_KEY` | 빈 값 | 기업 등록 시 사업자등록번호를 확인하는 Bizno API 키. 비어 있으면 프로필의 기업 조회·등록이 503 |
+| `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint |
 | `OPENAI_API_KEY` | 없음(필수) | AI Service만 사용하는 OpenAI 인증키 |
 | `OPENAI_MODEL` | `gpt-5.6-luna` | 대화·원문 답변의 모델, 랭킹 전용 모델 미설정 시 상속 |
 | `OPENAI_RANKING_MODEL` | 미설정 | 랭킹 전용 모델. `.env.example`은 정확도 우선 `gpt-5.6-sol` 설정 |
@@ -200,13 +216,16 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 ./infrastructure/scripts/verify-compose.sh
 ```
 
-검증 스크립트는 `verification` profile의 `bizinfo-stub`과 `openai-stub`을 사용합니다. MySQL·Qdrant는
-실제 서버이고, 외부 공고·임베딩·점수화 응답만 고정된 가상 자료입니다. 공고 27개 중 최신 20개 밖에
-있는 AI 공고가 `서울 AI` 검색으로 선택되는지 확인합니다. 이는 서비스 연결과 후보 누락 수정의 검증이지,
+검증 스크립트는 `verification` profile의 `bizinfo-stub`·`kstartup-stub`·`public-notices-stub`·`openai-stub`을 사용합니다. MySQL·Qdrant는
+실제 서버이고, 외부 공고·임베딩·점수화 응답만 고정된 가상 자료입니다. 기업마당 공고 27개와 K-Startup 공고 2개를
+수집하고, MSIT 11개(10+1 페이지)와 CNTRADE_NOTICE 2개(1+1 페이지)도 검증합니다.
+네 출처의 관련 공고가 함께 검색되는지, K-Startup 전용 3개 필터가 저장된 분류를 사용하는지,
+두 새 출처의 접수 기간 미확인이 OPEN으로 오인되지 않는지 확인합니다. CN fixture는 공식 명세 기반이며
+실 API 성공을 뜻하지 않습니다. 이는 서비스 연결과 후보 누락 수정의 검증이지,
 실제 OpenAI 모델의 검색 품질 측정이 아닙니다.
 
 스텁 주소와 더미 인증키를 강제하므로 개인 키를 외부로 전송하거나 실제 OpenAI 비용을 발생시키지 않습니다.
-기업마당 스텁은 디코딩된 키도 확인합니다. 기업마당 동기화와 색인은 `PT2S` 주기로 실행합니다.
+네 제공처 스텁은 디코딩된 키도 확인합니다. 제공처 동기화와 색인은 `PT2S` 주기로 실행합니다.
 장애·복구 확인을 위해 같은 API를 반복 호출하므로 스크립트는 요청량을 주소별·전체 각각 1,000건,
 동시 처리 4건으로 설정합니다. 이는 서비스 연결 검증이며 기본 6건·60건의 한도 도달이나 적정 처리량을
 검증하는 부하 테스트는 아닙니다. 낮은 한도·혼잡·오류 화면은 Core·Frontend 회귀 테스트에서 검증합니다.
@@ -227,7 +246,8 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 8. AI Service를 중지했을 때 Core Health는 200, AI Health와 자연어 검색은 503(연결 불가) 또는 504(시간 초과)인지 확인합니다.
 9. AI Service 재시작 후 Core API 재시작 없이 Health와 자연어 검색이 복구되는지 확인합니다.
 
-기본적으로 5173과 8080을 사용하므로, 같은 포트를 쓰는 다른 Compose 프로젝트는 중지한 뒤 실행하세요.
+Web/Core는 검증 전용 `15173`/`18080` 포트를 사용해 기존 개발 서비스를 중지하지 않고 실행할 수 있습니다.
+`VERIFY_COMPOSE_WEB_HOST_PORT`/`VERIFY_COMPOSE_CORE_API_HOST_PORT`로 바꿀 수 있으며 CORS·요청 Origin도 같은 Web 주소를 사용합니다.
 스크립트는 종료 시 검증용 컨테이너와 volume을 삭제합니다. 조사 목적으로 유지하려면
 `VERIFY_COMPOSE_KEEP_RUNNING=true`로 실행합니다. `VERIFY_COMPOSE_PROJECT_NAME`을 변경할 경우 기존
 개발·운영 프로젝트 이름을 사용하지 마세요. 실행 전 해당 이름의 컨테이너·네트워크·volume이 하나라도

@@ -18,6 +18,23 @@ export DATA_GO_KR_SERVICE_KEY="compose%2Bverification%2Fkey%3D"
 export BIZINFO_SYNC_ENABLED="true"
 export BIZINFO_SYNC_INITIAL_DELAY="PT0S"
 export BIZINFO_SYNC_FIXED_DELAY="PT2S"
+# Every public catalog source uses local fixtures, regardless of the developer's .env.
+export KSTARTUP_SYNC_ENABLED="true"
+export KSTARTUP_API_KEY="compose%2Bstartup%2Fverification%3D"
+export KSTARTUP_API_BASE_URL="http://kstartup-stub:8003"
+export KSTARTUP_SYNC_SCOPE="RECENT_YEAR"
+export KSTARTUP_SYNC_INITIAL_DELAY="PT0S"
+export KSTARTUP_SYNC_FIXED_DELAY="PT2S"
+export MSIT_API_BASE_URL="http://public-notices-stub:8004"
+export MSIT_API_KEY="compose%2Bnotice%2Fverification%3D"
+export MSIT_SYNC_ENABLED="true"
+export MSIT_SYNC_INITIAL_DELAY="PT0S"
+export MSIT_SYNC_FIXED_DELAY="PT2S"
+export CNTRADE_NOTICE_API_BASE_URL="http://public-notices-stub:8004"
+export CNTRADE_NOTICE_API_KEY="compose%2Bnotice%2Fverification%3D"
+export CNTRADE_NOTICE_SYNC_ENABLED="true"
+export CNTRADE_NOTICE_SYNC_INITIAL_DELAY="PT0S"
+export CNTRADE_NOTICE_SYNC_FIXED_DELAY="PT2S"
 export OPENAI_API_KEY="compose-verification-key-never-sent"
 export OPENAI_BASE_URL="http://openai-stub:8002/v1"
 export OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
@@ -44,6 +61,10 @@ export SUPPORT_PROGRAM_REQUEST_MAX_CONCURRENT="4"
 # host-only port a separate default so a developer's local MySQL on 3306 does
 # not prevent the smoke test from starting.
 export MYSQL_HOST_PORT="${VERIFY_COMPOSE_MYSQL_HOST_PORT:-13306}"
+export WEB_HOST_PORT="${VERIFY_COMPOSE_WEB_HOST_PORT:-15173}"
+export CORE_API_HOST_PORT="${VERIFY_COMPOSE_CORE_API_HOST_PORT:-18080}"
+WEB_BASE_URL="http://127.0.0.1:${WEB_HOST_PORT}"
+export APP_CORS_ALLOWED_ORIGIN="${WEB_BASE_URL}"
 
 COMPOSE=(
   docker compose
@@ -153,7 +174,7 @@ wait_for_json_post() {
         --request POST \
         --header 'Accept: application/json' \
         --header 'Content-Type: application/json' \
-        --header 'Origin: http://127.0.0.1:5173' \
+        --header "Origin: ${WEB_BASE_URL}" \
         --data "${request_body}" \
         "${url}" || true
     )"
@@ -235,20 +256,128 @@ wait_for_synchronized_catalog_program() {
   return 1
 }
 
+wait_for_synchronized_startup_programs() {
+  local deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+  local actual_count="0"
+
+  while ((SECONDS < deadline)); do
+    actual_count="$(
+      "${COMPOSE[@]}" exec -T mysql sh -c \
+        'mysql --batch --skip-column-names --user="$MYSQL_USER" --password="$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM support_program WHERE source_code = '\''KSTARTUP'\'' AND source_program_id IN ('\''174321'\'', '\''174322'\'') AND is_source_present = TRUE" 2>/dev/null || true'
+    )"
+
+    if [[ "${actual_count}" == "2" ]]; then
+      echo "Verified K-Startup synchronization stored both pbanc_sn identities in MySQL"
+      return 0
+    fi
+    echo "Waiting for synchronized K-Startup MySQL programs: found ${actual_count:-no result} rows"
+    sleep "${WAIT_INTERVAL_SECONDS}"
+  done
+
+  echo "Timed out waiting for synchronized K-Startup MySQL programs" >&2
+  return 1
+}
+
 echo "Building and starting the GovBiz verification stack (${PROJECT_NAME})"
 "${COMPOSE[@]}" up --build --detach --remove-orphans
 
-wait_for_http "Vite web" "http://127.0.0.1:5173/" "200"
-wait_for_http "Vite-proxied Core API health" "http://127.0.0.1:5173/api/v1/health" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-core-api"'
-wait_for_http "Vite-proxied Core to AI Service health" "http://127.0.0.1:5173/api/v1/health/ai-service" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-ai-service"'
+wait_for_http "Vite web" "${WEB_BASE_URL}/" "200"
+wait_for_http "Vite-proxied Core API health" "${WEB_BASE_URL}/api/v1/health" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-core-api"'
+wait_for_http "Vite-proxied Core to AI Service health" "${WEB_BASE_URL}/api/v1/health/ai-service" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-ai-service"'
 wait_for_synchronized_catalog_program
+wait_for_synchronized_startup_programs
+wait_for_http \
+  "All four source snapshots are ready for vector search" \
+  "${WEB_BASE_URL}/api/v1/support-programs/readiness" \
+  "200" \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"BIZINFO"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"KSTARTUP"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true'
 
-echo "Stopping BizInfo stub to prove that search reads MySQL instead of the upstream API"
-"${COMPOSE[@]}" stop bizinfo-stub
+wait_for_http \
+  "K-Startup source-only catalog contains both stored programs" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=KSTARTUP&status=OPEN" \
+  "200" \
+  '"total"[[:space:]]*:[[:space:]]*2' \
+  '"id"[[:space:]]*:[[:space:]]*"174321"' \
+  '"id"[[:space:]]*:[[:space:]]*"174322"'
+wait_for_http \
+  "Startup stage, applicant type and founder age filters read persisted metadata" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=KSTARTUP&startupStage=3%EB%85%84%EB%AF%B8%EB%A7%8C&applicantType=%EC%9D%BC%EB%B0%98%EC%9D%B8&founderAge=%EB%A7%8C%2039%EC%84%B8%20%EC%9D%B4%ED%95%98&status=OPEN" \
+  "200" \
+  '"total"[[:space:]]*:[[:space:]]*1' \
+  '"id"[[:space:]]*:[[:space:]]*"174321"' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"KSTARTUP"' \
+  '"targetDescription"[[:space:]]*:[[:space:]]*"[^"]*제외 대상:' \
+  '"sourceUrl"[[:space:]]*:[[:space:]]*"https://www\.k-startup\.go\.kr/web/contents/bizpbanc-ongoing\.do\?pbancSn=174321&schM=view"'
+
+wait_for_http \
+  "MSIT stores both pages without inventing an application period" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=MSIT&status=UNKNOWN" \
+  "200" \
+  '"total"[[:space:]]*:[[:space:]]*11[,}]' \
+  '"id"[[:space:]]*:[[:space:]]*"3186878"' \
+  '"id"[[:space:]]*:[[:space:]]*"3186810"' \
+  '"applicationStartDate"[[:space:]]*:[[:space:]]*null' \
+  '"applicationEndDate"[[:space:]]*:[[:space:]]*null'
+wait_for_http \
+  "MSIT unknown notices are never listed as confirmed open" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=MSIT&status=OPEN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*0[,}]'
+# CNTRADE_NOTICE is a documentation-contract fixture, not a successful live API probe.
+wait_for_http \
+  "CNTRADE_NOTICE stores both documentation-fixture pages with unknown status" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=CNTRADE_NOTICE&status=UNKNOWN" \
+  "200" \
+  '"total"[[:space:]]*:[[:space:]]*2[,}]' \
+  '"id"[[:space:]]*:[[:space:]]*"900001"' \
+  '"id"[[:space:]]*:[[:space:]]*"900002"'
+wait_for_http \
+  "CNTRADE_NOTICE unknown notices are never listed as confirmed open" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=CNTRADE_NOTICE&status=OPEN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*0[,}]'
+wait_for_http \
+  "MSIT detail preserves the validated official announcement identity" \
+  "${WEB_BASE_URL}/api/v1/support-programs/detail?sourceCode=MSIT&sourceProgramId=3186878" \
+  "200" \
+  '"id"[[:space:]]*:[[:space:]]*"3186878"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"' \
+  '"status"[[:space:]]*:[[:space:]]*"UNKNOWN"' \
+  '"sourceUrl"[[:space:]]*:[[:space:]]*"https://www\.msit\.go\.kr/bbs/view\.do\?sCode=user&mId=311&mPid=121&bbsSeqNo=100&nttSeqNo=3186878"'
+wait_for_http \
+  "CNTRADE_NOTICE detail honestly links the official list without inventing a detail URL" \
+  "${WEB_BASE_URL}/api/v1/support-programs/detail?sourceCode=CNTRADE_NOTICE&sourceProgramId=900001" \
+  "200" \
+  '"id"[[:space:]]*:[[:space:]]*"900001"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"' \
+  '"status"[[:space:]]*:[[:space:]]*"UNKNOWN"' \
+  '"sourceUrl"[[:space:]]*:[[:space:]]*"https://cntrade\.chungnam\.go\.kr/home/kor/M102638244/board\.do"'
+
+echo "Stopping all upstream stubs to prove that search reads MySQL instead of the public APIs"
+"${COMPOSE[@]}" stop bizinfo-stub kstartup-stub public-notices-stub
+wait_for_http \
+  "New source collection failures retain their published vector-ready snapshots" \
+  "${WEB_BASE_URL}/api/v1/support-programs/readiness" \
+  "200" \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true[^}]*"lastFailedSyncAt"[[:space:]]*:[[:space:]]*"[0-9]' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true[^}]*"lastFailedSyncAt"[[:space:]]*:[[:space:]]*"[0-9]'
+wait_for_http \
+  "Stopped MSIT upstream leaves all eleven published notices available" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=MSIT&status=UNKNOWN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*11[,}]'
+wait_for_http \
+  "Stopped CNTRADE_NOTICE upstream leaves both published notices available" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=CNTRADE_NOTICE&status=UNKNOWN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*2[,}]'
+wait_for_http \
+  "Mixed-source semantic search includes both new unknown-status notice sources" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=AI&acceptingOnly=false" \
+  "200" \
+  '"id"[[:space:]]*:[[:space:]]*"3186878"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"' \
+  '"id"[[:space:]]*:[[:space:]]*"900001"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"'
 
 wait_for_http \
   "Vite-proxied blank catalog search after BizInfo stub is stopped" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=&acceptingOnly=true" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=&acceptingOnly=true" \
   "200" \
   '"query"[[:space:]]*:[[:space:]]*""' \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_EXPORT"' \
@@ -260,45 +389,54 @@ wait_for_http \
 # selector cannot pass this check. OpenAI is an HTTP fixture; Qdrant is real.
 wait_for_http \
   "Whole-catalog semantic search finds the old relevant AI program" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_OLD_AI"' \
+  '"id"[[:space:]]*:[[:space:]]*"174321"' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"KSTARTUP"' \
   '"recommendationScore"[[:space:]]*:[[:space:]]*100'
+
+wait_for_http \
+  "Stopped K-Startup upstream leaves its published filtered catalog available" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=KSTARTUP&startupStage=3%EB%85%84%EB%AF%B8%EB%A7%8C&status=OPEN" \
+  "200" \
+  '"total"[[:space:]]*:[[:space:]]*1' \
+  '"id"[[:space:]]*:[[:space:]]*"174321"'
 
 echo "Stopping Qdrant to verify that a vector outage is not hidden as a successful search"
 "${COMPOSE[@]}" stop qdrant
 wait_for_http \
   "Explicit vector search failure while Qdrant is stopped" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=AI&acceptingOnly=true" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=AI&acceptingOnly=true" \
   "503" \
   '"code"[[:space:]]*:[[:space:]]*"AI_SERVICE_UNAVAILABLE"'
 # The scheduled repair must first persist the outage. Checking only immediately
 # after stopping Qdrant can miss a regression that turns later searches into [].
 wait_for_http \
   "Scheduled repair records vector unavailability" \
-  "http://127.0.0.1:5173/api/v1/support-programs/readiness" \
+  "${WEB_BASE_URL}/api/v1/support-programs/readiness" \
   "200" \
   '"searchState"[[:space:]]*:[[:space:]]*"UNAVAILABLE"' \
   '"indexReady"[[:space:]]*:[[:space:]]*false'
 wait_for_http \
   "Recorded vector outage stays an explicit natural-language search failure" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=AI&acceptingOnly=true" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=AI&acceptingOnly=true" \
   "503" \
   '"code"[[:space:]]*:[[:space:]]*"AI_SERVICE_UNAVAILABLE"'
 wait_for_http \
   "Blank latest listing still reads MySQL during vector outage" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=&acceptingOnly=true" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=&acceptingOnly=true" \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_EXPORT"'
 "${COMPOSE[@]}" start qdrant
 wait_for_http \
   "Vector search recovers from persistent Qdrant data" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_OLD_AI"'
 wait_for_json_post \
   "Vite-proxied sample item preparation" \
-  "http://127.0.0.1:5173/api/v1/sample-items/prepare" \
+  "${WEB_BASE_URL}/api/v1/sample-items/prepare" \
   '{"item":{"name":"Compose verification item","category":"BASIC","note":"Verifies the reusable sample feature."}}' \
   "200" \
   '"phase"[[:space:]]*:[[:space:]]*"READY_FOR_PROCESSING".*"status"[[:space:]]*:[[:space:]]*"NOT_STARTED"'
@@ -306,20 +444,20 @@ wait_for_json_post \
 echo "Stopping only AI Service to verify failure isolation"
 "${COMPOSE[@]}" stop ai-service
 
-wait_for_http "Core API health while AI Service is stopped" "http://127.0.0.1:5173/api/v1/health" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-core-api"'
-wait_for_ai_failure "Core to AI Service health failure contract" "http://127.0.0.1:5173/api/v1/health/ai-service"
+wait_for_http "Core API health while AI Service is stopped" "${WEB_BASE_URL}/api/v1/health" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-core-api"'
+wait_for_ai_failure "Core to AI Service health failure contract" "${WEB_BASE_URL}/api/v1/health/ai-service"
 wait_for_ai_failure \
   "Required AI search failure while AI Service is stopped" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=%EC%88%98%EC%B6%9C&acceptingOnly=true"
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%88%98%EC%B6%9C&acceptingOnly=true"
 
 echo "Restarting AI Service to verify recovery without restarting Core API"
 "${COMPOSE[@]}" start ai-service
 
-wait_for_http "Core to AI Service recovery" "http://127.0.0.1:5173/api/v1/health/ai-service" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-ai-service"'
+wait_for_http "Core to AI Service recovery" "${WEB_BASE_URL}/api/v1/health/ai-service" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-ai-service"'
 wait_for_http \
   "Semantic search recovers after AI Service restart" \
-  "http://127.0.0.1:5173/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_OLD_AI"'
 
-echo "Compose verification passed: old relevant semantic result, MySQL listing, Qdrant/AI failure isolation and recovery."
+echo "Compose verification passed: four-source fixture synchronization, unknown-status notice boundaries, startup filters, mixed-source semantic results, MySQL listing, Qdrant/AI failure isolation and recovery. CNTRADE_NOTICE uses a documentation fixture, not live API validation."

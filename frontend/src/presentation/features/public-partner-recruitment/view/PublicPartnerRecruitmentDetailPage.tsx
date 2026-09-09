@@ -1,6 +1,14 @@
 import { Link } from 'react-router'
 
+import { partnerRoleLabels } from '../../../../domain/entities/PartnerRecruitment'
 import { workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
+import {
+  companyAgeLabel,
+  companyInitial,
+  companySummaryLine,
+  programDeadlineLabel,
+  recruitmentDeadlineLabel,
+} from '../../../shared/partner-recruitment/partnerRecruitmentLabels'
 import { publicPaths } from '../../../shared/routes/appPaths'
 import { usePublicPartnerRecruitmentDetailViewModel } from '../viewmodel/usePublicPartnerRecruitmentDetailViewModel'
 import { publicPartnerRecruitmentStyles as styles } from './PublicPartnerRecruitment.styles'
@@ -10,17 +18,38 @@ import { publicPartnerRecruitmentStyles as styles } from './PublicPartnerRecruit
  * 두지 않고, 로그인하면 같은 모집글의 내부 상세로 돌아오도록 안내합니다.
  */
 export function PublicPartnerRecruitmentDetailPage() {
-  const { recruitment, loginPath, signupPath, proposalFlowSteps } = usePublicPartnerRecruitmentDetailViewModel()
+  const { phase, recruitment, loginPath, signupPath, proposalFlowSteps } = usePublicPartnerRecruitmentDetailViewModel()
 
-  if (!recruitment) {
+  if (phase === 'loading') {
     return (
-      <main className={styles.page}>
+      <main className={styles.page} aria-label="모집글 불러오는 중">
         <Link className={styles.backLink} to={publicPaths.partners}>← 파트너 모집 목록</Link>
-        <h1 className={styles.detailTitle}>준비되지 않은 모집글 상세입니다</h1>
-        <p className={styles.description}>요청한 모집글의 상세 예시가 없습니다. 다른 모집글로 대신 표시하지 않습니다.</p>
+        <p className={styles.description}>모집글을 불러오는 중입니다.</p>
       </main>
     )
   }
+
+  if (phase === 'failed' || !recruitment) {
+    return (
+      <main className={styles.page}>
+        <Link className={styles.backLink} to={publicPaths.partners}>← 파트너 모집 목록</Link>
+        <h1 className={styles.detailTitle}>{phase === 'failed' ? '모집글을 불러오지 못했습니다' : '모집글을 찾을 수 없습니다'}</h1>
+        <p className={styles.description}>
+          {phase === 'failed' ? '잠시 후 다시 시도해 주세요.' : '요청한 모집글이 없거나 내려갔습니다. 다른 모집글로 대신 표시하지 않습니다.'}
+        </p>
+      </main>
+    )
+  }
+
+  const isClosed = recruitment.status === 'CLOSED'
+  const conditions = [
+    { label: '우리 역할', value: partnerRoleLabels[recruitment.ownRole] },
+    { label: '찾는 역할', value: `${partnerRoleLabels[recruitment.seekingRole]} ${recruitment.seekingCount}곳` },
+    { label: '희망 지역', value: recruitment.region },
+    { label: '희망 업력', value: companyAgeLabel(recruitment.minimumCompanyAgeYears) },
+    { label: '필요 역량', value: recruitment.capabilities.length > 0 ? recruitment.capabilities.join(', ') : '없음' },
+    { label: '제안 현황', value: `${recruitment.proposalCount}건` },
+  ]
 
   return (
     <main className={styles.page}>
@@ -28,8 +57,10 @@ export function PublicPartnerRecruitmentDetailPage() {
         <Link className={styles.backLink} to={publicPaths.partners}>← 파트너 모집 목록</Link>
         <div className={styles.tagRow}>
           <span className={workspaceTagClassName('ok')}>기업마당 공고</span>
-          <span className={workspaceTagClassName('muted')}>{recruitment.recruitmentStatusLabel}</span>
-          <span className={styles.cardDeadline}>{recruitment.recruitmentDeadline} · {recruitment.recruitmentDeadlineDate}</span>
+          <span className={workspaceTagClassName('muted')}>{isClosed ? '모집 마감' : '모집 중'}</span>
+          <span className={styles.cardDeadline}>
+            {isClosed ? '모집 마감' : recruitmentDeadlineLabel(recruitment.recruitmentDeadline)} · {recruitment.recruitmentDeadline}
+          </span>
         </div>
         <h1 className={styles.detailTitle}>{recruitment.title}</h1>
       </div>
@@ -38,17 +69,17 @@ export function PublicPartnerRecruitmentDetailPage() {
         <div className={styles.column}>
           <section className={styles.card} aria-label="모집 조건">
             <div className={styles.authorRow}>
-              <span className={styles.authorAvatar} aria-hidden="true">{recruitment.company.initial}</span>
+              <span className={styles.authorAvatar} aria-hidden="true">{companyInitial(recruitment.company.companyName)}</span>
               <span className="min-w-0">
-                <span className={styles.authorName}>{recruitment.company.name}</span>
-                <span className={styles.authorSummary}>{recruitment.companyDetailSummary}</span>
+                <span className={styles.authorName}>{recruitment.company.companyName}</span>
+                <span className={styles.authorSummary}>{companySummaryLine(recruitment.company)}</span>
               </span>
               <span className={`ml-auto ${workspaceTagClassName(recruitment.company.isEmailVerified ? 'ok' : 'muted')}`}>
                 {recruitment.company.isEmailVerified ? '이메일 인증' : '인증 전'}
               </span>
             </div>
             <div className={styles.conditionGrid}>
-              {recruitment.conditions.map((condition) => (
+              {conditions.map((condition) => (
                 <div className={styles.conditionCell} key={condition.label}>
                   <span className={styles.conditionLabel}>{condition.label}</span>
                   <span className={styles.conditionValue}>{condition.value}</span>
@@ -60,37 +91,28 @@ export function PublicPartnerRecruitmentDetailPage() {
           <section className={styles.card} aria-label="연결된 공고">
             <p className={workspacePageStyles.sectionEyebrow}>연결된 공고</p>
             <div className={styles.cardTop}>
-              <span className={workspaceTagClassName('ok')}>{recruitment.programStatusLabel}</span>
-              <span className={styles.cardDeadline}>{recruitment.programDeadline} · {recruitment.programDeadlineBadge}</span>
+              <span className={workspaceTagClassName('ok')}>기업마당</span>
+              <span className={styles.cardDeadline}>{programDeadlineLabel(recruitment.program.applicationEndDate)}</span>
             </div>
             <div className="flex flex-col gap-[0.15rem]">
-              <strong className={workspacePageStyles.cardTitle}>{recruitment.programTitle}</strong>
-              <span className={styles.cardProgram}>{recruitment.programOrganization}</span>
+              <strong className={workspacePageStyles.cardTitle}>{recruitment.program.title}</strong>
+              <span className={styles.cardProgram}>{recruitment.program.organization}</span>
             </div>
-            <p className={styles.bodyParagraph}>{recruitment.programSummary}</p>
+            <p className={styles.bodyParagraph}>{recruitment.program.summary}</p>
             <div className={styles.rawBox}>
-              <span><strong className={styles.rawBoxLabel}>신청기간 원문</strong> · {recruitment.programApplicationPeriodRaw}</span>
-              <span><strong className={styles.rawBoxLabel}>지원대상 원문</strong> · {recruitment.programTargetRaw}</span>
+              <span><strong className={styles.rawBoxLabel}>신청기간 원문</strong> · {recruitment.program.applicationPeriod}</span>
+              <span><strong className={styles.rawBoxLabel}>지원대상 원문</strong> · {recruitment.program.targetDescription}</span>
             </div>
-            <a className={workspacePageStyles.quietLink} href={recruitment.programSourceUrl} rel="noreferrer" target="_blank">
+            <a className={workspacePageStyles.quietLink} href={recruitment.program.sourceUrl} rel="noreferrer" target="_blank">
               공식 원문 보기
             </a>
           </section>
 
           <section className={styles.card} aria-label="모집 소개">
             <h2 className={workspacePageStyles.cardTitle}>모집 소개</h2>
-            {recruitment.introductionParagraphs.map((paragraph, index) => (
-              <p className={styles.bodyParagraph} key={index}>{paragraph}</p>
+            {recruitment.body.split(/\n{2,}/).map((paragraph, index) => (
+              <p className={styles.bodyParagraph} key={`${index}-${paragraph.slice(0, 12)}`}>{paragraph}</p>
             ))}
-            <div className="flex flex-col gap-2">
-              <span className={styles.conditionLabel}>함께 준비할 일</span>
-              {recruitment.preparationItems.map((item) => (
-                <span className={styles.preparationItem} key={item}>
-                  <span className={styles.preparationDot} aria-hidden="true" />
-                  {item}
-                </span>
-              ))}
-            </div>
             <p className={styles.disclaimer}>
               모집글의 내용은 작성 기업이 직접 입력한 것이며 GovBiz가 검증하지 않습니다. 공고 요건은 위 공식 원문에서 확인하세요.
             </p>

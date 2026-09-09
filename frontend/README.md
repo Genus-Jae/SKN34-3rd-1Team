@@ -49,15 +49,23 @@ pnpm dev
 `/`와 `/app/chat`의 검색 방식 탭에서 **AI 대화 검색** 또는 **필터 검색**을 선택합니다.
 기본은 기존 AI 대화이며 탭 전환만으로 AI 검색을 실행하거나 대화를 초기화하지 않습니다.
 
-- 필터 검색은 공고명·기관명 키워드, 지역·분야, 접수 상태를 선택하고 **검색**으로 적용합니다.
+- 필터 검색은 공고명·기관명 키워드, 지역·분야, 출처(전체·기업마당·K-Startup·과학기술정보통신부·충청남도 온라인수출지원시스템), 접수 상태를 선택하고 **검색**으로 적용합니다.
 - 지역·분야는 펼쳐진 단일 선택 목록으로 표시합니다. 선택 항목을 녹색으로 강조하며 키보드 방향키로 이동할 수 있습니다.
-  처음 선택지를 불러오는 중이거나 조회에 실패하면 안내를 표시하고, 실패 시 **다시 불러오기**로 재시도합니다.
+  기본 지역 18개·분야 18개(기업마당·K-Startup 분류의 합집합)와 각 ‘전체’ 버튼은 첫 화면부터 표시하고, 서버에 추가 분류가 있으면 중복 없이 덧붙입니다.
+  조회 중·실패·0건이어도 기본 버튼과 편집 중인 선택은 유지합니다. 로딩·오류 안내와 **다시 불러오기**는 결과 영역에만 표시합니다.
+- K-Startup을 선택하면 접을 수 있는 **추가 조건**에서 창업 업력·신청 대상·대표자 연령을 고릅니다.
+  공식 기본 선택지에 서버 전체 K-Startup 공고의 선택지를 합치며, 검색 결과가 적어도 선택지는 줄이지 않습니다.
+  출처를 전체 또는 다른 제공처로 바꾸면 전용 조건을 비웁니다. 추가 조건 역시 공고 분류이며 신청 자격 판정이 아닙니다.
+- 과학기술정보통신부(`MSIT`)·충청남도 온라인수출지원시스템(`CNTRADE_NOTICE`)에서 구조화된 접수 기간이 없는 공고는
+  **상태 미확인**으로 조회합니다. 해당 출처를 고르면 전체·상태 미확인 검색 안내를 표시하되, 사용자가 선택한 접수 상태를 자동으로 바꾸지 않습니다.
+- `CNTRADE_NOTICE`는 개별 상세 URL이 없어 카드·상세의 **공식 공지 목록** 링크로 이동합니다.
+  목록에서 공고 제목으로 해당 공지를 확인해야 하며, API 원본 ID로 개별 상세 링크를 추정하지 않습니다.
 - 최초 접수 중 목록, 최신순·마감일순, 12개씩 페이지 이동과 초기화를 제공합니다. 최신순은 제공처의 수정 시각을
   우선하고 등록 시각을 보조로 사용한 기존 정렬 값 기준입니다.
-- URL에 적용 조건과 페이지를 보존하며 새로고침·뒤로 가기·상세/원문 질문 왕복 시 복원합니다.
+- URL에 비어 있지 않은 적용 조건과 페이지를 보존하며 새로고침·뒤로 가기·상세/원문 질문 왕복 시 복원합니다.
   로그인 상태로 공개 필터 URL을 열어도 조건을 유지한 채 `/app/chat`으로 이동하며, 내부 상세·질문에서는 사이드바를 유지합니다.
-- 편집 중인 필터는 검색 전까지 적용하지 않습니다. 지역·분야는 실제 저장된 전체 공고의 분류를 사용하며,
-  지역 ‘서울’에 ‘전국’을 자동 포함하지 않습니다. 태그 필터는 기업 자격 판정이 아닙니다.
+- 편집 중인 필터는 검색 전까지 적용하지 않습니다. 지역·분야는 제공처 분류와 정확히 일치하는 값으로 조회하며,
+  버튼이 있어도 해당 공고가 없으면 0건일 수 있습니다. 지역 ‘서울’에 ‘전국’을 자동 포함하지 않습니다. 태그 필터는 기업 자격 판정이 아닙니다.
 - `BrowseSupportProgramsUseCase → Repository → GET /api/v1/support-programs/catalog`로 조회합니다.
   해석·임베딩·랭킹·검색 준비 상태에 의존하지 않으며 AI 실패를 우회하는 자동 fallback도 아닙니다.
 - 목록 조회에는 AI 점수·자격 확인 배지가 없습니다. 실제 신청 요건은 상세·원문에서 확인합니다.
@@ -77,9 +85,9 @@ pnpm dev
 | 경로 | 껍데기 | 기능 |
 |---|---|---|
 | `/` | 헤더 | AI 대화 검색·필터 검색 탭, 자연어 조건 해석·제안 확인, 결과 카드 |
-| `/?mode=filter` | 헤더 | 키워드·지역·분야·접수 상태 필터, 최신순·마감순, 페이지 이동 |
+| `/?mode=filter` | 헤더 | 키워드·지역·분야·출처·접수 상태와 K-Startup 추가 필터, 최신순·마감순, 페이지 이동 |
 | `/pricing` | 헤더 | 무료·프로·팀 요금제 소개, 출시 예정 안내, FAQ, 무료 검색 진입 |
-| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 읽기 전용이며 제안·작성은 로그인 안내 |
+| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하며 제안·작성은 로그인 안내 |
 | `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 헤더 | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
 | `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
@@ -88,11 +96,12 @@ pnpm dev
 | `/signup` | 없음 | 이메일·비밀번호만 받는 회원가입. 성공하면 세션이 생겨 작업 채팅으로 이동 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
 | `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
-| `/app/partners` | 사이드바 | 파트너 모집 목록·필터·프로필 기반 추천 |
-| `/app/partners/new` | 사이드바 | 모집글 작성 |
-| `/app/partners/detail?recruitmentId=...` | 사이드바 | 모집글 상세·매칭 근거·참여 제안 |
+| `/app/partners` | 사이드바 | 파트너 모집 목록. 모집 API를 검색·찾는 역할·지역·내 글·정렬·페이지 조건으로 조회, 예시 추천. 작성 버튼은 기업 등록 회원만 |
+| `/app/partners/new` | 사이드바 | 모집글 작성. 접수 중 공고를 검색해 고르고 등록하면 상세로 이동. 기업 미등록 회원은 프로필 등록 안내 |
+| `/app/partners/detail?recruitmentId=...` | 사이드바 | 모집 API의 상세·예시 매칭·참여 제안 보내기·링크 복사. 내 글이면 받은 제안 요약 |
+| `/app/proposals` | 사이드바 | 제안함. 받은 제안 수락·거절, 보낸 제안 철회, 수락된 제안의 상대 담당자 연락처 |
 | `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
-| `/app/profile` | 사이드바 | 기업 프로필, 공개 범위, 완성도 체크리스트 |
+| `/app/profile` | 사이드바 | 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정, 완성도 체크리스트. 나머지 섹션은 준비 중 |
 | `/app/admin/members` | 사이드바(관리자) | 어드민 회원·기업 목록과 운영 규칙 |
 
 `/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,
@@ -101,13 +110,24 @@ pnpm dev
 `/signup`은 `SignUpUseCase → AccountRepository → accountApi`로 실제 계정을 만들고 서버가 발급한 세션으로 바로 작업 채팅에
 들어갑니다. 비밀번호는 8~72자 길이만 검사하며 이미 가입된 이메일(409)·시도 제한(429)을 구분해 안내합니다. 약관 동의는 가입 버튼
 아래 안내 문구로 갈음하고 서버가 가입 시각을 기록합니다.
-`/partners` `/partners/detail` `/app/partners` `/app/profile` `/app/admin/members`는 화면만 있는 **데모 단계**입니다. 모집·회원 API가
-없어 ViewModel이 예시 값을 돌려줍니다.
-모집 작성도 입력을 검사한 뒤 목록으로 이동하며 등록·임시 저장하지 않습니다. 저장·제안 발송·회원 정지 등
+`/app/profile`의 기업 기본정보는 `CompanyRepository`(조회·등록·수정)에 연결됩니다. 기업이 없으면 그 카드 자리에 사업자등록번호
+조회 폼이 나오고, 조회로 받은 상호·사업자 상태는 읽기 전용이며 소재지(17개 시·도)·업종(표준산업분류 대분류)·설립연도와
+홈페이지(선택)만 입력합니다. 등록에 성공하면 세션 계정을 `tier=COMPANY`로 갱신해 사이드바가 상호를 보여 줍니다. 협업·파트너
+설정, 우대·인증 자격, 계정과 알림, 공개 범위 섹션은 아직 예시 값·준비 중이며 비밀번호 변경·계정 삭제는 다음 이슈에서 모달로 붙입니다.
+파트너 모집 목록·상세는 `PartnerRecruitmentRepository`(`data/api/partnerRecruitmentApi`)로 Core API를 읽습니다. 공개·내부 화면이
+`presentation/shared/partner-recruitment/usePartnerRecruitmentBrowse`의 조회 훅과 표시 helper를 함께 쓰고, 조건 타입은
+`domain/entities/PartnerRecruitmentQuery`가 그대로 조회 파라미터가 됩니다. 테스트와 레이아웃 점검은 `data/fixtures/partnerRecruitments`의
+예시 모집글로 API를 대신합니다. 제안은 `PartnerProposalRepository`(`data/api/partnerProposalApi`)로 보내기·수락·거절·철회·제안함을 읽고,
+`presentation/shared/partner-proposal/usePartnerProposalBox`가 제안함 화면·모집글 상세·사이드바 배지에 받은 제안을 공급합니다.
+`/app/admin/members`와 추천·매칭은 아직 **데모 단계**라 ViewModel이 예시 값을 돌려줍니다.
+지역은 공고 분류와 같은 `domain/entities/Region`의 시·도 목록을 쓰고, 프로필의 정식 명칭은 `toRegionName`으로 바꿉니다.
+모집글 작성·프로필 일치 표시는 `useAuthSession().hasCompany`(기업 등록 여부) 하나로 정하며, 제안 조건(이메일 인증)은 서비스 정책이라 작성자가 고르지 않습니다.
+모집 작성은 `browseSupportProgramsUseCase`로 접수 중 공고를 검색해 고르고 `createPartnerRecruitmentUseCase`로 등록합니다.
+공고당 모집글은 하나이며 마감일은 접수 마감 전날까지입니다. 모집글 저장·숨김·신고·회원 정지 등
 연결되지 않은 동작은 준비 중으로 비활성화했습니다. 프로필의 선택은 화면 안에서만 유지되고 추천에 전달되지 않습니다.
-준비된 모집 상세 하나만 `recruitmentId=ai-labeling`으로 연결하고, 다른 모집글을 그 상세로 대체하지 않습니다.
+없는 `recruitmentId`는 다른 모집글로 대체하지 않고 "찾을 수 없습니다"로 보여 줍니다.
 공개 파트너 모집 화면은 `presentation/features/public-partner-recruitment`에 따로 두어 매칭·제안 폼 없이 읽기만 제공하고,
-두 파트너 feature가 함께 쓰는 예시 값은 `presentation/shared/partner-recruitment`에 둡니다.
+두 파트너 feature가 함께 쓰는 조회 훅과 표시 helper는 `presentation/shared/partner-recruitment`에 둡니다.
 아직 화면이 없는 관심 공고함은 사이드바에서
 링크가 아니라 "준비 중" 표시로 둡니다. 새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
 
@@ -233,7 +253,8 @@ HTML 해석 없이 텍스트로 보여 줍니다. 점수·기존 관련 검색 �
 원래 검색 경로(`/` 또는 `/app/chat`)를 라우트 상태로 보존합니다. 두 값 외의 경로와
 임의의 외부 주소는 복귀 경로로 사용하지 않습니다. 직접 진입 시 기본 복귀 경로는 `/`입니다.
 원문 링크는 제공처 코드별 공식 도메인 allowlist와 `http(s)` 스킴을 함께 검증합니다. 현재
-`BIZINFO`의 기업마당 도메인과 `KSTARTUP`의 `k-startup.go.kr` 도메인 및 하위 도메인을 허용합니다.
+`BIZINFO`의 `bizinfo.go.kr`, `KSTARTUP`의 `k-startup.go.kr`, `MSIT`의 `msit.go.kr`,
+`CNTRADE_NOTICE`의 `cntrade.chungnam.go.kr` 도메인 및 각 하위 도메인을 허용합니다.
 그 외 제공처를 추가할 때는 해당 제공처의 공식 도메인을
 allowlist에 명시적으로 추가합니다. 테스트용 제공처는 production 허용 목록에 포함하지 않습니다.
 공고 원문 근거 질문은 현재 `BIZINFO`만 지원합니다. 기업마당 상세의 **이 공고에 질문하기** 링크로
@@ -241,8 +262,8 @@ allowlist에 명시적으로 추가합니다. 테스트용 제공처는 producti
 진입만으로 상세 API나 질문 API를 호출하지 않습니다. 사용자가 질문을 제출할 때만 기존 답변 API를
 호출하고, 질문·답변은 새로고침 시 초기화됩니다. 다른 제공처 상세에는 미지원 안내와 기존 원문 링크를
 표시합니다. 미지원 제공처의 질문 페이지로 직접 접속해도 입력을 표시하지 않고 ViewModel에서 전송을 차단합니다.
-K-Startup API 연동은 아직 추가하지 않았으며 URL 허용 목록만 준비했습니다. 알 수 없는 제공처나
-위조 URL이 응답에 포함되면 전체 응답을 거부합니다.
+K-Startup·과학기술정보통신부·충청남도 온라인수출지원시스템 공고도 Core 카탈로그 API를 통해 필터 검색·상세 조회합니다. 이 세 제공처의 원문 근거 질문은 계속 미지원입니다.
+알 수 없는 제공처나 위조 URL이 응답에 포함되면 전체 응답을 거부합니다.
 
 검색 요청에는 사용자가 확인한 검색 의도와 기업 조건을 전달합니다. C02는 현재 확정 상태·새 메시지와
 필요한 경우 마지막 질문·미확정 초안만 해석하며, 전체 대화 이력을 분석하거나 확인 없이 조건을 자동 적용하지 않습니다.
@@ -259,9 +280,10 @@ src/
 ├── presentation/features/auth/ # 로그인·회원가입 View와 각 페이지 ViewModel
 ├── presentation/features/partner-recruitment/ # 로그인 뒤 모집 목록·상세·작성 View와 각 페이지 ViewModel
 ├── presentation/features/public-partner-recruitment/ # 로그인 전 공개 모집 목록·상세 View와 ViewModel
-├── presentation/features/company-profile/ # 기업 프로필 View와 ViewModel
+├── presentation/features/partner-proposal/ # 제안함(받은·보낸 제안, 수락·거절·철회) View와 ViewModel
+├── presentation/features/company-profile/ # 기업 등록·기본정보 수정과 프로필 View, ViewModel, 준비 중 섹션의 예시 값
 ├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
-├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 공용 예시 값, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
+├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 조회 훅·표시 helper, 제안함 조회 훅, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture
 ```
@@ -279,14 +301,18 @@ UseCase·Repository 경계를 거치되 로딩·결과 상태를 ViewModel의 �
 `presentation/shared/support-program`에 둡니다. Domain·UseCase·Repository·DI는 기존 공용 계층을 유지합니다.
 
 `ChatPage`는 `useChatPageViewModel`이 반환하는 상태를 렌더링하고 이벤트를 연결합니다.
+ViewModel은 `chatConversationProposal`의 순수 변환으로 표시할 제안과 변경·해제·유지 조건을 계산합니다.
+View는 원본 해석 상태를 재조립하지 않고 `displayProposal`을 `ConversationProposal`에 전달합니다.
+검색 결과 카드는 `ProgramResults`가 렌더링하며, 카드와 결과 집계는 `supportProgramEligibility`의 분류 기준을 공유합니다.
+상세 링크는 공용 `supportProgramDetailPath`를 사용합니다. 날짜·조건 문자열 서식과 화면 배치는 View에 유지합니다.
 페이지 ViewModel은 `hooks/useSupportProgramChat`과 `hooks/useSupportProgramSearchReadiness`를
 조합해 확인 검색·검색 재시도의 준비 상태를 검사합니다. 해석 제출·다시 해석은 준비 상태와 독립적입니다. 채팅 Hook은 Redux 상태와 해석·검색·취소·
 시간 제한을 관리하고, 준비 상태 Hook은 상태 조회와 준비 중 polling을 담당합니다.
 IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 소유합니다. 로그인 전 화면의 브랜드·화면 이동은
 `presentation/shared/app-header`의 공용 헤더가 맡고, 로그인 뒤 작업 화면은 `presentation/shared/app-sidebar`의
 `WorkspaceLayout`이 헤더 대신 사이드바를 놓습니다. 어떤 화면이 어느 껍데기를 쓰는지는 `App`의 라우트가 결정합니다.
-파트너 모집·기업 프로필·어드민이 함께 쓰는 카드·태그·표·버튼 스타일과 켬·끔 스위치는
-`presentation/shared/workspace`에 둡니다. 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
+파트너 모집·기업 프로필·어드민이 함께 쓰는 카드·태그·표·버튼 스타일과 켬·끔 스위치, 지원사업 검색과 파트너 모집이 함께 쓰는
+한 줄 라디오 필터(`FilterChoices`)는 `presentation/shared/workspace`에 둡니다. 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
 로그인 상태는 `presentation/shared/auth`의 Redux `auth` slice와 `useAuthSession`·`useRestoreAuthSession`이 소유합니다.
 `App`은 시작 시 세션을 복원하고, `RequireAuth(minimumTier)`·`GuestOnly`·`PublicOnly` 라우트 래퍼가 복원이 끝나기 전(`unknown`)에는
 리다이렉트하지 않다가 회원·관리자 단계에 따라 화면을 나눕니다. `PublicOnly`는 로그인한 사용자를 공개 URL에서 같은 내용의
@@ -414,8 +440,9 @@ $env:UI_TEST_BASE_URL='http://127.0.0.1:5173'
 node scripts/check-ui-layout.cjs
 ```
 
-스크립트의 `paths` 목록을 7가지 화면 크기로 방문하고, `/app` 경로는 세션 힌트와 `/auth/me` 응답을 심어 회원(관리자 화면은 관리자)으로
-엽니다. 마지막 기록은 `/app` 분리 전 Edge에서 13경로 × 7화면 크기 = 91개 화면, 28개 동작 흐름 통과이며 분리 뒤 결과는 다시 기록해야 합니다.
+스크립트의 `paths` 목록(현재 18경로)을 7가지 화면 크기로 방문하고, `/app` 경로는 세션 힌트와 `/auth/me` 응답을 심어 회원(관리자 화면은 관리자,
+모집글 작성은 기업 회원)으로 엽니다. 파트너 모집·제안함 응답은 `data/fixtures`의 목데이터로 대체합니다.
+마지막 기록은 `/app` 분리 전 Edge에서 13경로 × 7화면 크기 = 91개 화면, 28개 동작 흐름 통과이며 분리 뒤 결과는 다시 기록해야 합니다.
 가로 넘침·좁아진 폼·작업 화면 외부 세로 넘침·제안 표시·검색·초기화 포커스·긴 답변·역량 칩을 확인합니다.
 수정한 활성 안내문·placeholder 토큰은 실제 렌더링된 단색 배경에서 대비도 검사합니다.
 모든 `/api/**` 요청은 가상 응답으로 대체하며 외부 네트워크는 차단합니다. 실제 API 호출과 AI 품질 검증은 없습니다.

@@ -20,6 +20,7 @@
 | DB 접근 | MyBatis Spring Boot Starter 4.0.0, Flyway | XML SQL 실행과 스키마 버전 관리 | [build.gradle](../backend/core-api/build.gradle) |
 | 원문 파싱 | jsoup 1.23.2 | 기업마당 상세 HTML의 제목 확인과 공고 본문 추출 | [build.gradle](../backend/core-api/build.gradle) |
 | 비밀번호 해시 | spring-security-crypto(BCrypt) | 회원 비밀번호 해시·비교. Security filter chain은 사용하지 않음 | [build.gradle](../backend/core-api/build.gradle) |
+| 사업자 확인 | Bizno(bizno.net) 사업자등록번호 조회 API | 기업 등록 시 등록 여부·상호·사업자 상태 확인. 키는 `BIZNO_API_KEY` | [계정·인증 계약](account-auth-contract.md) |
 | AI API | Python 3.11(Docker·CI), FastAPI 0.139.x, Pydantic 2 | 내부 API와 구조화된 요청·응답 검증 | [pyproject.toml](../backend/ai-service/pyproject.toml) |
 | AI 호출 | OpenAI SDK 3.x, Agents SDK 0.22.x, tiktoken | 임베딩, 후보 점수화, 입력 토큰 제한 | [pyproject.toml](../backend/ai-service/pyproject.toml) |
 | 공고 저장 | MySQL 8.4 | 현재 공고와 원본 식별자, 신청 기간 저장 | [Compose 설정](../infrastructure/compose.yaml) |
@@ -50,7 +51,8 @@ MySQL의 `support_program`은 `(source_code, source_program_id)`를 고유키로
 이 원문 테이블은 명시적 기업마당 원문 질문에서 원문 수집·검증이 성공했을 때 채워집니다.
 `support_program_sync_status`는 공개 스냅샷·색인 준비·최근 동기화 결과를 분리해 기록합니다.
 `account`는 이메일(고유)·BCrypt 비밀번호 해시·역할·이메일 인증·정지·삭제 시각을, `account_session`은 세션 JWT의
-SHA-256 해시·만료·마지막 사용 시각을 계정 FK와 함께 저장합니다.
+SHA-256 해시·만료·마지막 사용 시각을 계정 FK와 함께 저장합니다. `partner_recruitment`는 계정·기업·공고 FK와 계정+공고 UNIQUE로 모집글을 저장하고 역량은 JSON 배열입니다. `partner_proposal`은 모집글·제안 계정·기업 FK와 모집글+제안 계정 UNIQUE로 제안을 저장하고 결정·응답·철회 시각만 두어 상태는 조회 시점에 계산합니다. `company`는 계정당 하나(계정·사업자번호 UNIQUE)로 사업자등록번호
+조회 값(상호·사업자 상태)과 담당자 입력(소재지·업종·설립연도·홈페이지)을 저장합니다.
 스키마는 [Flyway migration](../backend/core-api/src/main/resources/db/migration)으로 관리합니다.
 
 접수 상태는 DB에 고정 저장하지 않고 조회 시 `Asia/Seoul`의 오늘 날짜로 계산합니다. 파싱된 날짜를

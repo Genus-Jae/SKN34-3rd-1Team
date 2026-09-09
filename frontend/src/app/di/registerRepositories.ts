@@ -2,6 +2,9 @@ import { CombinationReviewRepositoryImpl } from '../../data/repositories/Combina
 import { asClass } from 'awilix/browser'
 
 import { AccountRepositoryImpl } from '../../data/repositories/AccountRepositoryImpl'
+import { CompanyRepositoryImpl } from '../../data/repositories/CompanyRepositoryImpl'
+import { PartnerProposalRepositoryImpl } from '../../data/repositories/PartnerProposalRepositoryImpl'
+import { PartnerRecruitmentRepositoryImpl } from '../../data/repositories/PartnerRecruitmentRepositoryImpl'
 import { SampleItemRepositoryImpl } from '../../data/repositories/SampleItemRepositoryImpl'
 import { SupportProgramRepositoryImpl } from '../../data/repositories/SupportProgramRepositoryImpl'
 import type { AppContainer } from './types'
@@ -11,6 +14,9 @@ export function registerRepositories(container: AppContainer) {
   container.register({
     combinationReviewRepository: asClass(CombinationReviewRepositoryImpl).singleton(),
     accountRepository: asClass(AccountRepositoryImpl).singleton(),
+    companyRepository: asClass(CompanyRepositoryImpl).singleton(),
+    partnerProposalRepository: asClass(PartnerProposalRepositoryImpl).singleton(),
+    partnerRecruitmentRepository: asClass(PartnerRecruitmentRepositoryImpl).singleton(),
     sampleItemRepository: asClass(SampleItemRepositoryImpl).singleton(),
     supportProgramRepository: asClass(SupportProgramRepositoryImpl).singleton(),
   })

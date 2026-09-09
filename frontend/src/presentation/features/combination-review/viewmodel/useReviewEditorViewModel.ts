@@ -37,7 +37,7 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     }, ({ saved, detail, history }) => { setReview(detail); setDraft({ title: detail.title, programs: detail.programs }); setRuns(history); setPending(saved); setJournalReady(true) })
   }, [id, account, journal, useCase, perform])
   useEffect(() => { load() }, [load])
-  const search = (page = 1, term = keyword) => perform('catalog', (signal) => catalogUseCase.execute({ keyword: term, region: '', category: '', status: 'ALL', sort: 'RECENT', page, pageSize: 10 }, signal), (result) => { setCatalog(result); setAppliedKeyword(term) })
+  const search = (page = 1, term = keyword) => perform('catalog', (signal) => catalogUseCase.execute({ keyword: term, region: '', category: '', sourceCode: '', startupStage: '', applicantType: '', founderAge: '', status: 'ALL', sort: 'RECENT', page, pageSize: 10 }, signal), (result) => { setCatalog(result); setAppliedKeyword(term) })
   const add = (program: SupportProgram) => {
     const selected = { sourceCode: program.sourceCode, sourceProgramId: program.id, subProgramId: null, participation: unknownParticipation() }
     if (draft.programs.length >= 3 || draft.programs.some((p) => reviewProgramKey(p) === reviewProgramKey(selected))) return

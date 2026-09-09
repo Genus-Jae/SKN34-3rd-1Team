@@ -1,6 +1,7 @@
 """Exercise smoke-test cleanup guards with a fake Docker CLI; never touch Docker."""
 
 from pathlib import Path
+import importlib.util
 import subprocess
 import tempfile
 import unittest
@@ -9,8 +10,33 @@ import unittest
 SCRIPT = Path(__file__).with_name("verify-compose.sh")
 FAKE_DOCKER = """#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$VERIFY_DOCKER_CALLS"
+if [[ "${VERIFY_CHECK_SAFE_UPSTREAM_ENV:-false}" == "true" ]]; then
+  [[ "$KSTARTUP_SYNC_ENABLED" == "true" ]] || exit 91
+  [[ "$KSTARTUP_API_BASE_URL" == "http://kstartup-stub:8003" ]] || exit 92
+  [[ "$KSTARTUP_API_KEY" == "compose%2Bstartup%2Fverification%3D" ]] || exit 93
+  [[ "$KSTARTUP_SYNC_SCOPE" == "RECENT_YEAR" ]] || exit 94
+  [[ "$BIZINFO_API_BASE_URL" == "http://bizinfo-stub:8001" ]] || exit 95
+  [[ "$OPENAI_BASE_URL" == "http://openai-stub:8002/v1" ]] || exit 96
+  [[ "$OPENAI_API_KEY" == "compose-verification-key-never-sent" ]] || exit 97
+  [[ "$MSIT_API_BASE_URL" == "http://public-notices-stub:8004" ]] || exit 98
+  [[ "$MSIT_API_KEY" == "compose%2Bnotice%2Fverification%3D" ]] || exit 99
+  [[ "$MSIT_SYNC_ENABLED" == "true" ]] || exit 100
+  [[ "$MSIT_SYNC_INITIAL_DELAY" == "PT0S" && "$MSIT_SYNC_FIXED_DELAY" == "PT2S" ]] || exit 101
+  [[ "$CNTRADE_NOTICE_API_BASE_URL" == "http://public-notices-stub:8004" ]] || exit 102
+  [[ "$CNTRADE_NOTICE_API_KEY" == "compose%2Bnotice%2Fverification%3D" ]] || exit 103
+  [[ "$CNTRADE_NOTICE_SYNC_ENABLED" == "true" ]] || exit 104
+  [[ "$CNTRADE_NOTICE_SYNC_INITIAL_DELAY" == "PT0S" && "$CNTRADE_NOTICE_SYNC_FIXED_DELAY" == "PT2S" ]] || exit 105
+  [[ "$DATA_GO_KR_SERVICE_KEY" == "compose%2Bverification%2Fkey%3D" ]] || exit 106
+fi
 case "$*" in
-  *" config --quiet") exit "${VERIFY_FAKE_CONFIG_EXIT:-0}" ;;
+  *" config --quiet")
+    if [[ "${VERIFY_CHECK_PORTS:-false}" == "true" ]]; then
+      [[ "$WEB_HOST_PORT" == "$VERIFY_EXPECTED_WEB_PORT" ]] || exit 81
+      [[ "$CORE_API_HOST_PORT" == "$VERIFY_EXPECTED_CORE_PORT" ]] || exit 82
+      [[ "$APP_CORS_ALLOWED_ORIGIN" == "http://127.0.0.1:$VERIFY_EXPECTED_WEB_PORT" ]] || exit 83
+    fi
+    exit "${VERIFY_FAKE_CONFIG_EXIT:-0}"
+    ;;
   "ps "*|"network ls "*|"volume ls "*)
     if [[ "$*" == "${VERIFY_FAKE_EXISTING_KIND:-none} "* ]]; then
       printf '%s\\n' existing-resource
@@ -77,6 +103,120 @@ class VerifyComposeSafetyTest(unittest.TestCase):
         self.assertEqual(42, result.returncode)
         self.assertIn(" up --build --detach --remove-orphans", calls)
         self.assertNotIn(" down ", calls)
+
+    def test_verification_overrides_all_developer_upstream_settings_before_compose(self):
+        result, calls = self.run_script(
+            VERIFY_CHECK_SAFE_UPSTREAM_ENV="true",
+            KSTARTUP_SYNC_ENABLED="false",
+            KSTARTUP_API_BASE_URL="https://must-not-call.invalid",
+            KSTARTUP_API_KEY="must-not-use-real-startup-key",
+            KSTARTUP_SYNC_SCOPE="OPEN",
+            DATA_GO_KR_SERVICE_KEY="must-not-use-real-portal-key",
+            MSIT_API_BASE_URL="https://must-not-call.invalid",
+            MSIT_API_KEY="must-not-use-real-msit-key",
+            MSIT_SYNC_ENABLED="false",
+            MSIT_SYNC_INITIAL_DELAY="PT1H",
+            MSIT_SYNC_FIXED_DELAY="PT12H",
+            CNTRADE_NOTICE_API_BASE_URL="https://must-not-call.invalid",
+            CNTRADE_NOTICE_API_KEY="must-not-use-real-cntrade-key",
+            CNTRADE_NOTICE_SYNC_ENABLED="false",
+            CNTRADE_NOTICE_SYNC_INITIAL_DELAY="PT1H",
+            CNTRADE_NOTICE_SYNC_FIXED_DELAY="PT12H",
+            BIZINFO_API_BASE_URL="https://must-not-call.invalid",
+            OPENAI_BASE_URL="https://must-not-call.invalid/v1",
+            OPENAI_API_KEY="must-not-use-real-model-key",
+        )
+        self.assertEqual(42, result.returncode)
+        self.assertIn(" up --build --detach --remove-orphans", calls)
+        self.assertIn(" down --volumes --remove-orphans", calls)
+
+    def test_default_verification_ports_do_not_inherit_developer_service_ports(self):
+        result, calls = self.run_script(
+            VERIFY_CHECK_PORTS="true",
+            VERIFY_EXPECTED_WEB_PORT="15173",
+            VERIFY_EXPECTED_CORE_PORT="18080",
+            WEB_HOST_PORT="5173",
+            CORE_API_HOST_PORT="8080",
+            APP_CORS_ALLOWED_ORIGIN="http://127.0.0.1:5173",
+        )
+        self.assertEqual(42, result.returncode)
+        self.assertIn(" up --build --detach --remove-orphans", calls)
+
+    def test_explicit_verification_ports_are_exported_with_matching_origin(self):
+        result, calls = self.run_script(
+            VERIFY_CHECK_PORTS="true",
+            VERIFY_COMPOSE_WEB_HOST_PORT="25173",
+            VERIFY_COMPOSE_CORE_API_HOST_PORT="28080",
+            VERIFY_EXPECTED_WEB_PORT="25173",
+            VERIFY_EXPECTED_CORE_PORT="28080",
+        )
+        self.assertEqual(42, result.returncode)
+        self.assertIn(" up --build --detach --remove-orphans", calls)
+
+    def test_all_http_probes_and_post_origin_use_the_verification_web_base_url(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("http://127.0.0.1:5173", script)
+        self.assertIn('--header "Origin: ${WEB_BASE_URL}"', script)
+        for line in script.splitlines():
+            if "/api/v1/" in line:
+                self.assertIn("${WEB_BASE_URL}/api/v1/", line)
+
+
+class PublicNoticeFixtureTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        path = SCRIPT.parent.parent / "stubs" / "public-notices" / "server.py"
+        spec = importlib.util.spec_from_file_location("public_notice_fixture", path)
+        cls.fixture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.fixture)
+
+    def query(self, page, msit):
+        result = {"serviceKey": [self.fixture.EXPECTED_KEY], "pageNo": [str(page)],
+                  "numOfRows": ["10" if msit else "1000"]}
+        if msit:
+            result["returnType"] = ["json"]
+        return result
+
+    def test_msit_fixture_preserves_split_envelope_and_complete_ten_plus_one_pages(self):
+        pages = []
+        for page in (1, 2):
+            status, body = self.fixture.response_for(self.fixture.MSIT_PATH, self.query(page, True))
+            self.assertEqual(200, status)
+            self.assertEqual("00", body["response"][0]["header"]["resultCode"])
+            value = body["response"][1]["body"]
+            self.assertEqual(str(page), value["pageNo"])
+            self.assertEqual(11, value["totalCount"])
+            self.assertEqual(10, value["numOfRows"])
+            pages.append(value["items"])
+        self.assertEqual([10, 1], [len(page) for page in pages])
+        self.assertEqual(11, len({item["item"]["viewUrl"] for page in pages for item in page}))
+        self.assertEqual(1, sum("AI" in item["item"]["subject"] for page in pages for item in page))
+
+    def test_cntrade_fixture_uses_documented_contract_and_server_capped_page_size(self):
+        ids = []
+        for page in (1, 2):
+            status, body = self.fixture.response_for(self.fixture.CNTRADE_PATH, self.query(page, False))
+            self.assertEqual(200, status)
+            self.assertEqual("09", body["resultCode"])
+            self.assertEqual("RETURN_SUCCESS", body["resultMsg"])
+            self.assertEqual((page, 1, 2), (body["pageNo"], body["numOfRows"], body["totalCount"]))
+            self.assertEqual(1, len(body["items"]))
+            ids.extend(item["lbbNo"] for item in body["items"])
+        self.assertEqual([900001, 900002], ids)
+
+    def test_fixture_rejects_unexpected_credentials_parameters_pages_and_paths_without_echoing_secrets(self):
+        for path, msit in ((self.fixture.MSIT_PATH, True), (self.fixture.CNTRADE_PATH, False)):
+            invalid_queries = [
+                {**self.query(1, msit), "serviceKey": ["secret-that-must-not-be-echoed"]},
+                {**self.query(1, msit), "extra": ["secret-that-must-not-be-echoed"]},
+                self.query(3, msit),
+            ]
+            for query in invalid_queries:
+                status, response = self.fixture.response_for(path, query)
+                self.assertEqual(400, status)
+                self.assertNotIn("secret-that-must-not-be-echoed", str(response))
+        self.assertEqual(404, self.fixture.response_for("/unexpected", {})[0])
+        self.assertEqual((200, {"status": "up"}), self.fixture.response_for("/health", {}))
 
 
 if __name__ == "__main__":

@@ -7,7 +7,8 @@ import {
   type WorkspaceTagTone,
 } from '../../../shared/workspace/WorkspacePage.styles'
 import { WorkspaceToggle } from '../../../shared/workspace/WorkspaceToggle'
-import { useCompanyProfileViewModel } from '../viewmodel/useCompanyProfileViewModel'
+import { formatBusinessNumber } from '../../../../domain/entities/Company'
+import { useCompanyProfileViewModel, type ProfileFormValues } from '../viewmodel/useCompanyProfileViewModel'
 import {
   companyProfileChoiceClassName,
   companyProfileStyles,
@@ -44,12 +45,17 @@ const usageIcons: Record<'target' | 'users' | 'shield', ReactNode> = {
 }
 
 /**
- * 기업 프로필 화면입니다. 여기서 채운 값이 추천 점수의 근거와 파트너 매칭 입력이 됩니다.
- * 우대·인증 자격은 등록 상태만 보여주고 GovBiz가 자격을 판정하지 않습니다.
+ * 기업 프로필 화면입니다. 기업 기본정보는 사업자등록번호 조회로 등록·수정하고, 여기서 채운 값이
+ * 추천 점수의 근거와 파트너 매칭 입력이 됩니다. 우대·인증 자격은 등록 상태만 보여주고 GovBiz가 자격을 판정하지 않습니다.
+ * 협업·파트너 설정, 우대·인증, 계정과 알림, 공개 범위는 아직 예시 값이며 준비 중입니다.
  */
 export function CompanyProfilePage() {
+  const vm = useCompanyProfileViewModel()
   const {
-    profile,
+    companyState,
+    company,
+    demo,
+    notice,
     summaryTags,
     completionPercent,
     checklist,
@@ -68,7 +74,7 @@ export function CompanyProfilePage() {
     toggleNotification,
     usageNotes,
     publicityRows,
-  } = useCompanyProfileViewModel()
+  } = vm
 
   return (
     <>
@@ -85,18 +91,21 @@ export function CompanyProfilePage() {
       </header>
 
       <div className={workspacePageStyles.content}>
-        <p className={workspacePageStyles.emptyNote}>기업 프로필 데모입니다. 예시 정보와 설정 변경은 저장·공개되지 않으며 화면을 나가면 초기화됩니다.</p>
+        <p className={workspacePageStyles.emptyNote}>
+          기업 기본정보는 저장됩니다. 협업·파트너 설정, 우대·인증 자격, 알림, 공개 범위는 아직 예시 값이며 화면을 나가면 초기화됩니다.
+        </p>
+        {notice ? <p className={companyProfileStyles.notice} role="status">{notice}</p> : null}
         <div className={workspacePageStyles.columns}>
           <div className={workspacePageStyles.column}>
             <section className={workspacePageStyles.card} aria-label="프로필 요약">
               <div className={companyProfileStyles.summaryTop}>
                 <div className={companyProfileStyles.summaryIdentity}>
                   <span className={companyProfileStyles.summaryAvatar} aria-hidden="true">
-                    {profile.companyName.slice(0, 1)}
+                    {company === null ? '?' : company.companyName.slice(0, 1)}
                   </span>
                   <div>
                     <strong className={companyProfileStyles.summaryName}>
-                      {profile.companyName}
+                      {company === null ? '기업 미등록' : company.companyName}
                     </strong>
                     <div className={companyProfileStyles.summaryTags}>
                       {summaryTags.map((tag) => (
@@ -104,15 +113,14 @@ export function CompanyProfilePage() {
                           {tag}
                         </span>
                       ))}
-                      <span className={workspaceTagClassName('muted')}>
-                        설립 {profile.foundedYear}
-                      </span>
+                      {company === null ? (
+                        <span className={workspaceTagClassName('muted')}>사업자등록번호 확인 전</span>
+                      ) : (
+                        <span className={workspaceTagClassName('muted')}>설립 {company.foundedYear}</span>
+                      )}
                     </div>
                   </div>
                 </div>
-                <button className={workspacePageStyles.secondaryButton} type="button" disabled>
-                  기본정보 수정 · 준비 중
-                </button>
               </div>
 
               <div className={companyProfileStyles.completion}>
@@ -134,48 +142,87 @@ export function CompanyProfilePage() {
                   />
                 </div>
                 <span className={companyProfileStyles.completionHint}>
-                  보유 역량과 우대 자격을 채우면 파트너 매칭 근거가 더 정확해집니다.
+                  {company === null
+                    ? '사업자등록번호를 조회해 등록하면 기업 회원이 되어 파트너 모집글을 작성할 수 있습니다.'
+                    : '보유 역량과 우대 자격을 채우면 파트너 매칭 근거가 더 정확해집니다.'}
                 </span>
               </div>
             </section>
 
-            <section className={workspacePageStyles.card} aria-label="기업 기본정보">
-              <div className={workspacePageStyles.cardHeader}>
-                <h2 className={workspacePageStyles.cardTitle}>기업 기본정보</h2>
-                <button className={workspacePageStyles.quietLink} type="button" disabled>
-                  수정 · 준비 중
-                </button>
-              </div>
-              <div className={companyProfileStyles.fieldGrid}>
-                {basicFields.map((field) => (
-                  <div
-                    className={
-                      field.value === null
-                        ? companyProfileStyles.emptyField
-                        : companyProfileStyles.field
-                    }
-                    key={field.label}
-                  >
-                    <span className={companyProfileStyles.fieldLabel}>
-                      {field.label}
-                      {field.isOptional ? (
-                        <span className={companyProfileStyles.optionalMark}>선택</span>
-                      ) : null}
-                    </span>
-                    {field.value === null ? (
-                      <span className={companyProfileStyles.emptyValue}>미입력</span>
-                    ) : (
-                      <span className={companyProfileStyles.fieldValue}>
-                        {field.value}
-                        {field.tag ? (
-                          <span className={workspaceTagClassName('ok')}>{field.tag}</span>
+            {companyState.status === 'loading' ? (
+              <section className={workspacePageStyles.card} aria-label="기업 정보 불러오기">
+                <p className={workspacePageStyles.emptyNote} aria-live="polite">기업 정보를 불러오는 중입니다.</p>
+              </section>
+            ) : null}
+            {companyState.status === 'error' ? (
+              <section className={workspacePageStyles.card} aria-label="기업 정보 불러오기">
+                <p className={workspacePageStyles.emptyNote} role="alert">기업 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
+              </section>
+            ) : null}
+            {companyState.status === 'unregistered' ? <RegistrationCard vm={vm} /> : null}
+            {company !== null && vm.isEditing ? (
+              <section className={workspacePageStyles.card} aria-label="기업 기본정보 수정">
+                <div className={workspacePageStyles.cardHeader}>
+                  <div>
+                    <h2 className={workspacePageStyles.cardTitle}>기업 기본정보 수정</h2>
+                    <p className={workspacePageStyles.cardDescription}>
+                      기업명·사업자등록번호·사업자 상태는 조회 값이라 바꿀 수 없습니다.
+                    </p>
+                  </div>
+                </div>
+                <form className={companyProfileStyles.form} aria-label="기업 기본정보 수정" onSubmit={vm.submitUpdate} noValidate>
+                  <ProfileFields vm={vm} idPrefix="edit" />
+                  {vm.formError ? <p className={companyProfileStyles.formError} role="alert">{vm.formError.message}</p> : null}
+                  <div className={companyProfileStyles.formActions}>
+                    <button className={workspacePageStyles.secondaryButton} type="button" onClick={vm.cancelEditing} disabled={vm.isSaving}>
+                      취소
+                    </button>
+                    <button className={workspacePageStyles.primaryButton} type="submit" disabled={vm.isSaving}>
+                      {vm.isSaving ? '저장 중…' : '저장'}
+                    </button>
+                  </div>
+                </form>
+              </section>
+            ) : null}
+            {company !== null && !vm.isEditing ? (
+              <section className={workspacePageStyles.card} aria-label="기업 기본정보">
+                <div className={workspacePageStyles.cardHeader}>
+                  <h2 className={workspacePageStyles.cardTitle}>기업 기본정보</h2>
+                  <button className={workspacePageStyles.quietLink} type="button" onClick={vm.startEditing}>
+                    수정
+                  </button>
+                </div>
+                <div className={companyProfileStyles.fieldGrid}>
+                  {basicFields.map((field) => (
+                    <div
+                      className={
+                        field.value === null
+                          ? companyProfileStyles.emptyField
+                          : companyProfileStyles.field
+                      }
+                      key={field.label}
+                    >
+                      <span className={companyProfileStyles.fieldLabel}>
+                        {field.label}
+                        {field.isOptional ? (
+                          <span className={companyProfileStyles.optionalMark}>선택</span>
                         ) : null}
                       </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
+                      {field.value === null ? (
+                        <span className={companyProfileStyles.emptyValue}>미입력</span>
+                      ) : (
+                        <span className={companyProfileStyles.fieldValue}>
+                          {field.value}
+                          {field.tag ? (
+                            <span className={workspaceTagClassName('ok')}>{field.tag}</span>
+                          ) : null}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             <section className={workspacePageStyles.card} aria-label="협업·파트너 설정">
               <div className={workspacePageStyles.cardHeader}>
@@ -282,7 +329,7 @@ export function CompanyProfilePage() {
                 </button>
               </div>
               <div className="flex flex-col gap-2">
-                {profile.qualifications.map((qualification) => {
+                {demo.qualifications.map((qualification) => {
                   const status = qualificationLabels[qualification.status]
                   return (
                     <div className={companyProfileStyles.statusRow} key={qualification.label}>
@@ -305,11 +352,11 @@ export function CompanyProfilePage() {
                   <span className="min-w-0">
                     <span className={companyProfileStyles.accountLabel}>담당자</span>
                     <span className={companyProfileStyles.accountValue}>
-                      {profile.managerName} · {profile.managerEmail}
+                      {demo.managerName} · {vm.account?.email ?? demo.managerEmail}
                     </span>
                   </span>
-                  <span className={workspaceTagClassName(profile.isEmailVerified ? 'ok' : 'warn')}>
-                    {profile.isEmailVerified ? '이메일 인증됨' : '이메일 미인증'}
+                  <span className={workspaceTagClassName(vm.account?.emailVerified ? 'ok' : 'warn')}>
+                    {vm.account?.emailVerified ? '이메일 인증됨' : '이메일 미인증'}
                   </span>
                 </div>
 
@@ -468,5 +515,107 @@ export function CompanyProfilePage() {
         </div>
       </div>
     </>
+  )
+}
+
+type ViewModel = ReturnType<typeof useCompanyProfileViewModel>
+
+/** 기업이 없을 때 기본정보 카드 자리에 나오는 등록 폼입니다. 사업자등록번호 조회로 상호·상태를 채운 뒤 나머지를 입력합니다. */
+function RegistrationCard({ vm }: { vm: ViewModel }) {
+  const lookupBusy = vm.lookup.status === 'looking'
+  return (
+    <section className={workspacePageStyles.card} aria-label="기업 등록">
+      <div className={workspacePageStyles.cardHeader}>
+        <div>
+          <h2 className={workspacePageStyles.cardTitle}>기업 등록</h2>
+          <p className={workspacePageStyles.cardDescription}>
+            사업자등록번호를 조회하면 기업명과 사업자 상태가 채워집니다. 소재지·업종·설립연도는 직접 입력하고 홈페이지는 선택입니다.
+          </p>
+        </div>
+      </div>
+      <form className={companyProfileStyles.form} aria-label="기업 등록" onSubmit={vm.submitRegistration} noValidate>
+        <div className={companyProfileStyles.lookupRow}>
+          <label className={companyProfileStyles.formField}>
+            <span className={companyProfileStyles.formLabel}>사업자등록번호</span>
+            <input
+              className={companyProfileStyles.input}
+              type="text"
+              name="businessNumber"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="000-00-00000"
+              aria-invalid={vm.formError?.field === 'businessNumber'}
+              value={vm.businessNumber}
+              onChange={(event) => vm.updateBusinessNumber(event.target.value)}
+            />
+          </label>
+          <button className={workspacePageStyles.secondaryButton} type="button" onClick={() => void vm.lookupBusiness()} disabled={lookupBusy}>
+            {lookupBusy ? '조회 중…' : '조회'}
+          </button>
+        </div>
+
+        {vm.lookup.status === 'found' ? (
+          <div className={companyProfileStyles.lookupResult} role="status" aria-label="조회 결과">
+            <div className={companyProfileStyles.lookupHeadline}>
+              <strong className={companyProfileStyles.lookupName}>{vm.lookup.business.companyName}</strong>
+              <span className={workspaceTagClassName(vm.lookup.business.isActive ? 'ok' : 'warn')}>{vm.lookup.business.businessStatus}</span>
+            </div>
+            <span className={companyProfileStyles.lookupDetail}>{formatBusinessNumber(vm.lookup.business.businessNumber)}</span>
+            {vm.lookup.business.isActive ? null : (
+              <span className={companyProfileStyles.lookupWarning}>계속사업자만 등록할 수 있습니다.</span>
+            )}
+          </div>
+        ) : null}
+        {vm.lookup.status === 'failed' ? <p className={companyProfileStyles.formError} role="alert">{vm.lookup.message}</p> : null}
+
+        <ProfileFields vm={vm} idPrefix="register" />
+        {vm.formError ? <p className={companyProfileStyles.formError} role="alert">{vm.formError.message}</p> : null}
+        <div className={companyProfileStyles.formActions}>
+          <button
+            className={workspacePageStyles.primaryButton}
+            type="submit"
+            disabled={vm.isSaving || vm.lookup.status !== 'found' || !vm.lookup.business.isActive}
+          >
+            {vm.isSaving ? '등록 중…' : '기업 등록'}
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+/** 등록과 수정이 같은 입력 항목을 씁니다. `idPrefix`로 두 폼의 label·input 연결을 구분합니다. */
+function ProfileFields({ vm, idPrefix }: { vm: ViewModel; idPrefix: string }) {
+  const field = (name: keyof ProfileFormValues) => ({
+    id: `${idPrefix}-${name}`,
+    name,
+    'aria-invalid': vm.formError?.field === name,
+    value: vm.form[name],
+  })
+  return (
+    <div className={companyProfileStyles.formGrid}>
+      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-region`}>
+        <span className={companyProfileStyles.formLabel}>소재지</span>
+        <select className={companyProfileStyles.input} {...field('region')} onChange={(event) => vm.updateForm('region', event.target.value)}>
+          <option value="">선택</option>
+          {vm.regions.map((region) => <option key={region} value={region}>{region}</option>)}
+        </select>
+      </label>
+      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-industry`}>
+        <span className={companyProfileStyles.formLabel}>업종</span>
+        <select className={companyProfileStyles.input} {...field('industry')} onChange={(event) => vm.updateForm('industry', event.target.value)}>
+          <option value="">선택</option>
+          {vm.industries.map((industry) => <option key={industry} value={industry}>{industry}</option>)}
+        </select>
+      </label>
+      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-foundedYear`}>
+        <span className={companyProfileStyles.formLabel}>설립연도</span>
+        <input className={companyProfileStyles.input} type="text" inputMode="numeric" placeholder={String(vm.currentYear)} {...field('foundedYear')} onChange={(event) => vm.updateForm('foundedYear', event.target.value)} />
+      </label>
+      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-homepageUrl`}>
+        <span className={companyProfileStyles.formLabel}>홈페이지 <span className={companyProfileStyles.optionalMark}>선택</span></span>
+        <input className={companyProfileStyles.input} type="url" placeholder="https://" {...field('homepageUrl')} onChange={(event) => vm.updateForm('homepageUrl', event.target.value)} />
+      </label>
+    </div>
   )
 }

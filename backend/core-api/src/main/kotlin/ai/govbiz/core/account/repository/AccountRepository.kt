@@ -3,6 +3,7 @@ package ai.govbiz.core.account.repository
 import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.account.domain.AccountCredential
 import ai.govbiz.core.account.domain.AccountRole
+import ai.govbiz.core.account.domain.CompanySummary
 import ai.govbiz.core.account.domain.NewAccount
 import ai.govbiz.core.account.domain.NewAccountSession
 import ai.govbiz.core.account.domain.StoredAccountSession
@@ -104,5 +105,12 @@ class AccountRepository(
             emailVerifiedAt = emailVerifiedAt,
             suspendedAt = suspendedAt,
             createdAt = requireNotNull(createdAt) { "account createdAt must not be null" },
+            company = companyId?.let { id ->
+                CompanySummary(
+                    id = id,
+                    companyName = requireNotNull(companyName) { "company name must not be null" },
+                    businessNumber = requireNotNull(companyBusinessNumber) { "company business number must not be null" },
+                )
+            },
         )
 }

@@ -11,7 +11,7 @@ enum class AccountRole {
 /**
  * 화면 권한을 정하는 확인 단계입니다. 역할 이름이 아니라 계정이 통과한 확인으로 계산합니다.
  *
- * `COMPANY`(이메일 인증 + 사업자 확인 + 필수 프로필)는 기업 등록이 생기는 다음 단계에서 붙습니다.
+ * `COMPANY`는 사업자등록번호 조회를 통과한 기업을 등록하면 붙습니다. 이메일 인증 조건은 인증 기능이 생길 때 더합니다.
  */
 enum class AccountTier {
     MEMBER,
@@ -27,6 +27,8 @@ data class Account(
     val emailVerifiedAt: LocalDateTime?,
     val suspendedAt: LocalDateTime?,
     val createdAt: LocalDateTime,
+    /** 등록한 기업 요약입니다. 없으면 회원(MEMBER) 단계입니다. */
+    val company: CompanySummary? = null,
 ) {
     init {
         requireEmail(email)
@@ -42,8 +44,15 @@ data class Account(
     val isSuspended: Boolean
         get() = suspendedAt != null
 
+    val hasCompany: Boolean
+        get() = company != null
+
     val tier: AccountTier
-        get() = if (isAdmin) AccountTier.ADMIN else AccountTier.MEMBER
+        get() = when {
+            isAdmin -> AccountTier.ADMIN
+            hasCompany -> AccountTier.COMPANY
+            else -> AccountTier.MEMBER
+        }
 }
 
 /** 로그인 검증에만 쓰는 계정과 비밀번호 해시 조합입니다. 공개 계약으로 노출하지 않습니다. */

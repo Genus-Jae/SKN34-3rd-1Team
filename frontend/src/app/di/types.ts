@@ -4,6 +4,25 @@ import type { BrowseSupportProgramsUseCase } from '../../domain/usecases/BrowseS
 import type { CoreApiHealth } from '../../data/api/coreApiHealth'
 import type { SessionHintStorage } from '../../data/storage/sessionHintStorage'
 import type { AccountRepository } from '../../domain/repositories/AccountRepository'
+import type { CompanyRepository } from '../../domain/repositories/CompanyRepository'
+import type { PartnerProposalRepository } from '../../domain/repositories/PartnerProposalRepository'
+import type { PartnerRecruitmentRepository } from '../../domain/repositories/PartnerRecruitmentRepository'
+import type {
+  GetMyCompanyUseCase,
+  LookupBusinessUseCase,
+  RegisterCompanyUseCase,
+  UpdateCompanyUseCase,
+} from '../../domain/usecases/CompanyUseCases'
+import type {
+  BrowsePartnerRecruitmentsUseCase,
+  CreatePartnerRecruitmentUseCase,
+  GetPartnerRecruitmentDetailUseCase,
+} from '../../domain/usecases/PartnerRecruitmentUseCases'
+import type {
+  BrowsePartnerProposalsUseCase,
+  RespondPartnerProposalUseCase,
+  SendPartnerProposalUseCase,
+} from '../../domain/usecases/PartnerProposalUseCases'
 import type { SampleItemRepository } from '../../domain/repositories/SampleItemRepository'
 import type { SupportProgramRepository } from '../../domain/repositories/SupportProgramRepository'
 import type { AskSupportProgramEvidenceQuestionUseCase } from '../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
@@ -27,6 +46,15 @@ export type AppCradle = {
   reviewRequestJournal: typeof import('../../data/storage/reviewRequestJournal').reviewRequestJournal
   browseSupportProgramsUseCase: BrowseSupportProgramsUseCase
   accountRepository: AccountRepository
+  browsePartnerProposalsUseCase: BrowsePartnerProposalsUseCase
+  browsePartnerRecruitmentsUseCase: BrowsePartnerRecruitmentsUseCase
+  companyRepository: CompanyRepository
+  createPartnerRecruitmentUseCase: CreatePartnerRecruitmentUseCase
+  getPartnerRecruitmentDetailUseCase: GetPartnerRecruitmentDetailUseCase
+  getMyCompanyUseCase: GetMyCompanyUseCase
+  lookupBusinessUseCase: LookupBusinessUseCase
+  registerCompanyUseCase: RegisterCompanyUseCase
+  updateCompanyUseCase: UpdateCompanyUseCase
   interpretSupportProgramConversationUseCase: InterpretSupportProgramConversationUseCase
   askSupportProgramEvidenceQuestionUseCase: AskSupportProgramEvidenceQuestionUseCase
   devLogInUseCase: DevLogInUseCase
@@ -36,6 +64,10 @@ export type AppCradle = {
   getSupportProgramSearchReadinessUseCase: GetSupportProgramSearchReadinessUseCase
   logInUseCase: LogInUseCase
   logOutUseCase: LogOutUseCase
+  partnerProposalRepository: PartnerProposalRepository
+  partnerRecruitmentRepository: PartnerRecruitmentRepository
+  respondPartnerProposalUseCase: RespondPartnerProposalUseCase
+  sendPartnerProposalUseCase: SendPartnerProposalUseCase
   prepareSampleItemUseCase: PrepareSampleItemUseCase
   sampleItemRepository: SampleItemRepository
   searchSupportProgramsUseCase: SearchSupportProgramsUseCase

@@ -5,6 +5,8 @@
 const assert = require('node:assert/strict')
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright')
 const { supportPrograms } = require('../src/data/fixtures/supportPrograms.ts')
+const { partnerRecruitmentDetail, partnerRecruitmentPage } = require('../src/data/fixtures/partnerRecruitments.ts')
+const { receivedProposalBox, sentProposalBox } = require('../src/data/fixtures/partnerProposals.ts')
 
 const origin = new URL(process.env.UI_TEST_BASE_URL || 'http://127.0.0.1:5173').origin
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname), '로컬 개발 서버만 허용합니다.')
@@ -14,14 +16,18 @@ const longProgram = { ...supportPrograms[0], title: `레이아웃검증-${'A'.re
   summary: 'B'.repeat(700), targetDescription: 'C'.repeat(500), matchedReasons: [] }
 const detailQuery = new URLSearchParams({ sourceCode: longProgram.sourceCode, sourceProgramId: longProgram.id })
 const detailPath = `/support-programs/detail?${detailQuery}`
+// 모집글 목록·상세도 긴 제목·역량으로 레이아웃을 검증합니다.
+const longRecruitment = { ...partnerRecruitmentDetail, title: `모집검증-${'R'.repeat(80)}`, capabilities: Array.from({ length: 10 }, (_, index) => `역량${index}-${'S'.repeat(28)}`) }
 const questionPath = `/support-programs/detail/question?${detailQuery}`
 const paths = ['/', '/pricing', '/app/chat', '/app/pricing', '/login', '/signup', '/partners', '/app/partners', '/app/partners/new',
-  '/partners/detail?recruitmentId=ai-labeling', '/app/partners/detail?recruitmentId=ai-labeling', '/app/profile',
+  '/partners/detail?recruitmentId=101', '/app/partners/detail?recruitmentId=101', '/app/proposals', '/app/profile',
   '/app/admin/members', detailPath, questionPath, '/examples/sample-item/hook', '/examples/sample-item/redux']
 // `/app` 경로는 회원 세션이 있어야 열립니다. 앱이 세션 힌트를 보고 부르는 /auth/me 응답을 경로별로 심습니다.
 const sessionHintKey = 'govbiz.hasSession'
 const memberAccount = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true }
 const adminAccount = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true }
+// 모집글 작성은 기업을 등록한 회원만 열 수 있으므로 그 경로만 기업 요약이 있는 세션을 심습니다.
+const companyAccount = { email: 'company@govbiz.local', role: 'USER', tier: 'COMPANY', emailVerified: true, company: { companyName: '예시 소프트웨어 주식회사', businessNumber: '1234567890' } }
 let sessionAccount = null
 const sizes = [[320, 568], [375, 667], [768, 800], [844, 390], [1024, 800], [1280, 800], [1440, 900]]
 const chatOnlySizes = [[375, 400], [900, 700], [901, 700]]
@@ -109,6 +115,20 @@ async function main() {
         if (sessionAccount) json = { account: sessionAccount }
         else return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ code: 'AUTHENTICATION_REQUIRED' }) })
       } else if (url.pathname.endsWith('/auth/logout')) return route.fulfill({ status: 204, body: '' })
+      else if (url.pathname.endsWith('/me/company')) {
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'COMPANY_NOT_REGISTERED' }) })
+      }
+      else if (url.pathname.endsWith('/support-programs/catalog')) {
+        const programs = supportPrograms.filter(program => program.status === 'OPEN').slice(0, 8)
+          .map(program => ({ ...program, matchedReasons: [], recommendationScore: null, eligibilityReview: null }))
+        json = { programs, total: programs.length, page: 1, pageSize: 8, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] }
+      }
+      else if (url.pathname.endsWith('/me/proposals')) {
+        json = url.searchParams.get('box') === 'sent' ? sentProposalBox : receivedProposalBox
+      }
+      else if (url.pathname.endsWith('/partners/recruitments')) {
+        json = { ...partnerRecruitmentPage, recruitments: [longRecruitment, ...partnerRecruitmentPage.recruitments.slice(1)] }
+      } else if (url.pathname.endsWith('/partners/recruitments/101')) json = longRecruitment
       else if (url.pathname.endsWith('/readiness')) json = { ...source, sources: [source] }
       else if (url.pathname.endsWith('/interpret')) {
         calls.interpret++
@@ -134,7 +154,7 @@ async function main() {
       const checkedPaths = chatOnlySizes.some(size => size[0] === width && size[1] === height) ? ['/'] : paths
       for (const path of checkedPaths) {
         const label = `${width}x${height} ${path}`
-        sessionAccount = path.startsWith('/app/admin') ? adminAccount : path.startsWith('/app') ? memberAccount : null
+        sessionAccount = path.startsWith('/app/admin') ? adminAccount : path === '/app/partners/new' ? companyAccount : path.startsWith('/app') ? memberAccount : null
         if (!page.url().startsWith(origin)) await page.goto(origin + '/login')
         await page.evaluate(([key, hasSession]) => hasSession ? localStorage.setItem(key, '1') : localStorage.removeItem(key),
           [sessionHintKey, sessionAccount !== null])

@@ -4,6 +4,7 @@ import ai.govbiz.core.account.config.AccountDevLoginProperties
 import ai.govbiz.core.account.config.AccountSessionProperties
 import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.account.domain.AccountRole
+import ai.govbiz.core.account.domain.CompanySummary
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -46,6 +47,7 @@ object AccountTestHelper {
         role: AccountRole = AccountRole.USER,
         emailVerifiedAt: LocalDateTime? = null,
         suspendedAt: LocalDateTime? = null,
+        company: CompanySummary? = null,
     ): Account =
         Account(
             id = id,
@@ -54,6 +56,7 @@ object AccountTestHelper {
             emailVerifiedAt = emailVerifiedAt,
             suspendedAt = suspendedAt,
             createdAt = NOW,
+            company = company,
         )
 
     /** Kotlin의 non-null 인자에 Mockito matcher를 넘길 수 있게 null을 T로 다룹니다. */

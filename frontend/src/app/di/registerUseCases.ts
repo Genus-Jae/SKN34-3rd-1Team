@@ -5,6 +5,22 @@ import { asFunction } from 'awilix/browser'
 import { BrowseSupportProgramsUseCase } from '../../domain/usecases/BrowseSupportProgramsUseCase'
 
 import { AskSupportProgramEvidenceQuestionUseCase } from '../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
+import {
+  GetMyCompanyUseCase,
+  LookupBusinessUseCase,
+  RegisterCompanyUseCase,
+  UpdateCompanyUseCase,
+} from '../../domain/usecases/CompanyUseCases'
+import {
+  BrowsePartnerRecruitmentsUseCase,
+  CreatePartnerRecruitmentUseCase,
+  GetPartnerRecruitmentDetailUseCase,
+} from '../../domain/usecases/PartnerRecruitmentUseCases'
+import {
+  BrowsePartnerProposalsUseCase,
+  RespondPartnerProposalUseCase,
+  SendPartnerProposalUseCase,
+} from '../../domain/usecases/PartnerProposalUseCases'
 import { DevLogInUseCase } from '../../domain/usecases/DevLogInUseCase'
 import { GetCurrentAccountUseCase } from '../../domain/usecases/GetCurrentAccountUseCase'
 import { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSupportProgramDetailUseCase'
@@ -32,6 +48,36 @@ export function registerUseCases(container: AppContainer) {
       createAskSupportProgramEvidenceQuestionUseCase,
     ).singleton(),
     devLogInUseCase: asFunction(createDevLogInUseCase).singleton(),
+    browsePartnerProposalsUseCase: asFunction(
+      ({ partnerProposalRepository }: Pick<AppCradle, 'partnerProposalRepository'>) => new BrowsePartnerProposalsUseCase(partnerProposalRepository),
+    ).singleton(),
+    respondPartnerProposalUseCase: asFunction(
+      ({ partnerProposalRepository }: Pick<AppCradle, 'partnerProposalRepository'>) => new RespondPartnerProposalUseCase(partnerProposalRepository),
+    ).singleton(),
+    sendPartnerProposalUseCase: asFunction(
+      ({ partnerProposalRepository }: Pick<AppCradle, 'partnerProposalRepository'>) => new SendPartnerProposalUseCase(partnerProposalRepository),
+    ).singleton(),
+    browsePartnerRecruitmentsUseCase: asFunction(
+      ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new BrowsePartnerRecruitmentsUseCase(partnerRecruitmentRepository),
+    ).singleton(),
+    createPartnerRecruitmentUseCase: asFunction(
+      ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new CreatePartnerRecruitmentUseCase(partnerRecruitmentRepository),
+    ).singleton(),
+    getPartnerRecruitmentDetailUseCase: asFunction(
+      ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new GetPartnerRecruitmentDetailUseCase(partnerRecruitmentRepository),
+    ).singleton(),
+    getMyCompanyUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new GetMyCompanyUseCase(companyRepository),
+    ).singleton(),
+    lookupBusinessUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new LookupBusinessUseCase(companyRepository),
+    ).singleton(),
+    registerCompanyUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new RegisterCompanyUseCase(companyRepository),
+    ).singleton(),
+    updateCompanyUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new UpdateCompanyUseCase(companyRepository),
+    ).singleton(),
     getCurrentAccountUseCase: asFunction(createGetCurrentAccountUseCase).singleton(),
     getSupportProgramDetailUseCase: asFunction(
       createGetSupportProgramDetailUseCase,

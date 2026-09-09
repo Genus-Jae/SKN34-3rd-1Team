@@ -27,6 +27,10 @@ class SupportProgramCatalogController(
         @RequestParam(defaultValue = "RECENT") @Pattern(regexp = "RECENT|DEADLINE") sort: String,
         @RequestParam(defaultValue = "1") @Min(1) @Max(1_000_000) page: Int,
         @RequestParam(defaultValue = "12") @Min(1) @Max(50) pageSize: Int,
+        @RequestParam(defaultValue = "") @Pattern(regexp = "|BIZINFO|KSTARTUP|MSIT|CNTRADE_NOTICE") sourceCode: String,
+        @RequestParam(defaultValue = "") @Size(max = 100) @Pattern(regexp = "[^\\p{C}]*") startupStage: String,
+        @RequestParam(defaultValue = "") @Size(max = 100) @Pattern(regexp = "[^\\p{C}]*") applicantType: String,
+        @RequestParam(defaultValue = "") @Size(max = 100) @Pattern(regexp = "[^\\p{C}]*") founderAge: String,
     ): SupportProgramCatalogResponse = SupportProgramCatalogResponse.from(
         service.browse(
             rawKeyword = keyword,
@@ -36,6 +40,10 @@ class SupportProgramCatalogController(
             sort = SupportProgramCatalogSort.valueOf(sort),
             page = page,
             pageSize = pageSize,
+            sourceCode = sourceCode,
+            rawStartupStage = startupStage,
+            rawApplicantType = applicantType,
+            rawFounderAge = founderAge,
         ),
     )
 }

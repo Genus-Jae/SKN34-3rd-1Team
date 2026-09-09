@@ -3,10 +3,11 @@ import { Link, useLocation } from 'react-router'
 
 import type { Account } from '../../../domain/entities/Account'
 import { useAuthSession } from '../auth/hooks/useAuthSession'
+import { usePendingReceivedProposalCount } from '../partner-proposal/usePartnerProposalBox'
 import { appPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 
-type MenuIcon = 'search' | 'bookmark' | 'users' | 'building' | 'shield' | 'pricing'
+type MenuIcon = 'search' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing'
 
 /** 사이드바 메뉴 한 줄입니다. `to`가 없으면 아직 화면이 없는 메뉴이므로 링크로 만들지 않습니다. */
 type MenuItem = {
@@ -38,6 +39,12 @@ const menuGroups: MenuGroup[] = [
         matches: (pathname) => pathname.startsWith(appPaths.partners),
       },
       {
+        label: '제안함',
+        icon: 'inbox',
+        to: appPaths.proposals,
+        matches: (pathname) => pathname.startsWith(appPaths.proposals),
+      },
+      {
         label: '내 프로필',
         icon: 'building',
         to: appPaths.profile,
@@ -65,6 +72,12 @@ const iconPaths: Record<MenuIcon, ReactNode> = {
     <>
       <rect x="3" y="5" width="18" height="14" rx="3" />
       <path d="M3 10h18M7 15h3" />
+    </>
+  ),
+  inbox: (
+    <>
+      <path d="M4 5h16v14H4z" />
+      <path d="M4 13h5l1.5 2h3L15 13h5" />
     </>
   ),
   search: (
@@ -109,10 +122,10 @@ function MenuIconGraphic({ name }: { name: MenuIcon }) {
   )
 }
 
-/** 계정 카드에 보여 줄 단계 문구입니다. 기업 등록이 붙기 전까지 회원은 등록 안내를 함께 봅니다. */
+/** 계정 카드에 보여 줄 단계 문구입니다. 기업을 등록하면 상호를, 아니면 등록 안내를 봅니다. */
 function tierLabel(account: Account): string {
   if (account.tier === 'ADMIN') return '관리자'
-  if (account.tier === 'COMPANY') return '기업 회원'
+  if (account.company !== null) return `${account.company.companyName} · 기업 회원`
   return account.emailVerified ? '회원 · 기업 미등록' : '회원 · 이메일 미인증'
 }
 
@@ -124,6 +137,13 @@ function tierLabel(account: Account): string {
 export function AppSidebar() {
   const { pathname } = useLocation()
   const { account, logOut } = useAuthSession()
+  const pendingProposalCount = usePendingReceivedProposalCount()
+
+  /** 제안함은 받은 제안 대기 건수를 배지로 보여 줍니다. 나머지 메뉴는 고정 문구를 씁니다. */
+  function badgeFor(item: MenuItem): string | undefined {
+    if (item.to === appPaths.proposals) return pendingProposalCount === null ? undefined : String(pendingProposalCount)
+    return item.badge
+  }
 
   return (
     <aside className={appSidebarStyles.sidebar} aria-label="작업 사이드바">
@@ -152,7 +172,7 @@ export function AppSidebar() {
                 >
                   <MenuIconGraphic name={item.icon} />
                   <span>{item.label}</span>
-                  {item.badge ? <span className={appSidebarStyles.menuBadge}>{item.badge}</span> : null}
+                  {badgeFor(item) ? <span className={appSidebarStyles.menuBadge}>{badgeFor(item)}</span> : null}
                 </Link>
               ) : (
                 <span

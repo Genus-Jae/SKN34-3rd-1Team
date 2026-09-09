@@ -10,7 +10,7 @@ import {
   signedOut,
 } from './authSlice'
 
-const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false }
+const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false, company: null }
 
 describe('authSlice', () => {
   it('starts unknown until the stored session is checked', () => {

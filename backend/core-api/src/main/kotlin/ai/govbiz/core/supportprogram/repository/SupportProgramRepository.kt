@@ -3,6 +3,7 @@ package ai.govbiz.core.supportprogram.repository
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramSourceDocument
+import ai.govbiz.core.supportprogram.domain.SupportProgramStartupDetails
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatusResolver
 import ai.govbiz.core.supportprogram.domain.SupportProgramSyncOutcome
 import ai.govbiz.core.supportprogram.domain.SupportProgramSyncStatus
@@ -239,6 +240,7 @@ class SupportProgramRepository(
             applicationEndDate = supportProgram.applicationEndDate,
             sourceUrl = supportProgram.sourceUrl,
             sourceSortTimestamp = sortTimestamp.takeIf(String::isNotBlank),
+            startupDetailsJson = startupDetails?.let(objectMapper::writeValueAsString),
         )
     }
 
@@ -272,6 +274,9 @@ class SupportProgramRepository(
                 recommendationScore = null,
             ),
             sortTimestamp = sourceSortTimestamp.orEmpty(),
+            startupDetails = startupDetailsJson?.let {
+                objectMapper.readValue(it, SupportProgramStartupDetails::class.java)
+            },
         )
     }
 
@@ -314,6 +319,8 @@ class SupportProgramRepository(
         when (sourceCode) {
             "BIZINFO" -> "기업마당"
             "KSTARTUP" -> "K-Startup"
+            "MSIT" -> "과학기술정보통신부"
+            "CNTRADE_NOTICE" -> "충청남도 온라인수출지원시스템"
             else -> sourceCode
         }
 

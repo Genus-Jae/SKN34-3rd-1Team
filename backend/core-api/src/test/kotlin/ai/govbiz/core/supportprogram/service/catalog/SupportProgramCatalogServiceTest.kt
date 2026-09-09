@@ -8,11 +8,14 @@ import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReview
 import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReviewStatus
 import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityStatus
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramStartupDetails
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
 import java.time.LocalDate
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.Mockito
 
 class SupportProgramCatalogServiceTest {
@@ -205,6 +208,74 @@ class SupportProgramCatalogServiceTest {
 
     private fun snapshot(vararg programs: CatalogSupportProgram) {
         Mockito.`when`(repository.findPublishedPresent()).thenReturn(programs.toList())
+    }
+
+    @Test
+    fun filtersSourceWithoutCollidingOriginalIdsAcrossProviders() {
+        snapshot(candidate("same"), candidate("same", sourceCode = "KSTARTUP"))
+
+        assertEquals(listOf("KSTARTUP:same"), service.browse(sourceCode = "KSTARTUP").programs.map { it.sourceQualifiedId })
+    }
+
+    @Test
+    fun combinesNativeStartupTagsExactlyWithoutInferringMissingQualifications() {
+        val details = SupportProgramStartupDetails(listOf("3년미만"), listOf("일반기업"), listOf("만 40세 이상"))
+        val match = candidate("match", sourceCode = "KSTARTUP", regions = listOf("서울"), categories = listOf("사업화"))
+            .copy(startupDetails = details)
+        snapshot(
+            match,
+            match.copy(program = match.program.copy(id = "missing"), startupDetails = null),
+            match.copy(program = match.program.copy(id = "different-stage"), startupDetails = details.copy(startupStages = listOf("7년미만"))),
+            match.copy(program = match.program.copy(id = "different-target"), startupDetails = details.copy(applicantTypes = listOf("대학생"))),
+            match.copy(program = match.program.copy(id = "different-age"), startupDetails = details.copy(founderAges = emptyList())),
+            candidate("bizinfo-same-words", title = "3년미만 일반기업 만 40세 이상"),
+        )
+
+        val result = service.browse(
+            rawRegion = "서울", rawCategory = "사업화", sourceCode = "KSTARTUP",
+            rawStartupStage = " 3년미만 ", rawApplicantType = "일반기업", rawFounderAge = "만 40세 이상",
+        )
+
+        assertEquals(listOf("match"), result.programs.map { it.id })
+        assertEquals(listOf("3년미만", "7년미만"), result.startupStages)
+        assertEquals(listOf("대학생", "일반기업"), result.applicantTypes)
+        assertEquals(listOf("만 40세 이상"), result.founderAges)
+    }
+
+    @Test
+    fun startupFacetsSurviveEmptyResultsAndNeverComeFromAnotherSource() {
+        snapshot(candidate("startup", sourceCode = "KSTARTUP").copy(
+            startupDetails = SupportProgramStartupDetails(listOf("예비창업자", "예비창업자", " "), listOf("일반인"), emptyList()),
+        ))
+
+        val result = service.browse(sourceCode = "BIZINFO")
+
+        assertTrue(result.programs.isEmpty())
+        assertEquals(listOf("예비창업자"), result.startupStages)
+        assertEquals(listOf("일반인"), result.applicantTypes)
+        assertTrue(result.founderAges.isEmpty())
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["MSIT", "CNTRADE_NOTICE"])
+    fun noticeSourcesFilterByIdentityWithoutInventingDatesOrTags(source: String) {
+        snapshot(*listOf("BIZINFO", "KSTARTUP", "MSIT", "CNTRADE_NOTICE").map {
+            candidate("same", sourceCode = it, status = SupportProgramStatus.UNKNOWN, regions = emptyList(), categories = emptyList())
+        }.toTypedArray())
+
+        val result = service.browse(sourceCode = source, status = SupportProgramStatus.UNKNOWN)
+
+        assertEquals(listOf("$source:same"), result.programs.map { it.sourceQualifiedId })
+        assertTrue(result.regions.isEmpty())
+        assertTrue(result.categories.isEmpty())
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["MSIT", "CNTRADE_NOTICE"])
+    fun noticeSourcesDoNotTreatUnknownAsOpen(source: String) {
+        snapshot(candidate("notice", sourceCode = source, status = SupportProgramStatus.UNKNOWN))
+
+        assertEquals(0, service.browse(sourceCode = source).total)
     }
 
     private fun candidate(

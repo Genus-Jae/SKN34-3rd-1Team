@@ -4,6 +4,7 @@ import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramCatalogSort
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
+import ai.govbiz.core.supportprogram.service.catalog.exception.SupportProgramCatalogFilterException
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramCatalogResult
 import org.springframework.stereotype.Service
 
@@ -20,20 +21,36 @@ class SupportProgramCatalogService(
         sort: SupportProgramCatalogSort = SupportProgramCatalogSort.RECENT,
         page: Int = 1,
         pageSize: Int = 12,
+        sourceCode: String = "",
+        rawStartupStage: String = "",
+        rawApplicantType: String = "",
+        rawFounderAge: String = "",
     ): SupportProgramCatalogResult {
         require(page in 1..1_000_000 && pageSize in 1..50) { "invalid catalog pagination" }
         val keyword = rawKeyword.trim()
         val region = rawRegion.trim()
         val category = rawCategory.trim()
+        val startupStage = rawStartupStage.trim()
+        val applicantType = rawApplicantType.trim()
+        val founderAge = rawFounderAge.trim()
+        val hasStartupFilter = listOf(startupStage, applicantType, founderAge).any(String::isNotEmpty)
+        if (sourceCode !in setOf("", "BIZINFO", "KSTARTUP", "MSIT", "CNTRADE_NOTICE") || (hasStartupFilter && sourceCode != "KSTARTUP")) {
+            throw SupportProgramCatalogFilterException()
+        }
         // 상태는 Repository가 서울 기준 현재 날짜로 계산합니다. 이후 색인 장애가 생겨도 공개 목록은 읽습니다.
         val snapshot = repository.findPublishedPresent()
         val filtered = snapshot.filter { candidate ->
             val program = candidate.program
+            val startup = candidate.startupDetails
             (keyword.isEmpty() || program.title.contains(keyword, ignoreCase = true) ||
                 program.organization.contains(keyword, ignoreCase = true)) &&
                 (region.isEmpty() || region in program.regions) &&
                 (category.isEmpty() || category in program.categories) &&
-                (status == null || program.status == status)
+                (status == null || program.status == status) &&
+                (sourceCode.isEmpty() || program.sourceCode == sourceCode) &&
+                (startupStage.isEmpty() || startupStage in startup?.startupStages.orEmpty()) &&
+                (applicantType.isEmpty() || applicantType in startup?.applicantTypes.orEmpty()) &&
+                (founderAge.isEmpty() || founderAge in startup?.founderAges.orEmpty())
         }
         val recentOrder = compareByDescending<CatalogSupportProgram> { it.sortTimestamp.takeIf(String::isNotBlank) }
             .thenBy { it.program.sourceCode }
@@ -45,6 +62,7 @@ class SupportProgramCatalogService(
                 .then(recentOrder)
         }
         val total = filtered.size
+        val startupDetails = snapshot.filter { it.program.sourceCode == "KSTARTUP" }.mapNotNull { it.startupDetails }
         val programs = filtered.sortedWith(order)
             .drop((page - 1) * pageSize)
             .take(pageSize)
@@ -59,6 +77,9 @@ class SupportProgramCatalogService(
             // 필터·페이지로 선택지가 사라지지 않도록 같은 전체 스냅샷에서 계산합니다.
             regions = snapshot.flatMap { it.program.regions }.filter(String::isNotBlank).distinct().sorted(),
             categories = snapshot.flatMap { it.program.categories }.filter(String::isNotBlank).distinct().sorted(),
+            startupStages = startupDetails.flatMap { it.startupStages }.filter(String::isNotBlank).distinct().sorted(),
+            applicantTypes = startupDetails.flatMap { it.applicantTypes }.filter(String::isNotBlank).distinct().sorted(),
+            founderAges = startupDetails.flatMap { it.founderAges }.filter(String::isNotBlank).distinct().sorted(),
         )
     }
 }

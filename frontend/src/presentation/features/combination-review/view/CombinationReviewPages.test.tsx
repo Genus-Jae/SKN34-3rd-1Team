@@ -30,7 +30,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); appContainer.register({ comb
 function Isolation() { useReviewSessionIsolation(); return null }
 function mount(path = '/app/combination-reviews/12') {
   const store = createAppStore()
-  store.dispatch(signedIn({ email: 'a@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false }))
+  store.dispatch(signedIn({ email: 'a@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null }))
   const rendered = render(<Provider store={store}><Isolation /><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/app/combination-reviews" element={<CombinationReviewListPage />} />
     <Route path="/app/combination-reviews/new" element={<CombinationReviewEditorPage create />} />
@@ -41,20 +41,23 @@ function mount(path = '/app/combination-reviews/12') {
 describe('review screens and execution safety', () => {
   it.each([201, 404])('handles new review save HTTP %s through the production adapter', async (status) => {
     const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (_url.includes('/catalog')) return Response.json({ programs: supportPrograms.slice(0, 2).map((program) => ({ ...program, recommendationScore: null, eligibilityReview: null, matchedReasons: [] })), total: 2, page: 1, pageSize: 10, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
       if (init?.method === 'POST') return Response.json(status === 201 ? reviewFixture : { status: 404, error: 'Not Found' }, { status })
       return Response.json(_url.includes('/runs') ? { items: [], nextBeforeId: null } : reviewFixture)
     })
     vi.stubGlobal('fetch', fetch)
     appContainer.register({
       combinationReviewUseCase: asValue(new CombinationReviewUseCase(new CombinationReviewRepositoryImpl())),
-      browseSupportProgramsUseCase: asValue({ execute: vi.fn().mockResolvedValue({ programs: supportPrograms.slice(0, 2), page: 1, totalPages: 1 }) }),
+      browseSupportProgramsUseCase: asValue(originalCatalog),
     })
     mount('/app/combination-reviews/new')
     fireEvent.change(screen.getByLabelText('검토 제목'), { target: { value: reviewFixture.title } })
     fireEvent.click(screen.getByText('공고 검색'))
     const choices = await screen.findAllByRole('button', { name: '선택' })
     fireEvent.click(choices[0]); fireEvent.click(choices[1])
-    expect(fetch).not.toHaveBeenCalled()
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(new URL(fetch.mock.calls[0][0]).pathname).toMatch(/\/catalog$/)
+    expect(new URL(fetch.mock.calls[0][0]).searchParams.get('status')).toBe('ALL')
     fireEvent.click(screen.getByText('검토 저장'))
     if (status === 201) {
       await screen.findByText('검토 입력과 실행 이력')
@@ -162,7 +165,7 @@ describe('review screens and execution safety', () => {
     const { store } = mount(); await screen.findByDisplayValue(reviewFixture.title)
     fireEvent.click(screen.getByText('새 분석 실행'))
     expect(Object.keys(sessionStorage).length).toBe(1)
-    act(() => { store.dispatch(signedIn({ email: 'b@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false })) })
+    act(() => { store.dispatch(signedIn({ email: 'b@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null })) })
     await act(async () => finish(runFixture))
     expect(Object.keys(sessionStorage).length).toBe(0)
     expect(screen.queryByText('실행 #30 · 분석 완료')).toBeNull()

@@ -34,19 +34,19 @@ AI 경계 실패는 `facade/exception`에서 표현하고 Service가 공개 실�
 ```text
 브라우저 → React Web → Core API
                        ├→ MySQL: 현재 공개 공고 카탈로그·공고별 공식 원문
-                       ├→ 공공데이터포털: 기업마당 전체 공고 수집
+                       ├→ 공공데이터포털: 기업마당·K-Startup 공고 수집
                        ├→ 기업마당 공식 HTTPS 상세 페이지: 명시적 원문 질문 시 HTML 수집
                        └→ AI Service
                            ├→ OpenAI: 문서·질의 임베딩, 조건 변경 해석·후보 점수화·근거 답변
                            └→ Qdrant: 공고 검색·원문 근거 청크의 분리된 벡터 컬렉션
 ```
 
-Core API는 공개 HTTP 계약, 기업마당 수집, MySQL 접근과 접수 상태 계산을 소유합니다. AI Service는
+Core API는 공개 HTTP 계약, 기업마당·K-Startup 수집, MySQL 접근과 접수 상태 계산을 소유합니다. AI Service는
 Core가 전달한 공고 문서·원문 청크의 색인·검색·점수화·근거 답변을 담당하며 MySQL에 직접 접근하지 않습니다.
 
 브라우저는 Core API의 `/api`만 호출합니다. Compose에서 Vite는 `/api`를 `core-api:8080`으로 프록시하며,
 AI Service는 호스트에 포트를 게시하지 않습니다. MySQL·Qdrant·Core API·Web의 개발용 포트는
-`127.0.0.1`에 바인딩합니다. 기업마당 키는 Core API에, OpenAI 키는 AI Service에만 주입합니다.
+`127.0.0.1`에 바인딩합니다. 기업마당·K-Startup 키는 Core API에, OpenAI 키는 AI Service에만 주입합니다.
 이는 개발 환경의 서비스 배치이며 운영 인증·접근 제어가 구현됐다는 의미는 아닙니다.
 
 ## 검색·상세 조회·원문 근거 질문
@@ -151,7 +151,8 @@ GET /api/v1/support-programs/readiness
 
 `SupportProgramSourceReadinessResult → SupportProgramSourceReadinessResponse` 변환으로 필수 `sources`와
 전체 검색 범위를 제공합니다. 일부만 준비되면 `SEARCHABLE_WITH_PARTIAL_SOURCES`이며 외부 호출은 없습니다.
-상태가 아직 없는 현재 공고의 제공처도 준비 미확인으로 표시하고 초기 빈 DB에서는 구성된 기업마당만 표시합니다.
+상태가 아직 없는 현재 공고의 제공처도 준비 미확인으로 표시합니다. 초기 빈 DB에서는 기업마당과
+`KSTARTUP_SYNC_ENABLED=true`인 경우 K-Startup을 표시합니다. 하나가 준비 중이어도 준비된 제공처 검색은 유지합니다.
 세부 정책과 검증은 [다중 제공처 준비](support-program-multi-source-preparation.md)에 있습니다.
 
 점수화 계약은 `govbiz-support-program-ranking-v5`입니다. 의미 관련성 20/40점 이상을
@@ -187,10 +188,12 @@ AI Service가 부적격 항목을 최종 응답에 넣으면 Core는 이를 응�
   → SupportProgramRepository.findPublishedPresent → MyBatis Mapper → Mapper XML → MySQL
 ```
 
-공개 DB 스냅샷을 한 번 조회해 키워드·지역·분야·접수 상태로 필터링하고 정렬·페이지 처리를 합니다.
+공개 DB 스냅샷을 한 번 조회해 키워드·지역·분야·접수 상태·제공처로 필터링하고 정렬·페이지 처리를 합니다.
+K-Startup은 업력·신청 대상·연령의 전용 분류도 정확히 비교합니다. 분류 메타데이터는 V7의 nullable JSON에
+저장하고 `CatalogSupportProgram.startupDetails`로 복원하며, 공개 카드 DTO에는 AI 판단으로 노출하지 않습니다.
 AI·임베딩·Qdrant·외부 제공처 API를 호출하지 않으며 색인 장애 후에도 이미 공개된 목록을 읽을 수 있습니다.
 지역·분야는 제공처의 정확한 태그 일치이지 기업 자격 판정이 아닙니다. 결과에는 추천 점수나 자격 판정을 넣지 않습니다.
-현재 규모에서는 기존 전체 스냅샷 조회를 재사용하며 DB 스키마·SQL은 바꾸지 않았습니다. 트래픽·데이터 증가 시
+현재 규모에서는 기존 전체 스냅샷 조회에 전용 분류 매핑을 더해 재사용합니다. 트래픽·데이터 증가 시
 실측에 따라 DB 필터/페이지 조회를 검토합니다. 입력·정렬·응답 계약은 [직접 조건 검색](support-program-catalog.md)을 참고하세요.
 
 검색 카드의 상세 링크는 `/support-programs/detail?sourceCode={sourceCode}&sourceProgramId={id}`로
@@ -401,10 +404,51 @@ V4 적용 전부터 있던 공고는 과거 공개 세대를 복원하지 않습
 규칙을 순서대로 적용하고 판단 근거가 없으면 `UNKNOWN`을 유지합니다. 따라서 `접수 종료` 표현이
 상시 접수보다 우선하더라도 파싱된 날짜를 무조건 덮어쓰지는 않습니다.
 
-현재 수집 Client·동기화는 `BIZINFO` 한 제공처만 구현되어 있습니다. 반면 production 검색·색인·AI 점수화는
+수집 Client·동기화는 `BIZINFO`·`KSTARTUP`·`MSIT`·`CNTRADE_NOTICE`별로 구현됩니다. production 검색·색인·AI 점수화는
 `sourceCode:sourceProgramId`를 내부 식별자로 사용하고 검색은 준비된 제공처 범위에서 실행합니다.
-K-Startup 공식 URL·표시 이름·미지원 질문 안내는 준비했으나 실제 Client·정규화·동기화는 추가하지 않았습니다.
-이번 준비에는 새 스키마·의존성·제공처 Registry가 없습니다.
+K-Startup은 별도 구체 Client·Facade·SyncService·Scheduler를 사용하고 기존 색인 Service·Repository를 공유합니다.
+제공처별 Facade는 명시적 Qualifier로 구분하며 제공처 Registry나 새 production 의존성은 추가하지 않습니다.
+
+## K-Startup 수집 범위와 추가 분류
+
+`KStartupSupportProgramCatalogSyncScheduler → KStartupSupportProgramCatalogSyncService →
+KStartupSupportProgramCatalogFacade → KStartupClient → KStartupProgramMapper`에서 수집·검증한 뒤,
+기업마당과 같은 `SupportProgramIndexSyncService → AI Service → OpenAI 임베딩 → Qdrant` 경로를 거칩니다.
+전체 색인 성공 후 Repository가 `KSTARTUP` 범위만 UPSERT·누락 비활성화·공개 상태 갱신합니다.
+
+- 공식 API: `getAnnouncementInformation01`. 안정 ID는 `pbanc_sn`이며 화면 순번 `id`를 쓰지 않습니다.
+- `KSTARTUP_SYNC_ENABLED=false`가 기본입니다. `KSTARTUP_API_KEY`와 초기 색인 비용을 확인한 뒤 켭니다.
+- `RECENT_YEAR`는 서울 기준 오늘에서 1년 전 이후 **접수 시작** 공고를 수집합니다. 마감도 포함하지만
+  그보다 먼저 접수한 장기 공고는 범위 밖입니다. `OPEN`은 API의 모집 중 공고만 수집합니다.
+  `ALL` 상태 필터는 전체 과거 이력이 아니라 이렇게 수집·공개된 범위 전체를 뜻합니다.
+- 첫 페이지의 날짜 조건을 전체 수집 동안 고정합니다. 전체 이력 `totalCount`가 아닌 조건 일치 `matchCount`로
+  페이지 수를 계산하고 각 페이지의 번호·크기·건수·전체 건수·ID 중복을 검증합니다. 실패 시 기존 목록을 보존합니다.
+- 페이지당 1,000건 요청, 최대 20,000건·200페이지 안전 한도를 적용합니다. 전체 제공처 검색 후보 한도도 20,000건이므로
+  전체 과거 이력 확장은 별도 성능·계약 검토가 필요합니다.
+- 원문 `aply_trgt_ctnt`·`aply_excl_trgt_ctnt`만 대상 설명에 보존해 후보 자격 검토에 전달합니다.
+  대상·업력·연령 분류는 별도 메타데이터와 벡터 검색 문서에만 넣고, 자격 근거 필드에는 합치지 않습니다.
+  분류는 자격 충족의 증거가 아니며 원문 조건을 우선합니다.
+- 공식 HTTPS 상세 URL의 호스트와 `pbancSn`이 원본 ID와 일치해야 합니다. 상세 HTML 추가 질문은 여전히 미지원입니다.
+- 게시일이 없어 접수 시작일로 최신 정렬합니다. 제공처 간 같은 사업을 자동 병합하지 않습니다.
+
+## 과기정통부·충청남도 수출입공지 수집
+
+각 `Msit`/`CnTradeNotice` Scheduler → SyncService → CatalogFacade → Client → Mapper에서 전체 수집을
+검증하고, 기존 `SupportProgramIndexSyncService → AI Service → OpenAI 임베딩 → Qdrant`를 거쳐
+Repository가 해당 `source_code`만 UPSERT·누락 비활성화·스냅샷 공개합니다. DB migration이나 신규 의존성은 없습니다.
+
+- MSIT의 `response` 배열(header/body)과 충남의 최상위 `09/RETURN_SUCCESS` 응답을 별도로 검증합니다.
+  첫 페이지와 각 페이지의 전체 건수·번호·실제 크기·행 수·중복 ID가 일치해야 하며 HTTP 200의 게이트웨이 오류도 실패입니다.
+- MSIT는 공식 `msit.go.kr` 사업공고 상세 URL의 게시판 100/`nttSeqNo`를 검증해 ID로 사용합니다.
+  실응답의 10건 페이지를 끝까지 읽으며 20,000건/2,000페이지 한도를 적용합니다. 장시간 수집은 전용 단일 스레드로 격리합니다.
+- 충남은 `lbbNo`를 ID로 사용하며 1,000건을 요청하되 실제 응답 페이지 크기를 기준으로 완전성을 검증합니다.
+  20,000건/200페이지 한도입니다. 숫자 ID로 암호화된 웹 상세 `idx`를 추측하지 않고 검증된 공식 공지 목록에 연결합니다.
+- API에 없는 접수 기간/지역/분야는 추정하지 않습니다. 게시일은 정렬용이고 상태는 `UNKNOWN`입니다.
+  MSIT는 본문 없이 제목·담당 부서 기반 검색이며 충남은 원문 본문 기반입니다. 선정 결과·일반 공지도 원본대로 포함됩니다.
+- 두 수집기 기본 비활성, 전용 키 생략 시 승인된 `DATA_GO_KR_SERVICE_KEY`를 재사용합니다.
+  평가 fixture/capture 프로필은 개발 환경변수와 관계없이 두 수집기도 끕니다.
+- 수집기 구현과 실제 서비스 정상화는 별개입니다. 2026-09-09 CNTRADE_NOTICE 실 API의 `04 HTTP_ERROR`는
+  빈 정상 결과로 숨기지 않으며, 제공처 복구 전에는 실제 수집 성공을 주장하지 않습니다.
 
 ## Frontend와 내부 계약
 
@@ -434,6 +478,10 @@ C02는 작은 현재 상태와 새 발화만 해석하며 화면의 전체 메�
 검색 확인·검색 재시도만 준비 상태에 따라 제한하며 메시지 제출·추천 질문·다시 해석은 이와 독립적으로 처리합니다.
 페이지 ViewModel은 DOM 참조·입력 조합·
 포커스·스크롤도 Hook 로컬로 관리합니다. View는 렌더링·이벤트 연결·순수 표시용 포맷을 담당합니다.
+조건 제안은 ViewModel의 `chatConversationProposal` 순수 변환이 요청 당시 조건을 기준으로 변경·유지·적용 값을
+계산하며, `ChatPage`는 원본 해석 결과나 미확정 질문 대신 최종 `displayProposal`을 받습니다.
+`ConversationProposal`과 `ProgramResults`는 각각 제안·결과를 표시하는 View 컴포넌트입니다.
+카드·결과 집계의 자격 분류는 기존 `supportProgramEligibility`에서, 상세 URL 생성은 공용 routes에서 공유합니다.
 React Router는 `/` 아래 공개 화면(검색·요금제·공개 파트너 모집·지원사업 상세), 로그인·회원가입, `/app` 아래 회원 세션이 필요한
 작업 화면(작업 채팅·요금제·파트너 모집·프로필·관리자)과 두 SampleItem 예제 화면을 연결합니다. SampleItem은 업무 기능이 아니라 같은 UseCase의
 Hook 상태와 Redux 상태 차이를 비교하는 예제입니다.
@@ -475,6 +523,17 @@ C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 
 계정 흐름은 `AccountAuthController → AccountSignupService · AccountLoginService · AccountSessionService → AccountRepository → MySQL`입니다.
 회원가입은 이메일·비밀번호만 받아 BCrypt 해시와 약관 동의 시각을 저장하고 같은 요청에서 세션을 발급합니다. 이메일 중복은 DB unique
 제약의 `DuplicateKeyException`을 Service가 409로 바꿉니다.
+사업자등록번호 확인은 `BusinessLookupController → BusinessLookupService → BiznoClient`로 외부 HTTP를 한 번 부르고,
+`BiznoClient`가 응답 검증과 오류를 `BiznoClientException`으로 바꿔 API 키가 담긴 URL이 로그·응답에 남지 않게 합니다.
+기업 등록은 `CompanyController → CompanyService → BiznoClient(사업자등록번호 조회) · CompanyRepository → MySQL`입니다. 서버가 등록 시점에
+사업자등록번호를 다시 조회해 계속사업자만 저장하고, 계정 조회는 `company`를 LEFT JOIN해 요약과 `tier=COMPANY`를 계산합니다.
+파트너 모집글은 `partner` 기능의 `PartnerRecruitmentController → PartnerRecruitmentService → PartnerRecruitmentRepository → MySQL`입니다.
+Service가 세션 계정의 기업, `support_program`에 현재 있는 공고, 접수 상태(`SupportProgramStatusResolver`), 마감일 규칙을 확인한 뒤 저장하고,
+공고당 한 건은 DB UNIQUE 제약이 보장합니다. 목록·상세는 기업·계정·공고를 JOIN해 읽고 모집 상태는 저장하지 않고 조회 시점에 계산합니다.
+파트너 제안은 `PartnerProposalController · PartnerProposalBoxController → PartnerProposalService → PartnerProposalRepository → MySQL`입니다.
+Service가 제안자의 기업, 모집글의 모집 상태, 당사자 여부를 확인하고, 수락·거절·철회는 `decision IS NULL AND withdrawn_at IS NULL`
+조건의 UPDATE 영향 행 수로 동시 처리를 막습니다. 제안 상태와 담당자 연락처 공개 여부는 `PartnerProposal` 도메인이 응답·철회·경과 시간·모집 상태로
+계산하며, 모집글 응답의 제안 수·내 제안은 `PartnerRecruitmentService`가 두 Repository를 묶어 붙입니다.
 로그인 성공 시 `SessionTokenHelper`가 계정 ID를 `sub`로 하는 HS256 JWT를 발급하고, DB에는 토큰의 SHA-256 해시와
 만료 시각만 저장합니다. 로그인이 필요한 Controller는 `Account` 파라미터를 선언하며
 `AuthenticatedAccountArgumentResolver`가 HttpOnly 세션 쿠키(`govbiz_session`)의 서명·만료를 검사한 뒤 세션 행으로 계정을

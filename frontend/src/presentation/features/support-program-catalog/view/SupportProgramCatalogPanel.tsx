@@ -5,6 +5,8 @@ import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCatalogFilters } from '../../../../domain/entities/SupportProgramCatalog'
 import { isAppPath, supportProgramDetailPath } from '../../../shared/routes/appPaths'
 import { defaultCatalogFilters, readCatalogFilters, writeCatalogFilters } from '../../../shared/support-program/catalogSearchParams'
+import { FilterChoices } from '../../../shared/workspace/FilterChoices'
+import { toFilterChoiceOptions } from '../../../shared/workspace/filterChoiceOptions'
 import { useSupportProgramCatalogViewModel } from '../viewmodel/useSupportProgramCatalogViewModel'
 
 const inputStyle = 'min-h-11 w-full min-w-0 rounded-xl border border-sample-border bg-white px-3 text-sm text-app-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary'
@@ -28,7 +30,8 @@ export function SupportProgramCatalogPanel() {
           <h1 className="mt-2 mb-2 text-3xl font-bold tracking-tight max-chat:text-2xl">원하는 지원사업을 직접 골라보세요.</h1>
           <p className="m-0 text-sm leading-relaxed text-sample-muted">분야와 지역을 선택하면 저장된 공고를 바로 볼 수 있어요.</p>
         </header>
-        <CatalogFilters key={JSON.stringify(filters)} filters={filters} regions={catalog.regions} categories={catalog.categories} phase={catalog.phase} onApply={apply} />
+        <CatalogFilters key={JSON.stringify(filters)} filters={filters} regions={catalog.regions} categories={catalog.categories}
+          startupStages={catalog.startupStages} applicantTypes={catalog.applicantTypes} founderAges={catalog.founderAges} onApply={apply} />
         <section aria-label="필터 검색 결과" className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="m-0 text-base font-bold" aria-live="polite">{catalog.data ? <>검색 결과 <span className="text-brand-primary">{catalog.data.total.toLocaleString()}건</span></> : '검색 결과'}</h2>
@@ -68,16 +71,20 @@ export function SupportProgramCatalogPanel() {
             <button type="button" className={`${buttonStyle} !px-3 text-sample-muted`} disabled={filters.page >= catalog.data.totalPages} onClick={() => apply({ ...filters, page: filters.page + 1 })}>다음</button>
           </nav> : null}
         </section>
-        <p className="m-0 text-xs leading-relaxed text-sample-muted">지역·분야는 제공처의 공고 분류입니다. 전국 공고는 ‘전국’을 선택해 확인하세요. 신청 자격은 공고 원문에서 확인해 주세요.</p>
+        <p className="m-0 text-xs leading-relaxed text-sample-muted">필터는 제공처의 공고 분류이며 신청 자격 판정이 아닙니다. 전국 공고는 ‘전국’을 선택해 확인하세요. 신청 자격은 공고 원문에서 확인해 주세요.</p>
       </div>
     </main>
   )
 }
 
-function CatalogFilters({ filters, regions, categories, phase, onApply }: {
-  filters: SupportProgramCatalogFilters; regions: string[]; categories: string[]; phase: 'loading' | 'ready' | 'failed'; onApply: (filters: SupportProgramCatalogFilters) => void
+function CatalogFilters({ filters, regions, categories, startupStages, applicantTypes, founderAges, onApply }: {
+  filters: SupportProgramCatalogFilters; regions: string[]; categories: string[]
+  startupStages: string[]; applicantTypes: string[]; founderAges: string[]; onApply: (filters: SupportProgramCatalogFilters) => void
 }) {
   const [draft, setDraft] = useState(filters)
+  const [showStartupFilters, setShowStartupFilters] = useState(Boolean(filters.startupStage || filters.applicantType || filters.founderAge))
+  const startupFilterCount = [draft.startupStage, draft.applicantType, draft.founderAge].filter(Boolean).length
+  const needsPeriodNotice = draft.sourceCode === 'MSIT' || draft.sourceCode === 'CNTRADE_NOTICE'
   return <form aria-label="공고 필터" className="grid gap-4 rounded-3xl border border-sample-border bg-white p-5 shadow-[0_4px_24px_rgb(32_33_36_/_3%)] max-chat:p-4"
     onSubmit={(event) => { event.preventDefault(); onApply({ ...draft, keyword: draft.keyword.trim(), page: 1 }) }}>
     <div className="flex items-end gap-2">
@@ -88,44 +95,67 @@ function CatalogFilters({ filters, regions, categories, phase, onApply }: {
       <button type="submit" className={`${buttonStyle} shrink-0 bg-brand-primary text-white hover:bg-[#066538]`}>검색</button>
     </div>
     <div className="grid gap-4 border-t border-sample-border pt-4">
-      <CatalogFilterChoices label="지역" name="catalog-region" options={regions} selected={draft.region} onSelect={(region) => setDraft({ ...draft, region })} />
-      <CatalogFilterChoices label="분야" name="catalog-category" options={categories} selected={draft.category} onSelect={(category) => setDraft({ ...draft, category })} />
-      {(!regions.length || !categories.length) && phase !== 'ready' ? <p role="status" className="m-0 text-xs leading-relaxed text-sample-muted">
-        {phase === 'loading' ? '지역·분야 선택지를 불러오고 있어요…' : '지역·분야 선택지를 불러오지 못했어요. 아래에서 다시 불러오기를 눌러주세요.'}
+      <FilterChoices label="지역" name="catalog-region" options={toFilterChoiceOptions(regions)} selected={draft.region} onSelect={(region) => setDraft({ ...draft, region })} />
+      <FilterChoices label="분야" name="catalog-category" options={toFilterChoiceOptions(categories)} selected={draft.category} onSelect={(category) => setDraft({ ...draft, category })} />
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-x-8">
+        <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">출처
+          <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-64`} value={draft.sourceCode}
+            onChange={(event) => {
+              const sourceCode = event.target.value as SupportProgramCatalogFilters['sourceCode']
+              setDraft({ ...draft, sourceCode, startupStage: '', applicantType: '', founderAge: '' })
+              setShowStartupFilters(false)
+            }}>
+            <option value="">전체 출처</option><option value="BIZINFO">기업마당</option><option value="KSTARTUP">K-Startup</option>
+            <option value="MSIT">과학기술정보통신부</option><option value="CNTRADE_NOTICE">충청남도 온라인수출지원시스템</option>
+          </select>
+        </label>
+        <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">접수 상태
+          <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.status}
+            aria-describedby={needsPeriodNotice ? 'catalog-period-notice' : undefined}
+            onChange={(event) => setDraft({ ...draft, status: event.target.value as SupportProgramCatalogFilters['status'] })}>
+            {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+      </div>
+      {needsPeriodNotice ? <p id="catalog-period-notice" className="m-0 rounded-xl bg-[#f7f8f9] px-3 py-2 text-xs leading-relaxed text-sample-muted">
+        접수 기간을 제공하지 않는 공고는 ‘상태 미확인’에 표시됩니다. ‘전체 접수 상태’ 또는 ‘상태 미확인’으로 검색해 주세요.
       </p> : null}
-      <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">접수 상태
-        <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as SupportProgramCatalogFilters['status'] })}>
-          {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-      </label>
+      {draft.sourceCode === 'KSTARTUP' ? <div className="min-w-0 rounded-xl bg-[#f7f8f9] px-3 py-2">
+        <button type="button" aria-expanded={showStartupFilters} aria-controls="catalog-startup-filters"
+          className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-2 rounded text-left text-xs font-semibold text-sample-muted focus-visible:outline-2 focus-visible:outline-brand-primary"
+          onClick={() => setShowStartupFilters((value) => !value)}>
+          <span>K-Startup 추가 조건{startupFilterCount ? ` · ${startupFilterCount}개 선택` : ''}</span>
+          <span aria-hidden="true">{showStartupFilters ? '−' : '+'}</span>
+        </button>
+        <div id="catalog-startup-filters" hidden={!showStartupFilters}>
+          <div className="grid min-w-0 gap-3 pt-2 pb-3 sm:grid-cols-3">
+            <CatalogExtraSelect label="창업 업력" options={startupStages} selected={draft.startupStage} onSelect={(startupStage) => setDraft({ ...draft, startupStage })} />
+            <CatalogExtraSelect label="신청 대상" options={applicantTypes} selected={draft.applicantType} onSelect={(applicantType) => setDraft({ ...draft, applicantType })} />
+            <CatalogExtraSelect label="대표자 연령" options={founderAges} selected={draft.founderAge} onSelect={(founderAge) => setDraft({ ...draft, founderAge })} />
+          </div>
+          <p className="mt-0 mb-2 text-xs leading-relaxed text-sample-muted">공고 분류 기준입니다. 실제 신청 자격은 원문을 확인해 주세요.</p>
+        </div>
+      </div> : null}
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sample-border pt-3">
       <p className="m-0 text-xs text-sample-muted">필터를 바꾼 뒤 검색을 눌러주세요.</p>
       <button type="button" className="cursor-pointer rounded px-1 py-1 text-xs font-semibold text-brand-primary focus-visible:outline-2 focus-visible:outline-brand-primary"
-        onClick={() => { setDraft({ ...defaultCatalogFilters }); onApply({ ...defaultCatalogFilters }) }}>필터 초기화</button>
+        onClick={() => { setDraft({ ...defaultCatalogFilters }); setShowStartupFilters(false); onApply({ ...defaultCatalogFilters }) }}>필터 초기화</button>
     </div>
   </form>
 }
 
-function CatalogFilterChoices({ label, name, options, selected, onSelect }: {
-  label: string; name: string; options: string[]; selected: string; onSelect: (value: string) => void
+function CatalogExtraSelect({ label, options, selected, onSelect }: {
+  label: string; options: string[]; selected: string; onSelect: (value: string) => void
 }) {
   const choices = selected && !options.includes(selected) ? [selected, ...options] : options
-  return <fieldset className="m-0 min-w-0 border-0 p-0">
-    <legend className="sr-only">{label}</legend>
-    <div className="flex gap-3 max-chat:flex-col max-chat:gap-2">
-      <span aria-hidden="true" className="w-13 shrink-0 pt-2.5 text-xs font-semibold text-sample-muted max-chat:pt-0">{label}</span>
-      <div className="flex min-w-0 flex-wrap gap-1.5">
-        {['', ...choices].map((value) => <label key={value} className="relative min-w-0 max-w-full cursor-pointer">
-          <input type="radio" name={name} value={value} aria-label={value || `전체 ${label}`} checked={selected === value}
-            onChange={() => onSelect(value)} className="peer sr-only" />
-          <span className="flex min-h-9 items-center justify-center rounded-lg border border-sample-border bg-white px-2.5 text-xs leading-relaxed text-sample-muted transition-colors [overflow-wrap:anywhere] hover:border-brand-primary hover:text-brand-primary peer-checked:border-brand-primary peer-checked:bg-brand-primary peer-checked:font-bold peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-primary motion-reduce:transition-none">{value || '전체'}</span>
-        </label>)}
-      </div>
-    </div>
-  </fieldset>
+  return <label className="grid min-w-0 gap-2 text-xs font-semibold text-sample-muted">{label}
+    <select className={inputStyle} value={selected} onChange={(event) => onSelect(event.target.value)}>
+      <option value="">전체</option>
+      {choices.map((value) => <option key={value} value={value}>{value}</option>)}
+    </select>
+  </label>
 }
-
 function CatalogRow({ program, returnTo, inApp }: { program: SupportProgram; returnTo: string; inApp: boolean }) {
   const detailPath = supportProgramDetailPath({ sourceCode: program.sourceCode, sourceProgramId: program.id }, inApp)
   return <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_10rem_10rem] gap-5 border-t border-sample-border px-5 py-5 first:border-t-0 hover:bg-[#fafcfb] max-chat:grid-cols-1 max-chat:gap-2 max-chat:px-4">
