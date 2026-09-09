@@ -8,6 +8,10 @@ import type { CompanyRepository } from '../../domain/repositories/CompanyReposit
 import type { PartnerProposalRepository } from '../../domain/repositories/PartnerProposalRepository'
 import type { PartnerRecruitmentRepository } from '../../domain/repositories/PartnerRecruitmentRepository'
 import type {
+  GetCompanyPartnerProfileUseCase,
+  UpdateCompanyPartnerProfileUseCase,
+} from '../../domain/usecases/CompanyPartnerProfileUseCases'
+import type {
   GetMyCompanyUseCase,
   LookupBusinessUseCase,
   RegisterCompanyUseCase,
@@ -62,6 +66,8 @@ export type AppCradle = {
   lookupBusinessUseCase: LookupBusinessUseCase
   registerCompanyUseCase: RegisterCompanyUseCase
   updateCompanyUseCase: UpdateCompanyUseCase
+  getCompanyPartnerProfileUseCase: GetCompanyPartnerProfileUseCase
+  updateCompanyPartnerProfileUseCase: UpdateCompanyPartnerProfileUseCase
   interpretSupportProgramConversationUseCase: InterpretSupportProgramConversationUseCase
   askSupportProgramEvidenceQuestionUseCase: AskSupportProgramEvidenceQuestionUseCase
   devLogInUseCase: DevLogInUseCase

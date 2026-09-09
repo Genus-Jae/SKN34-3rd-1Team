@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CompanyRepositoryImpl } from '../../repositories/CompanyRepositoryImpl'
-import { getMyCompanyApi, lookupBusinessApi, registerCompanyApi, updateCompanyApi } from '../companyApi'
+import {
+  getMyCompanyApi,
+  getPartnerProfileApi,
+  lookupBusinessApi,
+  registerCompanyApi,
+  updateCompanyApi,
+  updatePartnerProfileApi,
+} from '../companyApi'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -95,3 +102,23 @@ function problemResponse(status: number, code: string | null, extra: Record<stri
     headers: { 'Content-Type': 'application/problem+json' },
   })
 }
+
+describe('partner profile apis', () => {
+  it('reads and saves the partner profile with the session cookie', async () => {
+    const profile = { isSet: true, roles: ['LEAD'], interestAreas: ['기술'], introduction: '소개', capabilities: ['AI'], updatedAt: '2026-09-10T10:00:00' }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ ...profile, isSet: false, roles: [], updatedAt: null }))
+      .mockResolvedValueOnce(jsonResponse(profile))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getPartnerProfileApi()).resolves.toMatchObject({ isSet: false, updatedAt: null })
+    await expect(updatePartnerProfileApi({ roles: ['LEAD'], interestAreas: ['기술'], introduction: '소개', capabilities: ['AI'] })).resolves.toEqual(profile)
+
+    const calls = fetchMock.mock.calls as [string, RequestInit][]
+    expect(new URL(calls[0]![0]).pathname).toBe('/api/v1/me/company/partner-profile')
+    expect(calls[0]![1].cache).toBe('no-store')
+    expect(calls[1]![1].method).toBe('PUT')
+    expect(calls[1]![1].credentials).toBe('include')
+    expect(JSON.parse(String(calls[1]![1].body))).toEqual({ roles: ['LEAD'], interestAreas: ['기술'], introduction: '소개', capabilities: ['AI'] })
+  })
+})

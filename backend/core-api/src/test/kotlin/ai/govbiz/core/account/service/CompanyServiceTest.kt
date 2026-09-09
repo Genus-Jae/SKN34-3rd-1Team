@@ -6,6 +6,7 @@ import ai.govbiz.core.account.domain.CompanyProfileInput
 import ai.govbiz.core.account.domain.NewCompany
 import ai.govbiz.core.account.helper.AccountTestHelper
 import ai.govbiz.core.account.helper.AccountTestHelper.NOW
+import ai.govbiz.core.account.repository.CompanyPartnerProfileRepository
 import ai.govbiz.core.account.repository.CompanyRepository
 import ai.govbiz.core.account.service.exception.BusinessNotActiveException
 import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredException
@@ -33,6 +34,9 @@ class CompanyServiceTest {
     private lateinit var companyRepository: CompanyRepository
 
     @Mock
+    private lateinit var partnerProfileRepository: CompanyPartnerProfileRepository
+
+    @Mock
     private lateinit var lookupService: BusinessLookupService
 
     private lateinit var service: CompanyService
@@ -41,7 +45,7 @@ class CompanyServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = CompanyService(companyRepository, lookupService, AccountTestHelper.FIXED_CLOCK)
+        service = CompanyService(companyRepository, partnerProfileRepository, lookupService, AccountTestHelper.FIXED_CLOCK)
     }
 
     @Test

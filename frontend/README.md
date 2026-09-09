@@ -113,7 +113,8 @@ pnpm dev
 `/app/profile`의 기업 기본정보는 `CompanyRepository`(조회·등록·수정)에 연결됩니다. 기업이 없으면 그 카드 자리에 사업자등록번호
 조회 폼이 나오고, 조회로 받은 상호·사업자 상태는 읽기 전용이며 소재지(17개 시·도)·업종(표준산업분류 대분류)·설립연도와
 홈페이지(선택)만 입력합니다. 등록에 성공하면 세션 계정을 `tier=COMPANY`로 갱신해 사이드바가 상호를 보여 줍니다. 협업·파트너
-설정, 우대·인증 자격, 계정과 알림, 공개 범위 섹션은 아직 예시 값·준비 중이며 비밀번호 변경·계정 삭제는 다음 이슈에서 모달로 붙입니다.
+설정은 `/api/v1/me/company/partner-profile`에 저장되고, 계정과 알림 카드의 비밀번호 변경·계정 삭제는 확인 모달로 처리합니다.
+알림 스위치는 발송 기능이 없어 아직 화면 상태로만 켜고 끕니다.
 파트너 모집 목록·상세는 `PartnerRecruitmentRepository`(`data/api/partnerRecruitmentApi`)로 Core API를 읽습니다. 공개·내부 화면이
 `presentation/shared/partner-recruitment/usePartnerRecruitmentBrowse`의 조회 훅과 표시 helper를 함께 쓰고, 조건 타입은
 `domain/entities/PartnerRecruitmentQuery`가 그대로 조회 파라미터가 됩니다. 테스트와 레이아웃 점검은 `data/fixtures/partnerRecruitments`의
@@ -286,7 +287,7 @@ src/
 ├── presentation/features/partner-recruitment/ # 로그인 뒤 모집 목록·상세·작성 View와 각 페이지 ViewModel
 ├── presentation/features/public-partner-recruitment/ # 로그인 전 공개 모집 목록·상세 View와 ViewModel
 ├── presentation/features/partner-proposal/ # 제안함(받은·보낸 제안, 수락·거절·철회) View와 ViewModel
-├── presentation/features/company-profile/ # 기업 등록·기본정보 수정(사업자번호 자동 하이픈·연도 선택기·홈페이지 정규화)과 프로필 View, ViewModel, 준비 중 섹션의 예시 값
+├── presentation/features/company-profile/ # 기업 등록·기본정보 수정(사업자번호 자동 하이픈·연도 선택기·홈페이지 정규화), 협업·파트너 설정, 계정 보안 모달의 View·ViewModel
 ├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
 ├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 조회 훅·표시 helper, 받은 제안함 slice·훅과 보낸 제안함 훅, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
