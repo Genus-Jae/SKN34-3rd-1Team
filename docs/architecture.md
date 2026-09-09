@@ -525,6 +525,9 @@ Spring Security filter chain은 쓰지 않고 `spring-security-crypto`의 BCrypt
 
 Frontend에서 로그인 상태는 헤더와 여러 화면이 함께 읽으므로 `presentation/shared/auth`의 Redux slice와
 `useAuthSession`·`useRestoreAuthSession` Hook이 소유하고, 로그인 화면은 `presentation/features/auth`가 소유합니다.
+받은 제안함도 사이드바 배지·제안함 화면·모집글 상세가 함께 읽고 제안함 화면이 수락·거절로 바꾸므로 `presentation/shared/partner-proposal`의
+Redux `receivedProposals` slice와 `useReceivedProposals` Hook이 계정당 한 번 조회해 소유합니다. 한 화면만 쓰는 서버 데이터(모집글 목록·상세, 보낸 제안함)는
+Hook 로컬 상태로 두는 것이 규칙입니다.
 세션 토큰은 브라우저의 HttpOnly 쿠키가 관리하므로 앱은 다루지 않고, `data/storage`에는 앱 시작 시 `/me`를 부를지
 정하는 힌트만 둡니다. Repository가 로그인·로그아웃과 함께 힌트를 저장·삭제합니다.
 화면은 로그인 전 `/` 아래 공개 경로(공용 헤더)와 로그인 뒤 `/app` 아래 내부 경로(사이드바)로 나뉩니다. `PublicOnly`는
