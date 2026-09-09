@@ -10,6 +10,7 @@ import java.time.Clock
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 
 /** 제공처별 공개 스냅샷의 상태를 모아 현재 검색 가능한 범위를 안내합니다. */
@@ -17,12 +18,13 @@ import org.springframework.stereotype.Service
 class SupportProgramSearchReadinessService(
     private val repository: SupportProgramRepository,
     @param:Qualifier("seoulClock") private val clock: Clock,
+    @param:Value("\${app.kstartup.sync.enabled:false}") private val kStartupEnabled: Boolean = false,
 ) {
     fun get(): SupportProgramSearchReadinessResult {
         val statuses = repository.findSyncStatuses().associateBy { it.sourceCode }
-        // 현재 구성된 수집기는 기업마당뿐입니다. 아직 시작 전이어도 초기 준비 상태를 안내합니다.
-        // 실제 상태 행이나 기존 공개 공고가 있는 제공처만 포함하며 가짜 소스를 등록하지 않습니다.
-        val sources = (statuses.keys + "BIZINFO").sorted().map { sourceCode ->
+        // 활성화된 수집기는 첫 실행 전에도 표시하고, 중지한 제공처의 저장된 상태도 보존합니다.
+        val configuredSources = if (kStartupEnabled) setOf("BIZINFO", "KSTARTUP") else setOf("BIZINFO")
+        val sources = (statuses.keys + configuredSources).sorted().map { sourceCode ->
             val status = statuses[sourceCode]
             SupportProgramSourceReadinessResult(
                 sourceCode = sourceCode,

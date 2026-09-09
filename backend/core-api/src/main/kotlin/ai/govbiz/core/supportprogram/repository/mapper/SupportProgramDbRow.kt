@@ -17,4 +17,5 @@ data class SupportProgramDbRow(
     var applicationEndDate: LocalDate? = null,
     var sourceUrl: String = "",
     var sourceSortTimestamp: String? = null,
+    var startupDetailsJson: String? = null,
 )

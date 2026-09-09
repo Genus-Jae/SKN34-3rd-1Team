@@ -80,6 +80,14 @@ services:
       BIZINFO_SYNC_INITIAL_DELAY: ${BIZINFO_SYNC_INITIAL_DELAY:-PT0S}
       BIZINFO_SYNC_FIXED_DELAY: ${BIZINFO_SYNC_FIXED_DELAY:-PT6H}
       DATA_GO_KR_SERVICE_KEY: ${DATA_GO_KR_SERVICE_KEY:-}
+      KSTARTUP_API_KEY: ${KSTARTUP_API_KEY:-}
+      KSTARTUP_API_BASE_URL: ${KSTARTUP_API_BASE_URL:-https://apis.data.go.kr}
+      KSTARTUP_API_CONNECT_TIMEOUT: ${KSTARTUP_API_CONNECT_TIMEOUT:-2s}
+      KSTARTUP_API_READ_TIMEOUT: ${KSTARTUP_API_READ_TIMEOUT:-10s}
+      KSTARTUP_SYNC_SCOPE: ${KSTARTUP_SYNC_SCOPE:-RECENT_YEAR}
+      KSTARTUP_SYNC_ENABLED: ${KSTARTUP_SYNC_ENABLED:-false}
+      KSTARTUP_SYNC_INITIAL_DELAY: ${KSTARTUP_SYNC_INITIAL_DELAY:-PT0S}
+      KSTARTUP_SYNC_FIXED_DELAY: ${KSTARTUP_SYNC_FIXED_DELAY:-PT6H}
       ACCOUNT_SESSION_TTL: ${ACCOUNT_SESSION_TTL:-P30D}
       ACCOUNT_SESSION_SHORT_TTL: ${ACCOUNT_SESSION_SHORT_TTL:-PT12H}
       ACCOUNT_SESSION_IDLE_TTL: ${ACCOUNT_SESSION_IDLE_TTL:-P7D}
@@ -95,7 +103,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-govbiz}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-govbiz-local}
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${CORE_API_HOST_PORT:-8080}:8080"
 
   web:
     build:
@@ -108,7 +116,7 @@ services:
       VITE_CORE_API_BASE_URL: /
       VITE_DEV_PROXY_TARGET: http://core-api:8080
     ports:
-      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:${WEB_HOST_PORT:-5173}:5173"
     volumes:
       - ../frontend:/app
       - web-node-modules:/app/node_modules
@@ -132,6 +140,16 @@ services:
     init: true
     expose:
       - "8002"
+
+  kstartup-stub:
+    profiles:
+      - verification
+    build:
+      context: ./stubs/kstartup
+      dockerfile: Dockerfile
+    init: true
+    expose:
+      - "8003"
 
 volumes:
   mysql-data:

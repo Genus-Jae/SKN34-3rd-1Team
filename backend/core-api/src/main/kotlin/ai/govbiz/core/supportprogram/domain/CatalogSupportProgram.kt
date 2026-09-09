@@ -4,4 +4,5 @@ package ai.govbiz.core.supportprogram.domain
 data class CatalogSupportProgram(
     val program: SupportProgram,
     val sortTimestamp: String,
+    val startupDetails: SupportProgramStartupDetails? = null,
 )

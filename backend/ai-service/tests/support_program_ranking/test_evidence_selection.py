@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from agents.testing import ScriptedModel, assistant_message
 
-from app.support_program_ranking.agent import SupportProgramRecommendationAgent
+from app.support_program_ranking.agent import SupportProgramRecommendationAgent, build_evidence_options
 from app.support_program_ranking.errors import AgentExecutionError, AgentFailureCode
 from app.support_program_ranking.models import (
     SCORING_VERSION,
@@ -103,6 +103,41 @@ async def test_candidate_local_indexes_restore_each_field_without_changing_input
         ]
         assert {key: value for key, value in actual.items() if key != "evidenceOptions"} == expected
     assert request.model_dump(mode="json", by_alias=True) == original_request
+    assert len(model.calls) == 1
+    model.assert_complete()
+
+
+@pytest.mark.anyio
+async def test_kstartup_target_exclusions_and_metadata_reach_runner_and_restore_own_evidence():
+    target = (
+        "신청 대상: 창업 3년 이내 기업 및 예비창업자\n"
+        "제외 대상: 금융기관 채무불이행 중인 기업은 신청할 수 없습니다.\n"
+        "업력: 예비창업자, 3년 미만\n대상: 일반인, 대학생\n연령: 만 39세 이하"
+    )
+    values = [
+        candidate(id="BIZINFO:174321"),
+        candidate(2, id="KSTARTUP:174321", summary="AI 창업기업의 시제품 제작 비용을 지원합니다.",
+                  targetDescription=target, regions=["전국"]),
+    ]
+    options = build_evidence_options(values[1])
+    exclusion_index = next(index for index, option in enumerate(options)
+                           if option.field == "TARGET_DESCRIPTION" and "제외 대상:" in option.quote)
+    agent, model = agent_with_outputs({"rankings": {
+        values[0].id: assessment(),
+        values[1].id: assessment(target="UNKNOWN", region="UNKNOWN", target_evidence=[exclusion_index]),
+    }})
+
+    result = await SupportProgramRankingService(agent).rank(request_for(values))
+
+    assert [ranking.program_id for ranking in result.rankings] == [value.id for value in values]
+    assert result.rankings[1].target_eligibility.value == "UNKNOWN"
+    assert result.rankings[1].target_evidence[0].quote == options[exclusion_index].quote
+    assert result.rankings[1].target_evidence[0].field == "TARGET_DESCRIPTION"
+    sent = json.loads(model.first_call.input[0]["content"])["candidates"]
+    assert sent[1]["id"] == "KSTARTUP:174321"
+    assert sent[1]["targetDescription"] == target
+    assert sent[1]["regions"] == ["전국"]
+    assert sent[1]["evidenceOptions"][exclusion_index]["quote"] == options[exclusion_index].quote
     assert len(model.calls) == 1
     model.assert_complete()
 
@@ -239,8 +274,9 @@ async def test_candidate_without_options_rejects_known_eligibility_or_any_index(
 
 
 @pytest.mark.anyio
-async def test_restored_exact_quote_does_not_bypass_truncated_source_service_validation():
-    value = candidate(sourceTextTruncated=True)
+@pytest.mark.parametrize("source_code", ["BIZINFO", "KSTARTUP"])
+async def test_restored_exact_quote_does_not_bypass_truncated_source_service_validation(source_code):
+    value = candidate(id=f"{source_code}:174321", sourceTextTruncated=True)
     output = {"rankings": {value.id: assessment()}}
     agent, model = agent_with_outputs(output, output)
     request = request_for([value])

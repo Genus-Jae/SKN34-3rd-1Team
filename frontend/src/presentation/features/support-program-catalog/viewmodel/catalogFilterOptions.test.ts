@@ -11,9 +11,14 @@ describe('공고 필터 기본 선택지', () => {
     expect(defaultCatalogRegions).toHaveLength(18)
   })
 
-  it('분야는 현재 서버 분류 8개를 기존 가나다순으로 제공한다', () => {
-    expect(defaultCatalogCategories).toEqual(['경영', '금융', '기술', '기타', '내수', '수출', '인력', '창업'])
-    expect(defaultCatalogCategories).toHaveLength(8)
+  it('기업마당 분야 순서를 유지하고 K-Startup 공식 분야를 중복 없이 바로 제공한다', () => {
+    expect(defaultCatalogCategories).toEqual([
+      '경영', '금융', '기술', '기타', '내수', '수출', '인력', '창업',
+      '글로벌', '기술개발(R&D)', '멘토링ㆍ컨설팅ㆍ교육', '사업화', '시설ㆍ공간ㆍ보육',
+      '융자ㆍ보증', '정책자금', '창업교육', '판로ㆍ해외진출', '행사ㆍ네트워크',
+    ])
+    expect(defaultCatalogCategories).toHaveLength(18)
+    expect(new Set(defaultCatalogCategories).size).toBe(defaultCatalogCategories.length)
   })
 })
 

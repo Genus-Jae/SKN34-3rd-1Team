@@ -10,6 +10,9 @@ data class SupportProgramCatalogResponse(
     val totalPages: Int,
     val regions: List<String>,
     val categories: List<String>,
+    val startupStages: List<String>,
+    val applicantTypes: List<String>,
+    val founderAges: List<String>,
 ) {
     companion object {
         fun from(result: SupportProgramCatalogResult): SupportProgramCatalogResponse =
@@ -21,6 +24,9 @@ data class SupportProgramCatalogResponse(
                 totalPages = result.totalPages,
                 regions = result.regions,
                 categories = result.categories,
+                startupStages = result.startupStages,
+                applicantTypes = result.applicantTypes,
+                founderAges = result.founderAges,
             )
     }
 }

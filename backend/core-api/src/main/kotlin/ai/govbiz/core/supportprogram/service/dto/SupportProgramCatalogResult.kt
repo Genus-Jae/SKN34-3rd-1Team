@@ -10,4 +10,7 @@ data class SupportProgramCatalogResult(
     val totalPages: Int,
     val regions: List<String>,
     val categories: List<String>,
+    val startupStages: List<String> = emptyList(),
+    val applicantTypes: List<String> = emptyList(),
+    val founderAges: List<String> = emptyList(),
 )

@@ -8,6 +8,10 @@ import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramSourceDocument
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramStartupDetails
+import ai.govbiz.core.supportprogram.facade.SupportProgramCatalogFacade
+import ai.govbiz.core.supportprogram.service.sync.KStartupSupportProgramCatalogSyncService
+import ai.govbiz.core.supportprogram.service.sync.SupportProgramIndexSyncService
 import ai.govbiz.core.supportprogram.domain.SupportProgramSyncOutcome
 import ai.govbiz.core.supportprogram.helper.SupportProgramCatalogFingerprintHelper
 import ai.govbiz.core.supportprogram.helper.SupportProgramContentHashHelper
@@ -21,6 +25,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
@@ -34,6 +39,7 @@ import org.springframework.jdbc.core.JdbcTemplate
         "app.ai-service.connect-timeout=10ms",
         "app.ai-service.read-timeout=10ms",
         "app.bizinfo.sync.enabled=false",
+        "app.kstartup.sync.enabled=false",
         "app.support-program-index.enabled=false",
     ],
 )
@@ -87,6 +93,93 @@ class SupportProgramRepositoryIntegrationTest {
             assertFalse(isSourcePresent("BIZINFO", "PBLN_STALE"))
             assertEquals(otherSource, repository.findPresentBySourceAndProgramId("KSTARTUP", programs[0].program.id))
         }
+    }
+
+    @Test
+    fun roundTripsStartupMetadataAndClearsItOnUpsertWithoutTouchingBizinfo() {
+        val bizinfo = catalogProgram("shared", "기업마당 공고")
+        val startup = catalogProgram("shared", "창업 \"특수\" 공고 🚀", sourceCode = "KSTARTUP",
+            applicationPeriod = "기간 미정", applicationStartDate = null, applicationEndDate = null)
+            .let { it.copy(program = it.program.copy(status = SupportProgramStatus.UNKNOWN)) }
+            .copy(startupDetails = SupportProgramStartupDetails(listOf("예비창업자", "3년미만"), listOf("대학·연구기관", "한글 \"대상\""), emptyList()))
+        repository.upsert(bizinfo)
+        repository.upsert(startup)
+
+        assertEquals(startup, repository.findPresentBySourceAndProgramId("KSTARTUP", "shared"))
+        assertEquals(bizinfo, repository.findPresentBySourceAndProgramId("BIZINFO", "shared"))
+        val noDetails = startup.copy(startupDetails = null)
+        repository.upsert(noDetails)
+        assertEquals(noDetails, repository.findPresentBySourceAndProgramId("KSTARTUP", "shared"))
+        assertEquals(1, countRowsByProgramId("KSTARTUP", "shared"))
+    }
+
+    @Test
+    fun startupSnapshotIsIdempotentAndDeactivatesOnlyMissingStartupNotices() {
+        val first = catalogProgram("same", "창업 공고", sourceCode = "KSTARTUP")
+            .copy(startupDetails = SupportProgramStartupDetails(listOf("3년미만"), listOf("일반기업"), listOf("만 40세 이상")))
+        val removed = catalogProgram("removed", "이전 공고", sourceCode = "KSTARTUP")
+        val bizinfo = catalogProgram("same", "기업마당 별도 공고")
+        repository.upsert(bizinfo)
+        repository.synchronizeSource("KSTARTUP", listOf(first, removed))
+        val index = Mockito.mock(SupportProgramIndexSyncService::class.java)
+        val service = KStartupSupportProgramCatalogSyncService(SupportProgramCatalogFacade { listOf(first) }, repository, index)
+
+        repeat(2) {
+            assertEquals(1, service.sync())
+            assertEquals(first, repository.findPublishedPresent().single())
+            assertEquals(first, repository.findSearchablePresent().single())
+            assertFalse(isSourcePresent("KSTARTUP", "removed"))
+            assertEquals(bizinfo, repository.findPresentBySourceAndProgramId("BIZINFO", "same"))
+            assertEquals(2, countRows("KSTARTUP"))
+        }
+    }
+
+    @Test
+    fun startupCollectionAndIndexFailuresKeepThePreviousPublishedSnapshot() {
+        val original = catalogProgram("original", "기존 창업 공고", sourceCode = "KSTARTUP")
+            .copy(startupDetails = SupportProgramStartupDetails(listOf("예비창업자"), listOf("일반인"), emptyList()))
+        val generation = repository.startSyncGeneration("KSTARTUP")
+        repository.publishSnapshotIfCurrent("KSTARTUP", listOf(original), generation)
+        val bizinfo = catalogProgram("original", "기업마당 공고")
+        repository.upsert(bizinfo)
+        val index = Mockito.mock(SupportProgramIndexSyncService::class.java)
+        val collectionFailure = KStartupSupportProgramCatalogSyncService(
+            SupportProgramCatalogFacade { throw IllegalStateException("second page failed") }, repository, index)
+        assertThrows(IllegalStateException::class.java) { collectionFailure.sync() }
+        Mockito.verifyNoInteractions(index)
+
+        val next = listOf(original.copy(program = original.program.copy(title = "아직 공개하면 안 되는 공고")))
+        Mockito.`when`(index.indexSnapshot(next)).thenThrow(IllegalStateException("second index batch failed"))
+        val indexFailure = KStartupSupportProgramCatalogSyncService(SupportProgramCatalogFacade { next }, repository, index)
+        assertThrows(IllegalStateException::class.java) { indexFailure.sync() }
+
+        assertEquals(listOf(original), repository.findPublishedPresent())
+        assertEquals(listOf(original), repository.findSearchablePresent())
+        assertEquals(bizinfo, repository.findPresentBySourceAndProgramId("BIZINFO", "original"))
+        assertEquals(SupportProgramSyncOutcome.FAILURE, repository.findSyncStatus("KSTARTUP")?.lastSyncOutcome)
+    }
+
+    @Test
+    fun startupBatchRollbackRestoresOldRowsAndMetadataWhenALaterBatchFails() {
+        val original = catalogProgram("original", "기존 창업 공고", sourceCode = "KSTARTUP")
+            .copy(startupDetails = SupportProgramStartupDetails(listOf("7년미만"), listOf("일반기업"), emptyList()))
+        repository.synchronizeSource("KSTARTUP", listOf(original))
+        val valid = (1..100).map { catalogProgram("new-$it", "새 공고", sourceCode = "KSTARTUP") }
+        val invalid = catalogProgram("invalid", "가".repeat(501), sourceCode = "KSTARTUP")
+
+        assertThrows(DataAccessException::class.java) { repository.synchronizeSource("KSTARTUP", valid + invalid) }
+
+        assertEquals(listOf(original), repository.findPresent())
+        assertEquals(1, countRows("KSTARTUP"))
+    }
+
+    @Test
+    fun databaseRejectsStartupMetadataOnAnotherSource() {
+        val wrongSource = catalogProgram("wrong", "잘못된 제공처 메타데이터")
+            .copy(startupDetails = SupportProgramStartupDetails(emptyList(), emptyList(), emptyList()))
+
+        assertThrows(DataAccessException::class.java) { repository.upsert(wrongSource) }
+        assertTrue(repository.findPresent().isEmpty())
     }
 
     @Test
