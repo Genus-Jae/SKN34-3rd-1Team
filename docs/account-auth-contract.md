@@ -201,6 +201,30 @@ Cookie: govbiz_session=<JWT>
 기업 응답은 요청 필드(`businessNumber`·`region`·`industry`·`foundedYear`·`homepageUrl`)에 `companyName` `businessStatus`
 `businessVerifiedAt` `updatedAt`을 더한 것입니다. 세션·내 계정 응답의 `account.company`에는 `companyName`·`businessNumber` 요약이 실리고 기업이 없으면 `null`입니다.
 
+### 협업·파트너 설정
+
+기업이 파트너 모집에서 어떤 역할과 분야로 협업할지 밝히는 설정입니다. 모집글 상세와 기업 프로필 보기에서 다른 기업에게
+보이며 담당자 연락처는 담지 않습니다. 기업이 없으면 404 `COMPANY_NOT_REGISTERED`입니다.
+
+```http
+GET /api/v1/me/company/partner-profile
+PUT /api/v1/me/company/partner-profile
+Cookie: govbiz_session=<JWT>
+
+{ "roles": ["LEAD", "PARTICIPANT"], "interestAreas": ["기술", "사업화"],
+  "introduction": "AI 문서 분류 SaaS를 만드는 팀입니다.", "capabilities": ["문서 분류 AI", "공공 레퍼런스"] }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `roles` | 모집글의 `PartnerRole`(`LEAD`·`PARTICIPANT`·`DEMAND`) 1개 이상, 중복 제거. 프런트는 주관기관·참여기관만 고름 |
+| `interestAreas` | 최대 3개, 각 30자 이하. 지원사업 검색의 분야 이름을 씀. 빈 값은 버림 |
+| `introduction` | 선택, 200자 이하. 앞뒤 공백을 다듬어 저장 |
+| `capabilities` | 최대 5개, 각 30자 이하, 중복 불가. 모집글 역량 칩과 같은 형식 |
+
+응답은 요청 필드에 `isSet`(저장한 적이 있는지)과 `updatedAt`을 더한 것입니다. 저장한 적이 없으면 `isSet=false`와
+빈 목록·빈 문자열이고, `PUT`은 기업당 한 행을 만들거나 덮어씁니다.
+
 ## 파트너 모집글
 
 모집글은 제공처에 현재 있는 공고 하나에 묶이며, 작성은 기업을 등록한 회원(`COMPANY`)만 할 수 있습니다. 읽기는 세션 없이도

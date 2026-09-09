@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type { BusinessLookup, Company } from '../../domain/entities/Company'
+import type { CompanyPartnerProfile } from '../../domain/entities/CompanyPartnerProfile'
 
 const optionalText = z.string().nullable().optional().transform((value) => value ?? null)
 
@@ -22,6 +23,28 @@ export const companyDtoSchema = z.object({
   businessVerifiedAt: z.string(),
   updatedAt: z.string(),
 })
+
+export const companyPartnerProfileDtoSchema = z.object({
+  isSet: z.boolean(),
+  roles: z.array(z.enum(['LEAD', 'PARTICIPANT', 'DEMAND'])),
+  interestAreas: z.array(z.string()),
+  introduction: z.string(),
+  capabilities: z.array(z.string()),
+  updatedAt: optionalText,
+})
+
+export type CompanyPartnerProfileDto = z.infer<typeof companyPartnerProfileDtoSchema>
+
+export function toCompanyPartnerProfile(dto: CompanyPartnerProfileDto): CompanyPartnerProfile {
+  return {
+    isSet: dto.isSet,
+    roles: [...dto.roles],
+    interestAreas: [...dto.interestAreas],
+    introduction: dto.introduction,
+    capabilities: [...dto.capabilities],
+    updatedAt: dto.updatedAt,
+  }
+}
 
 export type BusinessLookupDto = z.infer<typeof businessLookupDtoSchema>
 export type CompanyDto = z.infer<typeof companyDtoSchema>

@@ -7,6 +7,10 @@ import { BrowseSupportProgramsUseCase } from '../../domain/usecases/BrowseSuppor
 
 import { AskSupportProgramEvidenceQuestionUseCase } from '../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
 import {
+  GetCompanyPartnerProfileUseCase,
+  UpdateCompanyPartnerProfileUseCase,
+} from '../../domain/usecases/CompanyPartnerProfileUseCases'
+import {
   GetMyCompanyUseCase,
   LookupBusinessUseCase,
   RegisterCompanyUseCase,
@@ -81,6 +85,12 @@ export function registerUseCases(container: AppContainer) {
     ).singleton(),
     registerCompanyUseCase: asFunction(
       ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new RegisterCompanyUseCase(companyRepository),
+    ).singleton(),
+    getCompanyPartnerProfileUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new GetCompanyPartnerProfileUseCase(companyRepository),
+    ).singleton(),
+    updateCompanyPartnerProfileUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new UpdateCompanyPartnerProfileUseCase(companyRepository),
     ).singleton(),
     updateCompanyUseCase: asFunction(
       ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new UpdateCompanyUseCase(companyRepository),

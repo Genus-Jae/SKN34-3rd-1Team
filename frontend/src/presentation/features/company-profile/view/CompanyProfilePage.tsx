@@ -1,33 +1,22 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
-import type { CompanyQualificationStatus } from '../../../../domain/entities/CompanyProfile'
 import {
   workspacePageStyles,
   workspaceTagClassName,
-  type WorkspaceTagTone,
 } from '../../../shared/workspace/WorkspacePage.styles'
 import { WorkspaceToggle } from '../../../shared/workspace/WorkspaceToggle'
 import { YearPicker } from '../../../shared/workspace/YearPicker'
 import { formatBusinessNumber } from '../../../../domain/entities/Company'
 import { useAccountSecurityViewModel } from '../viewmodel/useAccountSecurityViewModel'
-import { useCompanyProfileViewModel, type ProfileFormValues } from '../viewmodel/useCompanyProfileViewModel'
-import { ChangePasswordModal, DeleteAccountModal } from './AccountSecurityModals'
 import {
-  companyProfileChoiceClassName,
-  companyProfileStyles,
-} from './CompanyProfilePage.styles'
-
-/** 서류 상태를 화면 문구로 옮깁니다. 자격 판정이 아니라 등록 상태만 나타냅니다. */
-const qualificationLabels: Record<
-  CompanyQualificationStatus,
-  { label: string; tone: WorkspaceTagTone }
-> = {
-  HELD: { label: '보유', tone: 'ok' },
-  NEEDS_CHECK: { label: '확인 필요', tone: 'warn' },
-  NOT_APPLICABLE: { label: '해당 없음', tone: 'muted' },
-  NOT_REGISTERED: { label: '미등록', tone: 'muted' },
-}
+  useCompanyProfileViewModel,
+  type NotificationKey,
+  type ProfileFormValues,
+} from '../viewmodel/useCompanyProfileViewModel'
+import { ChangePasswordModal, DeleteAccountModal } from './AccountSecurityModals'
+import { CompanyPartnerProfileSection } from './CompanyPartnerProfileSection'
+import { companyProfileStyles } from './CompanyProfilePage.styles'
 
 const usageIcons: Record<'target' | 'users' | 'shield', ReactNode> = {
   target: (
@@ -48,10 +37,17 @@ const usageIcons: Record<'target' | 'users' | 'shield', ReactNode> = {
   shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
 }
 
+/** 계정과 알림 카드의 알림 스위치 목록입니다. 발송 기능이 붙기 전까지 화면 상태로만 켜고 끕니다. */
+const notificationRows: { key: NotificationKey; label: string }[] = [
+  { key: 'savedProgramDeadline', label: '관심 공고 마감 3일 전 알림' },
+  { key: 'partnerProposal', label: '파트너 제안·메시지 알림' },
+  { key: 'newMatchingProgram', label: '프로필 조건에 맞는 새 공고 알림' },
+]
+
 /**
- * 기업 프로필 화면입니다. 기업 기본정보는 사업자등록번호 조회로 등록·수정하고, 여기서 채운 값이
- * 추천 점수의 근거와 파트너 매칭 입력이 됩니다. 우대·인증 자격은 등록 상태만 보여주고 GovBiz가 자격을 판정하지 않습니다.
- * 협업·파트너 설정, 우대·인증, 계정과 알림, 공개 범위는 아직 예시 값이며 준비 중입니다.
+ * 기업 프로필 화면입니다. 기업 기본정보는 사업자등록번호 조회로 등록·수정하고, 협업·파트너 설정은 모집글 상세와
+ * 기업 프로필 보기에 나갑니다. 담당자 연락처는 제안을 수락한 뒤에만 공개되며 GovBiz는 역량·실적을 검증하지 않습니다.
+ * 알림 설정은 발송 기능이 없어 아직 화면 상태로만 유지합니다.
  */
 export function CompanyProfilePage() {
   const vm = useCompanyProfileViewModel()
@@ -59,24 +55,11 @@ export function CompanyProfilePage() {
   const {
     companyState,
     company,
-    demo,
     notice,
     summaryTags,
     completionPercent,
     checklist,
     basicFields,
-    isDiscoverable,
-    toggleDiscoverable,
-    selectableRoles,
-    availableRoles,
-    toggleRole,
-    selectableInterestAreas,
-    interestAreas,
-    toggleInterestArea,
-    capabilityNote,
-    updateCapabilityNote,
-    notifications,
-    toggleNotification,
     usageNotes,
     publicityRows,
   } = vm
@@ -97,7 +80,7 @@ export function CompanyProfilePage() {
 
       <div className={workspacePageStyles.content}>
         <p className={workspacePageStyles.emptyNote}>
-          기업 기본정보는 저장됩니다. 협업·파트너 설정, 우대·인증 자격, 알림, 공개 범위는 아직 예시 값이며 화면을 나가면 초기화됩니다.
+          기업 기본정보와 협업·파트너 설정은 저장되어 모집글과 기업 프로필 보기에 쓰입니다. 담당자 연락처는 제안을 수락한 뒤에만 공개됩니다.
         </p>
         {notice ? <p className={companyProfileStyles.notice} role="status">{notice}</p> : null}
         <div className={workspacePageStyles.columns}>
@@ -229,126 +212,7 @@ export function CompanyProfilePage() {
               </section>
             ) : null}
 
-            <section className={workspacePageStyles.card} aria-label="협업·파트너 설정">
-              <div className={workspacePageStyles.cardHeader}>
-                <div>
-                  <h2 className={workspacePageStyles.cardTitle}>협업·파트너 설정</h2>
-                  <p className={workspacePageStyles.cardDescription}>
-                    이 항목은 파트너 모집글과 파트너 찾기에서 다른 기업에게 보입니다.
-                  </p>
-                </div>
-              </div>
-
-              <div className={companyProfileStyles.settingRow}>
-                <span className="min-w-0">
-                  <strong className={companyProfileStyles.settingTitle}>
-                    파트너 찾기에 우리 기업 노출
-                  </strong>
-                  <span className={companyProfileStyles.settingDescription}>
-                    끄면 모집글에 직접 제안할 때만 프로필이 공개됩니다.
-                  </span>
-                </span>
-                <WorkspaceToggle
-                  label="파트너 찾기에 우리 기업 노출"
-                  isOn={isDiscoverable}
-                  onToggle={toggleDiscoverable}
-                />
-              </div>
-
-              <div className={companyProfileStyles.choiceColumns}>
-                <div className={companyProfileStyles.choiceGroup}>
-                  <span className={companyProfileStyles.choiceLabel} id="available-roles-label">
-                    참여 가능 역할
-                  </span>
-                  <div
-                    className={companyProfileStyles.choices}
-                    role="group"
-                    aria-labelledby="available-roles-label"
-                  >
-                    {selectableRoles.map((role) => (
-                      <button
-                        className={companyProfileChoiceClassName(availableRoles.includes(role))}
-                        key={role}
-                        type="button"
-                        aria-pressed={availableRoles.includes(role)}
-                        onClick={() => toggleRole(role)}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className={companyProfileStyles.choiceGroup}>
-                  <span className={companyProfileStyles.choiceLabel} id="interest-areas-label">
-                    관심 분야
-                  </span>
-                  <div
-                    className={companyProfileStyles.choices}
-                    role="group"
-                    aria-labelledby="interest-areas-label"
-                  >
-                    {selectableInterestAreas.map((area) => (
-                      <button
-                        className={companyProfileChoiceClassName(interestAreas.includes(area))}
-                        key={area}
-                        type="button"
-                        aria-pressed={interestAreas.includes(area)}
-                        onClick={() => toggleInterestArea(area)}
-                      >
-                        {area}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className={companyProfileStyles.capabilityGroup}>
-                <label className={companyProfileStyles.choiceLabel} htmlFor="capability-note">
-                  보유 역량·실적
-                </label>
-                <textarea
-                  className={companyProfileStyles.capabilityTextarea}
-                  id="capability-note"
-                  value={capabilityNote}
-                  onChange={(event) => updateCapabilityNote(event.target.value)}
-                />
-                <span className={companyProfileStyles.capabilityHint}>
-                  수치와 실적은 스스로 입력한 값이며 GovBiz가 검증하지 않습니다. 모집글에는 이 문구가
-                  그대로 보입니다.
-                </span>
-              </div>
-            </section>
-
-            <section className={workspacePageStyles.card} aria-label="우대·인증 자격">
-              <div className={workspacePageStyles.cardHeader}>
-                <div>
-                  <h2 className={workspacePageStyles.cardTitle}>우대·인증 자격</h2>
-                  <p className={workspacePageStyles.cardDescription}>
-                    GovBiz는 자격을 판정하지 않습니다. 등록한 서류 상태만 표시하고, 적합 여부는 공고
-                    원문과 기관에서 확인하세요.
-                  </p>
-                </div>
-                <button className={workspacePageStyles.secondaryButton} type="button" disabled>
-                  상태 업데이트 · 준비 중
-                </button>
-              </div>
-              <div className="flex flex-col gap-2">
-                {demo.qualifications.map((qualification) => {
-                  const status = qualificationLabels[qualification.status]
-                  return (
-                    <div className={companyProfileStyles.statusRow} key={qualification.label}>
-                      <span>{qualification.label}</span>
-                      <span className={workspaceTagClassName(status.tone)}>
-                        {qualification.detail
-                          ? `${status.label} · ${qualification.detail}`
-                          : status.label}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
+            <CompanyPartnerProfileSection vm={vm.partnerProfile} />
 
             <section className={workspacePageStyles.card} aria-label="계정과 알림">
               <h2 className={workspacePageStyles.cardTitle}>계정과 알림</h2>
@@ -357,7 +221,7 @@ export function CompanyProfilePage() {
                   <span className="min-w-0">
                     <span className={companyProfileStyles.accountLabel}>담당자</span>
                     <span className={companyProfileStyles.accountValue}>
-                      {demo.managerName} · {vm.account?.email ?? demo.managerEmail}
+                      {vm.account?.email ?? ''}
                     </span>
                   </span>
                   <span className={workspaceTagClassName(vm.account?.emailVerified ? 'ok' : 'warn')}>
@@ -375,34 +239,16 @@ export function CompanyProfilePage() {
                   <p className={companyProfileStyles.notice} role="status">{security.password.notice}</p>
                 ) : null}
 
-                <div className={companyProfileStyles.settingRow}>
-                  <span className={companyProfileStyles.accountValue}>
-                    관심 공고 마감 3일 전 알림
-                  </span>
-                  <WorkspaceToggle
-                    label="관심 공고 마감 3일 전 알림"
-                    isOn={notifications.savedProgramDeadline}
-                    onToggle={() => toggleNotification('savedProgramDeadline')}
-                  />
-                </div>
-                <div className={companyProfileStyles.settingRow}>
-                  <span className={companyProfileStyles.accountValue}>파트너 제안·메시지 알림</span>
-                  <WorkspaceToggle
-                    label="파트너 제안·메시지 알림"
-                    isOn={notifications.partnerProposal}
-                    onToggle={() => toggleNotification('partnerProposal')}
-                  />
-                </div>
-                <div className={companyProfileStyles.settingRow}>
-                  <span className={companyProfileStyles.accountValue}>
-                    프로필 조건에 맞는 새 공고 알림
-                  </span>
-                  <WorkspaceToggle
-                    label="프로필 조건에 맞는 새 공고 알림"
-                    isOn={notifications.newMatchingProgram}
-                    onToggle={() => toggleNotification('newMatchingProgram')}
-                  />
-                </div>
+                {notificationRows.map((row) => (
+                  <div className={companyProfileStyles.settingRow} key={row.key}>
+                    <span className={companyProfileStyles.accountValue}>{row.label}</span>
+                    <WorkspaceToggle
+                      label={row.label}
+                      isOn={vm.notifications[row.key]}
+                      onToggle={() => vm.toggleNotification(row.key)}
+                    />
+                  </div>
+                ))}
               </div>
               <div className={companyProfileStyles.dangerRow}>
                 <button className={workspacePageStyles.dangerLink} type="button" onClick={security.deletion.open}>

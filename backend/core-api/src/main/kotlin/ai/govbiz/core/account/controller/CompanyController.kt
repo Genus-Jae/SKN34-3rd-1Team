@@ -1,5 +1,7 @@
 package ai.govbiz.core.account.controller
 
+import ai.govbiz.core.account.controller.dto.CompanyPartnerProfileRequest
+import ai.govbiz.core.account.controller.dto.CompanyPartnerProfileResponse
 import ai.govbiz.core.account.controller.dto.CompanyProfileRequest
 import ai.govbiz.core.account.controller.dto.CompanyResponse
 import ai.govbiz.core.account.controller.dto.RegisterCompanyRequest
@@ -41,4 +43,16 @@ class CompanyController(
         @RequestBody @Valid request: CompanyProfileRequest,
     ): CompanyResponse =
         CompanyResponse.from(companyService.updateProfile(account, request.toProfileInput()))
+
+    /** 협업·파트너 설정입니다. 저장한 적이 없으면 `isSet=false`와 기본값입니다. */
+    @GetMapping("/partner-profile")
+    fun partnerProfile(account: Account): CompanyPartnerProfileResponse =
+        CompanyPartnerProfileResponse.from(companyService.findPartnerProfile(account))
+
+    @PutMapping("/partner-profile")
+    fun updatePartnerProfile(
+        account: Account,
+        @RequestBody @Valid request: CompanyPartnerProfileRequest,
+    ): CompanyPartnerProfileResponse =
+        CompanyPartnerProfileResponse.from(companyService.updatePartnerProfile(account, request.toInput()))
 }

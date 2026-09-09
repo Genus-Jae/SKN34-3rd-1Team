@@ -1,4 +1,5 @@
 import type { Company, CompanyProfileInput } from '../../domain/entities/Company'
+import type { CompanyPartnerProfile, CompanyPartnerProfileInput } from '../../domain/entities/CompanyPartnerProfile'
 import type {
   BusinessLookupResult,
   CompanyRepository,
@@ -8,11 +9,13 @@ import { AccountApiError } from '../api/accountApi'
 import {
   CompanyApiError,
   getMyCompanyApi,
+  getPartnerProfileApi,
   lookupBusinessApi,
   registerCompanyApi,
   updateCompanyApi,
+  updatePartnerProfileApi,
 } from '../api/companyApi'
-import { toBusinessLookup, toCompany } from '../models/CompanyDto'
+import { toBusinessLookup, toCompany, toCompanyPartnerProfile } from '../models/CompanyDto'
 
 /** Core API 기업 DTO를 Domain 값으로 바꾸고, 화면이 구분해 안내할 실패는 결과로 돌려주는 adapter입니다. */
 export class CompanyRepositoryImpl implements CompanyRepository {
@@ -61,6 +64,20 @@ export class CompanyRepositoryImpl implements CompanyRepository {
 
   async updateCompany(profile: CompanyProfileInput, signal?: AbortSignal): Promise<Company> {
     return toCompany(await updateCompanyApi(profile, signal))
+  }
+
+  /** 기업이 없어 404 `COMPANY_NOT_REGISTERED`면 null입니다. */
+  async getPartnerProfile(signal?: AbortSignal): Promise<CompanyPartnerProfile | null> {
+    try {
+      return toCompanyPartnerProfile(await getPartnerProfileApi(signal))
+    } catch (error) {
+      if (error instanceof AccountApiError && error.status === 404 && error.code === 'COMPANY_NOT_REGISTERED') return null
+      throw error
+    }
+  }
+
+  async updatePartnerProfile(input: CompanyPartnerProfileInput, signal?: AbortSignal): Promise<CompanyPartnerProfile> {
+    return toCompanyPartnerProfile(await updatePartnerProfileApi(input, signal))
   }
 }
 

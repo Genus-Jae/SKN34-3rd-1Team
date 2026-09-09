@@ -38,6 +38,14 @@ export const companyProfileStyles = {
   selectedChoice: 'border-brand-primary bg-brand-primary font-bold text-white',
   unselectedChoice: 'border-sample-border bg-white font-semibold text-sample-muted hover:border-[#087f46]',
   capabilityGroup: 'flex flex-col gap-2',
+  capabilityBox: classes(
+    'flex min-h-12 flex-wrap items-center gap-[0.4rem] rounded-[1rem] border border-sample-border bg-white px-[0.9rem] py-2',
+  ),
+  capabilityChip:
+    'inline-flex min-w-0 max-w-full items-center gap-[0.3rem] rounded-full bg-[#e7f6ed] px-[0.65rem] py-[0.3rem] text-[0.75rem] font-bold text-[#087f46] [overflow-wrap:anywhere]',
+  capabilityRemove: 'shrink-0 cursor-pointer border-0 bg-transparent p-0 text-[0.75rem] leading-none text-[#087f46]',
+  capabilityInput: 'min-w-32 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink placeholder:text-sample-muted focus:outline-0',
+  counter: 'self-end text-[0.72rem] text-sample-muted tabular-nums',
   capabilityTextarea: classes(
     'min-h-24 w-full resize-y rounded-[1rem] border border-sample-border bg-white px-[0.9rem] py-[0.8rem]',
     'text-[0.85rem] leading-[1.6] text-app-ink placeholder:text-sample-muted',

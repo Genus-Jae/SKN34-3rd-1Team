@@ -2,8 +2,11 @@ package ai.govbiz.core.account.service
 
 import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.account.domain.Company
+import ai.govbiz.core.account.domain.CompanyPartnerProfile
+import ai.govbiz.core.account.domain.CompanyPartnerProfileInput
 import ai.govbiz.core.account.domain.CompanyProfileInput
 import ai.govbiz.core.account.domain.NewCompany
+import ai.govbiz.core.account.repository.CompanyPartnerProfileRepository
 import ai.govbiz.core.account.repository.CompanyRepository
 import ai.govbiz.core.account.service.exception.BusinessNotActiveException
 import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredException
@@ -23,6 +26,7 @@ import org.springframework.stereotype.Service
 @Service
 class CompanyService(
     private val companyRepository: CompanyRepository,
+    private val partnerProfileRepository: CompanyPartnerProfileRepository,
     private val lookupService: BusinessLookupService,
     @param:Qualifier("seoulClock") private val clock: Clock,
 ) {
@@ -63,6 +67,13 @@ class CompanyService(
     }
 
     /** 설립연도 상한은 올해입니다. 요청 검증(1900~2100)을 통과한 뒤 서울 기준 시계로 다시 봅니다. */
+    /** 협업·파트너 설정입니다. 기업이 없으면 404이고, 저장한 적이 없으면 비어 있는 설정을 돌려줍니다. */
+    fun findPartnerProfile(account: Account): CompanyPartnerProfile =
+        partnerProfileRepository.findByCompanyId(findMine(account).id)
+
+    fun updatePartnerProfile(account: Account, input: CompanyPartnerProfileInput): CompanyPartnerProfile =
+        partnerProfileRepository.save(findMine(account).id, input)
+
     private fun requireFoundedYearNotInFuture(profile: CompanyProfileInput) {
         if (profile.foundedYear > LocalDateTime.now(clock).year) throw CompanyProfileInvalidException("foundedYear")
     }

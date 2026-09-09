@@ -24,11 +24,7 @@ import type {
 } from '../../../../domain/usecases/CompanyUseCases'
 import { useAuthSession } from '../../../shared/auth/hooks/useAuthSession'
 import { signedIn } from '../../../shared/auth/state/authSlice'
-import {
-  companyProfileDemo,
-  selectableInterestAreas,
-  selectableRoles,
-} from './companyProfilePlaceholders'
+import { useCompanyPartnerProfileViewModel } from './useCompanyPartnerProfileViewModel'
 
 export const companyProfileMessages = {
   businessNumberInvalid: '사업자등록번호는 숫자 10자리로 입력해 주세요.',
@@ -94,9 +90,25 @@ const emptyForm: ProfileFormValues = {
   homepageUrl: '',
 }
 
+/** 프로필 화면의 알림 설정입니다. 서버 저장 API가 생기면 그 응답으로 초기화합니다. */
+export type NotificationSettings = {
+  savedProgramDeadline: boolean
+  partnerProposal: boolean
+  newMatchingProgram: boolean
+}
+
+export type NotificationKey = keyof NotificationSettings
+
+export const defaultNotificationSettings: NotificationSettings = {
+  savedProgramDeadline: true,
+  partnerProposal: true,
+  newMatchingProgram: false,
+}
+
 /**
  * 기업 프로필의 대표 ViewModel입니다. 기업 기본정보는 API에서 읽어 등록·수정 폼과 완성도를 계산하고,
- * 아직 API가 없는 공개 범위 토글·역할·관심 분야·알림 설정은 예시 값과 화면 상태로만 유지합니다.
+ * 협업·파트너 설정은 [useCompanyPartnerProfileViewModel]이 맡으며 완성도에는 저장 여부만 씁니다.
+ * 알림 설정은 발송 기능이 없어 화면 상태로만 유지합니다.
  */
 export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = {}) {
   const resolved: CompanyUseCases = {
@@ -120,16 +132,11 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  // 알림 발송 기능이 아직 없어 설정은 화면 상태로만 두고, 화면을 나가면 초기값으로 돌아갑니다.
+  const [notifications, setNotifications] = useState<NotificationSettings>(defaultNotificationSettings)
 
-  const [isDiscoverable, setIsDiscoverable] = useState(companyProfileDemo.isDiscoverable)
-  const [availableRoles, setAvailableRoles] = useState(companyProfileDemo.availableRoles)
-  const [interestAreas, setInterestAreas] = useState(companyProfileDemo.interestAreas)
-  const [capabilityNote, setCapabilityNote] = useState(companyProfileDemo.capabilityNote)
-  const [notifications, setNotifications] = useState({
-    savedProgramDeadline: true,
-    partnerProposal: true,
-    newMatchingProgram: false,
-  })
+  // 협업·파트너 설정은 기업이 등록된 뒤에만 읽고, 완성도 계산에 저장 여부만 씁니다.
+  const partnerProfile = useCompanyPartnerProfileViewModel(companyState.status === 'registered')
 
   useEffect(() => {
     isMounted.current = true
@@ -280,47 +287,29 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
     setIsEditing(false)
   }
 
-  function toggleRole(role: string) {
-    setAvailableRoles(
-      availableRoles.includes(role)
-        ? availableRoles.filter((item) => item !== role)
-        : [...availableRoles, role],
-    )
-  }
-
-  function toggleInterestArea(area: string) {
-    setInterestAreas(
-      interestAreas.includes(area)
-        ? interestAreas.filter((item) => item !== area)
-        : [...interestAreas, area],
-    )
-  }
-
-  function toggleNotification(key: keyof typeof notifications) {
-    setNotifications({ ...notifications, [key]: !notifications[key] })
-  }
-
   const company = companyState.status === 'registered' ? companyState.company : null
-  const hasUncheckedQualification = companyProfileDemo.qualifications.some(
-    (qualification) => qualification.status === 'NEEDS_CHECK',
-  )
   const checklist: ChecklistItem[] = [
     { label: '사업자등록번호 확인과 기업 기본정보', isDone: company !== null },
     { label: '이메일 인증', isDone: account?.emailVerified ?? false },
-    { label: '참여 역할과 관심 분야', isDone: availableRoles.length > 0 && interestAreas.length > 0 },
-    { label: '우대·인증 자격 상태 확인', isDone: !hasUncheckedQualification },
+    { label: '협업·파트너 설정', isDone: partnerProfile.isSet },
     { label: '홈페이지', isDone: company?.homepageUrl != null },
   ]
   const completionPercent = Math.round(
     (checklist.filter((item) => item.isDone).length / checklist.length) * 100,
   )
 
+  function toggleNotification(key: NotificationKey) {
+    setNotifications({ ...notifications, [key]: !notifications[key] })
+  }
+
   return {
     account,
     companyState,
     company,
-    demo: companyProfileDemo,
+    partnerProfile,
     notice,
+    notifications,
+    toggleNotification,
     summaryTags: company === null ? [] : [company.region, company.industry, company.businessStatus],
     completionPercent,
     checklist,
@@ -372,18 +361,6 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
     cancelEditing,
     submitRegistration,
     submitUpdate,
-    isDiscoverable,
-    toggleDiscoverable: () => setIsDiscoverable(!isDiscoverable),
-    selectableRoles,
-    availableRoles,
-    toggleRole,
-    selectableInterestAreas,
-    interestAreas,
-    toggleInterestArea,
-    capabilityNote,
-    updateCapabilityNote: setCapabilityNote,
-    notifications,
-    toggleNotification,
     // 이 정보가 어디에 쓰이는지 화면에서 밝혀 두면 무엇을 채울지 판단하기 쉬워집니다.
     usageNotes: [
       {
@@ -403,12 +380,11 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
         description: '사업자등록번호 조회로 확인한 기업명과 사업자 상태, 이메일 인증 여부가 모집글에 표시됩니다.',
       },
     ],
-    // 담당자 정보와 서류 상태는 제안을 수락한 뒤에만 상대에게 보입니다.
+    // 담당자 정보는 제안을 수락한 뒤에만 상대에게 보입니다.
     publicityRows: [
       { label: '기업명·지역·업종', beforeAccept: true, afterAccept: true },
-      { label: '보유 역량·관심 분야', beforeAccept: true, afterAccept: true },
-      { label: '우대·인증 상태', beforeAccept: false, afterAccept: true },
-      { label: '담당자 이름·이메일', beforeAccept: false, afterAccept: true },
+      { label: '역할·관심 분야·보유 역량·소개', beforeAccept: true, afterAccept: true },
+      { label: '담당자 이메일', beforeAccept: false, afterAccept: true },
     ],
   }
 }

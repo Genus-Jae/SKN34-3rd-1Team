@@ -164,6 +164,62 @@ class CompanyFlowIntegrationTest {
             .andExpect(jsonPath("$.homepageUrl").doesNotExist())
     }
 
+    @Test
+    fun savesAndReadsThePartnerProfileOnlyForARegisteredCompany() {
+        val session = signUp("partner@company.co.kr", "password1")
+        mockMvc.perform(get("/api/v1/me/company/partner-profile").cookie(session))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("COMPANY_NOT_REGISTERED"))
+
+        mockMvc.perform(
+            post("/api/v1/me/company").cookie(session).origin()
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"businessNumber":"124-81-00998","region":"서울특별시","industry":"정보통신업","foundedYear":2020}"""),
+        ).andExpect(status().isCreated())
+
+        mockMvc.perform(get("/api/v1/me/company/partner-profile").cookie(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.isSet").value(false))
+            .andExpect(jsonPath("$.roles").isEmpty())
+            .andExpect(jsonPath("$.introduction").value(""))
+
+        mockMvc.perform(
+            put("/api/v1/me/company/partner-profile").cookie(session).origin()
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"roles":["LEAD","PARTICIPANT","LEAD"],"interestAreas":["기술"," 사업화 ",""],
+                       "introduction":" AI 문서 분류 SaaS를 만드는 팀입니다. ","capabilities":["문서 분류 AI","공공 레퍼런스"]}""",
+                ),
+        )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.isSet").value(true))
+            .andExpect(jsonPath("$.roles.length()").value(2))
+            .andExpect(jsonPath("$.interestAreas[1]").value("사업화"))
+            .andExpect(jsonPath("$.interestAreas.length()").value(2))
+            .andExpect(jsonPath("$.introduction").value("AI 문서 분류 SaaS를 만드는 팀입니다."))
+            .andExpect(jsonPath("$.capabilities.length()").value(2))
+            .andExpect(jsonPath("$.updatedAt").isNotEmpty())
+
+        // 두 번째 저장은 같은 행을 덮어씁니다.
+        mockMvc.perform(
+            put("/api/v1/me/company/partner-profile").cookie(session).origin()
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"roles":["PARTICIPANT"],"interestAreas":[],"introduction":"","capabilities":[]}"""),
+        )
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.roles[0]").value("PARTICIPANT"))
+            .andExpect(jsonPath("$.roles.length()").value(1))
+        mockMvc.perform(get("/api/v1/me/company/partner-profile").cookie(session))
+            .andExpect(jsonPath("$.capabilities").isEmpty())
+
+        // 역할이 비거나 항목 수를 넘기면 요청 검증 400입니다.
+        mockMvc.perform(
+            put("/api/v1/me/company/partner-profile").cookie(session).origin()
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"roles":[],"interestAreas":["a","b","c","d"]}"""),
+        ).andExpect(status().isBadRequest())
+    }
+
     private fun signUp(email: String, password: String): Cookie {
         val response = mockMvc.perform(
             post("/api/v1/auth/signup")

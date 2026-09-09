@@ -1,4 +1,5 @@
 import type { BusinessLookup, Company, CompanyProfileInput } from '../entities/Company'
+import type { CompanyPartnerProfile, CompanyPartnerProfileInput } from '../entities/CompanyPartnerProfile'
 
 /** 조회·등록 실패 사유는 화면이 다르게 안내해야 하므로 예외가 아닌 결과로 구분합니다. */
 export type BusinessLookupResult =
@@ -21,4 +22,7 @@ export interface CompanyRepository {
   getMyCompany(signal?: AbortSignal): Promise<Company | null>
   registerCompany(businessNumber: string, profile: CompanyProfileInput, signal?: AbortSignal): Promise<RegisterCompanyResult>
   updateCompany(profile: CompanyProfileInput, signal?: AbortSignal): Promise<Company>
+  /** 협업·파트너 설정입니다. 기업이 없으면 null, 저장한 적이 없으면 `isSet=false`와 기본값입니다. */
+  getPartnerProfile(signal?: AbortSignal): Promise<CompanyPartnerProfile | null>
+  updatePartnerProfile(input: CompanyPartnerProfileInput, signal?: AbortSignal): Promise<CompanyPartnerProfile>
 }

@@ -305,10 +305,28 @@ describe('기업 프로필 화면', () => {
     expect((within(form).getByRole('button', { name: '기업 등록' }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.queryByRole('region', { name: '기업 기본정보' })).toBeNull()
     expect(screen.getByRole('region', { name: '협업·파트너 설정' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: '우대·인증 자격' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '우대·인증 자격' })).toBeNull()
     expect(screen.getByRole('region', { name: '계정과 알림' })).toBeTruthy()
     expect(screen.getByRole('region', { name: '공개 범위' })).toBeTruthy()
     expect(screen.getByText('기업 미등록')).toBeTruthy()
+  })
+
+  it('계정과 알림 카드의 알림 스위치는 화면 상태로 켜고 끈다', async () => {
+    renderApp('/app/profile')
+    const account = await screen.findByRole('region', { name: '계정과 알림' })
+    const switches = within(account).getAllByRole('switch')
+    expect(switches.map((node) => node.getAttribute('aria-label'))).toEqual([
+      '관심 공고 마감 3일 전 알림',
+      '파트너 제안·메시지 알림',
+      '프로필 조건에 맞는 새 공고 알림',
+    ])
+    expect(switches.map((node) => node.getAttribute('aria-checked'))).toEqual(['true', 'true', 'false'])
+
+    fireEvent.click(switches[2]!)
+    expect(switches[2]!.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(switches[0]!)
+    expect(switches[0]!.getAttribute('aria-checked')).toBe('false')
+    expect(switches[1]!.getAttribute('aria-checked')).toBe('true')
   })
 
   it('조회 결과로 상호·상태를 채우고 소재지·업종·설립연도를 입력해 등록하면 기업 회원이 된다', async () => {
@@ -457,59 +475,80 @@ describe('기업 프로필 화면', () => {
     })
   })
 
-  it('완성도는 실제 기업 정보와 예시 설정을 합쳐 체크리스트로 계산한다', async () => {
+  it('완성도는 기업 정보·이메일 인증·협업 설정·홈페이지 네 항목으로 계산한다', async () => {
     vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(registeredCompany)
+    const getProfile = vi.spyOn(appContainer.resolve('getCompanyPartnerProfileUseCase'), 'execute')
+      .mockResolvedValue({ isSet: false, roles: [], interestAreas: [], introduction: '', capabilities: [], updatedAt: null })
     renderApp('/app/profile')
     await screen.findByRole('region', { name: '기업 기본정보' })
+    await waitFor(() => expect(getProfile).toHaveBeenCalled())
 
-    // 기업 등록·이메일 인증(회원 fixture)·역할과 관심 분야(예시)는 끝났고, 우대 자격 확인과 홈페이지는 남았습니다.
+    // 기업 등록·이메일 인증(회원 fixture)은 끝났고, 협업 설정과 홈페이지는 남았습니다.
     const completion = screen.getByRole('progressbar', { name: '프로필 완성도' })
-    expect(completion.getAttribute('aria-valuenow')).toBe('60')
-
-    const settings = screen.getByRole('region', { name: '협업·파트너 설정' })
-    for (const area of ['AI', '사업화']) {
-      fireEvent.click(within(settings).getByRole('button', { name: area, pressed: true }))
-    }
-    expect(completion.getAttribute('aria-valuenow')).toBe('40')
+    await waitFor(() => expect(completion.getAttribute('aria-valuenow')).toBe('50'))
+    expect(screen.getByText('협업·파트너 설정', { selector: 'span' })).toBeTruthy()
   })
 
-  it('담당자 정보와 서류 상태는 제안을 수락한 뒤에만 공개한다', async () => {
+  it('협업·파트너 설정은 기업이 있을 때만 편집되고 역할·관심 분야·소개·역량을 저장한다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(registeredCompany)
+    vi.spyOn(appContainer.resolve('getCompanyPartnerProfileUseCase'), 'execute')
+      .mockResolvedValue({ isSet: false, roles: [], interestAreas: [], introduction: '', capabilities: [], updatedAt: null })
+    const update = vi.spyOn(appContainer.resolve('updateCompanyPartnerProfileUseCase'), 'execute').mockResolvedValue({
+      isSet: true, roles: ['LEAD'], interestAreas: ['기술'], introduction: 'AI 문서 분류 팀', capabilities: ['문서 분류 AI'], updatedAt: '2026-09-10T10:00:00',
+    })
+    renderApp('/app/profile')
+    const settings = await screen.findByRole('region', { name: '협업·파트너 설정' })
+    const form = await within(settings).findByRole('form', { name: '협업·파트너 설정' })
+
+    // 역할 없이 저장하면 칸 아래에 안내하고 보내지 않습니다.
+    fireEvent.submit(form)
+    expect(within(form).getByRole('alert').textContent).toContain('역할')
+    expect(update).not.toHaveBeenCalled()
+
+    fireEvent.click(within(form).getByRole('button', { name: '주관기관' }))
+    fireEvent.click(within(form).getByRole('button', { name: '기술' }))
+    fireEvent.change(within(form).getByLabelText(/한 줄 소개/), { target: { value: ' AI 문서 분류 팀 ' } })
+    const capability = within(form).getByLabelText(/보유 역량 태그/)
+    fireEvent.change(capability, { target: { value: '문서 분류 AI' } })
+    fireEvent.keyDown(capability, { key: 'Enter' })
+    expect(within(form).getByRole('button', { name: '문서 분류 AI 삭제' })).toBeTruthy()
+    fireEvent.click(within(form).getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith({
+      roles: ['LEAD'], interestAreas: ['기술'], introduction: ' AI 문서 분류 팀 ', capabilities: ['문서 분류 AI'],
+    }))
+    expect(await within(form).findByText('협업·파트너 설정을 저장했습니다.')).toBeTruthy()
+    expect(within(settings).getByText('저장됨')).toBeTruthy()
+    expect(screen.getByRole('progressbar', { name: '프로필 완성도' }).getAttribute('aria-valuenow')).toBe('75')
+  })
+
+  it('기업이 없으면 협업·파트너 설정은 등록 안내만 보여 준다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
+    const getProfile = vi.spyOn(appContainer.resolve('getCompanyPartnerProfileUseCase'), 'execute')
+    renderApp('/app/profile')
+    await screen.findByRole('form', { name: '기업 등록' })
+
+    const settings = screen.getByRole('region', { name: '협업·파트너 설정' })
+    expect(within(settings).getByText('기업을 등록하면 협업 조건을 설정할 수 있습니다.')).toBeTruthy()
+    expect(within(settings).queryByRole('form')).toBeNull()
+    expect(getProfile).not.toHaveBeenCalled()
+  })
+
+  it('담당자 이메일은 제안을 수락한 뒤에만 공개한다', async () => {
     vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
     renderApp('/app/profile')
     await screen.findByRole('form', { name: '기업 등록' })
 
     const publicity = screen.getByRole('region', { name: '공개 범위' })
-    const managerRow = within(publicity).getByText('담당자 이름·이메일').closest('tr')!
+    const managerRow = within(publicity).getByText('담당자 이메일').closest('tr')!
     const cells = within(managerRow).getAllByRole('cell')
 
     expect(cells[1]!.textContent).toBe('비공개')
     expect(cells[2]!.textContent).toBe('공개')
+    expect(within(publicity).queryByText(/우대·인증/)).toBeNull()
+    expect(screen.queryByRole('region', { name: '우대·인증 자격' })).toBeNull()
   })
 
-  it('우대·인증 자격은 판정하지 않고 등록 상태만 표시한다', async () => {
-    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
-    renderApp('/app/profile')
-    await screen.findByRole('form', { name: '기업 등록' })
-
-    const qualifications = screen.getByRole('region', { name: '우대·인증 자격' })
-    expect(within(qualifications).getByText('확인 필요')).toBeTruthy()
-    expect(within(qualifications).getByText('보유 · 2027-03 만료')).toBeTruthy()
-    expect(within(qualifications).queryByText('자격 있음')).toBeNull()
-  })
-
-  it('예시 설정 변경은 저장된 것처럼 표시하지 않고 화면 재진입 시 초기화한다', async () => {
-    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
-    renderApp('/app/profile')
-    await screen.findByRole('form', { name: '기업 등록' })
-    expect(screen.getByText(/아직 예시 값이며 화면을 나가면 초기화됩니다/)).toBeTruthy()
-    const input = screen.getByLabelText('보유 역량·실적') as HTMLTextAreaElement
-    const original = input.value
-    fireEvent.change(input, { target: { value: '임시 데모 입력' } })
-    fireEvent.click(screen.getByRole('link', { name: '파트너 모집' }))
-    fireEvent.click(screen.getByRole('link', { name: '내 프로필' }))
-    await screen.findByRole('form', { name: '기업 등록' })
-    expect((screen.getByLabelText('보유 역량·실적') as HTMLTextAreaElement).value).toBe(original)
-  })
 })
 
 describe('계정 보안 모달', () => {
@@ -551,7 +590,7 @@ describe('계정 보안 모달', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '변경' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '비밀번호 변경' })).toBeNull())
     expect(within(account).getByRole('status').textContent).toBe(accountSecurityMessages.passwordChanged)
-    expect(document.activeElement).toBe(within(account).getByRole('button', { name: '변경' }))
+    await waitFor(() => expect(document.activeElement).toBe(opener))
   })
 
   it('모달은 Esc와 배경 클릭으로 닫히고 Tab이 안에서 돈다', async () => {
