@@ -23,6 +23,7 @@
 | [Compose 실행·검증](../infrastructure/README.md) | 환경변수, 시작·중지·초기화, 실제 API 키 없는 통합 검증 |
 | [지원사업 API 계약](support-program-search-contract.md) | 검색·상세·원문 질문·준비 상태의 공개/내부 요청·응답 |
 | [계정·인증 계약](account-auth-contract.md) | 로그인·세션(유지·유휴 만료)·로그아웃·권한 단계·개발용 시드 로그인의 요청·응답과 설정 |
+| [기업 맞춤 일일 리포트](daily-reports.md) | 기업별 추천·근거 확인, 웹 미리보기, 수신 주소 확인·동의·해지, SMTP 설정과 중복·비용 경계 |
 | [요청량·동시 실행 제한](support-program-request-limits.md) | 제한 설정·429/503 계약·운영 한계·4단계 최종 통합 검증 |
 | [Frontend 개발](../frontend/README.md) | 화면 구조, 실행, 테스트·lint·build |
 | [Core API 개발](../backend/core-api/README.md) | 패키지·DB 규칙, 평가 프로필, JDK 21·MySQL 테스트 |

@@ -1,4 +1,6 @@
 import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
+import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
+import { DailyReportEmailPage } from './presentation/features/daily-report/view/DailyReportEmailPage'
 import { useReviewSessionIsolation } from './presentation/features/combination-review/viewmodel/useReviewSessionIsolation'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 
@@ -47,6 +49,7 @@ function App() {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
+        <Route path={publicPaths.reportEmail} element={<DailyReportEmailPage />} />
         <Route element={<PublicOnly />}>
           <Route path={publicPaths.landing} element={<SupportProgramSearchPage />} />
           <Route path={publicPaths.pricing} element={<PricingPage />} />
@@ -67,6 +70,7 @@ function App() {
 
       <Route element={<RequireAuth />}>
         <Route element={<WorkspaceLayout />}>
+          <Route path={appPaths.reports} element={<DailyReportPage />} />
           <Route path={appPaths.combinationReviews} element={<CombinationReviewListPage />} />
           <Route path={appPaths.combinationReviewNew} element={<CombinationReviewEditorPage create />} />
           <Route path={appPaths.combinationReviewDetail} element={<CombinationReviewEditorPage />} />

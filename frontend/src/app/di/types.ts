@@ -41,6 +41,8 @@ export type FetchCoreApiHealth = (signal?: AbortSignal) => Promise<CoreApiHealth
 
 /** Awilix가 생성·연결할 수 있는 전체 의존성 목록입니다. */
 export type AppCradle = {
+  dailyReportRepository: import('../../domain/repositories/DailyReportRepository').DailyReportRepository
+  dailyReportUseCase: import('../../domain/usecases/DailyReportUseCase').DailyReportUseCase
   combinationReviewRepository: import('../../domain/repositories/CombinationReviewRepository').CombinationReviewRepository
   combinationReviewUseCase: import('../../domain/usecases/CombinationReviewUseCase').CombinationReviewUseCase
   reviewRequestJournal: typeof import('../../data/storage/reviewRequestJournal').reviewRequestJournal

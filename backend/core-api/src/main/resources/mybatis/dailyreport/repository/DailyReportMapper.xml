@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="ai.govbiz.core.dailyreport.repository.mapper.DailyReportMapper">
+    <resultMap id="subscription" type="ai.govbiz.core.dailyreport.repository.mapper.DailyReportSubscriptionDbRow">
+        <id property="accountId" column="account_id" />
+        <result property="supportPurpose" column="support_purpose" />
+        <result property="enabled" column="enabled" />
+        <result property="confirmedEmail" column="confirmed_email" />
+        <result property="confirmedAt" column="confirmed_at" />
+        <result property="consentAt" column="consent_at" />
+    </resultMap>
+    <resultMap id="report" type="ai.govbiz.core.dailyreport.repository.mapper.DailyReportDbRow">
+        <id property="id" column="id" />
+        <result property="accountId" column="account_id" />
+        <result property="reportDate" column="report_date" />
+        <result property="status" column="status" />
+        <result property="deliveryStatus" column="delivery_status" />
+        <result property="inputJson" column="input_json" />
+        <result property="contentJson" column="content_json" />
+        <result property="errorMessage" column="error_message" />
+        <result property="generationAttempts" column="generation_attempts" />
+        <result property="generationKey" column="generation_key" />
+        <result property="startedAt" column="started_at" />
+        <result property="generatedAt" column="generated_at" />
+    </resultMap>
+    <sql id="subscriptionColumns">account_id, support_purpose, enabled, confirmed_email, confirmed_at, consent_at</sql>
+    <sql id="reportColumns">id, account_id, report_date, status, delivery_status, input_json, content_json,
+        error_message, generation_attempts, generation_key, started_at, generated_at</sql>
+
+    <insert id="ensureSubscription">
+        INSERT INTO daily_report_subscription (account_id, created_at, updated_at) VALUES (#{accountId}, #{now}, #{now})
+        ON DUPLICATE KEY UPDATE account_id = account_id
+    </insert>
+    <select id="findSubscription" resultMap="subscription">
+        SELECT <include refid="subscriptionColumns" /> FROM daily_report_subscription WHERE account_id = #{accountId}
+    </select>
+    <select id="lockSubscription" resultMap="subscription">
+        SELECT <include refid="subscriptionColumns" /> FROM daily_report_subscription WHERE account_id = #{accountId} FOR UPDATE
+    </select>
+    <update id="updateSettings">
+        UPDATE daily_report_subscription SET support_purpose = #{purpose}, enabled = #{enabled},
+            consent_at = CASE WHEN #{enabled} THEN #{now} ELSE consent_at END, updated_at = #{now}
+        WHERE account_id = #{accountId}
+    </update>
+    <update id="reserveVerification">
+        UPDATE daily_report_subscription SET verification_email = #{email}, verification_token_hash = #{hash},
+            verification_expires_at = #{expiresAt}, verification_requested_at = #{now}, updated_at = #{now}
+        WHERE account_id = #{accountId}
+            AND (verification_requested_at IS NULL OR verification_requested_at &lt;= #{retryBefore})
+    </update>
+    <update id="confirmEmail">
+        UPDATE daily_report_subscription s JOIN account a ON a.id = s.account_id
+        SET s.confirmed_email = s.verification_email, s.confirmed_at = #{now}, s.updated_at = #{now},
+            s.enabled = FALSE, s.consent_at = NULL,
+            s.verification_email = NULL, s.verification_token_hash = NULL, s.verification_expires_at = NULL
+        WHERE s.verification_token_hash = #{hash} AND s.verification_expires_at &gt; #{now}
+            AND a.email = s.verification_email AND a.deleted_at IS NULL AND a.suspended_at IS NULL
+    </update>
+    <update id="unsubscribe">
+        UPDATE daily_report_subscription s JOIN daily_report r ON r.account_id = s.account_id
+        SET s.enabled = FALSE, s.updated_at = #{now}
+        WHERE r.unsubscribe_token_hash = #{hash}
+    </update>
+    <select id="tokenExists" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM daily_report WHERE unsubscribe_token_hash = #{hash})
+    </select>
+    <select id="findLatest" resultMap="report">
+        SELECT <include refid="reportColumns" /> FROM daily_report WHERE account_id = #{accountId} ORDER BY report_date DESC LIMIT 1
+    </select>
+    <select id="findDay" resultMap="report">
+        SELECT <include refid="reportColumns" /> FROM daily_report WHERE account_id = #{accountId} AND report_date = #{date}
+    </select>
+    <select id="lockDay" resultMap="report">
+        SELECT <include refid="reportColumns" /> FROM daily_report WHERE account_id = #{accountId} AND report_date = #{date} FOR UPDATE
+    </select>
+    <insert id="insertReport" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO daily_report (account_id, report_date, status, input_json, generation_key, started_at)
+        VALUES (#{accountId}, #{reportDate}, #{status}, #{inputJson}, #{generationKey}, #{startedAt})
+    </insert>
+    <update id="retryReport">
+        UPDATE daily_report SET status = 'GENERATING', generation_attempts = generation_attempts + 1,
+            generation_key = #{key}, started_at = #{now}, generated_at = NULL, error_message = NULL
+        WHERE id = #{id} AND status = 'FAILED' AND generation_attempts &lt; 2
+    </update>
+    <update id="finishReport">
+        UPDATE daily_report SET status = #{status}, content_json = #{content}, error_message = #{error}, generated_at = #{now}
+        WHERE id = #{id} AND generation_key = #{key} AND status = 'GENERATING'
+    </update>
+    <update id="expireGeneration">
+        UPDATE daily_report SET status = 'FAILED', error_message = '생성이 중단되었습니다. 오늘 한 번만 다시 시도할 수 있습니다.'
+        WHERE status = 'GENERATING' AND started_at &lt; #{before}
+    </update>
+    <insert id="ensureBudget">
+        INSERT INTO daily_report_generation_budget (report_date, attempts) VALUES (#{date}, 0)
+        ON DUPLICATE KEY UPDATE report_date = report_date
+    </insert>
+    <update id="consumeBudget">
+        UPDATE daily_report_generation_budget SET attempts = attempts + 1 WHERE report_date = #{date} AND attempts &lt; #{maximum}
+    </update>
+    <update id="claimDelivery">
+        UPDATE daily_report r JOIN daily_report_subscription s ON s.account_id = r.account_id
+            JOIN account a ON a.id = r.account_id JOIN company c ON c.account_id = r.account_id
+        SET r.delivery_status = 'SENDING', r.delivery_started_at = #{now}, r.unsubscribe_token_hash = #{hash}
+        WHERE r.id = #{id} AND r.status = 'READY' AND r.delivery_status = 'NOT_REQUESTED'
+            AND s.enabled = TRUE AND s.confirmed_at IS NOT NULL AND s.consent_at IS NOT NULL
+            AND s.confirmed_email = #{email} AND a.email = #{email} AND a.deleted_at IS NULL AND a.suspended_at IS NULL
+    </update>
+    <update id="finishDelivery">
+        UPDATE daily_report SET delivery_status = #{status}, delivered_at = #{now}
+        WHERE id = #{id} AND delivery_status = 'SENDING'
+    </update>
+    <update id="expireDelivery">
+        UPDATE daily_report SET delivery_status = 'UNKNOWN'
+        WHERE delivery_status = 'SENDING' AND delivery_started_at &lt; #{before}
+    </update>
+    <select id="findDueAccountIds" resultType="long">
+        SELECT s.account_id FROM daily_report_subscription s
+            JOIN account a ON a.id = s.account_id JOIN company c ON c.account_id = s.account_id
+            LEFT JOIN daily_report r ON r.account_id = s.account_id AND r.report_date = #{date}
+        WHERE s.enabled = TRUE AND s.confirmed_email = a.email AND a.deleted_at IS NULL AND a.suspended_at IS NULL
+            AND (r.id IS NULL OR (r.status = 'FAILED' AND r.generation_attempts &lt; 2)
+                OR (r.status = 'READY' AND r.delivery_status = 'NOT_REQUESTED'))
+        ORDER BY CASE WHEN r.status = 'READY' THEN 0 ELSE 1 END, s.account_id LIMIT #{limit}
+    </select>
+</mapper>

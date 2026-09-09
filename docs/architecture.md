@@ -49,6 +49,16 @@ AI Service는 호스트에 포트를 게시하지 않습니다. MySQL·Qdrant·C
 `127.0.0.1`에 바인딩합니다. 기업마당·K-Startup 키는 Core API에, OpenAI 키는 AI Service에만 주입합니다.
 이는 개발 환경의 서비스 배치이며 운영 인증·접근 제어가 구현됐다는 의미는 아닙니다.
 
+## 기업 맞춤 일일 리포트
+
+`DailyReportController → DailyReportService`는 저장된 기업 조건·지원 목적을 기존 검색에 전달하고,
+추천 최대 3건 중 기업마당 공고에 기존 근거 답변을 연결합니다. 수집·검색·근거 답변 Agent를 새로 복제하지 않습니다.
+`DailyReportRepository → MyBatis Mapper → XML → MySQL`에서 수신 설정·일별 입력과 결과·생성 시도 예산을 보존합니다.
+스케줄러도 같은 생성 경로를 사용하며 메일은 `DailyReportMailClient → SMTP`로 전송합니다.
+생성·발송 예약 및 결과 저장만 짧은 transaction에서 수행하고 AI·원문 HTTP·SMTP 호출은 transaction 밖에서 수행합니다.
+프런트엔드는 본인 리포트·설정과 명시적 이메일 확인·해지 화면을 제공합니다. 점수는 검색 관련도이며 선정 확률이 아닙니다.
+[리포트 API·수신 동의·중복/비용 제한·운영 설정](daily-reports.md)에 상세 경계를 정리합니다.
+
 ## 검색·상세 조회·원문 근거 질문
 
 공개 대화 해석·검색·근거 질문은 입력 검증 뒤 Controller에서 `SupportProgramRequestAdmissionService`를 거쳐
