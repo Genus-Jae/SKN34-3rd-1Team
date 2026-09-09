@@ -82,6 +82,7 @@ function CatalogFilters({ filters, regions, categories, startupStages, applicant
   const [draft, setDraft] = useState(filters)
   const [showStartupFilters, setShowStartupFilters] = useState(Boolean(filters.startupStage || filters.applicantType || filters.founderAge))
   const startupFilterCount = [draft.startupStage, draft.applicantType, draft.founderAge].filter(Boolean).length
+  const needsPeriodNotice = draft.sourceCode === 'MSIT' || draft.sourceCode === 'CNTRADE_NOTICE'
   return <form aria-label="공고 필터" className="grid gap-4 rounded-3xl border border-sample-border bg-white p-5 shadow-[0_4px_24px_rgb(32_33_36_/_3%)] max-chat:p-4"
     onSubmit={(event) => { event.preventDefault(); onApply({ ...draft, keyword: draft.keyword.trim(), page: 1 }) }}>
     <div className="flex items-end gap-2">
@@ -96,21 +97,27 @@ function CatalogFilters({ filters, regions, categories, startupStages, applicant
       <CatalogFilterChoices label="분야" name="catalog-category" options={categories} selected={draft.category} onSelect={(category) => setDraft({ ...draft, category })} />
       <div className="grid gap-3 sm:grid-cols-2 sm:gap-x-8">
         <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">출처
-          <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.sourceCode}
+          <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-64`} value={draft.sourceCode}
             onChange={(event) => {
               const sourceCode = event.target.value as SupportProgramCatalogFilters['sourceCode']
               setDraft({ ...draft, sourceCode, startupStage: '', applicantType: '', founderAge: '' })
               setShowStartupFilters(false)
             }}>
             <option value="">전체 출처</option><option value="BIZINFO">기업마당</option><option value="KSTARTUP">K-Startup</option>
+            <option value="MSIT">과학기술정보통신부</option><option value="CNTRADE_NOTICE">충청남도 온라인수출지원시스템</option>
           </select>
         </label>
         <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">접수 상태
-          <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as SupportProgramCatalogFilters['status'] })}>
+          <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.status}
+            aria-describedby={needsPeriodNotice ? 'catalog-period-notice' : undefined}
+            onChange={(event) => setDraft({ ...draft, status: event.target.value as SupportProgramCatalogFilters['status'] })}>
             {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
       </div>
+      {needsPeriodNotice ? <p id="catalog-period-notice" className="m-0 rounded-xl bg-[#f7f8f9] px-3 py-2 text-xs leading-relaxed text-sample-muted">
+        접수 기간을 제공하지 않는 공고는 ‘상태 미확인’에 표시됩니다. ‘전체 접수 상태’ 또는 ‘상태 미확인’으로 검색해 주세요.
+      </p> : null}
       {draft.sourceCode === 'KSTARTUP' ? <div className="min-w-0 rounded-xl bg-[#f7f8f9] px-3 py-2">
         <button type="button" aria-expanded={showStartupFilters} aria-controls="catalog-startup-filters"
           className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-2 rounded text-left text-xs font-semibold text-sample-muted focus-visible:outline-2 focus-visible:outline-brand-primary"

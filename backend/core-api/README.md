@@ -1,6 +1,6 @@
 # GovBiz Core API
 
-브라우저에 공개하는 Spring Boot API입니다. 기업마당·K-Startup 공고를 수집해 벡터 색인을 준비한 뒤 MySQL에
+브라우저에 공개하는 Spring Boot API입니다. 기업마당·K-Startup·과기정통부·충청남도 수출입공지 수집기를 제공하며, 벡터 색인을 준비한 뒤 MySQL에
 공개하고, 저장된 공고의 검색·상세 조회와 기업마당 공식 원문 근거 질문을 담당합니다.
 
 프로젝트 전체 설명은 [메인 README](../../README.md), 계층·Facade·DI 설계는
@@ -133,7 +133,7 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 자동 포함하지 않습니다. `status` 기본값은 `OPEN`, `sort`는 `RECENT`, `page`는 1, `pageSize`는 12입니다.
 접수 상태는 기존 Repository의 서울 기준 현재 날짜 계산을 그대로 사용합니다.
 
-`sourceCode`로 전체/기업마당/K-Startup을 구분하고, `KSTARTUP` 선택 시 `startupStage`·`applicantType`·
+`sourceCode`로 전체(빈 값)/`BIZINFO`/`KSTARTUP`/`MSIT`/`CNTRADE_NOTICE`를 구분하고, `KSTARTUP` 선택 시 `startupStage`·`applicantType`·
 `founderAge`를 추가할 수 있습니다. 공고의 원본 분류를 정확히 비교하며 자격을 추정하지 않습니다.
 응답의 `startupStages`·`applicantTypes`·`founderAges`는 전체 공개 K-Startup 스냅샷의 선택지입니다.
 
@@ -208,7 +208,7 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI �
   `SEARCHABLE_WITH_SYNC_FAILURE`은 이전 스냅샷은 검색 가능하지만 최신 수집·사전 색인 시도가 실패한 경우입니다.
   `PREPARING`은 공개 공고 없는 초기 상태 또는 결과가 아직 없는 첫 동기화이고, `UNAVAILABLE`은 현재
   공개 스냅샷의 색인 준비가 확인되지 않은 경우입니다. 상태 행 없는 현재 공고의 제공처도 `UNAVAILABLE`로
-  표시합니다. 초기 빈 DB에는 `BIZINFO`와 수집을 활성화한 경우의 `KSTARTUP`을 포함합니다.
+  표시합니다. 초기 빈 DB에는 `BIZINFO`와 각각 수집을 활성화한 `KSTARTUP`·`MSIT`·`CNTRADE_NOTICE`를 포함합니다.
   시각은 `Asia/Seoul` 오프셋을 포함한 ISO-8601 문자열입니다.
 - 상세: 필수 `sourceCode`는 `[A-Z][A-Z0-9_]{0,63}` 형식, `sourceProgramId`는 최대 255자이며 공백만 있는 값은 허용하지
   않습니다. 현재 노출된 행만 반환하며, 없는·미노출 공고는 404입니다. 검색 문맥이 없으므로 추천 이유는
@@ -222,7 +222,7 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI �
   상세 URL의 리디렉션은 매번 공식 HTTPS 호스트와 같은 `pblancId`인지 검증하며 최대 3회 따릅니다.
   HTML은 jsoup `1.23.2`로 파싱하고 `.support_project_detail`의 제목이 요청한 공고와 일치할 때
   `.view_cont` 본문만 추출합니다. 인용에는 검색된 청크 전체를 반환하며 청크당 최대 1,500 UTF-16 코드 단위입니다.
-- 현재 수집기는 `BIZINFO`와 `KSTARTUP`이며 K-Startup은 명시적으로 켜야 합니다. 자연어 검색·평가 fixture/capture는
+- 수집기는 `BIZINFO`·`KSTARTUP`·`MSIT`·`CNTRADE_NOTICE`이며 기업마당 외 수집기는 명시적으로 켜야 합니다. 자연어 검색·평가 fixture/capture는
   `findSearchablePresent`의 제공처 상태 JOIN으로 `index_ready=true`인 공고만 읽고, 색인 복구는
   미준비 공고도 제공처별로 처리합니다. 최신 목록은 `findPublishedPresent`로 공개된 스냅샷만 읽되
   이후 색인 장애와 분리합니다. 내부 식별자 `sourceCode:sourceProgramId`로 같은 원본 ID를 구분합니다.
@@ -234,6 +234,30 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI �
 SampleItem 예제는 [별도 계약](../../docs/sample-item-contract.md)에 있습니다.
 
 ## 설정
+
+### 과기정통부·충청남도 수출입공지
+
+- `MsitSupportProgramCatalogSyncService`와 `CnTradeNoticeSupportProgramCatalogSyncService`는 각각의
+  구체 Facade/Client에서 전체 페이지를 검증한 뒤 기존 `SupportProgramIndexSyncService`로 색인하고
+  `SupportProgramRepository`에서 해당 출처만 공개합니다. 중간 수집·색인 실패는 기존 스냅샷을 유지합니다.
+- `MSIT_SYNC_ENABLED`와 `CNTRADE_NOTICE_SYNC_ENABLED`는 기본 `false`입니다. 각각 활용 승인과 최초
+  임베딩 비용을 확인한 뒤 켭니다. 전용 `MSIT_API_KEY`/`CNTRADE_NOTICE_API_KEY`를 생략하면
+  `DATA_GO_KR_SERVICE_KEY`를 사용합니다. 같은 키라도 API 활용 승인은 각각 필요합니다.
+- 두 출처의 `*_API_BASE_URL` 기본값은 `https://apis.data.go.kr`, 연결/응답 제한시간은 `2s`/`20s`,
+  `*_SYNC_INITIAL_DELAY`/`*_SYNC_FIXED_DELAY`는 `PT0S`/`PT6H`입니다.
+- MSIT는 `businessAnnouncMentList`의 공식 상세 URL에 있는 `nttSeqNo`를 ID로 사용합니다.
+  실응답이 페이지 크기를 10건으로 제한하므로 전체 수집에 시간이 걸립니다. 별도 스케줄러로 기존 수집과 격리합니다.
+  API가 본문·접수 기간·지역·분야를 제공하지 않아 제목·담당 부서 기반으로 검색하며 신청 자격은 원문 확인이 필요합니다.
+- CNTRADE_NOTICE는 `getNotiList`의 `lbbNo`가 ID이며 API 본문을 보존합니다. 지원사업뿐 아니라
+  일반 수출입 공지도 포함합니다. API에 개별 상세 URL이 없어 확인된 **공식 공지 목록**을 제공하며 제목으로 찾습니다.
+- 두 출처 모두 게시일을 접수일로 간주하거나 기관명으로 지역을 추정하지 않습니다. 접수 상태는 `UNKNOWN`,
+  지역·분야는 빈 배열입니다. 필터 검색은 `ALL`/`UNKNOWN`에서, AI 검색은 접수 중 제한을 해제한 경우에 조회할 수 있습니다.
+  K-Startup 전용 필터와 기업마당 전용 원문 추가 질문은 확장하지 않습니다.
+- 2026-09-09 실호출 확인: MSIT 1·2페이지 성공(전체 4,248건 메타데이터). CNTRADE_NOTICE는 HTTP 200의
+  `04 HTTP_ERROR`를 반환해 실제 수집은 미확인입니다. 문서 기반 스텁 통과를 실제 제공처 정상 동작으로 간주하지 않습니다.
+
+공식 명세: [과기정통부 사업공고](https://www.data.go.kr/data/15074634/openapi.do),
+[충청남도 수출입공지](https://www.data.go.kr/data/15097093/openapi.do).
 
 기본값의 기준은 [`application.properties`](src/main/resources/application.properties)입니다.
 Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니다.

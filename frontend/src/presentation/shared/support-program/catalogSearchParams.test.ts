@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { defaultCatalogFilters, readCatalogFilters, writeCatalogFilters } from './catalogSearchParams'
 
 describe('카탈로그 URL 필터', () => {
+  it.each(['MSIT', 'CNTRADE_NOTICE'] as const)('%s 출처와 접수 상태·페이지를 복원하고 K-Startup 조건은 제외한다', (sourceCode) => {
+    const filters = { ...defaultCatalogFilters, sourceCode, status: 'UNKNOWN' as const, region: '충남', page: 2 }
+    expect(readCatalogFilters(writeCatalogFilters(filters))).toEqual(filters)
+    expect(readCatalogFilters(new URLSearchParams({ sourceCode, startupStage: '3년미만', applicantType: '일반인', founderAge: '만 40세 이상' })))
+      .toMatchObject({ sourceCode, status: 'OPEN', startupStage: '', applicantType: '', founderAge: '' })
+    const params = writeCatalogFilters({ ...filters, startupStage: '3년미만', applicantType: '일반인', founderAge: '만 40세 이상' })
+    expect(params.get('sourceCode')).toBe(sourceCode)
+    for (const key of ['startupStage', 'applicantType', 'founderAge']) expect(params.has(key)).toBe(false)
+  })
+
   it('K-Startup 조건과 페이지를 왕복 보존하고 빈 값은 URL에 넣지 않는다', () => {
     const filters = { ...defaultCatalogFilters, sourceCode: 'KSTARTUP' as const, page: 3,
       startupStage: '예비창업자', applicantType: '1인 창조기업', founderAge: '만 20세 이상 ~ 만 39세 이하' }

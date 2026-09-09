@@ -26,6 +26,11 @@ const startupProgram = { ...program, id: 'startup-1', sourceCode: 'KSTARTUP', so
 const startupCatalog = { ...catalog, programs: [startupProgram],
   startupStages: ['3년미만', '특화 창업자'], applicantTypes: ['일반기업', '사회적기업'], founderAges: ['만 40세 이상', '연령 제한 없음'] }
 const startupParams = { sourceCode: 'KSTARTUP', startupStage: '3년미만', applicantType: '일반기업', founderAge: '만 40세 이상' }
+const undatedPrograms = [
+  { sourceCode: 'MSIT', sourceName: '과학기술정보통신부', sourceUrl: 'https://www.msit.go.kr/bbs/view.do' },
+  { sourceCode: 'CNTRADE_NOTICE', sourceName: '충청남도 온라인수출지원시스템', sourceUrl: 'https://cntrade.chungnam.go.kr/home/kor/M102638244/board.do' },
+].map((source) => ({ ...program, ...source, id: source.sourceCode + '-1', title: source.sourceName + ' 공고',
+  organization: source.sourceName, status: 'UNKNOWN', applicationStartDate: null, applicationEndDate: null, applicationPeriod: '공고 원문 확인' }))
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers() })
 function Location() {
   const location = useLocation()
@@ -40,6 +45,92 @@ function start(path = '/?mode=filter', authenticated = path.startsWith('/app/'))
 }
 
 describe('지원사업 직접 필터 검색', () => {
+  it.each(undatedPrograms)('$sourceName의 기간 안내는 접수 상태를 자동 변경하지 않고 UNKNOWN 검색·상세 복귀를 보존한다', async (undated) => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      const request = new URL(url)
+      if (!request.pathname.endsWith('/catalog')) return Response.json(undated)
+      if (request.searchParams.get('sourceCode') !== undated.sourceCode) return Response.json(catalog)
+      return Response.json(request.searchParams.get('status') === 'OPEN'
+        ? { ...catalog, programs: [], total: 0, totalPages: 0 }
+        : { ...catalog, programs: [undated] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    start()
+    await screen.findByRole('link', { name: program.title })
+    expect(screen.getByRole('option', { name: undated.sourceName })).toBeTruthy()
+    expect(screen.queryByText(/접수 기간을 제공하지 않는 공고/)).toBeNull()
+    fireEvent.change(screen.getByRole('combobox', { name: '출처' }), { target: { value: undated.sourceCode } })
+    const status = screen.getByRole('combobox', { name: '접수 상태' }) as HTMLSelectElement
+    expect(status.value).toBe('OPEN')
+    expect(document.getElementById(status.getAttribute('aria-describedby')!)?.textContent).toContain('접수 기간을 제공하지 않는 공고')
+    expect(fetchMock).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '검색' }))
+    await screen.findByText('조건에 맞는 공고가 없어요.')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(new URL(fetchMock.mock.calls[1][0]).searchParams.get('status')).toBe('OPEN')
+    fireEvent.change(screen.getByRole('combobox', { name: '접수 상태' }), { target: { value: 'UNKNOWN' } })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    fireEvent.click(screen.getByRole('button', { name: '검색' }))
+    await screen.findByRole('link', { name: undated.title })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const params = new URL(fetchMock.mock.calls[2][0]).searchParams
+    expect(params.get('sourceCode')).toBe(undated.sourceCode)
+    expect(params.get('status')).toBe('UNKNOWN')
+    expect(within(screen.getByRole('region', { name: '필터 검색 결과' })).getByText('상태 미확인')).toBeTruthy()
+    fireEvent.click(screen.getByRole('link', { name: undated.title }))
+    await screen.findByRole('heading', { name: undated.title })
+    expect(screen.queryByRole('link', { name: '이 공고에 질문하기' })).toBeNull()
+    expect(screen.getByText(/이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다/)).toBeTruthy()
+    const sourceLink = screen.getByRole('link', { name: undated.sourceCode === 'CNTRADE_NOTICE'
+      ? '공식 공지 목록 ↗' : undated.sourceName + ' 원문 보기 ↗' })
+    expect(sourceLink.getAttribute('href')).toBe(undated.sourceUrl)
+    expect(Boolean(screen.queryByText('제목으로 해당 공지를 확인해 주세요.'))).toBe(undated.sourceCode === 'CNTRADE_NOTICE')
+    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).parentElement?.classList.contains('flex-wrap')).toBe(true)
+    fireEvent.click(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }))
+    await screen.findByRole('link', { name: undated.title })
+    expect((screen.getByRole('combobox', { name: '출처' }) as HTMLSelectElement).value).toBe(undated.sourceCode)
+    expect((screen.getByRole('combobox', { name: '접수 상태' }) as HTMLSelectElement).value).toBe('UNKNOWN')
+    const restored = new URL(screen.getByTestId('location').textContent!, 'https://app.example').searchParams
+    expect(restored.get('sourceCode')).toBe(undated.sourceCode)
+    expect(restored.get('status')).toBe('UNKNOWN')
+    fireEvent.change(screen.getByRole('combobox', { name: '접수 상태' }), { target: { value: 'ALL' } })
+    fireEvent.change(screen.getByRole('combobox', { name: '출처' }), { target: { value: 'BIZINFO' } })
+    expect((screen.getByRole('combobox', { name: '접수 상태' }) as HTMLSelectElement).value).toBe('ALL')
+    expect(screen.queryByText(/접수 기간을 제공하지 않는 공고/)).toBeNull()
+  })
+
+  it.each(undatedPrograms)('K-Startup에서 $sourceName로 바꾸면 전용 조건만 비우고 접수 상태를 유지한다', async (undated) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json(startupCatalog))
+      .mockResolvedValueOnce(Response.json({ ...catalog, programs: [], total: 0, totalPages: 0 }))
+    vi.stubGlobal('fetch', fetchMock)
+    start('/?mode=filter&' + new URLSearchParams({ ...startupParams, status: 'ALL' }))
+    await screen.findByRole('link', { name: startupProgram.title })
+    fireEvent.change(screen.getByRole('combobox', { name: '출처' }), { target: { value: undated.sourceCode } })
+    expect(screen.queryByRole('button', { name: /K-Startup 추가 조건/ })).toBeNull()
+    expect((screen.getByRole('combobox', { name: '접수 상태' }) as HTMLSelectElement).value).toBe('ALL')
+    fireEvent.click(screen.getByRole('button', { name: '검색' }))
+    await screen.findByText('조건에 맞는 공고가 없어요.')
+    const params = new URL(fetchMock.mock.calls[1][0]).searchParams
+    expect(params.get('sourceCode')).toBe(undated.sourceCode)
+    expect(params.get('status')).toBe('ALL')
+    for (const field of ['startupStage', 'applicantType', 'founderAge']) expect(params.has(field)).toBe(false)
+    fireEvent.change(screen.getByRole('combobox', { name: '출처' }), { target: { value: 'KSTARTUP' } })
+    fireEvent.click(screen.getByRole('button', { name: /K-Startup 추가 조건/ }))
+    for (const label of ['창업 업력', '신청 대상', '대표자 연령']) {
+      expect((screen.getByRole('combobox', { name: label }) as HTMLSelectElement).value).toBe('')
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(undatedPrograms)('$sourceName의 질문 URL을 직접 열어도 입력과 API 요청을 차단한다', (undated) => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    start('/support-programs/detail/question?' + new URLSearchParams({ sourceCode: undated.sourceCode, sourceProgramId: undated.id }))
+    expect(screen.getByText(/이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다/)).toBeTruthy()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('출처 선택은 요청 없이 추가 조건을 펼치고 응답 전 기본값과 응답 후 초안을 보존한다', async () => {
     let complete!: (response: Response) => void
     const fetchMock = vi.fn().mockReturnValueOnce(new Promise<Response>((resolve) => { complete = resolve }))

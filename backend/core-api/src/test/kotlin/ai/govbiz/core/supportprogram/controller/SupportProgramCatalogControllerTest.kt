@@ -163,6 +163,18 @@ class SupportProgramCatalogControllerTest {
     }
 
     private companion object {
+        // Source values are explicit API contracts, not arbitrary upstream URLs.
         const val URL = "/api/v1/support-programs/catalog"
+    }
+
+    @Test
+    fun acceptsBothNewNoticeSourcesWithoutChangingTheRequestedStatus() {
+        for (source in listOf("MSIT", "CNTRADE_NOTICE")) {
+            Mockito.`when`(service.browse(sourceCode = source, status = SupportProgramStatus.UNKNOWN))
+                .thenReturn(result().copy(programs = emptyList(), total = 0, totalPages = 0))
+            mvc.perform(get(URL).param("sourceCode", source).param("status", "UNKNOWN"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0))
+            Mockito.verify(service).browse(sourceCode = source, status = SupportProgramStatus.UNKNOWN)
+        }
     }
 }

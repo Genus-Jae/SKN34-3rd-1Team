@@ -19,6 +19,8 @@ describe('공고 카탈로그 HTTP 경계', () => {
     { sourceCode: 'KSTARTUP' as const, programs: response.programs },
     { sourceCode: 'BIZINFO' as const, programs: [startupProgram] },
     { sourceCode: 'KSTARTUP' as const, programs: [startupProgram, ...response.programs] },
+    { sourceCode: 'MSIT' as const, programs: response.programs },
+    { sourceCode: 'CNTRADE_NOTICE' as const, programs: response.programs },
   ])('요청 출처와 다른 공고가 하나라도 섞이면 전체 응답을 거부한다 (%#)', async ({ sourceCode, programs }) => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ ...response, ...startupOptions, programs, total: programs.length }))
     vi.stubGlobal('fetch', fetchMock)
@@ -31,6 +33,23 @@ describe('공고 카탈로그 HTTP 경계', () => {
       .mockResolvedValueOnce(Response.json({ ...response, programs: [], total: 0, totalPages: 0 })))
     await expect(browseSupportProgramsApi(defaultCatalogFilters)).resolves.toMatchObject({ total: 2 })
     await expect(browseSupportProgramsApi({ ...defaultCatalogFilters, sourceCode: 'KSTARTUP' })).resolves.toMatchObject({ total: 0, programs: [] })
+  })
+
+  it.each([
+    { sourceCode: 'MSIT' as const, sourceUrl: 'https://www.msit.go.kr/bbs/view.do' },
+    { sourceCode: 'CNTRADE_NOTICE' as const, sourceUrl: 'https://cntrade.chungnam.go.kr/home/kor/M102638244/board.do' },
+  ])('$sourceCode는 공식 URL과 기간 미확인 상태를 보존하고 선택한 상태를 그대로 요청한다', async ({ sourceCode, sourceUrl }) => {
+    const undated = { ...response.programs[0], sourceCode, sourceUrl, status: 'UNKNOWN',
+      applicationStartDate: null, applicationEndDate: null, applicationPeriod: '공고 원문 확인' }
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ ...response, programs: [undated] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await new BrowseSupportProgramsUseCase(new SupportProgramRepositoryImpl())
+      .execute({ ...defaultCatalogFilters, sourceCode, status: 'UNKNOWN' })
+    const params = new URL(fetchMock.mock.calls[0][0]).searchParams
+    expect(params.get('sourceCode')).toBe(sourceCode)
+    expect(params.get('status')).toBe('UNKNOWN')
+    expect(result.programs).toEqual([undated])
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 
   it.each(['startupStage', 'applicantType', 'founderAge'] as const)('%s 전용 조건은 세 facet 중 하나라도 없는 구 서버 응답을 거부한다', async (field) => {

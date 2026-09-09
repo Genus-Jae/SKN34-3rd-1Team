@@ -19,11 +19,18 @@ class SupportProgramSearchReadinessService(
     private val repository: SupportProgramRepository,
     @param:Qualifier("seoulClock") private val clock: Clock,
     @param:Value("\${app.kstartup.sync.enabled:false}") private val kStartupEnabled: Boolean = false,
+    @param:Value("\${app.msit.sync.enabled:false}") private val msitEnabled: Boolean = false,
+    @param:Value("\${app.cntrade-notice.sync.enabled:false}") private val cnTradeNoticeEnabled: Boolean = false,
 ) {
     fun get(): SupportProgramSearchReadinessResult {
         val statuses = repository.findSyncStatuses().associateBy { it.sourceCode }
         // 활성화된 수집기는 첫 실행 전에도 표시하고, 중지한 제공처의 저장된 상태도 보존합니다.
-        val configuredSources = if (kStartupEnabled) setOf("BIZINFO", "KSTARTUP") else setOf("BIZINFO")
+        val configuredSources = buildSet {
+            add("BIZINFO")
+            if (kStartupEnabled) add("KSTARTUP")
+            if (msitEnabled) add("MSIT")
+            if (cnTradeNoticeEnabled) add("CNTRADE_NOTICE")
+        }
         val sources = (statuses.keys + configuredSources).sorted().map { sourceCode ->
             val status = statuses[sourceCode]
             SupportProgramSourceReadinessResult(
@@ -31,6 +38,8 @@ class SupportProgramSearchReadinessService(
                 sourceName = when (sourceCode) {
                     "BIZINFO" -> "기업마당"
                     "KSTARTUP" -> "K-Startup"
+                    "MSIT" -> "과학기술정보통신부"
+                    "CNTRADE_NOTICE" -> "충청남도 온라인수출지원시스템"
                     else -> sourceCode
                 },
                 searchState = stateFor(status),

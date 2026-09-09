@@ -1,7 +1,35 @@
 import { describe, expect, it } from 'vitest'
 
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from '../fixtures/supportPrograms'
-import { supportProgramDtoSchema, supportProgramSearchResponseDtoSchema, toSupportProgram } from './SupportProgramDto'
+import { isOfficialSupportProgramSourceUrl, supportProgramDtoSchema, supportProgramSearchResponseDtoSchema, toSupportProgram } from './SupportProgramDto'
+
+describe('새 제공처 공식 원문 URL', () => {
+  const sources = [{ sourceCode: 'MSIT', host: 'msit.go.kr' }, { sourceCode: 'CNTRADE_NOTICE', host: 'cntrade.chungnam.go.kr' }]
+
+  it.each(sources)('$sourceCode는 공식 도메인·하위 도메인만 허용하고 기간 미확인을 유지한다', ({ sourceCode, host }) => {
+    for (const sourceUrl of ['https://' + host + '/notice?id=1', 'https://www.' + host + '/notice', 'http://' + host + '/notice']) {
+      expect(isOfficialSupportProgramSourceUrl(sourceCode, sourceUrl)).toBe(true)
+      const dto = supportProgramDtoSchema.parse({ ...supportPrograms[0], sourceCode, sourceUrl, status: 'UNKNOWN',
+        applicationStartDate: null, applicationEndDate: null, applicationPeriod: '공고 원문 확인' })
+      expect(toSupportProgram(dto)).toMatchObject({ sourceCode, sourceUrl, status: 'UNKNOWN',
+        applicationStartDate: null, applicationEndDate: null })
+    }
+  })
+
+  it.each(sources)('$sourceCode의 위장 호스트·다른 제공처·사용자정보·포트·비 HTTP 주소를 차단한다', ({ sourceCode, host }) => {
+    const invalid = [
+      'https://' + host + '.evil.example/notice', 'https://evil' + host + '/notice',
+      'https://user@' + host + '/notice', 'https://' + host + ':8443/notice',
+      'https://' + host + '@evil.example/notice', 'ftp://' + host + '/notice',
+      'javascript:alert(1)', '//'+ host + '/notice', 'https://www.bizinfo.go.kr/notice',
+      'https://' + (sourceCode === 'MSIT' ? 'cntrade.chungnam.go.kr' : 'msit.go.kr') + '/notice',
+    ]
+    for (const sourceUrl of invalid) {
+      expect(isOfficialSupportProgramSourceUrl(sourceCode, sourceUrl)).toBe(false)
+      expect(supportProgramDtoSchema.safeParse({ ...supportPrograms[0], sourceCode, sourceUrl }).success).toBe(false)
+    }
+  })
+})
 
 describe('지원사업 자격 판정 HTTP 계약', () => {
   const matched = conditionMatchedProgram.eligibilityReview!

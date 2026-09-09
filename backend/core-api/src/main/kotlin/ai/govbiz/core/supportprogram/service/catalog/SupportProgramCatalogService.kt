@@ -34,7 +34,7 @@ class SupportProgramCatalogService(
         val applicantType = rawApplicantType.trim()
         val founderAge = rawFounderAge.trim()
         val hasStartupFilter = listOf(startupStage, applicantType, founderAge).any(String::isNotEmpty)
-        if (sourceCode !in setOf("", "BIZINFO", "KSTARTUP") || (hasStartupFilter && sourceCode != "KSTARTUP")) {
+        if (sourceCode !in setOf("", "BIZINFO", "KSTARTUP", "MSIT", "CNTRADE_NOTICE") || (hasStartupFilter && sourceCode != "KSTARTUP")) {
             throw SupportProgramCatalogFilterException()
         }
         // 상태는 Repository가 서울 기준 현재 날짜로 계산합니다. 이후 색인 장애가 생겨도 공개 목록은 읽습니다.

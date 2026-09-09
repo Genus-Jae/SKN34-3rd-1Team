@@ -68,6 +68,24 @@ describe('ProgramResults', () => {
     }
   })
 
+  it('충청남도 공고는 개별 원문이 아닌 공식 공지 목록임을 알리고 다른 출처의 원문 링크는 유지한다', () => {
+    const programs = [
+      { ...supportPrograms[0], sourceCode: 'CNTRADE_NOTICE', sourceName: '충청남도 온라인수출지원시스템',
+        sourceUrl: 'https://cntrade.chungnam.go.kr/home/kor/M102638244/board.do' },
+      { ...supportPrograms[0], sourceCode: 'MSIT', sourceName: '과학기술정보통신부',
+        sourceUrl: 'https://www.msit.go.kr/bbs/view.do' },
+    ]
+    render(<ProgramResults programs={programs} />, { wrapper: SearchRouter })
+    const cards = screen.getAllByRole('article')
+    const noticeLink = within(cards[0]).getByRole('link', { name: '공식 공지 목록 ↗' })
+    expect(noticeLink.getAttribute('href')).toBe(programs[0].sourceUrl)
+    expect(noticeLink.getAttribute('rel')).toBe('noreferrer')
+    expect(within(cards[0]).getByText('제목으로 해당 공지를 확인해 주세요.')).toBeTruthy()
+    expect(within(cards[0]).queryByRole('link', { name: '원문 보기 ↗' })).toBeNull()
+    expect(within(cards[1]).getByRole('link', { name: '원문 보기 ↗' }).getAttribute('href')).toBe(programs[1].sourceUrl)
+    expect(within(cards[1]).queryByText('제목으로 해당 공지를 확인해 주세요.')).toBeNull()
+  })
+
   it('같은 결과 배열로 부모가 다시 렌더돼도 카드를 재분류하지 않고 새 배열에는 반영한다', () => {
     const classify = vi.spyOn(supportProgramEligibility, 'getSupportProgramEligibilityKind')
     const programs = [conditionMatchedProgram, relocationReviewRequiredProgram]
