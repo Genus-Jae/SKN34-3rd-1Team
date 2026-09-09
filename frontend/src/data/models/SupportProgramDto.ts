@@ -7,6 +7,8 @@ const sourceCodeSchema = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/)
 const officialSourceHostsByCode: Record<string, readonly string[]> = {
   BIZINFO: ['bizinfo.go.kr'],
   KSTARTUP: ['k-startup.go.kr'],
+  MSIT: ['msit.go.kr'],
+  CNTRADE_NOTICE: ['cntrade.chungnam.go.kr'],
 }
 
 export function isOfficialSupportProgramSourceUrl(sourceCode: string, value: string): boolean {

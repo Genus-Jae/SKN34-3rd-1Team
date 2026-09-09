@@ -382,10 +382,10 @@ V4 적용 전부터 있던 공고는 과거 공개 세대를 복원하지 않습
 규칙을 순서대로 적용하고 판단 근거가 없으면 `UNKNOWN`을 유지합니다. 따라서 `접수 종료` 표현이
 상시 접수보다 우선하더라도 파싱된 날짜를 무조건 덮어쓰지는 않습니다.
 
-현재 수집 Client·동기화는 `BIZINFO`와 `KSTARTUP` 두 제공처입니다. production 검색·색인·AI 점수화는
+수집 Client·동기화는 `BIZINFO`·`KSTARTUP`·`MSIT`·`CNTRADE_NOTICE`별로 구현됩니다. production 검색·색인·AI 점수화는
 `sourceCode:sourceProgramId`를 내부 식별자로 사용하고 검색은 준비된 제공처 범위에서 실행합니다.
 K-Startup은 별도 구체 Client·Facade·SyncService·Scheduler를 사용하고 기존 색인 Service·Repository를 공유합니다.
-두 Facade는 명시적 Qualifier로 구분하며 제공처 Registry나 새 production 의존성은 추가하지 않습니다.
+제공처별 Facade는 명시적 Qualifier로 구분하며 제공처 Registry나 새 production 의존성은 추가하지 않습니다.
 
 ## K-Startup 수집 범위와 추가 분류
 
@@ -408,6 +408,25 @@ KStartupSupportProgramCatalogFacade → KStartupClient → KStartupProgramMapper
   분류는 자격 충족의 증거가 아니며 원문 조건을 우선합니다.
 - 공식 HTTPS 상세 URL의 호스트와 `pbancSn`이 원본 ID와 일치해야 합니다. 상세 HTML 추가 질문은 여전히 미지원입니다.
 - 게시일이 없어 접수 시작일로 최신 정렬합니다. 제공처 간 같은 사업을 자동 병합하지 않습니다.
+
+## 과기정통부·충청남도 수출입공지 수집
+
+각 `Msit`/`CnTradeNotice` Scheduler → SyncService → CatalogFacade → Client → Mapper에서 전체 수집을
+검증하고, 기존 `SupportProgramIndexSyncService → AI Service → OpenAI 임베딩 → Qdrant`를 거쳐
+Repository가 해당 `source_code`만 UPSERT·누락 비활성화·스냅샷 공개합니다. DB migration이나 신규 의존성은 없습니다.
+
+- MSIT의 `response` 배열(header/body)과 충남의 최상위 `09/RETURN_SUCCESS` 응답을 별도로 검증합니다.
+  첫 페이지와 각 페이지의 전체 건수·번호·실제 크기·행 수·중복 ID가 일치해야 하며 HTTP 200의 게이트웨이 오류도 실패입니다.
+- MSIT는 공식 `msit.go.kr` 사업공고 상세 URL의 게시판 100/`nttSeqNo`를 검증해 ID로 사용합니다.
+  실응답의 10건 페이지를 끝까지 읽으며 20,000건/2,000페이지 한도를 적용합니다. 장시간 수집은 전용 단일 스레드로 격리합니다.
+- 충남은 `lbbNo`를 ID로 사용하며 1,000건을 요청하되 실제 응답 페이지 크기를 기준으로 완전성을 검증합니다.
+  20,000건/200페이지 한도입니다. 숫자 ID로 암호화된 웹 상세 `idx`를 추측하지 않고 검증된 공식 공지 목록에 연결합니다.
+- API에 없는 접수 기간/지역/분야는 추정하지 않습니다. 게시일은 정렬용이고 상태는 `UNKNOWN`입니다.
+  MSIT는 본문 없이 제목·담당 부서 기반 검색이며 충남은 원문 본문 기반입니다. 선정 결과·일반 공지도 원본대로 포함됩니다.
+- 두 수집기 기본 비활성, 전용 키 생략 시 승인된 `DATA_GO_KR_SERVICE_KEY`를 재사용합니다.
+  평가 fixture/capture 프로필은 개발 환경변수와 관계없이 두 수집기도 끕니다.
+- 수집기 구현과 실제 서비스 정상화는 별개입니다. 2026-09-09 CNTRADE_NOTICE 실 API의 `04 HTTP_ERROR`는
+  빈 정상 결과로 숨기지 않으며, 제공처 복구 전에는 실제 수집 성공을 주장하지 않습니다.
 
 ## Frontend와 내부 계약
 

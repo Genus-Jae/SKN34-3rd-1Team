@@ -2,7 +2,7 @@ import type { SupportProgram } from './SupportProgram'
 
 export const catalogStatuses = ['ALL', 'OPEN', 'UPCOMING', 'CLOSED', 'UNKNOWN'] as const
 export const catalogSorts = ['RECENT', 'DEADLINE'] as const
-export const catalogSourceCodes = ['', 'BIZINFO', 'KSTARTUP'] as const
+export const catalogSourceCodes = ['', 'BIZINFO', 'KSTARTUP', 'MSIT', 'CNTRADE_NOTICE'] as const
 
 /** 제공처가 분류한 공고를 탐색하는 필터이며 기업의 신청 자격이 아닙니다. */
 export type SupportProgramCatalogFilters = {

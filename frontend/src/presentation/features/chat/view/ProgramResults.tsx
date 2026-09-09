@@ -87,9 +87,12 @@ function ProgramCard({ program }: { program: SupportProgram }) {
           rel="noreferrer"
           className={chatPageStyles.programSourceLink}
         >
-          원문 보기 ↗
+          {program.sourceCode === 'CNTRADE_NOTICE' ? '공식 공지 목록 ↗' : '원문 보기 ↗'}
         </a>
       </div>
+      {program.sourceCode === 'CNTRADE_NOTICE' ? (
+        <p className={chatPageStyles.conditionsHint}>제목으로 해당 공지를 확인해 주세요.</p>
+      ) : null}
     </article>
   )
 }

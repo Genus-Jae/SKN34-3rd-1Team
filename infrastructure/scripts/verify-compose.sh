@@ -18,13 +18,23 @@ export DATA_GO_KR_SERVICE_KEY="compose%2Bverification%2Fkey%3D"
 export BIZINFO_SYNC_ENABLED="true"
 export BIZINFO_SYNC_INITIAL_DELAY="PT0S"
 export BIZINFO_SYNC_FIXED_DELAY="PT2S"
-# Both public catalog sources use local fixtures, regardless of the developer's .env.
+# Every public catalog source uses local fixtures, regardless of the developer's .env.
 export KSTARTUP_SYNC_ENABLED="true"
 export KSTARTUP_API_KEY="compose%2Bstartup%2Fverification%3D"
 export KSTARTUP_API_BASE_URL="http://kstartup-stub:8003"
 export KSTARTUP_SYNC_SCOPE="RECENT_YEAR"
 export KSTARTUP_SYNC_INITIAL_DELAY="PT0S"
 export KSTARTUP_SYNC_FIXED_DELAY="PT2S"
+export MSIT_API_BASE_URL="http://public-notices-stub:8004"
+export MSIT_API_KEY="compose%2Bnotice%2Fverification%3D"
+export MSIT_SYNC_ENABLED="true"
+export MSIT_SYNC_INITIAL_DELAY="PT0S"
+export MSIT_SYNC_FIXED_DELAY="PT2S"
+export CNTRADE_NOTICE_API_BASE_URL="http://public-notices-stub:8004"
+export CNTRADE_NOTICE_API_KEY="compose%2Bnotice%2Fverification%3D"
+export CNTRADE_NOTICE_SYNC_ENABLED="true"
+export CNTRADE_NOTICE_SYNC_INITIAL_DELAY="PT0S"
+export CNTRADE_NOTICE_SYNC_FIXED_DELAY="PT2S"
 export OPENAI_API_KEY="compose-verification-key-never-sent"
 export OPENAI_BASE_URL="http://openai-stub:8002/v1"
 export OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
@@ -277,11 +287,13 @@ wait_for_http "Vite-proxied Core to AI Service health" "${WEB_BASE_URL}/api/v1/h
 wait_for_synchronized_catalog_program
 wait_for_synchronized_startup_programs
 wait_for_http \
-  "Both source snapshots are ready for vector search" \
+  "All four source snapshots are ready for vector search" \
   "${WEB_BASE_URL}/api/v1/support-programs/readiness" \
   "200" \
   '"sourceCode"[[:space:]]*:[[:space:]]*"BIZINFO"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true' \
-  '"sourceCode"[[:space:]]*:[[:space:]]*"KSTARTUP"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true'
+  '"sourceCode"[[:space:]]*:[[:space:]]*"KSTARTUP"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true'
 
 wait_for_http \
   "K-Startup source-only catalog contains both stored programs" \
@@ -300,8 +312,68 @@ wait_for_http \
   '"targetDescription"[[:space:]]*:[[:space:]]*"[^"]*제외 대상:' \
   '"sourceUrl"[[:space:]]*:[[:space:]]*"https://www\.k-startup\.go\.kr/web/contents/bizpbanc-ongoing\.do\?pbancSn=174321&schM=view"'
 
-echo "Stopping both upstream stubs to prove that search reads MySQL instead of the public APIs"
-"${COMPOSE[@]}" stop bizinfo-stub kstartup-stub
+wait_for_http \
+  "MSIT stores both pages without inventing an application period" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=MSIT&status=UNKNOWN" \
+  "200" \
+  '"total"[[:space:]]*:[[:space:]]*11[,}]' \
+  '"id"[[:space:]]*:[[:space:]]*"3186878"' \
+  '"id"[[:space:]]*:[[:space:]]*"3186810"' \
+  '"applicationStartDate"[[:space:]]*:[[:space:]]*null' \
+  '"applicationEndDate"[[:space:]]*:[[:space:]]*null'
+wait_for_http \
+  "MSIT unknown notices are never listed as confirmed open" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=MSIT&status=OPEN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*0[,}]'
+# CNTRADE_NOTICE is a documentation-contract fixture, not a successful live API probe.
+wait_for_http \
+  "CNTRADE_NOTICE stores both documentation-fixture pages with unknown status" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=CNTRADE_NOTICE&status=UNKNOWN" \
+  "200" \
+  '"total"[[:space:]]*:[[:space:]]*2[,}]' \
+  '"id"[[:space:]]*:[[:space:]]*"900001"' \
+  '"id"[[:space:]]*:[[:space:]]*"900002"'
+wait_for_http \
+  "CNTRADE_NOTICE unknown notices are never listed as confirmed open" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=CNTRADE_NOTICE&status=OPEN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*0[,}]'
+wait_for_http \
+  "MSIT detail preserves the validated official announcement identity" \
+  "${WEB_BASE_URL}/api/v1/support-programs/detail?sourceCode=MSIT&sourceProgramId=3186878" \
+  "200" \
+  '"id"[[:space:]]*:[[:space:]]*"3186878"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"' \
+  '"status"[[:space:]]*:[[:space:]]*"UNKNOWN"' \
+  '"sourceUrl"[[:space:]]*:[[:space:]]*"https://www\.msit\.go\.kr/bbs/view\.do\?sCode=user&mId=311&mPid=121&bbsSeqNo=100&nttSeqNo=3186878"'
+wait_for_http \
+  "CNTRADE_NOTICE detail honestly links the official list without inventing a detail URL" \
+  "${WEB_BASE_URL}/api/v1/support-programs/detail?sourceCode=CNTRADE_NOTICE&sourceProgramId=900001" \
+  "200" \
+  '"id"[[:space:]]*:[[:space:]]*"900001"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"' \
+  '"status"[[:space:]]*:[[:space:]]*"UNKNOWN"' \
+  '"sourceUrl"[[:space:]]*:[[:space:]]*"https://cntrade\.chungnam\.go\.kr/home/kor/M102638244/board\.do"'
+
+echo "Stopping all upstream stubs to prove that search reads MySQL instead of the public APIs"
+"${COMPOSE[@]}" stop bizinfo-stub kstartup-stub public-notices-stub
+wait_for_http \
+  "New source collection failures retain their published vector-ready snapshots" \
+  "${WEB_BASE_URL}/api/v1/support-programs/readiness" \
+  "200" \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true[^}]*"lastFailedSyncAt"[[:space:]]*:[[:space:]]*"[0-9]' \
+  '"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"[^}]*"indexReady"[[:space:]]*:[[:space:]]*true[^}]*"lastFailedSyncAt"[[:space:]]*:[[:space:]]*"[0-9]'
+wait_for_http \
+  "Stopped MSIT upstream leaves all eleven published notices available" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=MSIT&status=UNKNOWN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*11[,}]'
+wait_for_http \
+  "Stopped CNTRADE_NOTICE upstream leaves both published notices available" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=CNTRADE_NOTICE&status=UNKNOWN" \
+  "200" '"total"[[:space:]]*:[[:space:]]*2[,}]'
+wait_for_http \
+  "Mixed-source semantic search includes both new unknown-status notice sources" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=AI&acceptingOnly=false" \
+  "200" \
+  '"id"[[:space:]]*:[[:space:]]*"3186878"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"' \
+  '"id"[[:space:]]*:[[:space:]]*"900001"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"'
 
 wait_for_http \
   "Vite-proxied blank catalog search after BizInfo stub is stopped" \
@@ -388,4 +460,4 @@ wait_for_http \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_OLD_AI"'
 
-echo "Compose verification passed: BizInfo/K-Startup synchronization, startup filters, mixed-source semantic results, MySQL listing, Qdrant/AI failure isolation and recovery."
+echo "Compose verification passed: four-source fixture synchronization, unknown-status notice boundaries, startup filters, mixed-source semantic results, MySQL listing, Qdrant/AI failure isolation and recovery. CNTRADE_NOTICE uses a documentation fixture, not live API validation."

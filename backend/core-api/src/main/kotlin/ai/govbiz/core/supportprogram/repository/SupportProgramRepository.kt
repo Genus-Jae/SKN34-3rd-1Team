@@ -319,6 +319,8 @@ class SupportProgramRepository(
         when (sourceCode) {
             "BIZINFO" -> "기업마당"
             "KSTARTUP" -> "K-Startup"
+            "MSIT" -> "과학기술정보통신부"
+            "CNTRADE_NOTICE" -> "충청남도 온라인수출지원시스템"
             else -> sourceCode
         }
 

@@ -132,8 +132,8 @@ Accept: application/json
 `sources[].searchState`는 기존 네 상태만 사용하며 부분 준비 상태는 전체 집계에만 사용합니다.
 제공처별 `programCount`는 저장된 공개 공고 수이므로 미준비 제공처도 0보다 클 수 있습니다.
 제공처별 `indexReady`와 성공/실패 시각은 해당 제공처 스냅샷에만 적용합니다. 상태 행 없는 현재 공고도
-해당 제공처를 `UNAVAILABLE`·`indexReady=false`·동기화 시각 `null`로 안내합니다. 초기 빈 DB에는 `BIZINFO`만
-포함하며 K-Startup URL 허용만으로 새 제공처를 등록하지 않습니다.
+해당 제공처를 `UNAVAILABLE`·`indexReady=false`·동기화 시각 `null`로 안내합니다. 초기 빈 DB에는 `BIZINFO`와
+수집을 명시적으로 활성화한 `KSTARTUP`·`MSIT`·`CNTRADE_NOTICE`를 포함합니다. URL 허용만으로 출처를 등록하지 않습니다.
 
 `SEARCHABLE`은 성공적으로 공개·색인된 스냅샷을 뜻하며 공고 수가 0인 경우도 포함합니다.
 `SEARCHABLE_WITH_SYNC_FAILURE`은 이전 스냅샷은 계속 검색 가능하지만 더 최근 동기화가 실패한 경우입니다.
@@ -317,10 +317,22 @@ Core는 다음 불변식을 다시 검사합니다.
 적격 공고가 없으면 `programs`는 빈 배열입니다. 원본에 없는 지원금액은 생성하지 않으며 `sourceUrl`로
 공식 원문을 확인할 수 있습니다.
 
-Frontend의 원문 URL 검증은 `BIZINFO`에 `bizinfo.go.kr`, `KSTARTUP`에 `k-startup.go.kr`와 각 하위
-도메인의 HTTP(S) URL을 허용합니다. 제공처/호스트 불일치, 위장 호스트, userinfo, 비표준 포트, 다른 스킴은
+Frontend의 원문 URL 검증은 `BIZINFO`에 `bizinfo.go.kr`, `KSTARTUP`에 `k-startup.go.kr`, `MSIT`에
+`msit.go.kr`, `CNTRADE_NOTICE`에 `cntrade.chungnam.go.kr`와 각 하위 도메인의 HTTP(S) URL을 허용합니다.
+제공처/호스트 불일치, 위장 호스트, userinfo, 비표준 포트, 다른 스킴은
 거부합니다. 알 수 없는 제공처나 잘못된 URL이 한 건이라도 포함되면 전체 응답을 거부하며 일부 공고만
-남겨 성공으로 처리하지 않습니다. K-Startup URL 허용은 실제 공고 수집 또는 원문 질문 지원을 뜻하지 않습니다.
+남겨 성공으로 처리하지 않습니다. URL 허용은 원문 질문 지원이나 실제 제공처 정상 동작을 뜻하지 않습니다.
+`CNTRADE_NOTICE` API에는 상세 URL이 없어 `sourceUrl`은 확인된 공식 공지 목록이며, 화면 링크도
+**공식 공지 목록**으로 표시하고 제목으로 해당 글을 찾도록 안내합니다.
+
+## 저장된 공고 필터 검색의 제공처
+
+`GET /api/v1/support-programs/catalog`의 `sourceCode`는 빈 값(전체), `BIZINFO`, `KSTARTUP`, `MSIT`,
+`CNTRADE_NOTICE`만 허용합니다. `startupStage`·`applicantType`·`founderAge`는 `KSTARTUP`에서만 유효합니다.
+`status=OPEN`이 기본이며 MSIT·CNTRADE_NOTICE처럼 접수 기간이 없는 공고는 `status=UNKNOWN` 또는 `ALL`로
+검색합니다. 출처 선택만으로 사용자의 접수 상태 필터를 자동으로 바꾸지 않습니다.
+두 새 출처는 게시일을 접수 시작일로 쓰지 않고, API에 없는 지역·분야는 빈 배열을 유지합니다.
+목록은 공개된 MySQL 스냅샷을 읽으며 제공처 API나 LLM을 요청마다 호출하지 않습니다.
 
 ## 공개 상세 조회
 

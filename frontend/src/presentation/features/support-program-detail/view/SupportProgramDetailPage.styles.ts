@@ -5,7 +5,7 @@ function classes(...groups: string[]) {
 export const supportProgramDetailStyles = {
   page: 'mx-auto w-[min(920px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)] [overflow-wrap:anywhere]',
   unavailablePage: 'mx-auto w-[min(720px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)]',
-  header: 'mb-8 flex items-center justify-between gap-4',
+  header: 'mb-8 flex flex-wrap items-center justify-between gap-4',
   backLink: classes(
     'inline-flex items-center rounded-full border px-[0.85rem] py-[0.65rem]',
     'border-sample-border bg-white text-[0.85rem] font-bold text-app-ink no-underline',

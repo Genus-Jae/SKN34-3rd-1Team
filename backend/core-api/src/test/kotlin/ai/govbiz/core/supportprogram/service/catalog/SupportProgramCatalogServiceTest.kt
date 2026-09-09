@@ -14,6 +14,8 @@ import java.time.LocalDate
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.Mockito
 
 class SupportProgramCatalogServiceTest {
@@ -252,6 +254,28 @@ class SupportProgramCatalogServiceTest {
         assertEquals(listOf("예비창업자"), result.startupStages)
         assertEquals(listOf("일반인"), result.applicantTypes)
         assertTrue(result.founderAges.isEmpty())
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["MSIT", "CNTRADE_NOTICE"])
+    fun noticeSourcesFilterByIdentityWithoutInventingDatesOrTags(source: String) {
+        snapshot(*listOf("BIZINFO", "KSTARTUP", "MSIT", "CNTRADE_NOTICE").map {
+            candidate("same", sourceCode = it, status = SupportProgramStatus.UNKNOWN, regions = emptyList(), categories = emptyList())
+        }.toTypedArray())
+
+        val result = service.browse(sourceCode = source, status = SupportProgramStatus.UNKNOWN)
+
+        assertEquals(listOf("$source:same"), result.programs.map { it.sourceQualifiedId })
+        assertTrue(result.regions.isEmpty())
+        assertTrue(result.categories.isEmpty())
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["MSIT", "CNTRADE_NOTICE"])
+    fun noticeSourcesDoNotTreatUnknownAsOpen(source: String) {
+        snapshot(candidate("notice", sourceCode = source, status = SupportProgramStatus.UNKNOWN))
+
+        assertEquals(0, service.browse(sourceCode = source).total)
     }
 
     private fun candidate(
