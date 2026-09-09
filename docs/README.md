@@ -37,6 +37,8 @@ C01 문서의 수동 조건 입력 UI와 개발 전략의 최초 UI 계획은 �
 | 문서 | 확인할 내용 |
 |---|---|
 | [기획 정합성·국내 경쟁 전략·개발 백로그](development-strategy-20260907.md) | 기획서 요구별 현재 차이, 국내 경쟁군 근거, P0/P1 작업·선행 조건·완료 기준·출시 게이트 |
+| [중복 지원·수혜 검토 설계](duplicate-support-review-design.md) | skn-59 입력·실행 API, 공식 첨부 수집·파싱·단일 Agent·원문/결과 보존과 검증·한계 |
+| [중복 검토 공식 근거·사례](../evaluation/combination-review/README.md) | 4-1 창업도약패키지 원문·인용·AI 작성 사례·사람 검수표와 무료 무결성 검사 |
 | [실데이터 평가 결과·이어받기](../evaluation/support-program-search/runs/support-program-catalog-20260906-v1/README.md) | 고정 스냅샷·판정 원표·3단계 기준선·4단계 전후 비교와 API 없는 재현 |
 | [검색 평가 도구](../evaluation/support-program-search/README.md) | 가상 공고 회귀 평가, 실제 후보·최종 추천 캡처와 지표 계산 |
 | [RAG 검수·답변 평가](../evaluation/support-program-evidence/README.md) | 5단계 인용 오류 수정, 가상 근거 평가·공식 HTML 전체 경로 검증, API 없는 기록 재검사 |

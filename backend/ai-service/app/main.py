@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
+from app.combination_review.router import router as combination_review_router
 
 from app.health.router import router as health_router
 from app.support_program_evidence.agent import SupportProgramEvidenceAnswerAgent
@@ -55,6 +56,7 @@ def create_app(
     )
     application.state.container = container
     application.include_router(health_router)
+    application.include_router(combination_review_router)
     application.include_router(support_program_rankings_router)
     application.include_router(support_program_index_router)
     application.include_router(support_program_evidence_router)

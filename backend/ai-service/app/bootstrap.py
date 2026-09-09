@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from agents import OpenAIResponsesModel
 from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient
+from app.combination_review.agent import CombinationReviewAgent
+from app.combination_review.service import CombinationReviewService
 
 from app.support_program_evidence.agent import SupportProgramEvidenceAnswerAgent
 from app.support_program_evidence.answer_service import SupportProgramEvidenceAnswerService
@@ -26,6 +28,7 @@ class ApplicationContainer:
     support_program_evidence_answer_service: SupportProgramEvidenceAnswerService | None = None
     support_program_conversation_service: SupportProgramConversationService | None = None
     qdrant_client: AsyncQdrantClient | None = None
+    combination_review_service: CombinationReviewService | None = None
 
     async def close(self) -> None:
         try:
@@ -86,6 +89,12 @@ def build_application_container(
             run_timeout_seconds=settings.llm_run_timeout_seconds,
         )
 
+    combination_agent = CombinationReviewAgent(
+        model=general_model or OpenAIResponsesModel(model=settings.openai_model, openai_client=openai_client),
+        model_timeout_seconds=settings.llm_model_timeout_seconds,
+        run_timeout_seconds=settings.llm_run_timeout_seconds,
+    )
+
     qdrant_client = AsyncQdrantClient(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key,
@@ -93,6 +102,7 @@ def build_application_container(
         check_compatibility=False,
     )
     return ApplicationContainer(
+        combination_review_service=CombinationReviewService(combination_agent, settings.openai_model),
         support_program_ranking_service=SupportProgramRankingService(ranking_agent),
         support_program_conversation_service=SupportProgramConversationService(conversation_agent),
         openai_client=openai_client,

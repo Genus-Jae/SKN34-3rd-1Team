@@ -5,7 +5,7 @@ import ai.govbiz.core.supportprogram.service.admission.exception.SupportProgramR
 import ai.govbiz.core.supportprogram.service.admission.exception.SupportProgramRequestRejectedException.Reason
 import java.util.ArrayDeque
 
-/** 한 Core API 프로세스에서 검색과 공고 질문의 요청량 및 동시 실행을 함께 제한합니다. */
+/** 한 Core API 프로세스에서 검색·공고 질문·중복 검토의 요청량 및 동시 실행을 함께 제한합니다. */
 class SupportProgramRequestAdmissionService(
     private val properties: SupportProgramRequestAdmissionProperties,
     private val nanoTime: () -> Long = System::nanoTime,
