@@ -1,6 +1,6 @@
 # GovBiz Core API
 
-브라우저에 공개하는 Spring Boot API입니다. 기업마당 공고를 수집해 벡터 색인을 준비한 뒤 MySQL에
+브라우저에 공개하는 Spring Boot API입니다. 기업마당·K-Startup 공고를 수집해 벡터 색인을 준비한 뒤 MySQL에
 공개하고, 저장된 공고의 검색·상세 조회와 기업마당 공식 원문 근거 질문을 담당합니다.
 
 프로젝트 전체 설명은 [메인 README](../../README.md), 계층·Facade·DI 설계는
@@ -37,7 +37,7 @@ cd backend/core-api
 `id`·`contentHash`·`text`를 만듭니다. 공고 수와 카탈로그 지문을 포함한 전체 fixture 초안을 기록하므로,
 이후 캡처 결과가 같은 공고 스냅샷에서 나왔는지 확인할 수 있습니다.
 
-이 프로필은 웹 서버·기업마당 동기화·누락 색인 복구를 끄며 Qdrant, AI Service, OpenAI를 호출하지 않습니다.
+이 프로필은 웹 서버·기업마당/K-Startup 동기화·누락 색인 복구를 끄며 Qdrant, AI Service, OpenAI를 호출하지 않습니다.
 `name`, `reference-date`, `output-path`는 반드시 지정해야 합니다. 기준 날짜는 실행 시점의 오늘이 아니라
 저장된 신청 시작·종료일로 접수 상태를 다시 계산하는 기준입니다.
 
@@ -61,7 +61,7 @@ fixture와 순서·내용까지 같아야 합니다. 내보내기는 빈 적격 
 ### 실제 검색 흐름 캡처
 
 fixture와 같은 질문 묶음을 준비한 뒤에는 공개 API를 반복 호출하지 않고
-`evaluation-capture` 프로필을 실행합니다. 이 프로필은 웹 서버·기업마당 동기화·누락 색인 복구를 끈 뒤,
+`evaluation-capture` 프로필을 실행합니다. 이 프로필은 웹 서버·기업마당/K-Startup 동기화·누락 색인 복구를 끈 뒤,
 질문 묶음의 각 항목을 현재 `SupportProgramSearchService`에 전달합니다. 따라서 MySQL의 적격 공고 선정,
 Qdrant·키워드 순위를 결합한 후보 최대 20개, AI 최종 추천 최대 5개라는 운영 검색 흐름에서 나온 ID를
 그대로 JSON 파일에 기록합니다. fixture와 capture는 모두 `findSearchablePresent`로 준비된 제공처의
@@ -126,12 +126,16 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 
 `SupportProgramCatalogController → SupportProgramCatalogService → SupportProgramRepository → MyBatis Mapper → MySQL`
 흐름으로 이미 공개된 DB 공고를 읽습니다. 기존 `findPublishedPresent()`를 사용하며 AI Service·OpenAI·Qdrant·
-기업마당 외부 API를 호출하지 않습니다. 이후 색인 장애와 무관하게 목록을 읽고, AI 요청량 제한 슬롯은 사용하지 않습니다.
+기업마당·K-Startup 외부 API를 호출하지 않습니다. 이후 색인 장애와 무관하게 목록을 읽고, AI 요청량 제한 슬롯은 사용하지 않습니다.
 
 `keyword`는 공고명 또는 기관명의 대소문자를 구분하지 않는 단순 포함 검색이며, `region`·`category`는 제공처
 태그의 정확한 일치입니다. 필터는 AND로 결합합니다. 지역 선택은 자격 판정이 아니며 서울을 선택해도 전국 태그를
 자동 포함하지 않습니다. `status` 기본값은 `OPEN`, `sort`는 `RECENT`, `page`는 1, `pageSize`는 12입니다.
 접수 상태는 기존 Repository의 서울 기준 현재 날짜 계산을 그대로 사용합니다.
+
+`sourceCode`로 전체/기업마당/K-Startup을 구분하고, `KSTARTUP` 선택 시 `startupStage`·`applicantType`·
+`founderAge`를 추가할 수 있습니다. 공고의 원본 분류를 정확히 비교하며 자격을 추정하지 않습니다.
+응답의 `startupStages`·`applicantTypes`·`founderAges`는 전체 공개 K-Startup 스냅샷의 선택지입니다.
 
 현재는 한 번 읽은 공개 스냅샷을 Service에서 필터링·정렬·페이지 분할합니다. 응답에는 총건수와 전체 스냅샷의
 지역·분야 선택지도 함께 포함하며, 목록에 AI 추천 이유·점수·자격 검토를 붙이지 않습니다. 목록 요청의 페이지 크기는
@@ -204,7 +208,8 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI �
   `SEARCHABLE_WITH_SYNC_FAILURE`은 이전 스냅샷은 검색 가능하지만 최신 수집·사전 색인 시도가 실패한 경우입니다.
   `PREPARING`은 공개 공고 없는 초기 상태 또는 결과가 아직 없는 첫 동기화이고, `UNAVAILABLE`은 현재
   공개 스냅샷의 색인 준비가 확인되지 않은 경우입니다. 상태 행 없는 현재 공고의 제공처도 `UNAVAILABLE`로
-  표시합니다. 초기 빈 DB에는 `BIZINFO`만 포함됩니다. 시각은 `Asia/Seoul` 오프셋을 포함한 ISO-8601 문자열입니다.
+  표시합니다. 초기 빈 DB에는 `BIZINFO`와 수집을 활성화한 경우의 `KSTARTUP`을 포함합니다.
+  시각은 `Asia/Seoul` 오프셋을 포함한 ISO-8601 문자열입니다.
 - 상세: 필수 `sourceCode`는 `[A-Z][A-Z0-9_]{0,63}` 형식, `sourceProgramId`는 최대 255자이며 공백만 있는 값은 허용하지
   않습니다. 현재 노출된 행만 반환하며, 없는·미노출 공고는 404입니다. 검색 문맥이 없으므로 추천 이유는
   빈 배열, 추천 점수는 `null`입니다.
@@ -217,11 +222,11 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI �
   상세 URL의 리디렉션은 매번 공식 HTTPS 호스트와 같은 `pblancId`인지 검증하며 최대 3회 따릅니다.
   HTML은 jsoup `1.23.2`로 파싱하고 `.support_project_detail`의 제목이 요청한 공고와 일치할 때
   `.view_cont` 본문만 추출합니다. 인용에는 검색된 청크 전체를 반환하며 청크당 최대 1,500 UTF-16 코드 단위입니다.
-- 현재 수집기는 `BIZINFO` 한 제공처만 구현되어 있습니다. 자연어 검색·평가 fixture/capture는
+- 현재 수집기는 `BIZINFO`와 `KSTARTUP`이며 K-Startup은 명시적으로 켜야 합니다. 자연어 검색·평가 fixture/capture는
   `findSearchablePresent`의 제공처 상태 JOIN으로 `index_ready=true`인 공고만 읽고, 색인 복구는
   미준비 공고도 제공처별로 처리합니다. 최신 목록은 `findPublishedPresent`로 공개된 스냅샷만 읽되
   이후 색인 장애와 분리합니다. 내부 식별자 `sourceCode:sourceProgramId`로 같은 원본 ID를 구분합니다.
-  K-Startup은 Frontend의 공식 URL 허용과 RAG 미지원 사전 안내만 준비했으며 수집 Client·동기화는 없습니다.
+  K-Startup도 같은 벡터 색인과 자연어 추천·필터·상세 조회를 사용합니다. 별도 공식 HTML 원문 질문은 기업마당만 지원합니다.
 
 제공처별 복구 실패 격리와 구현/미구현 범위는 [6단계 다중 제공처 준비](../../docs/support-program-multi-source-preparation.md)에 정리합니다.
 
@@ -242,6 +247,12 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `SUPPORT_PROGRAM_REQUEST_GLOBAL_PER_MINUTE` | `60` | 한 Core 프로세스의 검색·근거 답변 최근 60초 한도 |
 | `SUPPORT_PROGRAM_REQUEST_MAX_CONCURRENT` | `4` | 검색·근거 답변 동시 처리 한도 |
 | `DATA_GO_KR_SERVICE_KEY` | 빈 값 | 기업마당 수집용 공공데이터포털 키 |
+| `KSTARTUP_API_KEY` | 빈 값 | K-Startup 조회서비스 활용 승인을 받은 공공데이터포털 키 |
+| `KSTARTUP_API_BASE_URL` | `https://apis.data.go.kr` | K-Startup API origin |
+| `KSTARTUP_API_CONNECT_TIMEOUT` / `KSTARTUP_API_READ_TIMEOUT` | `2s` / `10s` | K-Startup 외부 호출 제한시간 |
+| `KSTARTUP_SYNC_SCOPE` | `RECENT_YEAR` | 최근 1년 내 접수 시작 공고. `OPEN`은 API 모집 중 공고만 |
+| `KSTARTUP_SYNC_ENABLED` | `false` | 최초 임베딩 비용 확인 뒤 활성화 |
+| `KSTARTUP_SYNC_INITIAL_DELAY` / `KSTARTUP_SYNC_FIXED_DELAY` | `PT0S` / `PT6H` | 첫 수집 지연 / 완료 후 다음 수집 지연 |
 | `ACCOUNT_SESSION_TTL` | `P30D` | "로그인 상태 유지"를 켠 세션의 절대 만료 기간 |
 | `ACCOUNT_SESSION_SHORT_TTL` | `PT12H` | "로그인 상태 유지"를 끈 세션의 절대 만료 기간. 쿠키는 브라우저 세션 쿠키 |
 | `ACCOUNT_SESSION_IDLE_TTL` | `P7D` | 마지막 사용 뒤 세션을 끝내는 유휴 기간 |
@@ -313,6 +324,7 @@ supportprogram/
 ├── facade                 # 기업마당 수집·공식 원문·AI 응답 검증·도메인 변환
 ├── client/
 │   ├── bizinfo            # 기업마당 HTTP·목록/공식 HTML 검증·외부 DTO 정규화
+│   ├── kstartup           # K-Startup 페이지 검증·공식 상세 URL·원문 대상·전용 분류 정규화
 │   └── ai                 # AI 내부 HTTP 계약·조건 해석·공고/원문 청크 색인과 답변
 ├── repository            # 도메인↔DB 행 변환·트랜잭션·저장·조회
 │   └── mapper            # MyBatis Mapper, DbRow
@@ -362,8 +374,9 @@ SQL은 [`SupportProgramMapper.xml`](src/main/resources/mybatis/supportprogram/re
   세대·지문·공고 수·색인 준비와 최근 동기화 결과,
   [V5](src/main/resources/db/migration/V5__create_account.sql)는 계정과 세션 테이블,
   [V6](src/main/resources/db/migration/V6__create_company.sql)는 계정당 하나인 기업 테이블(사업자번호 UNIQUE)을 만듭니다.
+  [V7](src/main/resources/db/migration/V7__add_support_program_startup_details.sql)은 K-Startup 전용 분류 JSON과 형식·제공처 제약을 추가합니다.
   적용된 migration은 수정하지 않고 새 버전을 추가합니다.
-- 전체 수집·검증·색인이 끝난 뒤 최신 시작 세대만 공개합니다. BIZINFO 행 미노출 처리와 UPSERT를
+- 전체 수집·검증·색인이 끝난 뒤 최신 시작 세대만 공개합니다. 해당 제공처 행 미노출 처리와 UPSERT를
   하나의 짧은 DB transaction으로 묶고, 같은 transaction에서 스냅샷 지문·공고 수·`indexReady=true`·성공
   시각을 기록합니다. 외부 HTTP 호출은 transaction 밖에서 수행합니다.
 - 수집 또는 공개 전 필수 색인이 실패하면 현재 세대일 때만 실패 시각을 기록합니다. 이때 이전 공개 스냅샷의

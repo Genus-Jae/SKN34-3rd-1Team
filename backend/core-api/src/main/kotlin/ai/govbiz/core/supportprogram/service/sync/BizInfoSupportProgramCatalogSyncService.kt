@@ -2,6 +2,7 @@ package ai.govbiz.core.supportprogram.service.sync
 
 import ai.govbiz.core.supportprogram.facade.SupportProgramCatalogFacade
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
+import org.springframework.beans.factory.annotation.Qualifier
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Service
  */
 @Service
 class BizInfoSupportProgramCatalogSyncService(
-    private val catalogFacade: SupportProgramCatalogFacade,
+    @param:Qualifier("bizInfoSupportProgramCatalogFacade") private val catalogFacade: SupportProgramCatalogFacade,
     private val supportProgramRepository: SupportProgramRepository,
     private val indexSyncService: SupportProgramIndexSyncService,
 ) {

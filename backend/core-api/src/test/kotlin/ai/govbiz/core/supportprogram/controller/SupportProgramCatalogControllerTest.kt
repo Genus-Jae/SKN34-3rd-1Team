@@ -5,6 +5,7 @@ import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramCatalogSort
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.service.catalog.SupportProgramCatalogService
+import ai.govbiz.core.supportprogram.service.catalog.exception.SupportProgramCatalogFilterException
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramCatalogResult
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -73,7 +74,7 @@ class SupportProgramCatalogControllerTest {
 
     @Test
     fun rejectsUnknownEnumValuesBeforeCallingService() {
-        for ((field, value) in listOf("status" to "open", "status" to "INVALID", "sort" to "oldest", "sort" to "RECENT,DEADLINE")) {
+        for ((field, value) in listOf("status" to "open", "status" to "INVALID", "sort" to "oldest", "sort" to "RECENT,DEADLINE", "sourceCode" to "kstartup", "sourceCode" to "UNKNOWN", "sourceCode" to "BIZINFO,KSTARTUP")) {
             mvc.perform(get(URL).param(field, value)).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("REQUEST_VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.errors[0].field").value(field))
@@ -101,7 +102,7 @@ class SupportProgramCatalogControllerTest {
 
     @Test
     fun validatesRawTextLengthsAndControlCharactersBeforeCallingService() {
-        for ((field, limit) in listOf("keyword" to 100, "region" to 50, "category" to 100)) {
+        for ((field, limit) in listOf("keyword" to 100, "region" to 50, "category" to 100, "startupStage" to 100, "applicantType" to 100, "founderAge" to 100)) {
             for (value in listOf("가".repeat(limit + 1), "😀".repeat(limit / 2 + 1), "가\u0000", "가\u200b", "가\n")) {
                 mvc.perform(get(URL).param(field, value)).andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("REQUEST_VALIDATION_FAILED"))
@@ -137,6 +138,29 @@ class SupportProgramCatalogControllerTest {
         total = 1, page = 1, pageSize = 12, totalPages = 1,
         regions = listOf("서울"), categories = listOf("수출"),
     )
+
+    @Test
+    fun startupFiltersAndFacetsCrossTheHttpBoundaryWithoutChangingProgramCards() {
+        Mockito.`when`(service.browse(sourceCode = "KSTARTUP", rawStartupStage = "3년미만", rawApplicantType = "일반기업", rawFounderAge = "만 40세 이상"))
+            .thenReturn(result().copy(startupStages = listOf("3년미만"), applicantTypes = listOf("일반기업"), founderAges = listOf("만 40세 이상")))
+
+        mvc.perform(get(URL).param("sourceCode", "KSTARTUP").param("startupStage", "3년미만")
+            .param("applicantType", "일반기업").param("founderAge", "만 40세 이상"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.startupStages[0]").value("3년미만"))
+            .andExpect(jsonPath("$.applicantTypes[0]").value("일반기업"))
+            .andExpect(jsonPath("$.founderAges[0]").value("만 40세 이상"))
+    }
+
+    @Test
+    fun invalidSourceCombinationReturnsAStableValidationError() {
+        Mockito.`when`(service.browse(rawStartupStage = "3년미만")).thenThrow(SupportProgramCatalogFilterException())
+
+        mvc.perform(get(URL).param("startupStage", "3년미만"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("REQUEST_VALIDATION_FAILED"))
+            .andExpect(jsonPath("$.errors[0].field").value("sourceCode"))
+    }
 
     private companion object {
         const val URL = "/api/v1/support-programs/catalog"

@@ -229,6 +229,18 @@ class SupportProgramSearchReadinessServiceTest {
 
     private fun service() = SupportProgramSearchReadinessService(repository, SEOUL_CLOCK)
 
+    @Test
+    fun enabledKStartupIsPreparingBeforeTheFirstSyncWithoutBlockingBizinfo() {
+        stubStatuses(readyStatus("BIZINFO", 12))
+
+        val result = SupportProgramSearchReadinessService(repository, SEOUL_CLOCK, kStartupEnabled = true).get()
+
+        assertEquals(SupportProgramSearchState.SEARCHABLE_WITH_PARTIAL_SOURCES, result.searchState)
+        assertEquals(12, result.programCount)
+        assertEquals(listOf("BIZINFO", "KSTARTUP"), result.sources.map { it.sourceCode })
+        assertEquals(SupportProgramSearchState.PREPARING, result.sources.last().searchState)
+    }
+
     private fun status(
         publishedGeneration: Long,
         programCount: Int,

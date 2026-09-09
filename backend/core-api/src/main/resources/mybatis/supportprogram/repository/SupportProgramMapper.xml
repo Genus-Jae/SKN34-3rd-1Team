@@ -19,6 +19,7 @@
         <result column="application_end_date" property="applicationEndDate" />
         <result column="source_url" property="sourceUrl" />
         <result column="source_sort_timestamp" property="sourceSortTimestamp" />
+        <result column="startup_details" property="startupDetailsJson" />
     </resultMap>
 
     <resultMap id="supportProgramSourceDocumentDbRow"
@@ -59,6 +60,7 @@
             application_end_date,
             source_url,
             source_sort_timestamp,
+            startup_details,
             is_source_present
         ) VALUES (
             #{sourceCode},
@@ -74,6 +76,7 @@
             #{applicationEndDate,jdbcType=DATE},
             #{sourceUrl},
             #{sourceSortTimestamp,jdbcType=VARCHAR},
+            #{startupDetailsJson,jdbcType=VARCHAR},
             TRUE
         )
         ON DUPLICATE KEY UPDATE
@@ -89,6 +92,7 @@
             application_end_date = #{applicationEndDate,jdbcType=DATE},
             source_url = #{sourceUrl},
             source_sort_timestamp = #{sourceSortTimestamp,jdbcType=VARCHAR},
+            startup_details = #{startupDetailsJson,jdbcType=VARCHAR},
             is_source_present = TRUE,
             last_seen_at = CURRENT_TIMESTAMP(6)
     </insert>
@@ -98,7 +102,7 @@
             source_code, source_program_id, title, organization, summary,
             categories, regions, target_description, application_period_raw,
             application_start_date, application_end_date, source_url,
-            source_sort_timestamp, is_source_present
+            source_sort_timestamp, startup_details, is_source_present
         ) VALUES
         <foreach collection="rows" item="row" separator=",">
             (
@@ -107,7 +111,8 @@
                 #{row.categoriesJson,jdbcType=VARCHAR}, #{row.regionsJson,jdbcType=VARCHAR},
                 #{row.targetDescription}, #{row.applicationPeriodRaw},
                 #{row.applicationStartDate,jdbcType=DATE}, #{row.applicationEndDate,jdbcType=DATE},
-                #{row.sourceUrl}, #{row.sourceSortTimestamp,jdbcType=VARCHAR}, TRUE
+                #{row.sourceUrl}, #{row.sourceSortTimestamp,jdbcType=VARCHAR},
+                #{row.startupDetailsJson,jdbcType=VARCHAR}, TRUE
             )
         </foreach>
         AS incoming
@@ -124,6 +129,7 @@
             application_end_date = incoming.application_end_date,
             source_url = incoming.source_url,
             source_sort_timestamp = incoming.source_sort_timestamp,
+            startup_details = incoming.startup_details,
             is_source_present = TRUE,
             last_seen_at = CURRENT_TIMESTAMP(6)
     </insert>
@@ -149,7 +155,8 @@
             application_start_date,
             application_end_date,
             source_url,
-            source_sort_timestamp
+            source_sort_timestamp,
+            startup_details
         FROM support_program
         WHERE source_code = #{sourceCode}
           AND source_program_id = #{sourceProgramId}
@@ -170,7 +177,8 @@
             application_start_date,
             application_end_date,
             source_url,
-            source_sort_timestamp
+            source_sort_timestamp,
+            startup_details
         FROM support_program
         WHERE is_source_present = TRUE
         ORDER BY source_code ASC, source_program_id ASC
@@ -190,7 +198,8 @@
             program.application_start_date,
             program.application_end_date,
             program.source_url,
-            program.source_sort_timestamp
+            program.source_sort_timestamp,
+            program.startup_details
         FROM support_program program
         INNER JOIN support_program_sync_status sync_status
             ON sync_status.source_code = program.source_code

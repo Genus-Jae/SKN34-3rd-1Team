@@ -13,6 +13,7 @@ import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
 import ai.govbiz.core.account.service.exception.SessionOriginRejectedException
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
+import ai.govbiz.core.supportprogram.service.catalog.exception.SupportProgramCatalogFilterException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceUnavailableException
 import ai.govbiz.core.supportprogram.service.admission.exception.SupportProgramRequestRejectedException
@@ -36,6 +37,18 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(SupportProgramCatalogFilterException::class)
+    fun handleSupportProgramCatalogFilterException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        validationProblem(
+            HttpStatus.BAD_REQUEST,
+            URI.create("urn:govbiz:problem:request-validation-failed"),
+            "Request Validation Failed",
+            "K-Startup filters require the KSTARTUP source.",
+            "REQUEST_VALIDATION_FAILED",
+            listOf(ValidationError("sourceCode", "INVALID_VALUE")),
+            request,
+        )
 
     @ExceptionHandler(SupportProgramRequestRejectedException::class)
     fun handleSupportProgramRequestRejectedException(

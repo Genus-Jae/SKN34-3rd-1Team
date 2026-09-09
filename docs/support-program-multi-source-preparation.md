@@ -2,6 +2,10 @@
 
 [문서 목록](README.md) · [구현 현황](implementation-status.md) · [HTTP 계약](support-program-search-contract.md)
 
+> 이 문서는 2026-09-07의 준비 단계 기록입니다. 2026-09-09에는 실제 K-Startup 수집·색인·전용 필터를 구현했습니다.
+> 현재 실행 흐름·수집 범위는 [아키텍처](architecture.md#k-startup-수집-범위와-추가-분류),
+> HTTP 계약은 [직접 조건 검색](support-program-catalog.md)을 참고하세요. 아래 미구현 설명은 당시 기준입니다.
+
 기준일: 2026-09-07. K-Startup API 없이 구현·검증할 수 있는 제공처별 준비 상태, 검색 범위,
 색인 복구와 화면 경계를 정리합니다. 실제 수집기는 기업마당(`BIZINFO`) 하나이며, 이번 준비를 위해
 K-Startup 외부 API 호출·가짜 공고 영속화·새 스키마·새 production 의존성·제공처 Registry를 추가하지 않았습니다.
