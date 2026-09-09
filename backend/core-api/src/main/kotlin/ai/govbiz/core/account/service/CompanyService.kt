@@ -9,6 +9,7 @@ import ai.govbiz.core.account.service.exception.BusinessNotActiveException
 import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
+import ai.govbiz.core.account.service.exception.CompanyProfileInvalidException
 import java.time.Clock
 import java.time.LocalDateTime
 import org.springframework.beans.factory.annotation.Qualifier
@@ -61,8 +62,9 @@ class CompanyService(
         return companyRepository.updateProfile(account.id, profile) ?: throw CompanyNotRegisteredException()
     }
 
+    /** 설립연도 상한은 올해입니다. 요청 검증(1900~2100)을 통과한 뒤 서울 기준 시계로 다시 봅니다. */
     private fun requireFoundedYearNotInFuture(profile: CompanyProfileInput) {
-        require(profile.foundedYear <= LocalDateTime.now(clock).year) { "foundedYear must not be in the future" }
+        if (profile.foundedYear > LocalDateTime.now(clock).year) throw CompanyProfileInvalidException("foundedYear")
     }
 
     companion object {

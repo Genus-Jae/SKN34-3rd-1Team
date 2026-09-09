@@ -46,6 +46,31 @@ export function formatBusinessNumber(businessNumber: string): string {
   return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`
 }
 
+/** 입력 중인 사업자등록번호에 `000-00-00000` 하이픈을 붙입니다. 숫자만 남기고 10자리에서 자릅니다. */
+export function formatBusinessNumberInput(value: string): string {
+  const digits = normalizeBusinessNumber(value).slice(0, 10)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 5) return `${digits.slice(0, 3)}-${digits.slice(3)}`
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`
+}
+
+/** 앞뒤 공백을 지우고 스킴이 없으면 `https://`를 붙입니다. 빈 값은 빈 문자열입니다. */
+export function normalizeHomepageUrl(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed === '') return ''
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+/** 서버와 같은 규칙입니다. `http(s)://`로 시작하고 공백이 없으며 500자 이하이고 URL로 해석돼야 합니다. */
+export function isValidHomepageUrl(value: string): boolean {
+  if (value.length > companyProfileLimits.homepageMaxLength || !/^https?:\/\/\S+$/i.test(value)) return false
+  try {
+    return new URL(value).hostname.length > 0
+  } catch {
+    return false
+  }
+}
+
 export const companyProfileLimits = {
   homepageMaxLength: 500,
   foundedYearMin: 1900,

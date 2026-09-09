@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 
 import type { CompanyQualificationStatus } from '../../../../domain/entities/CompanyProfile'
@@ -7,6 +8,7 @@ import {
   type WorkspaceTagTone,
 } from '../../../shared/workspace/WorkspacePage.styles'
 import { WorkspaceToggle } from '../../../shared/workspace/WorkspaceToggle'
+import { YearPicker } from '../../../shared/workspace/YearPicker'
 import { formatBusinessNumber } from '../../../../domain/entities/Company'
 import { useCompanyProfileViewModel, type ProfileFormValues } from '../viewmodel/useCompanyProfileViewModel'
 import {
@@ -172,7 +174,7 @@ export function CompanyProfilePage() {
                 </div>
                 <form className={companyProfileStyles.form} aria-label="기업 기본정보 수정" onSubmit={vm.submitUpdate} noValidate>
                   <ProfileFields vm={vm} idPrefix="edit" />
-                  {vm.formError ? <p className={companyProfileStyles.formError} role="alert">{vm.formError.message}</p> : null}
+                  {vm.formErrors.form ? <p className={companyProfileStyles.formError} role="alert">{vm.formErrors.form}</p> : null}
                   <div className={companyProfileStyles.formActions}>
                     <button className={workspacePageStyles.secondaryButton} type="button" onClick={vm.cancelEditing} disabled={vm.isSaving}>
                       취소
@@ -535,24 +537,30 @@ function RegistrationCard({ vm }: { vm: ViewModel }) {
       </div>
       <form className={companyProfileStyles.form} aria-label="기업 등록" onSubmit={vm.submitRegistration} noValidate>
         <div className={companyProfileStyles.lookupRow}>
-          <label className={companyProfileStyles.formField}>
+          <label className={companyProfileStyles.formField} htmlFor="register-businessNumber">
             <span className={companyProfileStyles.formLabel}>사업자등록번호</span>
             <input
               className={companyProfileStyles.input}
+              id="register-businessNumber"
               type="text"
               name="businessNumber"
               inputMode="numeric"
               autoComplete="off"
+              maxLength={12}
               placeholder="000-00-00000"
-              aria-invalid={vm.formError?.field === 'businessNumber'}
+              aria-invalid={vm.formErrors.businessNumber !== undefined}
+              aria-describedby={vm.formErrors.businessNumber ? 'register-businessNumber-error' : 'register-businessNumber-hint'}
               value={vm.businessNumber}
               onChange={(event) => vm.updateBusinessNumber(event.target.value)}
             />
           </label>
-          <button className={workspacePageStyles.secondaryButton} type="button" onClick={() => void vm.lookupBusiness()} disabled={lookupBusy}>
+          <button className={workspacePageStyles.secondaryButton} type="button" onClick={() => void vm.lookupBusiness()} disabled={lookupBusy || !vm.canLookup}>
             {lookupBusy ? '조회 중…' : '조회'}
           </button>
         </div>
+        {vm.formErrors.businessNumber
+          ? <p id="register-businessNumber-error" className={companyProfileStyles.formError} role="alert">{vm.formErrors.businessNumber}</p>
+          : <span id="register-businessNumber-hint" className={companyProfileStyles.formHint}>{vm.businessNumberHint}</span>}
 
         {vm.lookup.status === 'found' ? (
           <div className={companyProfileStyles.lookupResult} role="status" aria-label="조회 결과">
@@ -569,7 +577,7 @@ function RegistrationCard({ vm }: { vm: ViewModel }) {
         {vm.lookup.status === 'failed' ? <p className={companyProfileStyles.formError} role="alert">{vm.lookup.message}</p> : null}
 
         <ProfileFields vm={vm} idPrefix="register" />
-        {vm.formError ? <p className={companyProfileStyles.formError} role="alert">{vm.formError.message}</p> : null}
+        {vm.formErrors.form ? <p className={companyProfileStyles.formError} role="alert">{vm.formErrors.form}</p> : null}
         <div className={companyProfileStyles.formActions}>
           <button
             className={workspacePageStyles.primaryButton}
@@ -584,38 +592,73 @@ function RegistrationCard({ vm }: { vm: ViewModel }) {
   )
 }
 
-/** 등록과 수정이 같은 입력 항목을 씁니다. `idPrefix`로 두 폼의 label·input 연결을 구분합니다. */
+/**
+ * 등록과 수정이 같은 입력 항목을 씁니다. `idPrefix`로 두 폼의 label·input 연결을 구분하고,
+ * 오류는 필드 아래에 각각 보여 주며 검증에 실패하면 첫 오류 필드로 포커스를 옮깁니다.
+ */
 function ProfileFields({ vm, idPrefix }: { vm: ViewModel; idPrefix: string }) {
+  const { focusField, clearFocusField } = vm
+  useEffect(() => {
+    if (focusField === null) return
+    document.getElementById(`${idPrefix}-${focusField}`)?.focus()
+    clearFocusField()
+  }, [focusField, clearFocusField, idPrefix])
+
   const field = (name: keyof ProfileFormValues) => ({
     id: `${idPrefix}-${name}`,
     name,
-    'aria-invalid': vm.formError?.field === name,
+    'aria-invalid': vm.formErrors[name] !== undefined,
+    'aria-describedby': vm.formErrors[name] ? `${idPrefix}-${name}-error` : undefined,
     value: vm.form[name],
   })
+  const errorOf = (name: keyof ProfileFormValues) =>
+    vm.formErrors[name] ? <p id={`${idPrefix}-${name}-error`} className={companyProfileStyles.formError} role="alert">{vm.formErrors[name]}</p> : null
+  const foundedYear = /^\d{4}$/.test(vm.form.foundedYear) ? Number(vm.form.foundedYear) : null
+
   return (
     <div className={companyProfileStyles.formGrid}>
-      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-region`}>
-        <span className={companyProfileStyles.formLabel}>소재지</span>
+      <div className={companyProfileStyles.formField}>
+        <label className={companyProfileStyles.formLabel} htmlFor={`${idPrefix}-region`}>소재지</label>
         <select className={companyProfileStyles.input} {...field('region')} onChange={(event) => vm.updateForm('region', event.target.value)}>
           <option value="">선택</option>
           {vm.regions.map((region) => <option key={region} value={region}>{region}</option>)}
         </select>
-      </label>
-      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-industry`}>
-        <span className={companyProfileStyles.formLabel}>업종</span>
+        {errorOf('region')}
+      </div>
+      <div className={companyProfileStyles.formField}>
+        <label className={companyProfileStyles.formLabel} htmlFor={`${idPrefix}-industry`}>업종</label>
         <select className={companyProfileStyles.input} {...field('industry')} onChange={(event) => vm.updateForm('industry', event.target.value)}>
           <option value="">선택</option>
           {vm.industries.map((industry) => <option key={industry} value={industry}>{industry}</option>)}
         </select>
-      </label>
-      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-foundedYear`}>
-        <span className={companyProfileStyles.formLabel}>설립연도</span>
-        <input className={companyProfileStyles.input} type="text" inputMode="numeric" placeholder={String(vm.currentYear)} {...field('foundedYear')} onChange={(event) => vm.updateForm('foundedYear', event.target.value)} />
-      </label>
-      <label className={companyProfileStyles.formField} htmlFor={`${idPrefix}-homepageUrl`}>
-        <span className={companyProfileStyles.formLabel}>홈페이지 <span className={companyProfileStyles.optionalMark}>선택</span></span>
-        <input className={companyProfileStyles.input} type="url" placeholder="https://" {...field('homepageUrl')} onChange={(event) => vm.updateForm('homepageUrl', event.target.value)} />
-      </label>
+        {errorOf('industry')}
+      </div>
+      <div className={companyProfileStyles.formField}>
+        <label className={companyProfileStyles.formLabel} htmlFor={`${idPrefix}-foundedYear`}>설립연도</label>
+        <YearPicker
+          id={`${idPrefix}-foundedYear`}
+          label="설립연도"
+          value={foundedYear}
+          min={vm.foundedYearMin}
+          max={vm.currentYear}
+          invalid={vm.formErrors.foundedYear !== undefined}
+          onChange={(year) => vm.updateForm('foundedYear', String(year))}
+        />
+        {errorOf('foundedYear')}
+      </div>
+      <div className={companyProfileStyles.formField}>
+        <label className={companyProfileStyles.formLabel} htmlFor={`${idPrefix}-homepageUrl`}>홈페이지 <span className={companyProfileStyles.optionalMark}>선택</span></label>
+        <input
+          className={companyProfileStyles.input}
+          type="text"
+          inputMode="url"
+          autoComplete="url"
+          placeholder="https://company.co.kr"
+          {...field('homepageUrl')}
+          onChange={(event) => vm.updateForm('homepageUrl', event.target.value)}
+        />
+        {errorOf('homepageUrl') ?? (vm.homepagePreview ? <span className={companyProfileStyles.formHint}>{vm.homepagePreview}</span> : null)}
+      </div>
     </div>
   )
 }

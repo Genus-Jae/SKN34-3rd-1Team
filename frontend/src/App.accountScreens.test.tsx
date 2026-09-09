@@ -360,11 +360,15 @@ describe('기업 프로필 화면', () => {
     renderApp('/app/profile')
     const form = await screen.findByRole('form', { name: '기업 등록' })
 
-    fireEvent.change(within(form).getByLabelText('사업자등록번호'), { target: { value: '12-34' } })
-    fireEvent.click(within(form).getByRole('button', { name: '조회' }))
-    expect(screen.getByRole('alert').textContent).toContain('숫자 10자리')
+    // 10자리가 되기 전에는 조회할 수 없고, 입력 중 하이픈이 자동으로 붙습니다.
+    const numberInput = within(form).getByLabelText('사업자등록번호') as HTMLInputElement
+    fireEvent.change(numberInput, { target: { value: '12-34' } })
+    expect(numberInput.value).toBe('123-4')
+    expect((within(form).getByRole('button', { name: '조회' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(form).getByText(/하이픈이 자동으로/)).toBeTruthy()
 
-    fireEvent.change(within(form).getByLabelText('사업자등록번호'), { target: { value: '1234567890' } })
+    fireEvent.change(numberInput, { target: { value: '1234567890' } })
+    expect(numberInput.value).toBe('123-45-67890')
     fireEvent.click(within(form).getByRole('button', { name: '조회' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('등록되지 않은'))
 
@@ -403,6 +407,53 @@ describe('기업 프로필 화면', () => {
     const updated = screen.getByRole('region', { name: '기업 기본정보' })
     expect(within(updated).getByText('https://example.co.kr')).toBeTruthy()
     expect(within(updated).getByText('부산광역시')).toBeTruthy()
+  })
+
+  it('설립연도는 격자 선택기로 고르고 홈페이지는 https://를 붙여 저장하며 잘못된 주소는 필드 아래에 안내한다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue({ ...registeredCompany, foundedYear: 2016 })
+    const update = vi.spyOn(appContainer.resolve('updateCompanyUseCase'), 'execute')
+      .mockResolvedValue({ ...registeredCompany, foundedYear: 2020, homepageUrl: 'https://company.co.kr/about' })
+    renderApp('/app/profile')
+    const basics = await screen.findByRole('region', { name: '기업 기본정보' })
+    fireEvent.click(within(basics).getByRole('button', { name: '수정' }))
+    const form = screen.getByRole('form', { name: '기업 기본정보 수정' })
+
+    // 격자 선택기: 저장된 2016년이 속한 최근 12년(올해로 끝나는 쪽)이 열리고, 올해 뒤로는 넘어가지 않습니다.
+    const thisYear = new Date().getFullYear()
+    fireEvent.click(within(form).getByRole('button', { name: '설립연도 2016' }))
+    const picker = screen.getByRole('dialog', { name: '설립연도 선택' })
+    expect(within(picker).getByText(`${thisYear - 11} – ${thisYear}`)).toBeTruthy()
+    expect((within(picker).getByRole('button', { name: '다음 12년' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(picker).queryByRole('button', { name: String(thisYear + 1) })).toBeNull()
+    fireEvent.click(within(picker).getByRole('button', { name: '이전 12년' }))
+    expect(within(picker).getByText(`${thisYear - 23} – ${thisYear - 12}`)).toBeTruthy()
+    fireEvent.click(within(picker).getByRole('button', { name: '다음 12년' }))
+    // 선택기 안쪽의 글자·여백을 눌러도 닫히지 않고, 바깥을 누르면 닫힙니다.
+    fireEvent.mouseDown(within(picker).getByText(`${thisYear - 11} – ${thisYear}`))
+    fireEvent.blur(picker, { relatedTarget: null })
+    expect(screen.getByRole('dialog', { name: '설립연도 선택' })).toBeTruthy()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('dialog', { name: '설립연도 선택' })).toBeNull()
+    fireEvent.click(within(form).getByRole('button', { name: '설립연도 2016' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: '설립연도 선택' })).getByRole('button', { name: '2020' }))
+    expect(screen.queryByRole('dialog', { name: '설립연도 선택' })).toBeNull()
+    expect((within(form).getByLabelText('설립연도') as HTMLSelectElement).value).toBe('2020')
+
+    // 스킴이 없는 주소는 미리보기로 알려 주고 저장 시 https://를 붙입니다. 다른 스킴은 필드 아래 오류입니다.
+    const homepage = within(form).getByLabelText(/홈페이지/)
+    fireEvent.change(homepage, { target: { value: 'ftp://company.co.kr' } })
+    fireEvent.click(within(form).getByRole('button', { name: '저장' }))
+    expect(within(form).getByRole('alert').textContent).toContain('https://로 시작')
+    expect(update).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(homepage)
+
+    fireEvent.change(homepage, { target: { value: ' company.co.kr/about ' } })
+    expect(within(form).getByText('https://company.co.kr/about 로 저장됩니다.')).toBeTruthy()
+    fireEvent.click(within(form).getByRole('button', { name: '저장' }))
+    await screen.findByText('기업 정보를 저장했습니다.')
+    expect(update).toHaveBeenCalledWith({
+      region: '서울특별시', industry: '정보통신업', foundedYear: 2020, homepageUrl: 'https://company.co.kr/about',
+    })
   })
 
   it('완성도는 실제 기업 정보와 예시 설정을 합쳐 체크리스트로 계산한다', async () => {

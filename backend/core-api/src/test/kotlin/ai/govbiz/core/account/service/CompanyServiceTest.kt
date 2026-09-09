@@ -11,6 +11,7 @@ import ai.govbiz.core.account.service.exception.BusinessNotActiveException
 import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
+import ai.govbiz.core.account.service.exception.CompanyProfileInvalidException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
@@ -104,10 +105,13 @@ class CompanyServiceTest {
     fun registerAndUpdateRejectAFoundedYearInTheFuture() {
         doReturn(null).`when`(companyRepository).findByAccountId(7L)
 
-        assertThrows(IllegalArgumentException::class.java) {
-            service.register(account, "1248100998", profile().copy(foundedYear = NOW.year + 1))
-        }
-        assertThrows(IllegalArgumentException::class.java) {
+        assertEquals(
+            "foundedYear",
+            assertThrows(CompanyProfileInvalidException::class.java) {
+                service.register(account, "1248100998", profile().copy(foundedYear = NOW.year + 1))
+            }.field,
+        )
+        assertThrows(CompanyProfileInvalidException::class.java) {
             service.updateProfile(account, profile().copy(foundedYear = NOW.year + 1))
         }
         verify(lookupService, never()).lookup("1248100998")

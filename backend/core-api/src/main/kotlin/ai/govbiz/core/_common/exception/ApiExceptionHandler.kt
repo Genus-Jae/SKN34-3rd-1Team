@@ -8,6 +8,7 @@ import ai.govbiz.core.account.service.exception.BusinessNotFoundException
 import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
+import ai.govbiz.core.account.service.exception.CompanyProfileInvalidException
 import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
@@ -260,6 +261,21 @@ class ApiExceptionHandler {
                 "An account with this email already exists.",
                 "EMAIL_ALREADY_REGISTERED",
             ),
+            request,
+        )
+
+    @ExceptionHandler(CompanyProfileInvalidException::class)
+    fun handleCompanyProfileInvalidException(
+        exception: CompanyProfileInvalidException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> =
+        validationProblem(
+            HttpStatus.BAD_REQUEST,
+            URI.create("urn:govbiz:problem:request-validation-failed"),
+            "Request Validation Failed",
+            "One or more request fields are invalid.",
+            "REQUEST_VALIDATION_FAILED",
+            listOf(ValidationError(exception.field, "INVALID_VALUE")),
             request,
         )
 

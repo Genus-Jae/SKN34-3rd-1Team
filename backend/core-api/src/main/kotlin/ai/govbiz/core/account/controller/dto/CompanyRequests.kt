@@ -18,7 +18,9 @@ open class CompanyProfileRequest(
     @field:Min(1900)
     @field:Max(2100)
     val foundedYear: Int,
+    /** 앞뒤 공백은 허용하고 다듬어 저장합니다. 값이 있으면 `http(s)://`로 시작해야 합니다. */
     @field:Size(max = CompanyProfileInput.MAX_HOMEPAGE_LENGTH)
+    @field:Pattern(regexp = "\\s*(?i:https?://\\S+)?\\s*")
     val homepageUrl: String? = null,
 ) {
     fun toProfileInput(): CompanyProfileInput =

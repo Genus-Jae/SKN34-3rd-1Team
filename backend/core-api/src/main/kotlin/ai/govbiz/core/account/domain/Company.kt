@@ -48,8 +48,8 @@ data class CompanyProfileInput(
             "industry must be 1~$MAX_INDUSTRY_LENGTH characters"
         }
         require(foundedYear in FOUNDED_YEAR_RANGE) { "foundedYear must be in $FOUNDED_YEAR_RANGE" }
-        require(homepageUrl == null || (homepageUrl.isNotBlank() && homepageUrl.length <= MAX_HOMEPAGE_LENGTH)) {
-            "homepageUrl must be 1~$MAX_HOMEPAGE_LENGTH characters"
+        require(homepageUrl == null || (homepageUrl.length <= MAX_HOMEPAGE_LENGTH && HOMEPAGE_PATTERN.matches(homepageUrl))) {
+            "homepageUrl must be an http(s) address of at most $MAX_HOMEPAGE_LENGTH characters"
         }
     }
 
@@ -57,7 +57,10 @@ data class CompanyProfileInput(
         const val MAX_REGION_LENGTH = 40
         const val MAX_INDUSTRY_LENGTH = 80
         const val MAX_HOMEPAGE_LENGTH = 500
+        /** 설립연도 하한입니다. 상한(올해)은 시계가 필요해 [ai.govbiz.core.account.service.CompanyService]가 검사합니다. */
         val FOUNDED_YEAR_RANGE: IntRange = 1900..2100
+        /** 프런트와 같은 규칙입니다. `http(s)://`로 시작하고 공백이 없어야 합니다. */
+        val HOMEPAGE_PATTERN: Regex = Regex("https?://\\S+", RegexOption.IGNORE_CASE)
     }
 }
 
