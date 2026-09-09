@@ -418,9 +418,14 @@ KStartupSupportProgramCatalogFacade → KStartupClient → KStartupProgramMapper
 
 - 공식 API: `getAnnouncementInformation01`. 안정 ID는 `pbanc_sn`이며 화면 순번 `id`를 쓰지 않습니다.
 - `KSTARTUP_SYNC_ENABLED=false`가 기본입니다. `KSTARTUP_API_KEY`와 초기 색인 비용을 확인한 뒤 켭니다.
-- `RECENT_YEAR`는 서울 기준 오늘에서 1년 전 이후 **접수 시작** 공고를 수집합니다. 마감도 포함하지만
-  그보다 먼저 접수한 장기 공고는 범위 밖입니다. `OPEN`은 API의 모집 중 공고만 수집합니다.
+- `RECENT_YEAR`는 서울 기준 오늘에서 1년 전 날짜를 API의 `cond[pbanc_rcpt_bgng_dt::GTE]`에 전달합니다.
+  `KSTARTUP_SYNC_SCOPE=RECENT_THREE_MONTHS`는 같은 조건에 3개월 전 날짜를 전달하는 선택 옵션이며 기본값은 1년입니다.
+  3개월은 90일 고정이 아니라 달력 기준으로 계산합니다. `OPEN`은 API의 모집 중 공고만 수집합니다.
   `ALL` 상태 필터는 전체 과거 이력이 아니라 이렇게 수집·공개된 범위 전체를 뜻합니다.
+- API 날짜 조건을 실제 응답의 접수 시작일 하한으로 단정하지 않습니다. 2026-09-09 실수집에서는
+  `20250909` 조건 응답 4,143건 중 325건이 그보다 먼저 시작했고, 모두 종료일이 기준일 이후였습니다.
+  현재 수집기는 검증한 API 응답을 보존하며 시작일만으로 추가 제외하지 않습니다.
+  [세 제공처 실수집·벡터 검증 기록](support-program-catalog.md)에 당시 결과를 정리합니다.
 - 첫 페이지의 날짜 조건을 전체 수집 동안 고정합니다. 전체 이력 `totalCount`가 아닌 조건 일치 `matchCount`로
   페이지 수를 계산하고 각 페이지의 번호·크기·건수·전체 건수·ID 중복을 검증합니다. 실패 시 기존 목록을 보존합니다.
 - 페이지당 1,000건 요청, 최대 20,000건·200페이지 안전 한도를 적용합니다. 전체 제공처 검색 후보 한도도 20,000건이므로

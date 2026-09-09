@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatusCode
@@ -62,6 +63,42 @@ class KStartupClientTest {
         val item = client.fetchAll().single()
         assertEquals("179197", item.id)
         assertEquals("법률지원", item.title)
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "2026-09-08T15:30:00Z, 20260609",
+        "2026-05-30T15:30:00Z, 20260228",
+        "2024-05-30T15:30:00Z, 20240229",
+    )
+    fun recentThreeMonthsUsesSeoulCalendarMonthsIncludingMonthEnds(instant: String, startDate: String) {
+        client = KStartupClient(restClient, properties(scope = KStartupCollectionScope.RECENT_THREE_MONTHS),
+            Clock.fixed(Instant.parse(instant), CLOCK.zone))
+        expectPage(1, page(listOf(row("179197"))), scope = KStartupCollectionScope.RECENT_THREE_MONTHS,
+            startDate = startDate)
+
+        assertEquals(1, client.fetchAll().size)
+    }
+
+    @Test
+    fun recentThreeMonthsKeepsTheSameDateBoundaryWhenSeoulMidnightPassesBetweenPages() {
+        var currentInstant = Instant.parse("2026-09-09T14:59:59Z")
+        val clock = object : Clock() {
+            override fun getZone(): ZoneId = CLOCK.zone
+            override fun withZone(zone: ZoneId): Clock = Clock.fixed(currentInstant, zone)
+            override fun instant(): Instant = currentInstant
+        }
+        client = KStartupClient(restClient, properties(scope = KStartupCollectionScope.RECENT_THREE_MONTHS), clock)
+        val firstResponse = withSuccess(page(listOf(row("179197")), matchCount = 2, perPage = 1),
+            MediaType.APPLICATION_JSON)
+        expectResponse(1, { request ->
+            currentInstant = Instant.parse("2026-09-09T15:00:00Z")
+            firstResponse.createResponse(request)
+        }, scope = KStartupCollectionScope.RECENT_THREE_MONTHS, startDate = "20260609")
+        expectPage(2, page(listOf(row("179198")), matchCount = 2, perPage = 1, page = 2),
+            scope = KStartupCollectionScope.RECENT_THREE_MONTHS, startDate = "20260609")
+
+        assertEquals(listOf("179197", "179198"), client.fetchAll().map { it.id })
     }
 
     @Test
@@ -188,10 +225,12 @@ class KStartupClientTest {
         assertNull(timeout.cause)
     }
 
-    private fun expectPage(number: Int, body: String, scope: KStartupCollectionScope = KStartupCollectionScope.RECENT_YEAR) =
-        expectResponse(number, withSuccess(body, MediaType.APPLICATION_JSON), scope)
+    private fun expectPage(number: Int, body: String, scope: KStartupCollectionScope = KStartupCollectionScope.RECENT_YEAR,
+        startDate: String = "20250909") =
+        expectResponse(number, withSuccess(body, MediaType.APPLICATION_JSON), scope, startDate)
 
-    private fun expectResponse(number: Int, response: ResponseCreator, scope: KStartupCollectionScope = KStartupCollectionScope.RECENT_YEAR) {
+    private fun expectResponse(number: Int, response: ResponseCreator, scope: KStartupCollectionScope = KStartupCollectionScope.RECENT_YEAR,
+        startDate: String = "20250909") {
         server.expect { request ->
             assertEquals(HttpMethod.GET, request.method)
             assertEquals(KStartupClient.PROGRAMS_PATH, request.uri.path)
@@ -200,7 +239,7 @@ class KStartupClientTest {
                     URLDecoder.decode(parameter.substringAfter('='), StandardCharsets.UTF_8)
             }
             val condition = if (scope == KStartupCollectionScope.OPEN) "cond[rcrt_prgs_yn::EQ]" to "Y"
-                else "cond[pbanc_rcpt_bgng_dt::GTE]" to "20250909"
+                else "cond[pbanc_rcpt_bgng_dt::GTE]" to startDate
             assertEquals(mapOf("serviceKey" to RAW_KEY, "page" to number.toString(), "perPage" to "1000", "returnType" to "JSON", condition), query)
         }.andRespond(response)
     }

@@ -59,7 +59,7 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `KSTARTUP_API_BASE_URL` | `https://apis.data.go.kr` | K-Startup 수집 API origin |
 | `KSTARTUP_API_CONNECT_TIMEOUT` / `KSTARTUP_API_READ_TIMEOUT` | `2s` / `10s` | 연결 / 응답 제한시간 |
 | `KSTARTUP_SYNC_ENABLED` | `false` | 초기 임베딩 비용 확인 뒤 켜는 별도 수집기 |
-| `KSTARTUP_SYNC_SCOPE` | `RECENT_YEAR` | 최근 1년 내 접수 시작 공고. `OPEN`은 모집 중 공고만 |
+| `KSTARTUP_SYNC_SCOPE` | `RECENT_YEAR` | API에 1년 전 날짜 조건 전달. `RECENT_THREE_MONTHS`는 3개월 전, `OPEN`은 모집 중 공고만. 실응답에는 장기 공고도 포함될 수 있음 |
 | `KSTARTUP_SYNC_INITIAL_DELAY` / `KSTARTUP_SYNC_FIXED_DELAY` | `PT0S` / `PT6H` | 첫 수집 지연 / 완료 후 다음 실행까지 지연 |
 | `MSIT_API_KEY` / `CNTRADE_NOTICE_API_KEY` | `DATA_GO_KR_SERVICE_KEY` 재사용 | 각 API 활용 승인이 필요하며 전용 키로 덮어쓸 수 있음 |
 | `MSIT_API_BASE_URL` / `CNTRADE_NOTICE_API_BASE_URL` | `https://apis.data.go.kr` | 제공처별 API origin |

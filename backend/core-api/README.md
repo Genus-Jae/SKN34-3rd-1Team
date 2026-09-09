@@ -310,7 +310,7 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `KSTARTUP_API_KEY` | 빈 값 | K-Startup 조회서비스 활용 승인을 받은 공공데이터포털 키 |
 | `KSTARTUP_API_BASE_URL` | `https://apis.data.go.kr` | K-Startup API origin |
 | `KSTARTUP_API_CONNECT_TIMEOUT` / `KSTARTUP_API_READ_TIMEOUT` | `2s` / `10s` | K-Startup 외부 호출 제한시간 |
-| `KSTARTUP_SYNC_SCOPE` | `RECENT_YEAR` | 최근 1년 내 접수 시작 공고. `OPEN`은 API 모집 중 공고만 |
+| `KSTARTUP_SYNC_SCOPE` | `RECENT_YEAR` | API에 1년 전 날짜 조건 전달. `RECENT_THREE_MONTHS`는 3개월 전, `OPEN`은 API 모집 중 공고만. 실응답에는 장기 공고도 포함될 수 있음 |
 | `KSTARTUP_SYNC_ENABLED` | `false` | 최초 임베딩 비용 확인 뒤 활성화 |
 | `KSTARTUP_SYNC_INITIAL_DELAY` / `KSTARTUP_SYNC_FIXED_DELAY` | `PT0S` / `PT6H` | 첫 수집 지연 / 완료 후 다음 수집 지연 |
 | `ACCOUNT_SESSION_TTL` | `P30D` | "로그인 상태 유지"를 켠 세션의 절대 만료 기간 |
