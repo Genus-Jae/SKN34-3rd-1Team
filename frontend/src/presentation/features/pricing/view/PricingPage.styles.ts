@@ -5,9 +5,9 @@ function classes(...groups: string[]) {
 export const pricingPageStyles = {
   page: 'mx-auto flex w-[min(1180px,calc(100%_-_3rem))] min-w-0 flex-col gap-16 pt-[clamp(2.75rem,6vw,5rem)] pb-16 text-app-ink max-chat:w-[calc(100%_-_2rem)] max-chat:gap-12 max-chat:pb-10',
   hero: 'mx-auto flex max-w-[780px] flex-col items-center text-center',
-  badge: 'm-0 inline-flex items-center gap-2 rounded-full bg-brand-accent px-4 py-2 text-[0.8rem] font-bold text-brand-primary',
-  badgeDot: 'size-1.5 rounded-full bg-brand-primary',
-  title: 'mt-6 mb-0 break-keep text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold leading-[1.3] tracking-[-0.065em] [text-wrap:balance]',
+  title: 'm-0 break-keep text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold leading-[1.3] tracking-[-0.065em] [text-wrap:balance]',
+  titleWord: 'inline-block',
+  titleCharacter: 'motion-safe:animate-search-intro-type',
   description: 'mt-5 mb-0 max-w-[600px] break-keep text-[clamp(0.95rem,1.6vw,1.1rem)] leading-[1.8] text-sample-muted [text-wrap:pretty]',
   plansSection: 'flex min-w-0 flex-col gap-6',
   plansHeading: 'm-0 break-keep text-center text-[1rem] font-bold leading-relaxed text-app-ink',

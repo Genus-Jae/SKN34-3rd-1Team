@@ -32,9 +32,24 @@ function renderApp(path: string, signedIn = path.startsWith('/app')) {
 }
 
 describe('공개 요금제', () => {
+  it.each(['/pricing', '/app/pricing'])('%s 제목은 전체 접근성 이름과 글자 공간을 유지하며 순서대로 등장한다', (path) => {
+    renderApp(path)
+    const title = '기업의 다음 단계에 맞는 요금제'
+    const heading = screen.getByRole('heading', { level: 1, name: title })
+    expect(heading.textContent).toBe(title)
+    expect(heading.querySelector('[aria-hidden="true"]')).toBeTruthy()
+    const characters = Array.from(heading.querySelectorAll<HTMLElement>('[data-pricing-title-character]'))
+    expect(characters.map((node) => node.textContent).join('')).toBe(title.replaceAll(' ', ''))
+    expect(characters.every((node) => node.classList.contains('motion-safe:animate-search-intro-type'))).toBe(true)
+    expect(characters[0].style.animationDelay).toBe('180ms')
+    expect(characters.every((node, index) => index === 0 || parseInt(node.style.animationDelay) > parseInt(characters[index - 1].style.animationDelay))).toBe(true)
+    expect(screen.queryByText('GovBiz 요금제', { exact: true })).toBeNull()
+  })
+
   it.each(['/pricing', '/pricing/'])('%s에서 무료와 출시 예정 플랜을 보여주고 결제 요청은 보내지 않는다', (path) => {
     renderApp(path)
 
+    expect(screen.queryByText('GovBiz 요금제', { exact: true })).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: '기업의 다음 단계에 맞는 요금제' })).toBeTruthy()
     for (const name of ['무료', '프로', '팀']) {
       expect(screen.getByRole('heading', { name })).toBeTruthy()
@@ -65,7 +80,11 @@ describe('공개 요금제', () => {
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     fireEvent.click(within(sidebar).getByRole('link', { name: '요금제' }))
 
+    expect(screen.queryByText('GovBiz 요금제', { exact: true })).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: '기업의 다음 단계에 맞는 요금제' })).toBeTruthy()
+    for (const name of ['무료', '프로', '팀']) {
+      expect(screen.getByRole('heading', { name })).toBeTruthy()
+    }
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
     expect(within(sidebar).getByRole('link', { name: '요금제' }).getAttribute('aria-current')).toBe('page')
     expect(fetch).not.toHaveBeenCalled()
@@ -77,6 +96,7 @@ describe('공개 요금제', () => {
 
   it('로그인 상태로 공개 요금제 주소에 오면 사이드바 안의 요금제로 보낸다', () => {
     renderApp('/pricing', true)
+    expect(screen.queryByText('GovBiz 요금제', { exact: true })).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: '기업의 다음 단계에 맞는 요금제' })).toBeTruthy()
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
