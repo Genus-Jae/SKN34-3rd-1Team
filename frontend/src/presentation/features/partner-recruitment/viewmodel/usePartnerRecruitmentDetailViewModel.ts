@@ -10,7 +10,7 @@ import {
 import type { PartnerRecruitmentMatch } from '../../../../domain/entities/PartnerRecruitment'
 import type { SendPartnerProposalUseCase } from '../../../../domain/usecases/PartnerProposalUseCases'
 import { useAuthSession } from '../../../shared/auth/hooks/useAuthSession'
-import { usePartnerProposalBox } from '../../../shared/partner-proposal/usePartnerProposalBox'
+import { useReceivedProposals } from '../../../shared/partner-proposal/useReceivedProposals'
 import { readRecruitmentId, usePartnerRecruitmentDetail } from '../../../shared/partner-recruitment/usePartnerRecruitmentBrowse'
 import { appPaths } from '../../../shared/routes/appPaths'
 
@@ -54,12 +54,12 @@ export function usePartnerRecruitmentDetailViewModel(
   const [sendState, setSendState] = useState<ProposalSendState>({ status: 'idle' })
   const [sentProposal, setSentProposal] = useState<MyPartnerProposal | null>(null)
   const [linkCopyState, setLinkCopyState] = useState<LinkCopyState>('idle')
-  // 내 모집글일 때만 받은 제안 상자를 읽어 이 글로 온 제안을 추립니다.
-  const receivedBox = usePartnerProposalBox('received')
+  // 받은 제안함은 Redux에 계정당 한 번만 읽히므로 여기서 다시 요청하지 않고 이 글로 온 제안만 추립니다.
+  const receivedBox = useReceivedProposals()
 
   const myProposal = sentProposal ?? recruitment?.myProposal ?? null
   const receivedProposals = recruitment?.isMine
-    ? (receivedBox.page?.proposals ?? []).filter((proposal) => proposal.recruitment.id === recruitment.id)
+    ? receivedBox.proposals.filter((proposal) => proposal.recruitment.id === recruitment.id)
     : []
 
   async function submitProposal(event: FormEvent<HTMLFormElement>) {

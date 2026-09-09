@@ -1,11 +1,14 @@
 import { useState } from 'react'
 
 import { appContainer } from '../../../../app/appContainer'
+import { useAppDispatch } from '../../../../app/hooks'
 import { partnerProposalStatusLabels, type PartnerProposal, type PartnerProposalBox } from '../../../../domain/entities/PartnerProposal'
 import type { PartnerProposalAction } from '../../../../domain/repositories/PartnerProposalRepository'
 import type { RespondPartnerProposalUseCase } from '../../../../domain/usecases/PartnerProposalUseCases'
 import { useAuthSession } from '../../../shared/auth/hooks/useAuthSession'
-import { usePartnerProposalBox } from '../../../shared/partner-proposal/usePartnerProposalBox'
+import { receivedProposalUpdated } from '../../../shared/partner-proposal/state/receivedProposalsSlice'
+import { useReceivedProposals } from '../../../shared/partner-proposal/useReceivedProposals'
+import { useSentProposalBox } from '../../../shared/partner-proposal/useSentProposalBox'
 import { appPaths } from '../../../shared/routes/appPaths'
 
 export const proposalBoxMessages = {
@@ -32,20 +35,32 @@ type PendingConfirmation = { proposalId: number; action: PartnerProposalAction }
 
 /**
  * 제안함의 대표 ViewModel입니다. 받은·보낸 상자 선택, 확인 단계, 수락·거절·철회 요청과 안내를 소유합니다.
- * 응답 API 결과로 목록의 해당 제안을 바꾸고, 처리할 수 없는 상태였으면 목록을 다시 읽습니다.
+ * 받은 제안은 Redux 상자를 읽고 응답 결과를 slice에 반영해 사이드바 배지·모집글 상세와 함께 바뀌며,
+ * 보낸 제안은 이 화면만 쓰므로 Hook 로컬 상자를 읽고 결과를 화면 안에서만 덮어씁니다. 처리할 수 없는 상태였으면 목록을 다시 읽습니다.
  */
 export function usePartnerProposalBoxViewModel(
   respondUseCase: Pick<RespondPartnerProposalUseCase, 'execute'> = appContainer.resolve('respondPartnerProposalUseCase'),
 ) {
   const { hasCompany } = useAuthSession()
+  const dispatchToStore = useAppDispatch()
   const [box, setBox] = useState<PartnerProposalBox>('received')
-  const { phase, page, reload } = usePartnerProposalBox(box)
-  const [overrides, setOverrides] = useState<Record<number, PartnerProposal>>({})
+  const received = useReceivedProposals()
+  const sent = useSentProposalBox(box === 'sent')
+  const [sentOverrides, setSentOverrides] = useState<Record<number, PartnerProposal>>({})
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null)
   const [busyProposalId, setBusyProposalId] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const proposals = (page?.proposals ?? []).map((proposal) => overrides[proposal.id] ?? proposal)
+  const proposals = box === 'received'
+    ? received.proposals
+    : (sent.page?.proposals ?? []).map((proposal) => sentOverrides[proposal.id] ?? proposal)
+  const phase = box === 'received' ? received.phase : sent.phase
+  const pendingCount = box === 'received' ? received.pendingCount : (sent.page?.pendingCount ?? 0)
+
+  function reloadActiveBox() {
+    if (box === 'received') received.reload()
+    else { setSentOverrides({}); sent.reload() }
+  }
 
   function selectBox(next: PartnerProposalBox) {
     setBox(next)
@@ -62,7 +77,8 @@ export function usePartnerProposalBoxViewModel(
       const result = await respondUseCase.execute(proposalId, action)
       switch (result.outcome) {
         case 'updated':
-          setOverrides((current) => ({ ...current, [proposalId]: result.proposal }))
+          if (result.proposal.isSent) setSentOverrides((current) => ({ ...current, [proposalId]: result.proposal }))
+          else dispatchToStore(receivedProposalUpdated(result.proposal))
           setConfirmation(null)
           return
         case 'not-pending':
@@ -76,8 +92,7 @@ export function usePartnerProposalBoxViewModel(
           break
       }
       setConfirmation(null)
-      setOverrides({})
-      reload()
+      reloadActiveBox()
     } catch {
       setNotice(proposalBoxMessages.failed)
     } finally {
@@ -97,8 +112,8 @@ export function usePartnerProposalBoxViewModel(
     ],
     phase,
     proposals,
-    pendingCount: page?.pendingCount ?? 0,
-    reload: () => { setOverrides({}); reload() },
+    pendingCount,
+    reload: reloadActiveBox,
     confirmation,
     /** 카드의 수락·거절·철회 버튼은 바로 보내지 않고 확인 단계를 엽니다. */
     requestAction: (proposalId: number, action: PartnerProposalAction) => { setConfirmation({ proposalId, action }); setNotice(null) },

@@ -859,6 +859,25 @@ describe('제안함 화면', () => {
     expect(await within(pending).findByText('수락')).toBeTruthy()
     expect(within(pending).getByRole('link', { name: 'manager@greenfood.example' })).toBeTruthy()
     expect(within(pending).queryByRole('button', { name: '거절' })).toBeNull()
+    // 받은 제안함은 Redux에 있으므로 사이드바 배지도 다시 읽지 않고 함께 사라집니다.
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    await waitFor(() => expect(within(sidebar).getByRole('link', { name: /제안함/ }).textContent).not.toContain('1'))
+    const browse = appContainer.resolve('browsePartnerProposalsUseCase').execute as ReturnType<typeof vi.fn>
+    expect(browse.mock.calls.filter(([box]) => box === 'received')).toHaveLength(1)
+  })
+
+  it('받은 제안함은 사이드바·제안함·모집글 상세가 같은 상자를 공유해 한 번만 조회한다', async () => {
+    vi.spyOn(appContainer.resolve('getPartnerRecruitmentDetailUseCase'), 'execute')
+      .mockResolvedValue({ ...partnerRecruitmentDetail, id: 104, isMine: true, proposalCount: 2 })
+    const browse = appContainer.resolve('browsePartnerProposalsUseCase').execute as ReturnType<typeof vi.fn>
+    renderApp('/app/proposals', companyAccount)
+    await screen.findByRole('tabpanel', { name: '받은 제안' })
+
+    const pending = screen.getByRole('article', { name: '데이터브릿지 주식회사 제안' })
+    fireEvent.click(within(pending).getByRole('link', { name: receivedPendingProposal.recruitment.title }))
+    const received = await screen.findByRole('region', { name: '받은 제안' })
+    expect(await within(received).findByText('데이터브릿지 주식회사')).toBeTruthy()
+    expect(browse.mock.calls.filter(([box]) => box === 'received')).toHaveLength(1)
   })
 
   it('보낸 제안은 철회할 수 있고 이미 처리된 제안이면 안내하고 다시 읽는다', async () => {

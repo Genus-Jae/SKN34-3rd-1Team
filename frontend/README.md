@@ -118,7 +118,9 @@ pnpm dev
 `presentation/shared/partner-recruitment/usePartnerRecruitmentBrowse`의 조회 훅과 표시 helper를 함께 쓰고, 조건 타입은
 `domain/entities/PartnerRecruitmentQuery`가 그대로 조회 파라미터가 됩니다. 테스트와 레이아웃 점검은 `data/fixtures/partnerRecruitments`의
 예시 모집글로 API를 대신합니다. 제안은 `PartnerProposalRepository`(`data/api/partnerProposalApi`)로 보내기·수락·거절·철회·제안함을 읽고,
-`presentation/shared/partner-proposal/usePartnerProposalBox`가 제안함 화면·모집글 상세·사이드바 배지에 받은 제안을 공급합니다.
+받은 제안함은 사이드바 배지·제안함 화면·모집글 상세가 함께 읽고 제안함 화면이 수락·거절로 바꾸므로 `presentation/shared/partner-proposal`의
+Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조회, 결과를 slice에 반영)가 소유하고,
+보낸 제안함은 제안함 화면만 쓰므로 `useSentProposalBox`의 Hook 로컬 상태로 둡니다.
 `/app/admin/members`와 추천·매칭은 아직 **데모 단계**라 ViewModel이 예시 값을 돌려줍니다.
 지역은 공고 분류와 같은 `domain/entities/Region`의 시·도 목록을 쓰고, 프로필의 정식 명칭은 `toRegionName`으로 바꿉니다.
 모집글 작성·프로필 일치 표시는 `useAuthSession().hasCompany`(기업 등록 여부) 하나로 정하며, 제안 조건(이메일 인증)은 서비스 정책이라 작성자가 고르지 않습니다.
@@ -283,7 +285,7 @@ src/
 ├── presentation/features/partner-proposal/ # 제안함(받은·보낸 제안, 수락·거절·철회) View와 ViewModel
 ├── presentation/features/company-profile/ # 기업 등록·기본정보 수정과 프로필 View, ViewModel, 준비 중 섹션의 예시 값
 ├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
-├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 조회 훅·표시 helper, 제안함 조회 훅, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
+├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 조회 훅·표시 helper, 받은 제안함 slice·훅과 보낸 제안함 훅, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture
 ```
@@ -322,12 +324,14 @@ IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 �
 새 검색 시작·현재 적용 조건 요약은
 채팅 입력창 위에 간결하게 둡니다. 정상 공고 데이터 통계 패널은 표시하지 않습니다.
 화면 전용 상태와 DOM ref는 Redux에 넣지 않고 Hook 로컬로 유지합니다.
+상태의 자리는 "두 개 이상의 화면이 같은 데이터를 읽고 그중 한 곳이 바꾼다"면 Redux slice + thunk, 한 화면만 쓰면 Hook 로컬입니다.
+서버 데이터를 Redux에 둘 때는 요청·성공·실패 단계와 어느 계정의 사본인지 함께 두고, 로그아웃·계정 변경 시 비웁니다.
 View에는 JSX·스타일·ARIA 구조와 날짜·상태 문구 등의 순수 표시용 포맷을 둡니다.
 
 | 소유자 | 현재 담당 상태 | 화면 이동·새로고침 동작 |
 |---|---|---|
-| React 로컬 상태 | 상세 조회, Health, Hook SampleItem | 해당 화면이 unmount되면 초기화 |
-| Redux 메모리 | 채팅 메시지·검색별 조건 스냅샷·확정 검색 의도·기업 조건·접수 상태·해석 제안·마지막 추가 질문과 미확정 초안, Redux SampleItem | 앱 내 이동 시 유지, 새로고침 시 초기화 |
+| React 로컬 상태 | 상세 조회, 모집글 목록·상세, 보낸 제안함, 폼 입력·확인 상자, Health, Hook SampleItem | 해당 화면이 unmount되면 초기화 |
+| Redux 메모리 | 로그인 계정, 받은 제안함(사이드바 배지·제안함·모집글 상세가 공유, 수락·거절 결과 반영), 채팅 메시지·검색별 조건 스냅샷·확정 검색 의도·기업 조건·접수 상태·해석 제안·마지막 추가 질문과 미확정 초안, Redux SampleItem | 앱 내 이동 시 유지, 새로고침·로그아웃 시 초기화 |
 | 서버 | MySQL 공고 카탈로그 | 브라우저 상태와 별개로 유지 |
 
 Redux에는 직렬화 가능한 데이터만 저장하며 채팅 요청의 `AbortController`는
