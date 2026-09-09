@@ -120,8 +120,9 @@ describe('App navigation', () => {
     const header = screen.getByRole('banner', { name: '앱 헤더' })
     expect(within(header).getByText('AI 채팅')).toBeTruthy()
 
-    fireEvent.click(within(header).getByRole('link', { name: '상태관리 비교 예제' }))
-    expect(within(header).getByText('상태관리 비교 예제', { selector: 'p' })).toBeTruthy()
+    expect(within(header).queryByRole('link', { name: '상태관리 비교 예제' })).toBeNull()
+    fireEvent.click(within(header).getByRole('link', { name: '요금제' }))
+    expect(within(header).getByText('요금제', { selector: 'p' })).toBeTruthy()
   })
 
   it('헤더의 로그인을 누르면 헤더 없는 로그인 화면으로 이동한다', () => {
@@ -409,13 +410,15 @@ describe('App navigation', () => {
 
     expect(Object.keys(appStore.getState())).toEqual(['auth', 'chat', 'receivedProposals', 'sampleItem'])
 
-    renderApp(appStore)
+    const home = renderApp(appStore)
 
     expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBeTruthy()
     const chatInput = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(chatInput, { target: { value: '서울 AI 지원사업' } })
 
-    fireEvent.click(screen.getByRole('link', { name: /상태관리 비교 예제/ }))
+    // 일반 UI에는 예제 진입 메뉴를 노출하지 않지만 같은 Store로 직접 열어 학습 흐름을 유지한다.
+    home.unmount()
+    renderApp(appStore, '/examples/sample-item/hook')
 
     expect(screen.getByRole('heading', { name: '재사용 가능한 수직 슬라이스' })).toBeTruthy()
 
@@ -481,6 +484,9 @@ describe('App navigation', () => {
     renderApp(createAppStore(), path)
 
     expect(screen.getByRole('heading', { name: heading })).toBeTruthy()
+    const header = screen.getByRole('banner', { name: '앱 헤더' })
+    expect(within(header).getByText('상태관리 비교 예제', { selector: 'p' })).toBeTruthy()
+    expect(within(header).queryByRole('link', { name: '상태관리 비교 예제' })).toBeNull()
   })
 
   it('검색 결과의 상세 조건 보기는 URL 기반 API 조회 화면으로 연결한다', async () => {
