@@ -13,11 +13,20 @@ import {
 } from '../hooks/useSupportProgramChat'
 import { useSupportProgramSearchReadiness } from '../hooks/useSupportProgramSearchReadiness'
 import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
+import { createChatConversationProposal } from './chatConversationProposal'
 
 /** 내부 훅을 조합해 ChatPage에 제공할 최종 화면 상태와 사용자 동작을 관리합니다. */
 export function useChatPageViewModel() {
   const readiness = useSupportProgramSearchReadiness()
   const chat = useSupportProgramChat()
+  const displayProposal = createChatConversationProposal({
+    isBusy: chat.isBusy,
+    confirmedContext: chat.confirmedContext,
+    interpretation: chat.interpretation,
+    pendingClarification: chat.pendingClarification,
+    canSearch: readiness.canSearch,
+  })
+  const hasConfirmedSearch = chat.confirmedContext.query !== null
   const isComposingInput = useRef(false)
   const timelineRef = useRef<HTMLDivElement>(null)
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
@@ -135,9 +144,11 @@ export function useChatPageViewModel() {
   }
 
   return {
-    confirmedContext: chat.confirmedContext,
-    interpretation: chat.interpretation,
-    pendingClarification: chat.pendingClarification,
+    displayProposal,
+    hasConfirmedSearch,
+    hasSearchToReset: hasConfirmedSearch || chat.conversationCount > 0,
+    interpretationError: chat.interpretation.error,
+    canRetryInterpretation: Boolean(chat.interpretation.request),
     isInterpreting: chat.isInterpreting,
     isBusy: chat.isBusy,
     cancelInterpretation: chat.cancelInterpretation,

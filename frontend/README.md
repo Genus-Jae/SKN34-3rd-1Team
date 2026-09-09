@@ -279,6 +279,10 @@ UseCase·Repository 경계를 거치되 로딩·결과 상태를 ViewModel의 �
 `presentation/shared/support-program`에 둡니다. Domain·UseCase·Repository·DI는 기존 공용 계층을 유지합니다.
 
 `ChatPage`는 `useChatPageViewModel`이 반환하는 상태를 렌더링하고 이벤트를 연결합니다.
+ViewModel은 `chatConversationProposal`의 순수 변환으로 표시할 제안과 변경·해제·유지 조건을 계산합니다.
+View는 원본 해석 상태를 재조립하지 않고 `displayProposal`을 `ConversationProposal`에 전달합니다.
+검색 결과 카드는 `ProgramResults`가 렌더링하며, 카드와 결과 집계는 `supportProgramEligibility`의 분류 기준을 공유합니다.
+상세 링크는 공용 `supportProgramDetailPath`를 사용합니다. 날짜·조건 문자열 서식과 화면 배치는 View에 유지합니다.
 페이지 ViewModel은 `hooks/useSupportProgramChat`과 `hooks/useSupportProgramSearchReadiness`를
 조합해 확인 검색·검색 재시도의 준비 상태를 검사합니다. 해석 제출·다시 해석은 준비 상태와 독립적입니다. 채팅 Hook은 Redux 상태와 해석·검색·취소·
 시간 제한을 관리하고, 준비 상태 Hook은 상태 조회와 준비 중 polling을 담당합니다.
