@@ -21,3 +21,6 @@ class LoginRateLimitedException(val retryAfterSeconds: Int) : RuntimeException()
 
 /** 세션 쿠키가 붙은 상태 변경 요청의 Origin이 허용 목록에 없을 때 발생합니다. */
 class SessionOriginRejectedException : RuntimeException()
+
+/** 국세청에 등록되지 않은 사업자등록번호입니다. */
+class BusinessNotFoundException : RuntimeException()

@@ -1,6 +1,8 @@
 package ai.govbiz.core._common.exception
 
+import ai.govbiz.core.account.client.bizno.exception.BiznoClientException
 import ai.govbiz.core.account.service.exception.AccountSuspendedException
+import ai.govbiz.core.account.service.exception.BusinessNotFoundException
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
@@ -176,6 +178,26 @@ class ApiExceptionHandler {
             ),
             request,
         )
+
+    @ExceptionHandler(BusinessNotFoundException::class)
+    fun handleBusinessNotFoundException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:business-not-found"),
+                "Business Not Found",
+                "The business number is not registered with the National Tax Service.",
+                "BUSINESS_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(BiznoClientException::class)
+    fun handleBiznoClientException(
+        exception: BiznoClientException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> =
+        problemResponse(definitionFor(exception.failure), request)
 
     @ExceptionHandler(InvalidCredentialsException::class)
     fun handleInvalidCredentialsException(
@@ -381,6 +403,45 @@ class ApiExceptionHandler {
                 "AI Service Gateway Timeout",
                 "AI Service did not respond within the configured timeout.",
                 "AI_SERVICE_TIMEOUT",
+            )
+        }
+
+    private fun definitionFor(failure: BiznoClientException.Failure): ProblemDefinition =
+        when (failure) {
+            BiznoClientException.Failure.NOT_CONFIGURED -> ProblemDefinition(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                URI.create("urn:govbiz:problem:bizno-not-configured"),
+                "Bizno Not Configured",
+                "Business registration lookup is not configured on this server.",
+                "BIZNO_NOT_CONFIGURED",
+            )
+            BiznoClientException.Failure.UNAVAILABLE -> ProblemDefinition(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                URI.create("urn:govbiz:problem:bizno-unavailable"),
+                "Bizno Unavailable",
+                "Business registration lookup is currently unavailable.",
+                "BIZNO_UNAVAILABLE",
+            )
+            BiznoClientException.Failure.TIMEOUT -> ProblemDefinition(
+                HttpStatus.GATEWAY_TIMEOUT,
+                URI.create("urn:govbiz:problem:bizno-timeout"),
+                "Bizno Gateway Timeout",
+                "Business registration lookup did not respond within the configured timeout.",
+                "BIZNO_TIMEOUT",
+            )
+            BiznoClientException.Failure.UPSTREAM_ERROR -> ProblemDefinition(
+                HttpStatus.BAD_GATEWAY,
+                URI.create("urn:govbiz:problem:bizno-upstream-error"),
+                "Bizno Upstream Error",
+                "Business registration lookup returned an unexpected result.",
+                "BIZNO_UPSTREAM_ERROR",
+            )
+            BiznoClientException.Failure.INVALID_RESPONSE -> ProblemDefinition(
+                HttpStatus.BAD_GATEWAY,
+                URI.create("urn:govbiz:problem:bizno-invalid-response"),
+                "Bizno Invalid Response",
+                "Business registration lookup returned an invalid response.",
+                "BIZNO_INVALID_RESPONSE",
             )
         }
 
