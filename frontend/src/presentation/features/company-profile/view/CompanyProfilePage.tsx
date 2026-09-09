@@ -10,7 +10,9 @@ import {
 import { WorkspaceToggle } from '../../../shared/workspace/WorkspaceToggle'
 import { YearPicker } from '../../../shared/workspace/YearPicker'
 import { formatBusinessNumber } from '../../../../domain/entities/Company'
+import { useAccountSecurityViewModel } from '../viewmodel/useAccountSecurityViewModel'
 import { useCompanyProfileViewModel, type ProfileFormValues } from '../viewmodel/useCompanyProfileViewModel'
+import { ChangePasswordModal, DeleteAccountModal } from './AccountSecurityModals'
 import {
   companyProfileChoiceClassName,
   companyProfileStyles,
@@ -53,6 +55,7 @@ const usageIcons: Record<'target' | 'users' | 'shield', ReactNode> = {
  */
 export function CompanyProfilePage() {
   const vm = useCompanyProfileViewModel()
+  const security = useAccountSecurityViewModel()
   const {
     companyState,
     company,
@@ -190,7 +193,7 @@ export function CompanyProfilePage() {
               <section className={workspacePageStyles.card} aria-label="기업 기본정보">
                 <div className={workspacePageStyles.cardHeader}>
                   <h2 className={workspacePageStyles.cardTitle}>기업 기본정보</h2>
-                  <button className={workspacePageStyles.quietLink} type="button" onClick={vm.startEditing}>
+                  <button className={workspacePageStyles.secondaryButton} type="button" onClick={vm.startEditing}>
                     수정
                   </button>
                 </div>
@@ -364,10 +367,13 @@ export function CompanyProfilePage() {
 
                 <div className={companyProfileStyles.accountRow}>
                   <span className={companyProfileStyles.accountValue}>비밀번호</span>
-                  <button className={workspacePageStyles.quietLink} type="button" disabled>
-                    변경 · 준비 중
+                  <button className={workspacePageStyles.secondaryButton} type="button" onClick={security.password.open}>
+                    변경
                   </button>
                 </div>
+                {security.password.notice ? (
+                  <p className={companyProfileStyles.notice} role="status">{security.password.notice}</p>
+                ) : null}
 
                 <div className={companyProfileStyles.settingRow}>
                   <span className={companyProfileStyles.accountValue}>
@@ -399,11 +405,13 @@ export function CompanyProfilePage() {
                 </div>
               </div>
               <div className={companyProfileStyles.dangerRow}>
-                <button className={workspacePageStyles.dangerLink} type="button" disabled>
-                  계정 삭제 · 준비 중
+                <button className={workspacePageStyles.dangerLink} type="button" onClick={security.deletion.open}>
+                  계정 삭제
                 </button>
               </div>
             </section>
+            <ChangePasswordModal vm={security.password} />
+            <DeleteAccountModal vm={security.deletion} email={vm.account?.email ?? ''} />
           </div>
 
           <aside className={workspacePageStyles.column} aria-label="프로필 안내">

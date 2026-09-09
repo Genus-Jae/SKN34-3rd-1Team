@@ -4,7 +4,10 @@ import { AccountRepositoryImpl } from '../../repositories/AccountRepositoryImpl'
 import { createMemorySessionHintStorage } from '../../storage/sessionHintStorage'
 import {
   AccountApiError,
+  changePasswordApi,
+  deleteAccountApi,
   devLogInApi,
+  getAccountDeletionPreviewApi,
   getCurrentAccountApi,
   logInApi,
   logOutApi,
@@ -90,6 +93,51 @@ describe('logInApi and devLogInApi', () => {
       .rejects.toMatchObject({ status: 502, code: null, retryAfterSeconds: null })
     await expect(logInApi(logInCommand))
       .rejects.toMatchObject({ status: 429, code: 'LOGIN_RATE_LIMITED', retryAfterSeconds: 30 })
+  })
+})
+
+describe('account profile apis', () => {
+  it('sends the password change, reads the deletion preview, and deletes with the session cookie', async () => {
+    const preview = { hasCompany: true, openRecruitmentCount: 2, receivedPendingProposalCount: 3, sentPendingProposalCount: 1 }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse(preview))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(changePasswordApi('password1', 'new-password-2')).resolves.toBeUndefined()
+    await expect(getAccountDeletionPreviewApi()).resolves.toEqual(preview)
+    await expect(deleteAccountApi('password1')).resolves.toBeUndefined()
+
+    const calls = fetchMock.mock.calls as [string, RequestInit][]
+    expect(new URL(calls[0]![0]).pathname).toBe('/api/v1/me/password')
+    expect(calls[0]![1].method).toBe('PUT')
+    expect(JSON.parse(String(calls[0]![1].body))).toEqual({ currentPassword: 'password1', newPassword: 'new-password-2' })
+    expect(new URL(calls[1]![0]).pathname).toBe('/api/v1/me/deletion-preview')
+    expect(calls[1]![1].cache).toBe('no-store')
+    expect(new URL(calls[2]![0]).pathname).toBe('/api/v1/me')
+    expect(calls[2]![1].method).toBe('DELETE')
+    expect(calls[2]![1].credentials).toBe('include')
+    expect(JSON.parse(String(calls[2]![1].body))).toEqual({ password: 'password1' })
+  })
+
+  it('maps a wrong current password and rate limits to outcomes and clears the hint only after deletion', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(problemResponse(422, 'CURRENT_PASSWORD_MISMATCH'))
+      .mockResolvedValueOnce(problemResponse(429, 'LOGIN_RATE_LIMITED', { retryAfterSeconds: 30 }))
+      .mockResolvedValueOnce(problemResponse(422, 'CURRENT_PASSWORD_MISMATCH'))
+      .mockResolvedValueOnce(problemResponse(500, null))
+      .mockResolvedValueOnce(new Response(null, { status: 204 })))
+    const storage = createMemorySessionHintStorage(true)
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+
+    await expect(repository.changePassword('wrong', 'new-password-2')).resolves.toEqual({ outcome: 'current-password-mismatch' })
+    await expect(repository.changePassword('wrong', 'new-password-2')).resolves.toEqual({ outcome: 'rate-limited', retryAfterSeconds: 30 })
+    await expect(repository.deleteAccount('wrong')).resolves.toEqual({ outcome: 'current-password-mismatch' })
+    await expect(repository.deleteAccount('password1')).rejects.toBeInstanceOf(AccountApiError)
+    expect(storage.hasSession()).toBe(true)
+    await expect(repository.deleteAccount('password1')).resolves.toEqual({ outcome: 'deleted' })
+    expect(storage.hasSession()).toBe(false)
   })
 })
 

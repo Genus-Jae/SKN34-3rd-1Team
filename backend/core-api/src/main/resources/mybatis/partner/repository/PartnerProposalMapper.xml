@@ -208,4 +208,13 @@
           AND decision IS NULL
           AND withdrawn_at IS NULL
     </update>
+
+    <update id="markWithdrawnByProposer">
+        UPDATE partner_proposal
+        SET withdrawn_at = #{withdrawnAt},
+            updated_at = #{withdrawnAt}
+        WHERE proposer_account_id = #{accountId}
+          AND decision IS NULL
+          AND withdrawn_at IS NULL
+    </update>
 </mapper>

@@ -3,7 +3,7 @@ package ai.govbiz.core.account.service.exception
 /** 이메일 또는 비밀번호가 맞지 않을 때 발생합니다. 두 경우를 구분하지 않습니다. */
 class InvalidCredentialsException : RuntimeException()
 
-/** 가입하려는 이메일이 이미 등록되어 있을 때 발생합니다. 탈퇴한 계정의 이메일도 포함합니다. */
+/** 가입하려는 이메일이 이미 등록되어 있을 때 발생합니다. 탈퇴한 계정은 이메일이 익명화돼 다시 가입할 수 있습니다. */
 class EmailAlreadyRegisteredException : RuntimeException()
 
 /** 세션 쿠키가 없거나 만료·삭제됐을 때 발생합니다. */
@@ -36,6 +36,9 @@ class BusinessNotActiveException(val businessStatus: String) : RuntimeException(
 
 /** 다른 계정이 이미 같은 사업자등록번호를 등록했을 때 발생합니다. */
 class BusinessNumberAlreadyRegisteredException : RuntimeException()
+
+/** 비밀번호 변경·계정 삭제에서 입력한 현재 비밀번호가 저장된 것과 다를 때 발생합니다. 세션은 유효하므로 401이 아닙니다. */
+class CurrentPasswordMismatchException : RuntimeException()
 
 /** 요청 검증은 통과했지만 시계가 필요한 규칙(설립연도는 올해까지)에 걸린 기업 프로필 필드입니다. 400으로 필드명을 알립니다. */
 class CompanyProfileInvalidException(val field: String) : RuntimeException("company profile field $field is invalid")

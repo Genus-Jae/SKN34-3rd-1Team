@@ -128,4 +128,30 @@
         WHERE account_id = #{accountId}
           AND expires_at &lt;= #{now}
     </delete>
+
+    <update id="updateAccountPasswordHash">
+        UPDATE account
+        SET password_hash = #{passwordHash}
+        WHERE id = #{accountId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="updateAccountDeletedAt">
+        UPDATE account
+        SET deleted_at = #{deletedAt},
+            email = #{anonymizedEmail}
+        WHERE id = #{accountId}
+          AND deleted_at IS NULL
+    </update>
+
+    <delete id="deleteSessionsByAccountIdExcept">
+        DELETE FROM account_session
+        WHERE account_id = #{accountId}
+          AND token_hash &lt;&gt; #{keepTokenHash}
+    </delete>
+
+    <delete id="deleteSessionsByAccountId">
+        DELETE FROM account_session
+        WHERE account_id = #{accountId}
+    </delete>
 </mapper>

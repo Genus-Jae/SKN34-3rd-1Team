@@ -2,6 +2,7 @@ import type { AccountRole } from '../../domain/entities/Account'
 import type { AccountLogIn, AccountSignUp } from '../../domain/repositories/AccountRepository'
 import { getCoreApiBaseUrl } from './coreApiConfig'
 import {
+  accountDeletionPreviewDtoSchema,
   accountDtoSchema,
   authSessionResponseDtoSchema,
   currentAccountResponseDtoSchema,
@@ -14,6 +15,9 @@ const LOGIN_PATH = '/api/v1/auth/login'
 const DEV_LOGIN_PATH = '/api/v1/auth/dev-login'
 const LOGOUT_PATH = '/api/v1/auth/logout'
 const CURRENT_ACCOUNT_PATH = '/api/v1/auth/me'
+const ACCOUNT_PATH = '/api/v1/me'
+const PASSWORD_PATH = '/api/v1/me/password'
+const DELETION_PREVIEW_PATH = '/api/v1/me/deletion-preview'
 
 /** 계정 endpoint의 HTTP 상태와 ProblemDetail `code`를 Repository가 업무 결과로 바꿀 수 있게 합니다. */
 export class AccountApiError extends Error {
@@ -102,6 +106,40 @@ export async function getCurrentAccountApi(signal?: AbortSignal): Promise<Accoun
   await rejectFailedResponse(response)
 
   return accountDtoSchema.parse(currentAccountResponseDtoSchema.parse(await response.json()).account)
+}
+
+export async function changePasswordApi(currentPassword: string, newPassword: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`${getCoreApiBaseUrl()}${PASSWORD_PATH}`, {
+    method: 'PUT',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+    credentials: withSessionCookie,
+    signal,
+  })
+  await rejectFailedResponse(response)
+}
+
+export async function getAccountDeletionPreviewApi(signal?: AbortSignal) {
+  const response = await fetch(`${getCoreApiBaseUrl()}${DELETION_PREVIEW_PATH}`, {
+    headers: { Accept: 'application/json' },
+    credentials: withSessionCookie,
+    cache: 'no-store',
+    signal,
+  })
+  await rejectFailedResponse(response)
+
+  return accountDeletionPreviewDtoSchema.parse(await response.json())
+}
+
+export async function deleteAccountApi(password: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`${getCoreApiBaseUrl()}${ACCOUNT_PATH}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+    credentials: withSessionCookie,
+    signal,
+  })
+  await rejectFailedResponse(response)
 }
 
 async function rejectFailedResponse(response: Response): Promise<void> {

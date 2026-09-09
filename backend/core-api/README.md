@@ -154,6 +154,8 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `POST /api/v1/auth/login` | 이메일·비밀번호 로그인. 세션 JWT를 HttpOnly 쿠키로만 내려줌 |
 | `POST /api/v1/auth/logout` | 세션 행 삭제와 쿠키 만료 |
 | `GET /api/v1/auth/me` | 세션 쿠키로 현재 계정·권한 단계 조회 |
+| `PUT /api/v1/me/password` | 현재 비밀번호 확인 뒤 변경. 요청한 세션만 남기고 다른 기기 세션 종료 |
+| `GET /api/v1/me/deletion-preview`, `DELETE /api/v1/me` | 삭제 시 닫히는 모집글·제안 수 미리 보기와 계정 삭제(제안 철회·모집글 마감·기업 삭제·세션 삭제·`deleted_at`) |
 | `POST /api/v1/auth/dev-login` | `ACCOUNT_DEV_LOGIN_ENABLED=true`일 때만 등록되는 개발용 시드 로그인 |
 | `GET /api/v1/me/company/lookup` | 로그인한 회원이 사업자등록번호로 국세청 등록 여부·상호·사업자 상태를 미리 보기(Bizno) |
 | `GET` `POST` `PUT /api/v1/me/company` | 내 기업 조회·등록(계속사업자만, 201)·담당자 입력 항목 수정 |
@@ -398,7 +400,7 @@ supportprogram/
 account/
 ├── controller            # 로그인·로그아웃·내 계정, 개발용 로그인, 기업 등록·수정 HTTP 진입점
 │   └── dto               # 공개 요청·응답 계약
-├── service               # 회원가입, 로그인 검증·시도 제한, JWT 세션, 기업 등록(사업자등록번호 조회)
+├── service               # 회원가입, 로그인 검증·시도 제한, JWT 세션, 비밀번호 변경·계정 삭제, 기업 등록(사업자등록번호 조회)
 ├── client/bizno          # Bizno 사업자등록번호 조회 HTTP·응답 검증·오류 변환
 ├── repository            # 계정·세션·기업 저장과 조회, DbRow 변환
 │   └── mapper            # MyBatis Mapper, DbRow

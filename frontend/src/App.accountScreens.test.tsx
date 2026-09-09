@@ -12,6 +12,7 @@ import { receivedAcceptedProposal, receivedPendingProposal, receivedProposalBox,
 import { partnerRecruitmentDetail, partnerRecruitmentPage } from './data/fixtures/partnerRecruitments'
 import { supportPrograms } from './data/fixtures/supportPrograms'
 import type { Account } from './domain/entities/Account'
+import { accountSecurityMessages } from './presentation/features/company-profile/viewmodel/useAccountSecurityViewModel'
 import { loginMessages } from './presentation/features/auth/viewmodel/useLoginViewModel'
 import { signupMessages } from './presentation/features/auth/viewmodel/useSignupViewModel'
 import { sessionRestored } from './presentation/shared/auth/state/authSlice'
@@ -508,6 +509,103 @@ describe('기업 프로필 화면', () => {
     fireEvent.click(screen.getByRole('link', { name: '내 프로필' }))
     await screen.findByRole('form', { name: '기업 등록' })
     expect((screen.getByLabelText('보유 역량·실적') as HTMLTextAreaElement).value).toBe(original)
+  })
+})
+
+describe('계정 보안 모달', () => {
+  beforeEach(() => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
+  })
+
+  it('비밀번호 변경 모달은 세 칸이 맞을 때만 보내고 현재 비밀번호 불일치는 칸 아래에 안내한다', async () => {
+    const change = vi.spyOn(appContainer.resolve('changePasswordUseCase'), 'execute')
+      .mockResolvedValueOnce({ outcome: 'current-password-mismatch' })
+      .mockResolvedValueOnce({ outcome: 'changed' })
+    renderApp('/app/profile')
+    const account = await screen.findByRole('region', { name: '계정과 알림' })
+
+    // 브라우저처럼 누른 버튼에 포커스가 있는 상태에서 열어야 닫힌 뒤 그 버튼으로 돌아가는지 볼 수 있습니다.
+    const opener = within(account).getByRole('button', { name: '변경' })
+    opener.focus()
+    fireEvent.click(opener)
+    const dialog = screen.getByRole('dialog', { name: '비밀번호 변경' })
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('현재 비밀번호'))
+    const submit = within(dialog).getByRole('button', { name: '변경' }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+
+    fireEvent.change(within(dialog).getByLabelText('현재 비밀번호'), { target: { value: 'password1' } })
+    fireEvent.change(within(dialog).getByLabelText('새 비밀번호'), { target: { value: 'new-password-2' } })
+    fireEvent.change(within(dialog).getByLabelText('새 비밀번호 확인'), { target: { value: 'new-password-3' } })
+    expect(submit.disabled).toBe(true)
+    fireEvent.submit(within(dialog).getByRole('form', { name: '비밀번호 변경' }))
+    expect(within(dialog).getByRole('alert').textContent).toBe(accountSecurityMessages.confirmationMismatch)
+    expect(change).not.toHaveBeenCalled()
+
+    fireEvent.change(within(dialog).getByLabelText('새 비밀번호 확인'), { target: { value: 'new-password-2' } })
+    expect(submit.disabled).toBe(false)
+    fireEvent.click(submit)
+    await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toBe(accountSecurityMessages.currentPasswordMismatch))
+    expect(change).toHaveBeenCalledWith('password1', 'new-password-2')
+
+    fireEvent.change(within(dialog).getByLabelText('현재 비밀번호'), { target: { value: 'password1!' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '변경' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '비밀번호 변경' })).toBeNull())
+    expect(within(account).getByRole('status').textContent).toBe(accountSecurityMessages.passwordChanged)
+    expect(document.activeElement).toBe(within(account).getByRole('button', { name: '변경' }))
+  })
+
+  it('모달은 Esc와 배경 클릭으로 닫히고 Tab이 안에서 돈다', async () => {
+    renderApp('/app/profile')
+    const account = await screen.findByRole('region', { name: '계정과 알림' })
+    fireEvent.click(within(account).getByRole('button', { name: '변경' }))
+    const dialog = screen.getByRole('dialog', { name: '비밀번호 변경' })
+
+    // 변경 버튼은 입력 전이라 비활성이므로 마지막 초점 요소는 취소입니다. 끝에서 Tab은 처음(닫기)으로, 처음에서 Shift+Tab은 끝으로 갑니다.
+    const close = within(dialog).getByRole('button', { name: '닫기' })
+    const cancel = within(dialog).getByRole('button', { name: '취소' })
+    cancel.focus()
+    fireEvent.keyDown(dialog, { key: 'Tab' })
+    expect(document.activeElement).toBe(close)
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancel)
+
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: '비밀번호 변경' })).toBeNull()
+
+    fireEvent.click(within(account).getByRole('button', { name: '변경' }))
+    fireEvent.mouseDown(screen.getByRole('dialog', { name: '비밀번호 변경' }).parentElement!)
+    expect(screen.queryByRole('dialog', { name: '비밀번호 변경' })).toBeNull()
+  })
+
+  it('계정 삭제 모달은 지워지는 것을 먼저 보여 주고 비밀번호 확인 뒤 랜딩으로 보낸다', async () => {
+    vi.spyOn(appContainer.resolve('getAccountDeletionPreviewUseCase'), 'execute').mockResolvedValue({
+      hasCompany: true, openRecruitmentCount: 2, receivedPendingProposalCount: 3, sentPendingProposalCount: 1,
+    })
+    const remove = vi.spyOn(appContainer.resolve('deleteAccountUseCase'), 'execute')
+      .mockResolvedValueOnce({ outcome: 'current-password-mismatch' })
+      .mockResolvedValueOnce({ outcome: 'deleted' })
+    renderApp('/app/profile')
+    const account = await screen.findByRole('region', { name: '계정과 알림' })
+
+    fireEvent.click(within(account).getByRole('button', { name: '계정 삭제' }))
+    const dialog = screen.getByRole('dialog', { name: '계정을 삭제할까요?' })
+    expect(dialog.textContent).toContain('member@govbiz.local')
+    // "삭제되는 것" 목록은 문구 확정 전까지 화면에서 숨겨 두었습니다. 미리 보기 조회는 그대로 일어납니다.
+    await waitFor(() => expect(appContainer.resolve('getAccountDeletionPreviewUseCase').execute).toHaveBeenCalled())
+    expect(within(dialog).queryByRole('status', { name: '삭제되는 것' })).toBeNull()
+    const submit = within(dialog).getByRole('button', { name: '계정 삭제' }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+
+    fireEvent.change(within(dialog).getByLabelText('확인을 위해 비밀번호를 입력하세요'), { target: { value: 'wrong' } })
+    fireEvent.click(submit)
+    await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toBe(accountSecurityMessages.currentPasswordMismatch))
+    expect(screen.getByRole('dialog', { name: '계정을 삭제할까요?' })).toBeTruthy()
+
+    fireEvent.change(within(dialog).getByLabelText('확인을 위해 비밀번호를 입력하세요'), { target: { value: 'password1' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '계정 삭제' }))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('password1'))
+    await waitFor(() => expect(screen.getByRole('banner', { name: '앱 헤더' })).toBeTruthy())
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
   })
 })
 
