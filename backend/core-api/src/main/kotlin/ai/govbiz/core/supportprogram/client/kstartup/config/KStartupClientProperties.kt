@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.time.Duration
 import org.springframework.boot.context.properties.ConfigurationProperties
 
-enum class KStartupCollectionScope { RECENT_YEAR, OPEN }
+enum class KStartupCollectionScope { RECENT_YEAR, RECENT_THREE_MONTHS, OPEN }
 
 @ConfigurationProperties(prefix = "app.kstartup")
 class KStartupClientProperties(

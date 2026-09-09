@@ -29,6 +29,8 @@ class KStartupClient(
         val (condition, value) = when (properties.scope) {
             KStartupCollectionScope.RECENT_YEAR -> "cond[pbanc_rcpt_bgng_dt::GTE]" to
                 LocalDate.now(clock).minusYears(1).format(DateTimeFormatter.BASIC_ISO_DATE)
+            KStartupCollectionScope.RECENT_THREE_MONTHS -> "cond[pbanc_rcpt_bgng_dt::GTE]" to
+                LocalDate.now(clock).minusMonths(3).format(DateTimeFormatter.BASIC_ISO_DATE)
             KStartupCollectionScope.OPEN -> "cond[rcrt_prgs_yn::EQ]" to "Y"
         }
         val first = fetchPage(key, condition, value, 1)
