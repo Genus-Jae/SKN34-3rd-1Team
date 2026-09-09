@@ -198,6 +198,75 @@ Cookie: govbiz_session=<JWT>
 기업 응답은 요청 필드(`businessNumber`·`region`·`industry`·`foundedYear`·`homepageUrl`)에 `companyName` `businessStatus`
 `businessVerifiedAt` `updatedAt`을 더한 것입니다. 세션·내 계정 응답의 `account.company`에는 `companyName`·`businessNumber` 요약이 실리고 기업이 없으면 `null`입니다.
 
+## 파트너 모집글
+
+모집글은 제공처에 현재 있는 공고 하나에 묶이며, 작성은 기업을 등록한 회원(`COMPANY`)만 할 수 있습니다. 읽기는 세션 없이도
+가능하고 쿠키가 있으면 `isMine`으로 내 글을 표시합니다. 담당자 이름·연락처는 응답에 싣지 않습니다.
+
+| 메서드·경로 | 용도 | 성공 |
+|---|---|---|
+| `GET /api/v1/partners/recruitments` | 목록. `keyword`(제목·공고·기관·기업명, 100자) `seekingRole`(LEAD·PARTICIPANT·DEMAND) `region`(시·도 또는 전국) `mine`(세션 필요) `sort`(DEADLINE·RECENT) `page` `pageSize`(1~50, 기본 20) | 200 `recruitments[]` `total` `page` `pageSize` `totalPages` |
+| `GET /api/v1/partners/recruitments/{id}` | 상세 | 200 모집글 응답, 없으면 404 `RECRUITMENT_NOT_FOUND` |
+| `POST /api/v1/partners/recruitments` | 작성. 서버가 공고 존재·접수 상태·마감일·중복을 확인 | 201 모집글 응답 |
+
+```http
+POST /api/v1/partners/recruitments
+Content-Type: application/json
+Cookie: govbiz_session=<JWT>
+
+{ "sourceCode": "BIZINFO", "sourceProgramId": "PBLN_000000000112345", "title": "AI 실증 과제 참여기관 구합니다",
+  "body": "라벨링 운영을 맡아 주실 참여기관을 찾습니다.", "ownRole": "LEAD", "seekingRole": "PARTICIPANT", "seekingCount": 1,
+  "region": "서울", "minimumCompanyAgeYears": 3, "capabilities": ["데이터 구축", "라벨링"], "recruitmentDeadline": "2026-09-20" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `sourceCode` `sourceProgramId` | 공고 검색·상세가 쓰는 제공처 식별자 조합. 제공처에서 사라진 공고는 404 |
+| `title` `body` | 1~80자 / 1~2000자 |
+| `ownRole` | `LEAD` 또는 `PARTICIPANT`. 수요처는 찾는 역할로만 씀 |
+| `seekingRole` `seekingCount` | 찾는 역할과 기업 수(1~9곳) |
+| `region` | 공고 분류와 같은 시·도 이름 또는 `전국`(20자 이하). 목록에서 지역을 고르면 전국 모집글도 함께 보임 |
+| `minimumCompanyAgeYears` | 찾는 기업의 최소 업력(년), 1~50. 생략·null이면 무관 |
+| `capabilities` | 30자 이하 문자열 최대 10개. 중복은 한 번만 저장 |
+| `recruitmentDeadline` | 오늘 이후이면서 공고 접수 마감 전날까지. 접수 마감일이 없는 공고는 제한 없음 |
+
+모집글 응답은 요청 필드에 `id` `status`(OPEN·CLOSED, 마감일·공고 접수 마감·수동 마감으로 조회 시점에 계산) `isMine`
+`proposalCount`(철회하지 않은 제안 수) `myProposal`(로그인한 회원이 이 모집글에 보낸 제안의 `id` `status`, 없으면 null) `company`(`companyName` `region` `industry` `foundedYear` `isEmailVerified` `isBusinessVerified`)
+`program`(`sourceCode` `sourceProgramId` `title` `organization` `summary` `targetDescription` `applicationPeriod` `applicationEndDate` `sourceUrl`)
+`createdAt` `updatedAt`을 더한 것입니다. 목록 항목은 `body`·`ownRole`·`minimumCompanyAgeYears`·`myProposal`·`updatedAt`과 공고 원문 없이
+`program`에 `title` `organization` `applicationEndDate`만 싣습니다. 목록은 마감일·공고 접수 마감일·수동 마감으로 모집 중인 글만 고르고
+`mine=true`는 마감된 내 글도 포함합니다. 접수 마감일이 없는 공고의 접수 종료 문구는 SQL로 거르지 않으므로 항목의 `status`로 마감을 확인합니다.
+한 계정은 같은 공고에 모집글 하나만 쓸 수 있습니다(`uq_partner_recruitment_account_program`).
+
+## 파트너 제안
+
+제안은 기업을 등록한 회원이 모집 중인 남의 모집글에 한 번 보냅니다. 모든 요청은 세션이 필요하고 당사자(제안자·모집글 작성자)만
+읽고 처리할 수 있습니다. 이메일 인증 조건은 인증 기능이 생길 때 더합니다.
+
+| 메서드·경로 | 용도 | 성공 |
+|---|---|---|
+| `POST /api/v1/partners/recruitments/{id}/proposals` | 제안 보내기. `message`(1~500자) `shareProfile`(기본 true) | 201 제안 응답 |
+| `GET /api/v1/partners/proposals/{id}` | 제안 하나. 당사자가 아니면 404 | 200 제안 응답 |
+| `POST /api/v1/partners/proposals/{id}/accept` `.../decline` | 모집글 작성자의 수락·거절. 대기 중일 때만 | 200 제안 응답 |
+| `POST /api/v1/partners/proposals/{id}/withdraw` | 제안자의 철회. 대기 중일 때만 | 200 제안 응답 |
+| `GET /api/v1/me/proposals?box=received\|sent` | 제안함. 받은 제안은 내 모집글로 온 것, 보낸 제안은 내가 보낸 것. 다른 `box` 값은 400 `REQUEST_VALIDATION_FAILED` | 200 `box` `proposals[]` `pendingCount` |
+
+제안 응답은 `id` `status` `message` `shareProfile` `isSent`(조회한 회원이 보낸 제안이면 true) `recruitment`(`id` `title` `status`
+`recruitmentDeadline`) `counterpart` `createdAt` `expiresAt` `respondedAt`입니다. `status`는 저장하지 않고 조회 시점에 계산합니다.
+
+| `status` | 조건 |
+|---|---|
+| `PENDING` | 응답·철회가 없고 보낸 지 7일 이내이며 모집글이 모집 중 |
+| `ACCEPTED` / `DECLINED` | 작성자가 수락·거절 |
+| `WITHDRAWN` | 제안자가 철회 |
+| `EXPIRED` | 응답 없이 7일이 지났거나 모집글이 마감됨 |
+
+`counterpart`는 조회한 회원의 상대 기업입니다. `companyName` `isEmailVerified` `isBusinessVerified`는 항상 있고,
+`profile`(`region` `industry` `foundedYear` `homepageUrl`)은 제안자가 프로필 공유를 켰거나 제안이 수락됐을 때, `contact`(`email`
+`businessNumber`)는 수락됐을 때만 양쪽에 실립니다. 모집글 상세 응답의 `proposalCount`는 철회하지 않은 제안 수이고,
+로그인한 회원에게는 `myProposal`(`id` `status`)이 붙습니다. 같은 모집글에는 제안을 한 번만 보낼 수 있습니다
+(`uq_partner_proposal_recruitment_proposer`). 거절·만료·철회된 뒤에도 다시 보낼 수 없습니다.
+
 ## 내 계정·로그아웃
 
 ```http
@@ -234,6 +303,18 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 | 휴업·폐업 사업자 등록 시도 | 422 | `BUSINESS_NOT_ACTIVE` (`businessStatus`) |
 | 이미 기업을 등록한 계정의 재등록 | 409 | `COMPANY_ALREADY_REGISTERED` |
 | 다른 계정이 등록한 사업자등록번호 | 409 | `BUSINESS_NUMBER_ALREADY_REGISTERED` |
+| 기업을 등록하지 않은 회원의 모집글 작성·제안 보내기 | 403 | `COMPANY_REQUIRED` |
+| 모집글에 묶을 공고가 없거나 제공처에서 사라짐 | 404 | `RECRUITMENT_PROGRAM_NOT_FOUND` |
+| 접수가 끝난 공고에 모집글 작성 | 422 | `RECRUITMENT_PROGRAM_CLOSED` |
+| 모집 마감일이 오늘 이전이거나 공고 접수 마감 전날을 넘김 | 422 | `RECRUITMENT_DEADLINE_NOT_ALLOWED` (`latestAllowedDeadline`) |
+| 같은 공고에 이미 쓴 모집글이 있음 | 409 | `RECRUITMENT_ALREADY_EXISTS` |
+| 모집글 없음 | 404 | `RECRUITMENT_NOT_FOUND` |
+| 제안이 없거나 당사자가 아님 | 404 | `PROPOSAL_NOT_FOUND` |
+| 자기 모집글에 제안 | 422 | `PROPOSAL_OWN_RECRUITMENT` |
+| 마감된 모집글에 제안 | 422 | `RECRUITMENT_CLOSED` |
+| 같은 모집글에 이미 보낸 제안이 있음 | 409 | `PROPOSAL_ALREADY_SENT` |
+| 대기 중이 아닌 제안의 수락·거절·철회 | 409 | `PROPOSAL_NOT_PENDING` |
+| 작성자가 아닌 수락·거절, 제안자가 아닌 철회 | 403 | `PROPOSAL_ACTION_FORBIDDEN` |
 | Bizno 조회 키 미설정 / 연결 실패 / 시간 초과 / 응답 오류 | 503 / 503 / 504 / 502 | `BIZNO_NOT_CONFIGURED` `BIZNO_UNAVAILABLE` `BIZNO_TIMEOUT` `BIZNO_UPSTREAM_ERROR`·`BIZNO_INVALID_RESPONSE` |
 | 세션 쿠키 없음·서명 오류·절대/유휴 만료·로그아웃된 세션·삭제된 계정 | 401 | `AUTHENTICATION_REQUIRED` (`WWW-Authenticate: Bearer`) |
 | 정지된 계정의 로그인 또는 세션 사용 | 403 | `ACCOUNT_SUSPENDED` |

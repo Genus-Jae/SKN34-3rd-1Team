@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
+import { receivedAcceptedProposal, receivedPendingProposal, receivedProposalBox, sentPendingProposal, sentProposalBox } from './data/fixtures/partnerProposals'
+import { partnerRecruitmentDetail, partnerRecruitmentPage } from './data/fixtures/partnerRecruitments'
+import { supportPrograms } from './data/fixtures/supportPrograms'
 import type { Account } from './domain/entities/Account'
 import { loginMessages } from './presentation/features/auth/viewmodel/useLoginViewModel'
 import { signupMessages } from './presentation/features/auth/viewmodel/useSignupViewModel'
@@ -19,6 +22,10 @@ vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => (
 
 const memberAccount: Account = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null }
 const adminAccount: Account = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true, company: null }
+const companyAccount: Account = {
+  email: 'company@govbiz.local', role: 'USER', tier: 'COMPANY', emailVerified: false,
+  company: { companyName: '테스트 기업 주식회사', businessNumber: '1234567890' },
+}
 
 beforeEach(() => {
   // 작업 화면 진입 후 readiness 확인도 실제 서버에 연결하지 않습니다.
@@ -454,28 +461,125 @@ describe('기업 프로필 화면', () => {
 })
 
 describe('파트너 모집 화면', () => {
-  it('목록에서 모집글 상세로 이동해 매칭 결과와 제안 폼을 보여준다', () => {
+  beforeEach(() => {
+    vi.spyOn(appContainer.resolve('browsePartnerRecruitmentsUseCase'), 'execute').mockResolvedValue(partnerRecruitmentPage)
+    vi.spyOn(appContainer.resolve('browsePartnerProposalsUseCase'), 'execute').mockResolvedValue({ box: 'received', proposals: [], pendingCount: 0 })
+    vi.spyOn(appContainer.resolve('getPartnerRecruitmentDetailUseCase'), 'execute')
+      .mockImplementation(async (id) => (id === partnerRecruitmentDetail.id ? partnerRecruitmentDetail : null))
+  })
+
+  it('목록을 모집 API로 읽고 상세로 이동해 예시 매칭과 제안 폼을 보여준다', async () => {
     renderApp('/app/partners')
 
-    expect(
-      screen.getByRole('article', {
-        name: 'AI 실증 과제 데이터 구축·라벨링 참여기관 구합니다',
-      }),
-    ).toBeTruthy()
+    expect(await screen.findByRole('article', { name: 'AI 실증 과제 데이터 구축·라벨링 참여기관 구합니다' })).toBeTruthy()
+    expect(screen.getByText('4건 · 마감 임박순')).toBeTruthy()
+    expect(appContainer.resolve('browsePartnerRecruitmentsUseCase').execute).toHaveBeenCalledWith(
+      { keyword: '', seekingRole: '', region: '', mineOnly: false, sort: 'DEADLINE', page: 1 },
+      expect.any(AbortSignal),
+    )
+    expect(fetch).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getAllByRole('link', { name: '자세히 보기' })[0]!)
 
-    expect(screen.getByRole('heading', { name: '모집글 상세' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '모집글 상세' })).toBeTruthy()
+    expect(screen.getByText('AI 실증 과제 데이터 구축·라벨링 참여기관 구합니다')).toBeTruthy()
+    expect(screen.getByText('참여기관 1곳')).toBeTruthy()
     const proposal = screen.getByRole('form', { name: '참여 제안' })
     expect(within(proposal).getByLabelText('제안 메시지')).toBeTruthy()
-    // 확인이 필요한 항목은 일치로 표시하지 않습니다.
+    // 확인이 필요한 항목은 일치로 표시하지 않고, 매칭은 예시임을 밝힙니다.
     expect(screen.getAllByText('확인 필요').length).toBeGreaterThan(0)
+    expect(screen.getByText(/예시 비교입니다/)).toBeTruthy()
+    expect(within(proposal).queryByLabelText(/서류 상태도 공개/)).toBeNull()
   })
 
-  it('제안 메시지 글자 수를 세어 보여준다', () => {
-    renderApp('/app/partners/detail')
+  it('기업을 등록하지 않은 회원은 작성 대신 프로필 등록 안내를 본다', async () => {
+    renderApp('/app/partners', memberAccount)
+    expect(screen.getByRole('link', { name: '기업 등록 후 작성' }).getAttribute('href')).toBe('/app/profile')
+    await screen.findByRole('article', { name: /AI 실증 과제/ })
+    expect(screen.queryByText(/예시 일치/)).toBeNull()
 
-    const proposal = screen.getByRole('form', { name: '참여 제안' })
+    cleanup()
+    renderApp('/app/partners/new', memberAccount)
+    const guard = screen.getByRole('region', { name: '기업 등록 필요' })
+    expect(within(guard).getByRole('link', { name: '프로필에서 기업 등록' }).getAttribute('href')).toBe('/app/profile')
+    expect(screen.queryByRole('form', { name: '모집글 작성' })).toBeNull()
+
+    cleanup()
+    renderApp('/app/partners/detail?recruitmentId=101', memberAccount)
+    const matching = await screen.findByRole('region', { name: '우리 기업과의 매칭' })
+    expect(within(matching).getByRole('link', { name: '프로필에서 기업 등록' })).toBeTruthy()
+    expect(within(matching).queryByText('확인 필요')).toBeNull()
+  })
+
+  it('검색어·찾는 역할·지역·내 글 조건을 조회 파라미터로 보내고 첫 페이지로 돌아간다', async () => {
+    const browse = appContainer.resolve('browsePartnerRecruitmentsUseCase').execute as ReturnType<typeof vi.fn>
+    renderApp('/app/partners')
+    const panel = screen.getByRole('region', { name: '모집글 검색과 필터' })
+    await screen.findByRole('article', { name: /AI 실증 과제/ })
+
+    fireEvent.change(within(panel).getByRole('searchbox', { name: '모집글 검색' }), { target: { value: '스마트' } })
+    fireEvent.click(within(panel).getByRole('radio', { name: '주관기관' }))
+    fireEvent.click(within(panel).getByRole('radio', { name: '서울' }))
+    fireEvent.click(within(panel).getByRole('button', { name: '내가 쓴 모집글만' }))
+    fireEvent.click(within(panel).getByRole('radio', { name: '최근 등록순' }))
+
+    await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
+      { keyword: '스마트', seekingRole: 'LEAD', region: '서울', mineOnly: true, sort: 'RECENT', page: 1 },
+      expect.any(AbortSignal),
+    ))
+    expect(screen.getByText('4건 · 최근 등록순')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '검색·필터 초기화' }))
+    await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
+      { keyword: '', seekingRole: '', region: '', mineOnly: false, sort: 'RECENT', page: 1 },
+      expect.any(AbortSignal),
+    ))
+    expect(within(panel).getByRole('radio', { name: '전체 지역' })).toHaveProperty('checked', true)
+  })
+
+  it('조건에 맞는 글이 없으면 초기화를 안내하고, 조회에 실패하면 다시 시도할 수 있다', async () => {
+    const browse = appContainer.resolve('browsePartnerRecruitmentsUseCase').execute as ReturnType<typeof vi.fn>
+    browse.mockResolvedValueOnce({ ...partnerRecruitmentPage, recruitments: [], total: 0, totalPages: 0 })
+    renderApp('/app/partners')
+    expect(await screen.findByText(/아직 모집 중인 글이 없습니다/)).toBeTruthy()
+
+    browse.mockRejectedValueOnce(new Error('down'))
+    fireEvent.change(screen.getByRole('searchbox', { name: '모집글 검색' }), { target: { value: '없는 글' } })
+    expect(await screen.findByRole('region', { name: '모집글 불러오기 실패' })).toBeTruthy()
+
+    browse.mockResolvedValueOnce({ ...partnerRecruitmentPage, recruitments: [], total: 0, totalPages: 0 })
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(await screen.findByRole('region', { name: '검색 결과 없음' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '검색·필터 초기화' }))
+    expect(await screen.findAllByRole('article')).toHaveLength(4)
+  })
+
+  it('내가 쓴 모집글은 표시가 다르고 내 모집글 보기로 이어진다', async () => {
+    renderApp('/app/partners')
+    const mine = await screen.findByRole('article', { name: /문서 분류 AI 사업화 과제/ })
+    expect(within(mine).getByText('내가 쓴 모집글')).toBeTruthy()
+    expect(within(mine).getByRole('link', { name: '받은 제안 보기' }).getAttribute('href')).toBe('/app/partners/detail?recruitmentId=104')
+  })
+
+  it('링크 복사는 현재 주소를 클립보드에 쓰고, 쓸 수 없으면 안내만 한다', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderApp('/app/partners/detail?recruitmentId=101')
+    fireEvent.click(await screen.findByRole('button', { name: '링크 복사' }))
+    expect(await screen.findByRole('button', { name: '링크를 복사했습니다' })).toBeTruthy()
+    expect(writeText).toHaveBeenCalledWith(window.location.href)
+
+    cleanup()
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    renderApp('/app/partners/detail?recruitmentId=101')
+    fireEvent.click(await screen.findByRole('button', { name: '링크 복사' }))
+    expect(await screen.findByRole('button', { name: /복사할 수 없습니다/ })).toBeTruthy()
+  })
+
+  it('제안 메시지 글자 수를 세어 보여준다', async () => {
+    renderApp('/app/partners/detail?recruitmentId=101')
+
+    const proposal = await screen.findByRole('form', { name: '참여 제안' })
     fireEvent.change(within(proposal).getByLabelText('제안 메시지'), {
       target: { value: '안녕하세요' },
     })
@@ -506,69 +610,284 @@ describe('파트너 모집 화면', () => {
     expect(screen.queryByRole('button', { name: '데이터 구축 삭제' })).toBeNull()
   })
 
-  it('모집글 입력을 확인하면 저장하지 않고 데모 목록으로 돌아간다', () => {
+  it('공고를 검색해 고르면 모집 마감일은 접수 마감 전날까지만 고를 수 있다', async () => {
+    const browsePrograms = vi.spyOn(appContainer.resolve('browseSupportProgramsUseCase'), 'execute')
+      .mockResolvedValue({ programs: supportPrograms.slice(0, 2), total: 2, page: 1, pageSize: 8, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
     renderApp('/app/partners/new')
-    expect(screen.getByText('데모 입력 · 저장되지 않음')).toBeTruthy()
-    expect(screen.queryByText(/임시 저장됨/)).toBeNull()
-    fireEvent.change(screen.getByLabelText('제목'), { target: { value: '데모 모집글' } })
-    fireEvent.change(screen.getByLabelText('본문'), { target: { value: '데모 소개' } })
-    fireEvent.click(screen.getByRole('button', { name: '입력 확인 후 목록으로' }))
+    const form = screen.getByRole('form', { name: '모집글 작성' })
 
-    expect(screen.getByRole('heading', { name: '함께 신청할 기업 찾기' })).toBeTruthy()
-    expect(screen.queryByRole('article', { name: '데모 모집글' })).toBeNull()
+    fireEvent.change(within(form).getByLabelText('공고 검색'), { target: { value: '서울' } })
+    const results = await screen.findByRole('list', { name: '공고 검색 결과' })
+    expect(browsePrograms).toHaveBeenCalledWith(
+      expect.objectContaining({ keyword: '서울', status: 'OPEN', page: 1 }),
+      expect.any(AbortSignal),
+    )
+    fireEvent.click(within(results).getByRole('button', { name: '2026 서울 AI 서비스 사업화 지원사업 선택' }))
+
+    expect(within(form).getByText('2026 서울 AI 서비스 사업화 지원사업')).toBeTruthy()
+    expect(within(form).queryByLabelText('공고 검색')).toBeNull()
+    const deadline = within(form).getByLabelText('모집 마감일') as HTMLInputElement
+    expect(deadline.max).toBe('2026-09-14')
+    expect(within(form).getByText(/2026-09-14까지 고를 수 있으며/)).toBeTruthy()
+
+    fireEvent.click(within(form).getByRole('button', { name: '공고 변경' }))
+    expect(within(form).getByLabelText('공고 검색')).toBeTruthy()
+  })
+
+  it('오늘 접수가 끝나는 공고는 고를 수 없다', async () => {
+    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    vi.spyOn(appContainer.resolve('browseSupportProgramsUseCase'), 'execute')
+      .mockResolvedValue({ programs: [{ ...supportPrograms[0]!, applicationEndDate: today }], total: 1, page: 1, pageSize: 8, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
+    renderApp('/app/partners/new')
+    const form = screen.getByRole('form', { name: '모집글 작성' })
+    fireEvent.change(within(form).getByLabelText('공고 검색'), { target: { value: '서울' } })
+    const results = await screen.findByRole('list', { name: '공고 검색 결과' })
+    expect((within(results).getByRole('button', { name: /선택$/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(results).getByText(/오늘 접수 마감/)).toBeTruthy()
+    expect(within(form).queryByRole('button', { name: '공고 변경' })).toBeNull()
+  })
+
+  it('공고 없이 제출하면 등록하지 않고 안내하며, 등록에 성공하면 새 모집글 상세로 이동한다', async () => {
+    vi.spyOn(appContainer.resolve('browseSupportProgramsUseCase'), 'execute')
+      .mockResolvedValue({ programs: supportPrograms.slice(0, 1), total: 1, page: 1, pageSize: 8, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
+    const create = vi.spyOn(appContainer.resolve('createPartnerRecruitmentUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'created', recruitment: partnerRecruitmentDetail })
+    renderApp('/app/partners/new')
+    const form = screen.getByRole('form', { name: '모집글 작성' })
+
+    fireEvent.click(within(form).getByRole('button', { name: '모집글 등록' }))
+    expect(screen.getByRole('alert').textContent).toContain('공고를 먼저 골라')
+    expect(create).not.toHaveBeenCalled()
+
+    fireEvent.change(within(form).getByLabelText('공고 검색'), { target: { value: '서울' } })
+    fireEvent.click(within(await screen.findByRole('list', { name: '공고 검색 결과' })).getByRole('button', { name: /선택$/ }))
+    fireEvent.change(within(form).getByLabelText('모집 마감일'), { target: { value: '2026-09-15' } })
+    fireEvent.click(within(form).getByRole('button', { name: '모집글 등록' }))
+    expect(screen.getByRole('alert').textContent).toContain('2026-09-14까지')
+
+    fireEvent.change(within(form).getByLabelText('모집 마감일'), { target: { value: '2026-09-14' } })
+    fireEvent.change(within(form).getByLabelText('희망 지역'), { target: { value: '서울' } })
+    fireEvent.change(within(form).getByLabelText('찾는 기업 수'), { target: { value: '2' } })
+    fireEvent.change(within(form).getByLabelText(/희망 업력/), { target: { value: '3' } })
+    fireEvent.change(within(form).getByLabelText('제목'), { target: { value: 'AI 실증 참여기관 구합니다' } })
+    fireEvent.change(within(form).getByLabelText('본문'), { target: { value: '라벨링 운영을 맡아 주실 참여기관을 찾습니다.' } })
+    fireEvent.click(within(form).getByRole('button', { name: '모집글 등록' }))
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith({
+      sourceCode: 'BIZINFO',
+      sourceProgramId: 'fixture-seoul-ai-business',
+      title: 'AI 실증 참여기관 구합니다',
+      body: '라벨링 운영을 맡아 주실 참여기관을 찾습니다.',
+      ownRole: 'PARTICIPANT',
+      seekingRole: 'LEAD',
+      seekingCount: 2,
+      region: '서울',
+      minimumCompanyAgeYears: 3,
+      capabilities: [],
+      recruitmentDeadline: '2026-09-14',
+    }))
+    expect(await screen.findByRole('heading', { name: '모집글 상세' })).toBeTruthy()
+    expect(screen.getByText('AI 실증 과제 데이터 구축·라벨링 참여기관 구합니다')).toBeTruthy()
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('모집 마감일은 연결한 공고 마감일 이전만 고를 수 있다', () => {
+  it('같은 공고에 이미 쓴 모집글이 있으면 서버 안내를 보여 주고 화면에 남는다', async () => {
+    vi.spyOn(appContainer.resolve('browseSupportProgramsUseCase'), 'execute')
+      .mockResolvedValue({ programs: supportPrograms.slice(0, 1), total: 1, page: 1, pageSize: 8, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
+    vi.spyOn(appContainer.resolve('createPartnerRecruitmentUseCase'), 'execute').mockResolvedValue({ outcome: 'already-exists' })
     renderApp('/app/partners/new')
-
     const form = screen.getByRole('form', { name: '모집글 작성' })
-    const deadline = within(form).getByLabelText('모집 마감일') as HTMLInputElement
 
-    expect(deadline.max).toBe('2026-09-29')
-    fireEvent.change(deadline, { target: { value: '2026-09-25' } })
-    expect(deadline.value).toBe('2026-09-25')
-  })
+    fireEvent.change(within(form).getByLabelText('공고 검색'), { target: { value: '서울' } })
+    fireEvent.click(within(await screen.findByRole('list', { name: '공고 검색 결과' })).getByRole('button', { name: /선택$/ }))
+    fireEvent.change(within(form).getByLabelText('모집 마감일'), { target: { value: '2026-09-14' } })
+    fireEvent.change(within(form).getByLabelText('제목'), { target: { value: '제목' } })
+    fireEvent.change(within(form).getByLabelText('본문'), { target: { value: '본문' } })
+    fireEvent.click(within(form).getByRole('button', { name: '모집글 등록' }))
 
-  it('공고 마감 당일은 모집 마감일로 제출하지 못한다', () => {
-    renderApp('/app/partners/new')
-    fireEvent.change(screen.getByLabelText('모집 마감일'), { target: { value: '2026-09-30' } })
-    fireEvent.submit(screen.getByRole('form', { name: '모집글 작성' }))
-    expect(screen.getByRole('alert').textContent).toContain('2026-09-29')
+    expect((await screen.findByRole('alert')).textContent).toContain('이미 내 모집글이 있습니다')
     expect(screen.getByRole('heading', { name: '모집글 작성', level: 1 })).toBeTruthy()
   })
 
-  it('상세가 없는 카드는 다른 모집글 상세로 연결하지 않는다', () => {
-    renderApp('/app/partners')
-    expect(screen.getAllByRole('link', { name: '자세히 보기' }).length).toBe(1)
-    expect(screen.getByRole('link', { name: '자세히 보기' }).getAttribute('href')).toBe('/app/partners/detail?recruitmentId=ai-labeling')
-    const other = screen.getByRole('article', { name: /스마트공장 고도화/ })
-    expect(within(other).queryByRole('link')).toBeNull()
-    expect(within(other).getByText('상세 · 준비 중')).toBeTruthy()
-    expect(screen.queryByRole('tablist')).toBeNull()
+  it('작성 화면은 세션 기업을 보여 주고 전국이 맨 앞인 지역 목록과 숫자 입력을 쓰며 제안 설정은 두지 않는다', () => {
+    renderApp('/app/partners/new')
+    expect(screen.getByText('테스트 기업 주식회사')).toBeTruthy()
+    expect(screen.getByText('사업자 확인')).toBeTruthy()
+    expect(screen.getByText('이메일 인증 전')).toBeTruthy()
+
+    const region = screen.getByLabelText('희망 지역') as HTMLSelectElement
+    expect(region.value).toBe('전국')
+    expect(within(region).getAllByRole('option')[0]!.textContent).toBe('전국')
+    expect(within(region).getByRole('option', { name: '서울' })).toBeTruthy()
+    fireEvent.change(region, { target: { value: '부산' } })
+    expect(region.value).toBe('부산')
+    const seekingCount = screen.getByLabelText('찾는 기업 수') as HTMLInputElement
+    expect(seekingCount.type).toBe('number')
+    expect(seekingCount.value).toBe('1')
+    expect(seekingCount.max).toBe('9')
+    const companyAge = screen.getByLabelText(/희망 업력/) as HTMLInputElement
+    expect(companyAge.type).toBe('number')
+    expect(companyAge.value).toBe('')
+    expect(companyAge.placeholder).toBe('무관')
+
+    expect(screen.queryByText('이메일 인증을 마친 기업만 제안 가능')).toBeNull()
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.getByText(/참여 제안은 기업을 등록한 회원끼리/)).toBeTruthy()
   })
 
-  it.each(['smart-factory', '', 'ai-labeling&recruitmentId=smart-factory'])('준비되지 않은 상세 식별자는 첫 예시로 대체하지 않는다: %s', (id) => {
+  it.each(['999', '', 'abc', '101&recruitmentId=999'])('없거나 잘못된 상세 식별자는 다른 글로 대체하지 않는다: %s', async (id) => {
     renderApp(`/app/partners/detail?recruitmentId=${id}`)
-    expect(screen.getByRole('heading', { name: '준비되지 않은 모집글 상세입니다' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '모집글을 찾을 수 없습니다' })).toBeTruthy()
     expect(screen.queryByRole('form', { name: '참여 제안' })).toBeNull()
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('미연결 참여 제안은 보내진 것처럼 처리하지 않는다', () => {
-    renderApp('/app/partners/detail?recruitmentId=ai-labeling')
-    const button = screen.getByRole('button', { name: '참여 제안 보내기 · 준비 중' }) as HTMLButtonElement
-    expect(button.disabled).toBe(true)
-    expect(screen.getByText(/제안은 전송되지 않습니다/)).toBeTruthy()
-    fireEvent.click(button)
+  it('참여 제안을 보내면 상태 카드로 바뀌고 제안함으로 이어진다', async () => {
+    const send = vi.spyOn(appContainer.resolve('sendPartnerProposalUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'sent', proposal: sentPendingProposal })
+    renderApp('/app/partners/detail?recruitmentId=101')
+    const proposal = await screen.findByRole('form', { name: '참여 제안' })
+
+    fireEvent.click(within(proposal).getByRole('button', { name: '참여 제안 보내기' }))
+    expect(screen.getByRole('alert').textContent).toContain('제안 메시지를 입력')
+    expect(send).not.toHaveBeenCalled()
+
+    fireEvent.change(within(proposal).getByLabelText('제안 메시지'), { target: { value: '데이터 구축을 맡겠습니다.' } })
+    fireEvent.click(within(proposal).getByLabelText(/기업 기본정보 함께 보내기/))
+    fireEvent.click(within(proposal).getByRole('button', { name: '참여 제안 보내기' }))
+
+    await waitFor(() => expect(send).toHaveBeenCalledWith(101, { message: '데이터 구축을 맡겠습니다.', shareProfile: false }))
+    const status = await screen.findByRole('region', { name: '내 제안 상태' })
+    expect(within(status).getByText(/제안을 보냈습니다 · 응답 대기/)).toBeTruthy()
+    expect(within(status).getByRole('link', { name: '제안함 열기' }).getAttribute('href')).toBe('/app/proposals')
+    expect(screen.queryByRole('form', { name: '참여 제안' })).toBeNull()
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('아직 화면이 없는 기업 프로필 보기는 링크로 만들지 않는다', () => {
-    renderApp('/app/partners/detail')
+  it('이미 제안한 모집글과 마감된 모집글에는 새 제안을 받지 않는다', async () => {
+    const detail = appContainer.resolve('getPartnerRecruitmentDetailUseCase').execute as ReturnType<typeof vi.fn>
+    detail.mockResolvedValueOnce({ ...partnerRecruitmentDetail, myProposal: { id: 303, status: 'DECLINED' } })
+    renderApp('/app/partners/detail?recruitmentId=101')
+    const status = await screen.findByRole('region', { name: '내 제안 상태' })
+    expect(within(status).getByText(/거절/)).toBeTruthy()
+    expect(within(status).getByText(/다시 제안할 수 없습니다/)).toBeTruthy()
 
+    cleanup()
+    detail.mockResolvedValueOnce({ ...partnerRecruitmentDetail, status: 'CLOSED' })
+    renderApp('/app/partners/detail?recruitmentId=101')
+    const button = await screen.findByRole('button', { name: '모집이 마감됐습니다' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+  })
+
+  it('기업 미등록 회원의 제안 폼은 등록 안내와 함께 잠긴다', async () => {
+    renderApp('/app/partners/detail?recruitmentId=101', memberAccount)
+    const proposal = await screen.findByRole('form', { name: '참여 제안' })
+    expect(within(proposal).getByRole('link', { name: '프로필에서 기업 등록' })).toBeTruthy()
+    expect((within(proposal).getByRole('button', { name: '참여 제안 보내기' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('내 모집글 상세는 이 글로 온 제안 요약과 제안함 링크를 보여준다', async () => {
+    vi.spyOn(appContainer.resolve('getPartnerRecruitmentDetailUseCase'), 'execute')
+      .mockResolvedValue({ ...partnerRecruitmentDetail, id: 104, isMine: true, proposalCount: 2 })
+    vi.spyOn(appContainer.resolve('browsePartnerProposalsUseCase'), 'execute').mockResolvedValue(receivedProposalBox)
+    renderApp('/app/partners/detail?recruitmentId=104')
+    const received = await screen.findByRole('region', { name: '받은 제안' })
+    expect(await within(received).findByText('데이터브릿지 주식회사')).toBeTruthy()
+    expect(within(received).getByText('응답 대기')).toBeTruthy()
+    expect(within(received).getByText('그린푸드랩')).toBeTruthy()
+    expect(within(received).getByRole('link', { name: '제안함에서 수락·거절' }).getAttribute('href')).toBe('/app/proposals')
+    expect(screen.queryByRole('form', { name: '참여 제안' })).toBeNull()
+    expect(screen.getByText('2건')).toBeTruthy()
+  })
+
+  it('아직 화면이 없는 기업 프로필 보기는 링크로 만들지 않는다', async () => {
+    renderApp('/app/partners/detail?recruitmentId=101')
+
+    expect(await screen.findByText('기업 프로필 보기 · 준비 중')).toBeTruthy()
     expect(screen.queryByRole('link', { name: /기업 프로필 보기/ })).toBeNull()
-    expect(screen.getByText('기업 프로필 보기 · 준비 중')).toBeTruthy()
+  })
+})
+
+describe('제안함 화면', () => {
+  beforeEach(() => {
+    vi.spyOn(appContainer.resolve('browsePartnerRecruitmentsUseCase'), 'execute').mockResolvedValue(partnerRecruitmentPage)
+    vi.spyOn(appContainer.resolve('browsePartnerProposalsUseCase'), 'execute')
+      .mockImplementation(async (box) => (box === 'sent' ? sentProposalBox : receivedProposalBox))
+  })
+
+  it('사이드바 제안함 배지는 받은 제안 대기 건수를 보여주고 받은 제안함으로 이동한다', async () => {
+    renderApp('/app/partners', companyAccount)
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    const menu = await within(sidebar).findByRole('link', { name: /제안함/ })
+    expect(menu.textContent).toContain('1')
+    expect(menu.getAttribute('href')).toBe('/app/proposals')
+
+    fireEvent.click(menu)
+    expect(screen.getByRole('heading', { name: '제안함' })).toBeTruthy()
+    const panel = await screen.findByRole('tabpanel', { name: '받은 제안' })
+    expect(within(panel).getAllByRole('article')).toHaveLength(2)
+    expect(within(panel).getByRole('article', { name: '데이터브릿지 주식회사 제안' })).toBeTruthy()
+    // 수락 전에는 담당자 연락처가 없고, 수락된 제안에만 이메일이 보입니다.
+    const pending = within(panel).getByRole('article', { name: '데이터브릿지 주식회사 제안' })
+    expect(within(pending).queryByText('수락됨 · 담당자 연락처')).toBeNull()
+    expect(within(pending).queryByRole('link', { name: /@/ })).toBeNull()
+    const accepted = within(panel).getByRole('article', { name: '그린푸드랩 제안' })
+    expect(within(accepted).getByRole('link', { name: 'manager@greenfood.example' }).getAttribute('href')).toBe('mailto:manager@greenfood.example')
+    expect(within(accepted).queryByRole('button', { name: '수락' })).toBeNull()
+  })
+
+  it('받은 제안은 확인을 거쳐 수락하고 결과로 카드가 바뀐다', async () => {
+    const respond = vi.spyOn(appContainer.resolve('respondPartnerProposalUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'updated', proposal: { ...receivedPendingProposal, ...receivedAcceptedProposal, id: 301, counterpart: { ...receivedAcceptedProposal.counterpart, companyName: '데이터브릿지 주식회사' } } })
+    renderApp('/app/proposals', companyAccount)
+    const pending = await screen.findByRole('article', { name: '데이터브릿지 주식회사 제안' })
+
+    fireEvent.click(within(pending).getByRole('button', { name: '수락' }))
+    const confirm = within(pending).getByRole('group', { name: '수락 확인' })
+    expect(confirm.textContent).toContain('담당자 이메일과 기업 기본정보가 서로에게 공개')
+    fireEvent.click(within(confirm).getByRole('button', { name: '취소' }))
+    expect(within(pending).queryByRole('group', { name: '수락 확인' })).toBeNull()
+    expect(respond).not.toHaveBeenCalled()
+
+    fireEvent.click(within(pending).getByRole('button', { name: '거절' }))
+    expect(within(pending).getByRole('group', { name: '거절 확인' })).toBeTruthy()
+    fireEvent.click(within(pending).getByRole('button', { name: '취소' }))
+    fireEvent.click(within(pending).getByRole('button', { name: '수락' }))
+    fireEvent.click(within(pending).getByRole('button', { name: '수락 확정' }))
+
+    await waitFor(() => expect(respond).toHaveBeenCalledWith(301, 'accept'))
+    expect(await within(pending).findByText('수락')).toBeTruthy()
+    expect(within(pending).getByRole('link', { name: 'manager@greenfood.example' })).toBeTruthy()
+    expect(within(pending).queryByRole('button', { name: '거절' })).toBeNull()
+  })
+
+  it('보낸 제안은 철회할 수 있고 이미 처리된 제안이면 안내하고 다시 읽는다', async () => {
+    const browse = appContainer.resolve('browsePartnerProposalsUseCase').execute as ReturnType<typeof vi.fn>
+    const respond = vi.spyOn(appContainer.resolve('respondPartnerProposalUseCase'), 'execute')
+      .mockResolvedValueOnce({ outcome: 'not-pending' })
+    renderApp('/app/proposals', companyAccount)
+    await screen.findByRole('tabpanel', { name: '받은 제안' })
+
+    fireEvent.click(screen.getByRole('tab', { name: '보낸 제안' }))
+    const panel = await screen.findByRole('tabpanel', { name: '보낸 제안' })
+    const pending = within(panel).getByRole('article', { name: '데이터브릿지 주식회사 제안' })
+    const declined = within(panel).getByRole('article', { name: '비전솔루션 제안' })
+    expect(within(declined).queryByRole('button')).toBeNull()
+    expect(within(declined).getByText('거절')).toBeTruthy()
+
+    fireEvent.click(within(pending).getByRole('button', { name: '철회' }))
+    fireEvent.click(within(pending).getByRole('button', { name: '철회 확정' }))
+    await waitFor(() => expect(respond).toHaveBeenCalledWith(303, 'withdraw'))
+    expect((await screen.findByRole('alert')).textContent).toContain('이미 처리됐거나 만료된')
+    await waitFor(() => expect(browse).toHaveBeenLastCalledWith('sent', expect.any(AbortSignal)))
+  })
+
+  it('기업을 등록하지 않은 회원은 제안함에서 등록 안내를 보고 조회하지 않는다', () => {
+    const browse = appContainer.resolve('browsePartnerProposalsUseCase').execute as ReturnType<typeof vi.fn>
+    renderApp('/app/proposals', memberAccount)
+    expect(screen.getByRole('region', { name: '기업 등록 필요' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: '제안 없음' })).toBeTruthy()
+    expect(browse).not.toHaveBeenCalled()
   })
 })
 
@@ -619,5 +938,7 @@ function renderApp(initialEntry: string, account: Account | null = defaultAccoun
 
 function defaultAccountFor(initialEntry: string): Account | null {
   if (initialEntry.startsWith('/login') || initialEntry.startsWith('/signup')) return null
-  return initialEntry.startsWith('/app/admin') ? adminAccount : memberAccount
+  if (initialEntry.startsWith('/app/admin')) return adminAccount
+  // 파트너 모집 화면은 기업을 등록한 회원 기준으로 확인하고, 미등록 회원은 각 테스트가 따로 넘깁니다.
+  return initialEntry.startsWith('/app/partners') || initialEntry.startsWith('/app/proposals') ? companyAccount : memberAccount
 }

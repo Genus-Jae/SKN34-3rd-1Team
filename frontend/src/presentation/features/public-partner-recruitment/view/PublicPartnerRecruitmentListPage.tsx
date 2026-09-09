@@ -1,31 +1,40 @@
 import { Link } from 'react-router'
 
-import type { PartnerRecruitment } from '../../../../domain/entities/PartnerRecruitment'
+import type { PartnerRecruitmentSummary } from '../../../../domain/entities/PartnerRecruitment'
 import { workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
+import {
+  companyInitial,
+  companySummaryLine,
+  programDeadlineLabel,
+  recruitmentConditionTags,
+  recruitmentDeadlineLabel,
+} from '../../../shared/partner-recruitment/partnerRecruitmentLabels'
 import { publicPaths } from '../../../shared/routes/appPaths'
 import { usePublicPartnerRecruitmentListViewModel } from '../viewmodel/usePublicPartnerRecruitmentListViewModel'
 import { publicPartnerRecruitmentStyles as styles } from './PublicPartnerRecruitment.styles'
 
-function RecruitmentCard({ recruitment, availableDetailId }: { recruitment: PartnerRecruitment; availableDetailId: string }) {
+function RecruitmentCard({ recruitment }: { recruitment: PartnerRecruitmentSummary }) {
   return (
     <article className={styles.card} aria-label={recruitment.title}>
       <div className={styles.cardTop}>
         <span className={workspaceTagClassName('ok')}>기업마당 공고</span>
-        <span className={styles.cardDeadline}>{recruitment.recruitmentDeadline}</span>
+        <span className={styles.cardDeadline}>
+          {recruitment.status === 'CLOSED' ? '모집 마감' : recruitmentDeadlineLabel(recruitment.recruitmentDeadline)}
+        </span>
       </div>
 
       <div className="flex flex-col gap-[0.2rem]">
         <h3 className={styles.cardTitle}>{recruitment.title}</h3>
         <p className={styles.cardProgram}>
-          {recruitment.programTitle} · {recruitment.programOrganization} · {recruitment.programDeadline}
+          {recruitment.program.title} · {recruitment.program.organization} · {programDeadlineLabel(recruitment.program.applicationEndDate)}
         </p>
       </div>
 
       <div className={styles.authorRow}>
-        <span className={styles.authorAvatar} aria-hidden="true">{recruitment.company.initial}</span>
+        <span className={styles.authorAvatar} aria-hidden="true">{companyInitial(recruitment.company.companyName)}</span>
         <span className="min-w-0">
-          <span className={styles.authorName}>{recruitment.company.name}</span>
-          <span className={styles.authorSummary}>{recruitment.company.profileSummary}</span>
+          <span className={styles.authorName}>{recruitment.company.companyName}</span>
+          <span className={styles.authorSummary}>{companySummaryLine(recruitment.company)}</span>
         </span>
         <span className={`ml-auto ${workspaceTagClassName(recruitment.company.isEmailVerified ? 'ok' : 'muted')}`}>
           {recruitment.company.isEmailVerified ? '이메일 인증' : '인증 전'}
@@ -33,23 +42,19 @@ function RecruitmentCard({ recruitment, availableDetailId }: { recruitment: Part
       </div>
 
       <div className={styles.tagRow}>
-        {recruitment.conditionTags.map((tag) => (
+        {recruitmentConditionTags(recruitment).map((tag) => (
           <span className={workspaceTagClassName('muted')} key={tag}>{tag}</span>
         ))}
       </div>
 
       <div className={styles.cardFooter}>
         <span className={styles.cardFooterNote}>제안 {recruitment.proposalCount}건</span>
-        {recruitment.id === availableDetailId ? (
-          <Link
-            className={workspacePageStyles.primaryButton}
-            to={`${publicPaths.partnerDetail}?${new URLSearchParams({ recruitmentId: recruitment.id })}`}
-          >
-            자세히 보기
-          </Link>
-        ) : (
-          <span className={workspacePageStyles.pendingLink} aria-disabled="true">상세 · 준비 중</span>
-        )}
+        <Link
+          className={workspacePageStyles.primaryButton}
+          to={`${publicPaths.partnerDetail}?${new URLSearchParams({ recruitmentId: String(recruitment.id) })}`}
+        >
+          자세히 보기
+        </Link>
       </div>
     </article>
   )
@@ -61,9 +66,12 @@ function RecruitmentCard({ recruitment, availableDetailId }: { recruitment: Part
  */
 export function PublicPartnerRecruitmentListPage() {
   const {
+    phase,
     recruitments,
-    availableDetailId,
-    remainingRecruitmentCount,
+    totalPages,
+    currentPage,
+    goToPage,
+    retry,
     resultSummary,
     loginPath,
     signupPath,
@@ -84,18 +92,41 @@ export function PublicPartnerRecruitmentListPage() {
       <div className={styles.columns}>
         <div className={styles.column}>
           <div className={styles.toolbar}>
-            <span className={styles.resultCount}>{resultSummary}</span>
+            <span className={styles.resultCount} aria-live="polite">{resultSummary}</span>
           </div>
-          <div className={styles.cardGrid}>
-            {recruitments.map((recruitment) => (
-              <RecruitmentCard key={recruitment.id} recruitment={recruitment} availableDetailId={availableDetailId} />
-            ))}
-          </div>
-          <div className={styles.moreRow}>
-            <button className={workspacePageStyles.secondaryButton} type="button" disabled>
-              모집글 {remainingRecruitmentCount}건 더 보기 · 준비 중
-            </button>
-          </div>
+          {phase === 'failed' ? (
+            <section className={styles.card} aria-label="모집글 불러오기 실패">
+              <p className={styles.description}>모집글을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
+              <button className={workspacePageStyles.quietLink} type="button" onClick={retry}>다시 시도</button>
+            </section>
+          ) : phase === 'loading' && recruitments.length === 0 ? (
+            <section className={styles.card} aria-label="모집글 불러오는 중">
+              <p className={styles.description}>모집글을 불러오는 중입니다.</p>
+            </section>
+          ) : recruitments.length === 0 ? (
+            <section className={styles.card} aria-label="모집글 없음">
+              <p className={styles.description}>아직 모집 중인 글이 없습니다. 로그인해 첫 모집글을 올려 보세요.</p>
+            </section>
+          ) : (
+            <>
+              <div className={styles.cardGrid}>
+                {recruitments.map((recruitment) => (
+                  <RecruitmentCard key={recruitment.id} recruitment={recruitment} />
+                ))}
+              </div>
+              {totalPages > 1 ? (
+                <nav className={styles.moreRow} aria-label="모집글 페이지">
+                  <button className={workspacePageStyles.secondaryButton} type="button" disabled={currentPage <= 1} onClick={() => goToPage(currentPage - 1)}>
+                    이전
+                  </button>
+                  <span className={styles.resultCount}>{currentPage} / {totalPages}</span>
+                  <button className={workspacePageStyles.secondaryButton} type="button" disabled={currentPage >= totalPages} onClick={() => goToPage(currentPage + 1)}>
+                    다음
+                  </button>
+                </nav>
+              ) : null}
+            </>
+          )}
         </div>
 
         <aside className={styles.column} aria-label="로그인 안내">

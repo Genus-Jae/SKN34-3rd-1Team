@@ -121,6 +121,11 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `POST /api/v1/auth/dev-login` | `ACCOUNT_DEV_LOGIN_ENABLED=true`일 때만 등록되는 개발용 시드 로그인 |
 | `GET /api/v1/me/company/lookup` | 로그인한 회원이 사업자등록번호로 국세청 등록 여부·상호·사업자 상태를 미리 보기(Bizno) |
 | `GET` `POST` `PUT /api/v1/me/company` | 내 기업 조회·등록(계속사업자만, 201)·담당자 입력 항목 수정 |
+| `GET /api/v1/partners/recruitments`, `GET .../{id}` | 파트너 모집글 목록(검색·찾는 역할·지역·내 글·정렬·페이지)과 상세. 세션 없이도 읽기 가능 |
+| `POST /api/v1/partners/recruitments` | 기업을 등록한 회원이 접수 중인 공고 하나에 모집글 작성(201). 공고당 하나 |
+| `POST /api/v1/partners/recruitments/{id}/proposals` | 기업을 등록한 회원이 남의 모집글에 참여 제안 보내기(201). 모집글당 하나 |
+| `GET /api/v1/partners/proposals/{id}`, `POST .../accept` `.../decline` `.../withdraw` | 당사자만 제안 조회, 작성자의 수락·거절, 제안자의 철회 |
+| `GET /api/v1/me/proposals?box=received\|sent` | 받은·보낸 제안함과 대기 건수 |
 
 ### 직접 조건으로 찾기
 
@@ -342,6 +347,13 @@ account/
 ├── helper                # HS256 JWT 발급·검증·해시, 세션 쿠키 발급·읽기, 이메일 정규화
 ├── web                   # Account 파라미터 resolver, Origin 검사 interceptor와 MVC 등록
 └── config                # BCrypt, 세션·개발 로그인 설정
+partner/
+├── controller            # 파트너 모집글 목록·상세·작성, 제안 보내기·수락·거절·철회, 제안함 HTTP 진입점
+│   └── dto               # 공개 요청·응답 계약
+├── service               # 작성·제안 조건(기업 등록·공고 접수 중·마감일·공고당 하나·당사자) 확인과 조회
+├── repository            # 모집글·제안 저장, 기업·계정·공고 조인 조회, 검색·필터·정렬·페이지, 제안 수
+│   └── mapper            # MyBatis Mapper, DbRow
+└── domain                # 모집글·제안·역할 업무 모델, 조회 시점 모집·제안 상태 계산
 _health                    # Core API Health
 _health_ai_service         # AI Service Health의 Controller → Service → Client
 _sampleitem                # 학습 예제
@@ -373,8 +385,10 @@ SQL은 [`SupportProgramMapper.xml`](src/main/resources/mybatis/supportprogram/re
   테이블, [V4](src/main/resources/db/migration/V4__create_support_program_sync_status.sql)는 공개 스냅샷의
   세대·지문·공고 수·색인 준비와 최근 동기화 결과,
   [V5](src/main/resources/db/migration/V5__create_account.sql)는 계정과 세션 테이블,
-  [V6](src/main/resources/db/migration/V6__create_company.sql)는 계정당 하나인 기업 테이블(사업자번호 UNIQUE)을 만듭니다.
-  [V7](src/main/resources/db/migration/V7__add_support_program_startup_details.sql)은 K-Startup 전용 분류 JSON과 형식·제공처 제약을 추가합니다.
+  [V6](src/main/resources/db/migration/V6__create_company.sql)는 계정당 하나인 기업 테이블(사업자번호 UNIQUE),
+  [V7](src/main/resources/db/migration/V7__add_support_program_startup_details.sql)은 K-Startup 전용 분류 JSON과 형식·제공처 제약,
+  [V8](src/main/resources/db/migration/V8__create_partner_recruitment.sql)은 계정·기업·공고에 묶인 파트너 모집글 테이블,
+  [V9](src/main/resources/db/migration/V9__create_partner_proposal.sql)은 모집글과 제안 계정·기업에 묶인 파트너 제안 테이블을 만듭니다.
   적용된 migration은 수정하지 않고 새 버전을 추가합니다.
 - 전체 수집·검증·색인이 끝난 뒤 최신 시작 세대만 공개합니다. 해당 제공처 행 미노출 처리와 UPSERT를
   하나의 짧은 DB transaction으로 묶고, 같은 transaction에서 스냅샷 지문·공고 수·`indexReady=true`·성공

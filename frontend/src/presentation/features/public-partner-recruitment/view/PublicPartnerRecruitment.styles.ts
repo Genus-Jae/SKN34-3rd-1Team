@@ -52,8 +52,6 @@ export const publicPartnerRecruitmentStyles = {
   rawBox: 'flex flex-col gap-1 rounded-[0.85rem] bg-[#f6f7f8] p-[0.7rem] text-[0.75rem] text-[#4d597c]',
   rawBoxLabel: 'font-bold text-app-ink',
   bodyParagraph: 'm-0 text-[0.88rem] leading-[1.7]',
-  preparationItem: 'flex items-center gap-2 text-[0.8rem]',
-  preparationDot: 'inline-block size-[6px] shrink-0 rounded-full bg-brand-primary',
   disclaimer: 'm-0 text-[0.72rem] leading-[1.55] text-sample-muted',
   flowRow: 'flex flex-wrap items-center gap-[0.35rem] text-[0.72rem] font-bold text-[#4d597c]',
   flowStep: 'inline-flex rounded-[0.35rem] border border-sample-border bg-white px-[0.45rem] py-[0.25rem]',

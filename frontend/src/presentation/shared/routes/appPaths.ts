@@ -10,6 +10,7 @@ export const appPaths = {
   partners: `${APP_PREFIX}/partners`,
   partnerDetail: `${APP_PREFIX}/partners/detail`,
   partnerNew: `${APP_PREFIX}/partners/new`,
+  proposals: `${APP_PREFIX}/proposals`,
   profile: `${APP_PREFIX}/profile`,
   admin: `${APP_PREFIX}/admin`,
   adminMembers: `${APP_PREFIX}/admin/members`,
@@ -19,6 +20,8 @@ export const appPaths = {
 
 export const publicPaths = {
   landing: '/',
+  login: '/login',
+  signup: '/signup',
   pricing: '/pricing',
   partners: '/partners',
   partnerDetail: '/partners/detail',

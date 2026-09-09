@@ -2,16 +2,28 @@ package ai.govbiz.core._common.exception
 
 import ai.govbiz.core.account.client.bizno.exception.BiznoClientException
 import ai.govbiz.core.account.service.exception.AccountSuspendedException
+import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.BusinessNotActiveException
 import ai.govbiz.core.account.service.exception.BusinessNotFoundException
 import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
-import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
 import ai.govbiz.core.account.service.exception.SessionOriginRejectedException
+import ai.govbiz.core.partner.service.exception.CompanyRequiredException
+import ai.govbiz.core.partner.service.exception.ProposalActionForbiddenException
+import ai.govbiz.core.partner.service.exception.ProposalAlreadySentException
+import ai.govbiz.core.partner.service.exception.ProposalNotFoundException
+import ai.govbiz.core.partner.service.exception.ProposalNotPendingException
+import ai.govbiz.core.partner.service.exception.ProposalToOwnRecruitmentException
+import ai.govbiz.core.partner.service.exception.RecruitmentAlreadyExistsException
+import ai.govbiz.core.partner.service.exception.RecruitmentClosedException
+import ai.govbiz.core.partner.service.exception.RecruitmentDeadlineNotAllowedException
+import ai.govbiz.core.partner.service.exception.RecruitmentNotFoundException
+import ai.govbiz.core.partner.service.exception.RecruitmentProgramClosedException
+import ai.govbiz.core.partner.service.exception.RecruitmentProgramNotFoundException
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
 import ai.govbiz.core.supportprogram.service.catalog.exception.SupportProgramCatalogFilterException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
@@ -244,6 +256,168 @@ class ApiExceptionHandler {
                 "Business Not Found",
                 "The business number is not registered with the National Tax Service.",
                 "BUSINESS_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(CompanyRequiredException::class)
+    fun handleCompanyRequiredException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.FORBIDDEN,
+                URI.create("urn:govbiz:problem:company-required"),
+                "Company Required",
+                "Register a company in the profile before writing a recruitment or sending a proposal.",
+                "COMPANY_REQUIRED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentProgramNotFoundException::class)
+    fun handleRecruitmentProgramNotFoundException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:recruitment-program-not-found"),
+                "Recruitment Program Not Found",
+                "The support program to attach the recruitment to was not found.",
+                "RECRUITMENT_PROGRAM_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentProgramClosedException::class)
+    fun handleRecruitmentProgramClosedException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:recruitment-program-closed"),
+                "Recruitment Program Closed",
+                "The support program is no longer accepting applications.",
+                "RECRUITMENT_PROGRAM_CLOSED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentDeadlineNotAllowedException::class)
+    fun handleRecruitmentDeadlineNotAllowedException(
+        exception: RecruitmentDeadlineNotAllowedException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val response = problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:recruitment-deadline-not-allowed"),
+                "Recruitment Deadline Not Allowed",
+                "The recruitment deadline must be today or later and before the program application deadline.",
+                "RECRUITMENT_DEADLINE_NOT_ALLOWED",
+            ),
+            request,
+        )
+        exception.latestAllowedDeadline?.let { response.body?.setProperty("latestAllowedDeadline", it.toString()) }
+        return response
+    }
+
+    @ExceptionHandler(RecruitmentAlreadyExistsException::class)
+    fun handleRecruitmentAlreadyExistsException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:recruitment-already-exists"),
+                "Recruitment Already Exists",
+                "This account already has a recruitment for the support program.",
+                "RECRUITMENT_ALREADY_EXISTS",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentNotFoundException::class)
+    fun handleRecruitmentNotFoundException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:recruitment-not-found"),
+                "Recruitment Not Found",
+                "The recruitment was not found.",
+                "RECRUITMENT_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ProposalNotFoundException::class)
+    fun handleProposalNotFoundException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:proposal-not-found"),
+                "Proposal Not Found",
+                "The proposal was not found.",
+                "PROPOSAL_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ProposalToOwnRecruitmentException::class)
+    fun handleProposalToOwnRecruitmentException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:proposal-own-recruitment"),
+                "Proposal To Own Recruitment",
+                "A proposal cannot be sent to your own recruitment.",
+                "PROPOSAL_OWN_RECRUITMENT",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentClosedException::class)
+    fun handleRecruitmentClosedException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:recruitment-closed"),
+                "Recruitment Closed",
+                "The recruitment is no longer open for proposals.",
+                "RECRUITMENT_CLOSED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ProposalAlreadySentException::class)
+    fun handleProposalAlreadySentException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:proposal-already-sent"),
+                "Proposal Already Sent",
+                "This account already sent a proposal to the recruitment.",
+                "PROPOSAL_ALREADY_SENT",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ProposalNotPendingException::class)
+    fun handleProposalNotPendingException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:proposal-not-pending"),
+                "Proposal Not Pending",
+                "The proposal is no longer pending.",
+                "PROPOSAL_NOT_PENDING",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ProposalActionForbiddenException::class)
+    fun handleProposalActionForbiddenException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.FORBIDDEN,
+                URI.create("urn:govbiz:problem:proposal-action-forbidden"),
+                "Proposal Action Forbidden",
+                "Only the recruitment owner can accept or decline, and only the proposer can withdraw.",
+                "PROPOSAL_ACTION_FORBIDDEN",
             ),
             request,
         )
