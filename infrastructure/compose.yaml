@@ -89,6 +89,8 @@ services:
       ACCOUNT_DEV_LOGIN_EMAIL: ${ACCOUNT_DEV_LOGIN_EMAIL:-admin@govbiz.local}
       ACCOUNT_DEV_LOGIN_MEMBER_EMAIL: ${ACCOUNT_DEV_LOGIN_MEMBER_EMAIL:-member@govbiz.local}
       ACCOUNT_DEV_LOGIN_PASSWORD: ${ACCOUNT_DEV_LOGIN_PASSWORD:-govbiz-admin1}
+      BIZNO_URL: ${BIZNO_URL:-https://bizno.net/api/fapi}
+      BIZNO_API_KEY: ${BIZNO_API_KEY:-}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-govbiz}
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-govbiz}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-govbiz-local}

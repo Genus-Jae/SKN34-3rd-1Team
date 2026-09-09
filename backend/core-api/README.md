@@ -119,6 +119,7 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `POST /api/v1/auth/logout` | 세션 행 삭제와 쿠키 만료 |
 | `GET /api/v1/auth/me` | 세션 쿠키로 현재 계정·권한 단계 조회 |
 | `POST /api/v1/auth/dev-login` | `ACCOUNT_DEV_LOGIN_ENABLED=true`일 때만 등록되는 개발용 시드 로그인 |
+| `GET /api/v1/me/company/lookup` | 로그인한 회원이 사업자등록번호로 국세청 등록 여부·상호·사업자 상태를 미리 보기(Bizno) |
 
 ### 직접 조건으로 찾기
 
@@ -249,6 +250,9 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `ACCOUNT_DEV_LOGIN_EMAIL` | `admin@govbiz.local` | 개발용 관리자 시드 계정 이메일. 없으면 ADMIN 역할·이메일 인증 완료로 생성 |
 | `ACCOUNT_DEV_LOGIN_MEMBER_EMAIL` | `member@govbiz.local` | `{"role":"USER"}`로 부를 때 쓰는 회원 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_PASSWORD` | `govbiz-admin1` | 시드 계정 생성 시 저장하는 비밀번호 |
+| `BIZNO_API_KEY` | 빈 값 | 사업자등록번호를 확인하는 Bizno API 키. 비어 있으면 조회가 503 `BIZNO_NOT_CONFIGURED` |
+| `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint |
+| `BIZNO_API_CONNECT_TIMEOUT` / `BIZNO_API_READ_TIMEOUT` | `2s` / `10s` | Bizno 연결·응답 제한시간 |
 | `BIZINFO_API_BASE_URL` | `https://apis.data.go.kr` | 기업마당 API 주소 |
 | `BIZINFO_API_CONNECT_TIMEOUT` | `2s` | 기업마당 연결 제한시간 |
 | `BIZINFO_API_READ_TIMEOUT` | `10s` | 기업마당 응답 제한시간 |
@@ -320,6 +324,7 @@ account/
 ├── repository            # 계정·세션 저장과 조회, DbRow 변환
 │   └── mapper            # MyBatis Mapper, DbRow
 ├── domain                # 계정·역할·세션 업무 모델
+├── client/bizno          # Bizno 사업자등록번호 조회 HTTP·응답 검증·오류 변환
 ├── helper                # HS256 JWT 발급·검증·해시, 세션 쿠키 발급·읽기, 이메일 정규화
 ├── web                   # Account 파라미터 resolver, Origin 검사 interceptor와 MVC 등록
 └── config                # BCrypt, 세션·개발 로그인 설정

@@ -146,6 +146,28 @@ Content-Type: application/json
 용도이며, 운영 환경에서는 반드시 `false`로 두고 꺼져 있으면 404입니다. 프런트의 `개발 로그인 · 관리자`·`개발 로그인 · 회원`
 버튼은 개발 빌드(`import.meta.env.DEV`)에서만 렌더링됩니다.
 
+## 사업자등록번호 확인
+
+기업 등록 전에 회원이 입력한 사업자등록번호를 국세청 조회(Bizno API)로 확인합니다. 조회 결과에서는 상호와 사업자 상태만
+쓰고 법인번호·과세유형은 쓰지 않습니다. 세션 쿠키가 필요하며 국세청 조회 자체는 서버만 호출합니다.
+
+```http
+GET /api/v1/me/company/lookup?businessNumber=124-81-00998
+Cookie: govbiz_session=<JWT>
+```
+
+```json
+{ "businessNumber": "1248100998", "companyName": "삼성전자(주)", "businessStatus": "계속사업자", "isActive": true }
+```
+
+| 필드 | 설명 |
+|---|---|
+| `businessNumber` | 요청은 하이픈 선택, 응답은 숫자 10자리 |
+| `companyName` `businessStatus` | 국세청 원문. 상태는 계속사업자·휴업자·폐업자 |
+| `isActive` | 계속사업자(상태 코드 `01`)만 `true`. 기업 등록은 이 값이 `true`일 때만 허용할 예정 |
+
+등록되지 않은 번호는 404 `BUSINESS_NOT_FOUND`이고, 국세청 조회가 안 되는 경우는 `BIZNO_*` 코드로 구분합니다.
+
 ## 내 계정·로그아웃
 
 ```http
@@ -177,6 +199,8 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 | 이메일 형식·비밀번호 누락 등 요청 검증 실패 | 400 | `REQUEST_VALIDATION_FAILED` (`errors[].field`) |
 | 이메일 없음 또는 비밀번호 불일치 | 401 | `INVALID_CREDENTIALS` |
 | 이미 가입된(또는 탈퇴한) 이메일로 회원가입 | 409 | `EMAIL_ALREADY_REGISTERED` |
+| 국세청에 등록되지 않은 사업자등록번호 | 404 | `BUSINESS_NOT_FOUND` |
+| 국세청 조회 키 미설정 / 연결 실패 / 시간 초과 / 응답 오류 | 503 / 503 / 504 / 502 | `BIZNO_NOT_CONFIGURED` `BIZNO_UNAVAILABLE` `BIZNO_TIMEOUT` `BIZNO_UPSTREAM_ERROR`·`BIZNO_INVALID_RESPONSE` |
 | 세션 쿠키 없음·서명 오류·절대/유휴 만료·로그아웃된 세션·삭제된 계정 | 401 | `AUTHENTICATION_REQUIRED` (`WWW-Authenticate: Bearer`) |
 | 정지된 계정의 로그인 또는 세션 사용 | 403 | `ACCOUNT_SUSPENDED` |
 | 세션 쿠키가 붙은 상태 변경 요청의 Origin이 없거나 허용 목록에 없음 | 403 | `SESSION_ORIGIN_REJECTED` |
@@ -209,3 +233,5 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 | `ACCOUNT_DEV_LOGIN_EMAIL` | `admin@govbiz.local` | 관리자 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_MEMBER_EMAIL` | `member@govbiz.local` | 회원 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_PASSWORD` | `govbiz-admin1` | 시드 계정을 만들 때 저장하는 비밀번호(8~72자) |
+| `BIZNO_API_KEY` | 빈 값 | 사업자등록번호 조회용 Bizno(bizno.net) API 키. 비어 있으면 조회가 503 |
+| `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint. 경로는 `/api/fapi` 고정 |

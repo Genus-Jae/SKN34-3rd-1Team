@@ -114,7 +114,8 @@ K-Startup 공식 URL 표시와 RAG 미지원 사전 안내를 검증했습니다
 | 이메일 로그인·세션 | 구현됨 | `POST /api/v1/auth/login`·`/logout`, `GET /api/v1/auth/me`. HS256 JWT를 HttpOnly·SameSite=Lax 쿠키로만 전달하고 SHA-256 해시·마지막 사용 시각을 `account_session`에 저장. "로그인 상태 유지"에 따라 30일 영구 쿠키 또는 12시간 브라우저 세션 쿠키, 7일 유휴 만료. 쿠키가 붙은 상태 변경 요청은 Origin(없으면 Referer) 필수 검사. 로그인 시도는 계정 5회 연속 실패 잠금(30초부터 두 배, 최대 15분)·주소 분당 20회 제한. 정지 계정은 403. 응답의 `tier`(MEMBER·COMPANY·ADMIN)·`emailVerified`로 화면 권한을 나누고 `RequireAuth`·`GuestOnly`·`PublicOnly`가 라우트를 지킴. 로그인 전 `/` 공개 화면과 로그인 뒤 `/app` 내부 화면을 나누며 공개 파트너 모집은 읽기만 제공. 계약은 [계정·인증 계약](account-auth-contract.md) |
 | 개발용 시드 로그인 | 구현됨 | `ACCOUNT_DEV_LOGIN_ENABLED`가 켜진 Core만 `POST /api/v1/auth/dev-login` 등록. 관리자(기본)·`{"role":"USER"}` 회원 시드 계정을 이메일 인증 완료 상태로 생성. 헤더의 `개발 로그인 · 관리자/회원` 버튼은 개발 빌드에서만 표시 |
 | 이메일 회원가입 | 구현됨 | `POST /api/v1/auth/signup`. 이메일·비밀번호(8~72자)만 받아 BCrypt 해시와 약관 동의 시각을 저장하고 바로 브라우저 세션 쿠키 발급. 중복 이메일 409, 로그인과 같은 주소별 시도 제한. `/signup` 화면이 실제 API에 연결되어 성공 시 작업 채팅으로 이동 |
-| 이메일 인증·기업 등록 | 미구현 | 다음 단계. 가입 계정은 `emailVerified=false`이며 `COMPANY` 단계는 기업 등록과 함께 추가 |
+| 사업자등록번호 확인 | 구현됨 | `GET /api/v1/me/company/lookup`. 로그인한 회원이 입력한 번호를 Bizno(국세청) 조회로 확인해 상호·사업자 상태·계속사업자 여부만 돌려줌. 키가 없으면 503, 미등록 404 |
+| 이메일 인증·기업 등록 | 미구현 | 다음 단계. 기업 등록은 위 조회를 다시 써 계속사업자만 허용하고 `COMPANY` 단계를 부여 |
 | 영구 기업 프로필·북마크·알림 | 미구현 | 조건은 현재 대화 메모리에서만 유지 |
 
 `GET /detail`은 동기화한 목록 데이터만 표시하고 외부 호출을 하지 않습니다. 반면
