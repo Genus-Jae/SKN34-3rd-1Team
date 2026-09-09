@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router'
 
 import type { Account } from '../../../domain/entities/Account'
 import { useAuthSession } from '../auth/hooks/useAuthSession'
-import { usePendingReceivedProposalCount } from '../partner-proposal/usePartnerProposalBox'
+import { usePendingReceivedProposalCount } from '../partner-proposal/useReceivedProposals'
 import { appPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 
