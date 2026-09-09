@@ -1,22 +1,28 @@
 import type { AppCradle } from '../../app/di/types'
 import type { Account, AccountRole } from '../../domain/entities/Account'
+import type { AccountDeletionPreview } from '../../domain/entities/AccountDeletionPreview'
 import type { AuthSession } from '../../domain/entities/AuthSession'
 import type {
   AccountLogIn,
   AccountRepository,
   AccountSignUp,
+  ChangePasswordResult,
+  DeleteAccountResult,
   LogInResult,
   SignUpResult,
 } from '../../domain/repositories/AccountRepository'
 import {
   AccountApiError,
+  changePasswordApi,
+  deleteAccountApi,
   devLogInApi,
+  getAccountDeletionPreviewApi,
   getCurrentAccountApi,
   logInApi,
   logOutApi,
   signUpApi,
 } from '../api/accountApi'
-import { toAccount, toAuthSession, type AuthSessionResponseDto } from '../models/AccountDto'
+import { toAccount, toAccountDeletionPreview, toAuthSession, type AuthSessionResponseDto } from '../models/AccountDto'
 import type { SessionHintStorage } from '../storage/sessionHintStorage'
 
 /**
@@ -90,8 +96,44 @@ export class AccountRepositoryImpl implements AccountRepository {
     }
   }
 
+  /** 422(현재 비밀번호 불일치)·429는 화면이 안내하는 업무 결과이고, 그 외 실패는 예외로 둡니다. */
+  async changePassword(currentPassword: string, newPassword: string, signal?: AbortSignal): Promise<ChangePasswordResult> {
+    try {
+      await changePasswordApi(currentPassword, newPassword, signal)
+      return { outcome: 'changed' }
+    } catch (error) {
+      const outcome = toPasswordFailure(error)
+      if (outcome !== null) return outcome
+      throw error
+    }
+  }
+
+  async getDeletionPreview(signal?: AbortSignal): Promise<AccountDeletionPreview> {
+    return toAccountDeletionPreview(await getAccountDeletionPreviewApi(signal))
+  }
+
+  /** 서버가 세션 쿠키를 만료시키므로 성공하면 힌트도 지워 다음 시작에 복원을 시도하지 않게 합니다. */
+  async deleteAccount(password: string, signal?: AbortSignal): Promise<DeleteAccountResult> {
+    try {
+      await deleteAccountApi(password, signal)
+      this.sessionHintStorage.clear()
+      return { outcome: 'deleted' }
+    } catch (error) {
+      const outcome = toPasswordFailure(error)
+      if (outcome !== null) return outcome
+      throw error
+    }
+  }
+
   private rememberSession(dto: AuthSessionResponseDto): AuthSession {
     this.sessionHintStorage.markSignedIn()
     return toAuthSession(dto)
   }
+}
+
+function toPasswordFailure(error: unknown): { outcome: 'current-password-mismatch' } | { outcome: 'rate-limited'; retryAfterSeconds: number | null } | null {
+  if (!(error instanceof AccountApiError)) return null
+  if (error.status === 422 && error.code === 'CURRENT_PASSWORD_MISMATCH') return { outcome: 'current-password-mismatch' }
+  if (error.status === 429) return { outcome: 'rate-limited', retryAfterSeconds: error.retryAfterSeconds }
+  return null
 }

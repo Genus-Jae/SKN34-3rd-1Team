@@ -209,6 +209,21 @@
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <select id="countOpenRecruitmentsByAccount" resultType="int">
+        SELECT COUNT(*)
+        FROM partner_recruitment recruitment
+        WHERE recruitment.account_id = #{accountId}
+          AND recruitment.closed_at IS NULL
+    </select>
+
+    <update id="closeRecruitmentsByAccount">
+        UPDATE partner_recruitment
+        SET closed_at = #{closedAt},
+            updated_at = #{closedAt}
+        WHERE account_id = #{accountId}
+          AND closed_at IS NULL
+    </update>
+
     <select id="countRecruitments" resultType="long">
         SELECT COUNT(*)
         <include refid="recruitmentJoins" />

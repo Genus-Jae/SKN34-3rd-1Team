@@ -29,4 +29,22 @@ interface AccountMapper {
         @Param("accountId") accountId: Long,
         @Param("now") now: LocalDateTime,
     ): Int
+
+    fun updateAccountPasswordHash(
+        @Param("accountId") accountId: Long,
+        @Param("passwordHash") passwordHash: String,
+    ): Int
+
+    fun updateAccountDeletedAt(
+        @Param("accountId") accountId: Long,
+        @Param("deletedAt") deletedAt: LocalDateTime,
+        @Param("anonymizedEmail") anonymizedEmail: String,
+    ): Int
+
+    fun deleteSessionsByAccountIdExcept(
+        @Param("accountId") accountId: Long,
+        @Param("keepTokenHash") keepTokenHash: String,
+    ): Int
+
+    fun deleteSessionsByAccountId(@Param("accountId") accountId: Long): Int
 }

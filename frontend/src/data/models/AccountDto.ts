@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type { Account } from '../../domain/entities/Account'
+import type { AccountDeletionPreview } from '../../domain/entities/AccountDeletionPreview'
 import type { AuthSession } from '../../domain/entities/AuthSession'
 
 export const accountRoleSchema = z.enum(['USER', 'ADMIN'])
@@ -29,6 +30,13 @@ export const currentAccountResponseDtoSchema = z.object({
   account: accountDtoSchema,
 })
 
+export const accountDeletionPreviewDtoSchema = z.object({
+  hasCompany: z.boolean(),
+  openRecruitmentCount: z.number().int().nonnegative(),
+  receivedPendingProposalCount: z.number().int().nonnegative(),
+  sentPendingProposalCount: z.number().int().nonnegative(),
+})
+
 export type AccountDto = z.infer<typeof accountDtoSchema>
 export type AuthSessionResponseDto = z.infer<typeof authSessionResponseDtoSchema>
 
@@ -40,6 +48,15 @@ export function toAccount(dto: AccountDto): Account {
     tier: dto.tier,
     emailVerified: dto.emailVerified,
     company: dto.company === null ? null : { companyName: dto.company.companyName, businessNumber: dto.company.businessNumber },
+  }
+}
+
+export function toAccountDeletionPreview(dto: z.infer<typeof accountDeletionPreviewDtoSchema>): AccountDeletionPreview {
+  return {
+    hasCompany: dto.hasCompany,
+    openRecruitmentCount: dto.openRecruitmentCount,
+    receivedPendingProposalCount: dto.receivedPendingProposalCount,
+    sentPendingProposalCount: dto.sentPendingProposalCount,
   }
 }
 

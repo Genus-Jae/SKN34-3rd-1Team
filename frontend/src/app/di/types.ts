@@ -26,6 +26,11 @@ import type {
 import type { SampleItemRepository } from '../../domain/repositories/SampleItemRepository'
 import type { SupportProgramRepository } from '../../domain/repositories/SupportProgramRepository'
 import type { AskSupportProgramEvidenceQuestionUseCase } from '../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
+import type {
+  ChangePasswordUseCase,
+  DeleteAccountUseCase,
+  GetAccountDeletionPreviewUseCase,
+} from '../../domain/usecases/AccountProfileUseCases'
 import type { DevLogInUseCase } from '../../domain/usecases/DevLogInUseCase'
 import type { GetCurrentAccountUseCase } from '../../domain/usecases/GetCurrentAccountUseCase'
 import type { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSupportProgramDetailUseCase'
@@ -75,6 +80,9 @@ export type AppCradle = {
   searchSupportProgramsUseCase: SearchSupportProgramsUseCase
   sessionHintStorage: SessionHintStorage
   signUpUseCase: SignUpUseCase
+  changePasswordUseCase: ChangePasswordUseCase
+  getAccountDeletionPreviewUseCase: GetAccountDeletionPreviewUseCase
+  deleteAccountUseCase: DeleteAccountUseCase
   supportProgramRepository: SupportProgramRepository
 }
 

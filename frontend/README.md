@@ -317,7 +317,9 @@ IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 �
 `presentation/shared/app-header`의 공용 헤더가 맡고, 로그인 뒤 작업 화면은 `presentation/shared/app-sidebar`의
 `WorkspaceLayout`이 헤더 대신 사이드바를 놓습니다. 어떤 화면이 어느 껍데기를 쓰는지는 `App`의 라우트가 결정합니다.
 파트너 모집·기업 프로필·어드민이 함께 쓰는 카드·태그·표·버튼 스타일과 켬·끔 스위치, 지원사업 검색과 파트너 모집이 함께 쓰는
-한 줄 라디오 필터(`FilterChoices`), 연도 하나를 고르는 `YearPicker`(넓은 화면은 12년 격자, 좁은 화면은 select)는 `presentation/shared/workspace`에 둡니다. 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
+한 줄 라디오 필터(`FilterChoices`), 연도 하나를 고르는 `YearPicker`(넓은 화면은 12년 격자, 좁은 화면은 select), 확인·입력 모달 틀
+`WorkspaceModal`(포커스 가둠, Esc·배경 클릭 닫기, `tone="danger"`)은 `presentation/shared/workspace`에 둡니다. 프로필 계정 카드의 비밀번호 변경·계정 삭제 모달은
+`features/company-profile/viewmodel/useAccountSecurityViewModel`이 소유하고, 삭제에 성공하면 Store를 비운 뒤 `setTimeout(0)`으로 랜딩에 갑니다(`RequireAuth`의 로그인 리다이렉트보다 늦게). 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
 로그인 상태는 `presentation/shared/auth`의 Redux `auth` slice와 `useAuthSession`·`useRestoreAuthSession`이 소유합니다.
 `App`은 시작 시 세션을 복원하고, `RequireAuth(minimumTier)`·`GuestOnly`·`PublicOnly` 라우트 래퍼가 복원이 끝나기 전(`unknown`)에는
 리다이렉트하지 않다가 회원·관리자 단계에 따라 화면을 나눕니다. `PublicOnly`는 로그인한 사용자를 공개 URL에서 같은 내용의

@@ -77,6 +77,11 @@ class PartnerProposalRepository(
         return findById(id)
     }
 
+    /** 계정 삭제 시 이 계정이 보낸 대기 제안을 모두 철회합니다. 이미 응답·철회된 제안은 그대로입니다. */
+    @Transactional
+    fun withdrawAllPendingByProposer(accountId: Long, withdrawnAt: LocalDateTime): Int =
+        proposalMapper.markWithdrawnByProposer(accountId, withdrawnAt)
+
     private fun PartnerProposalDbRow.toProposal(): PartnerProposal =
         PartnerProposal(
             id = id,

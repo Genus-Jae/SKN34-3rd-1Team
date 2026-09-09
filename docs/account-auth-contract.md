@@ -18,6 +18,9 @@ Browser
 | `POST /api/v1/auth/dev-login` | 없음 | 200 세션 응답 + `Set-Cookie` (개발 환경 전용) |
 | `GET /api/v1/auth/me` | 세션 쿠키 | 200 계정 |
 | `POST /api/v1/auth/logout` | 세션 쿠키 | 204 + 쿠키 만료 |
+| `PUT /api/v1/me/password` | 세션 쿠키 + Origin | 204. 다른 기기 세션 종료 |
+| `GET /api/v1/me/deletion-preview` | 세션 쿠키 | 200 삭제 시 함께 닫히는 것의 수 |
+| `DELETE /api/v1/me` | 세션 쿠키 + Origin | 204 + 쿠키 만료 |
 
 ## 권한 단계
 
@@ -88,7 +91,7 @@ Content-Type: application/json
 
 | 필드 | 규칙 |
 |---|---|
-| `email` | 이메일 형식, 320자 이하. Core가 앞뒤 공백 제거·소문자로 정규화해 저장하며 같은 이메일(탈퇴 계정 포함)은 409 |
+| `email` | 이메일 형식, 320자 이하. Core가 앞뒤 공백 제거·소문자로 정규화해 저장하며 같은 이메일은 409. 탈퇴한 계정의 이메일은 익명화되므로 다시 가입할 수 있음 |
 | `password` | 8~72자. 길이만 검사하고 문자 종류는 강제하지 않음. BCrypt 해시만 저장 |
 
 성공하면 201과 함께 아래 로그인과 같은 세션 응답을 돌려주고 브라우저 세션 쿠키(`rememberMe=false`와 같음)를
@@ -288,6 +291,49 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 정합니다. 힌트가 틀려도 서버의 401·403이 바로잡고 힌트를 지웁니다. 세션 복원이 끝나기 전에는 `RequireAuth`가
 리다이렉트하지 않으며, 로그인 화면은 `?next=`의 앱 안 경로로 돌아갑니다.
 
+## 비밀번호 변경·계정 삭제
+
+둘 다 로그인한 상태에서 **현재 비밀번호를 다시 확인**합니다. 틀리면 422 `CURRENT_PASSWORD_MISMATCH`이며 세션은 그대로입니다
+(401이 아니라 로그아웃되지 않습니다). 접속 주소 한도(분당 20회)는 로그인과 같이 씁니다.
+
+```http
+PUT /api/v1/me/password
+Cookie: govbiz_session=<JWT>
+Origin: http://127.0.0.1:5173
+
+{ "currentPassword": "password1", "newPassword": "new-password-2" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `currentPassword` | 1~72자 |
+| `newPassword` | 8~72자(가입과 같음). 프런트는 현재 비밀번호와 같은 값을 보내지 않음 |
+
+성공은 204입니다. 새 해시를 저장하고 **요청한 세션만 남긴 채 같은 계정의 다른 세션 행을 지워** 다른 기기는 401이 됩니다.
+
+```http
+GET /api/v1/me/deletion-preview
+```
+
+```json
+{ "hasCompany": true, "openRecruitmentCount": 2, "receivedPendingProposalCount": 3, "sentPendingProposalCount": 1 }
+```
+
+삭제 확인 모달이 보여 주는 수이며 삭제하지 않습니다. `openRecruitmentCount`는 수동 마감하지 않은 내 모집글,
+대기 제안 수는 조회 시점 상태로 셉니다.
+
+```http
+DELETE /api/v1/me
+Cookie: govbiz_session=<JWT>
+Origin: http://127.0.0.1:5173
+
+{ "password": "password1" }
+```
+
+성공은 204와 `Max-Age=0` 쿠키입니다. 한 transaction에서 내가 보낸 대기 제안 철회, 내 모집글 수동 마감(받은 제안은
+만료로 계산), 기업 행 삭제, 모든 세션 삭제, `deleted_at` 표시를 합니다. 계정 행은 모집글·제안이 참조하므로 남기되 이메일을
+`deleted+<id>+<시각>@deleted.invalid`로 바꿉니다. 그래서 같은 이메일로 다시 가입하면 새 계정이 되고, 옛 계정으로는 로그인할 수 없습니다.
+
 ## 오류
 
 모든 오류는 `application/problem+json`이며 `code` 속성으로 구분합니다. 비밀번호와 토큰 원문은 응답·로그에
@@ -297,7 +343,8 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 |---|---:|---|
 | 이메일 형식·비밀번호 누락 등 요청 검증 실패 | 400 | `REQUEST_VALIDATION_FAILED` (`errors[].field`) |
 | 이메일 없음 또는 비밀번호 불일치 | 401 | `INVALID_CREDENTIALS` |
-| 이미 가입된(또는 탈퇴한) 이메일로 회원가입 | 409 | `EMAIL_ALREADY_REGISTERED` |
+| 이미 가입된 이메일로 회원가입 | 409 | `EMAIL_ALREADY_REGISTERED` |
+| 비밀번호 변경·계정 삭제의 현재 비밀번호 불일치 | 422 | `CURRENT_PASSWORD_MISMATCH` |
 | 기업을 등록하지 않은 계정의 기업 조회·수정 | 404 | `COMPANY_NOT_REGISTERED` |
 | 등록되지 않은 사업자등록번호 | 404 | `BUSINESS_NOT_FOUND` |
 | 휴업·폐업 사업자 등록 시도 | 422 | `BUSINESS_NOT_ACTIVE` (`businessStatus`) |

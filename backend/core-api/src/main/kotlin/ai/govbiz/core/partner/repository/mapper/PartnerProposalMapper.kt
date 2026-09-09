@@ -35,4 +35,9 @@ interface PartnerProposalMapper {
         @Param("id") id: Long,
         @Param("withdrawnAt") withdrawnAt: LocalDateTime,
     ): Int
+
+    fun markWithdrawnByProposer(
+        @Param("accountId") accountId: Long,
+        @Param("withdrawnAt") withdrawnAt: LocalDateTime,
+    ): Int
 }

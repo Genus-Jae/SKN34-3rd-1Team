@@ -94,6 +94,15 @@ class PartnerRecruitmentRepository(
     }
 
     /** 검색어의 LIKE 특수문자를 '!'로 이스케이프합니다. Mapper XML의 ESCAPE 문자와 같아야 합니다. */
+    /** 아직 수동 마감하지 않은 이 계정의 모집글 수입니다. 계정 삭제 확인 화면이 씁니다. */
+    fun countOpenByAccountId(accountId: Long): Int =
+        recruitmentMapper.countOpenRecruitmentsByAccount(accountId)
+
+    /** 계정 삭제 시 이 계정의 모집글을 모두 수동 마감합니다. 받은 제안은 만료로 계산됩니다. */
+    @Transactional
+    fun closeAllByAccountId(accountId: Long, closedAt: LocalDateTime): Int =
+        recruitmentMapper.closeRecruitmentsByAccount(accountId, closedAt)
+
     private fun escapeLikePattern(keyword: String): String =
         keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 

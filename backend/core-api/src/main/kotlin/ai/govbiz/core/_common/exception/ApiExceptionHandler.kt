@@ -9,6 +9,7 @@ import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredE
 import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyProfileInvalidException
+import ai.govbiz.core.account.service.exception.CurrentPasswordMismatchException
 import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
@@ -530,6 +531,19 @@ class ApiExceptionHandler {
                 "Invalid Credentials",
                 "The email or password is incorrect.",
                 "INVALID_CREDENTIALS",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(CurrentPasswordMismatchException::class)
+    fun handleCurrentPasswordMismatchException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:current-password-mismatch"),
+                "Current Password Mismatch",
+                "The current password is incorrect.",
+                "CURRENT_PASSWORD_MISMATCH",
             ),
             request,
         )

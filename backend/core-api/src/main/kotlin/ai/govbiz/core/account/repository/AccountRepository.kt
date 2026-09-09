@@ -60,6 +60,31 @@ class AccountRepository(
             AccountCredential(account = row.toAccount(), passwordHash = row.passwordHash)
         }
 
+    /** 비밀번호 변경입니다. 해시는 호출 전에 끝나 있어야 합니다. */
+    @Transactional
+    fun updatePasswordHash(accountId: Long, passwordHash: String) {
+        check(accountMapper.updateAccountPasswordHash(accountId, passwordHash) == 1) { "account row was not updated" }
+    }
+
+    /**
+     * 계정을 삭제 표시합니다. 모집글·제안이 계정을 참조하므로 행은 남기되, 이메일은 `deleted+<id>+<시각>@deleted.invalid`로
+     * 바꿔 UNIQUE 제약을 비웁니다. 같은 이메일로 다시 가입하면 새 계정이 됩니다. 삭제된 행은 모든 조회에서 제외됩니다.
+     */
+    @Transactional
+    fun markDeleted(accountId: Long, deletedAt: LocalDateTime) {
+        val anonymizedEmail = "deleted+$accountId+${deletedAt.toEpochSecond(java.time.ZoneOffset.UTC)}@deleted.invalid"
+        check(accountMapper.updateAccountDeletedAt(accountId, deletedAt, anonymizedEmail) == 1) { "account row was not marked deleted" }
+    }
+
+    /** 비밀번호를 바꾼 기기의 세션만 남기고 같은 계정의 다른 세션을 지웁니다. */
+    @Transactional
+    fun deleteSessionsByAccountIdExcept(accountId: Long, keepTokenHash: String): Int =
+        accountMapper.deleteSessionsByAccountIdExcept(accountId, keepTokenHash)
+
+    @Transactional
+    fun deleteAllSessionsByAccountId(accountId: Long): Int =
+        accountMapper.deleteSessionsByAccountId(accountId)
+
     /** 로그인 성공 시 새 세션을 저장하고 같은 계정의 만료 세션을 정리합니다. */
     @Transactional
     fun createSession(accountId: Long, session: NewAccountSession) {

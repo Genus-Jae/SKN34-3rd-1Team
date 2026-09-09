@@ -22,6 +22,11 @@ import {
   RespondPartnerProposalUseCase,
   SendPartnerProposalUseCase,
 } from '../../domain/usecases/PartnerProposalUseCases'
+import {
+  ChangePasswordUseCase,
+  DeleteAccountUseCase,
+  GetAccountDeletionPreviewUseCase,
+} from '../../domain/usecases/AccountProfileUseCases'
 import { DevLogInUseCase } from '../../domain/usecases/DevLogInUseCase'
 import { GetCurrentAccountUseCase } from '../../domain/usecases/GetCurrentAccountUseCase'
 import { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSupportProgramDetailUseCase'
@@ -96,6 +101,15 @@ export function registerUseCases(container: AppContainer) {
       createSearchSupportProgramsUseCase,
     ).singleton(),
     signUpUseCase: asFunction(createSignUpUseCase).singleton(),
+    changePasswordUseCase: asFunction(
+      ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new ChangePasswordUseCase(accountRepository),
+    ).singleton(),
+    getAccountDeletionPreviewUseCase: asFunction(
+      ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new GetAccountDeletionPreviewUseCase(accountRepository),
+    ).singleton(),
+    deleteAccountUseCase: asFunction(
+      ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new DeleteAccountUseCase(accountRepository),
+    ).singleton(),
   })
 }
 

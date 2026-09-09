@@ -1,6 +1,7 @@
 package ai.govbiz.core.partner.repository.mapper
 
 import java.time.LocalDate
+import java.time.LocalDateTime
 import org.apache.ibatis.annotations.Mapper
 import org.apache.ibatis.annotations.Param
 
@@ -38,4 +39,11 @@ interface PartnerRecruitmentMapper {
         @Param("mineAccountId") mineAccountId: Long?,
         @Param("today") today: LocalDate,
     ): Long
+
+    fun countOpenRecruitmentsByAccount(@Param("accountId") accountId: Long): Int
+
+    fun closeRecruitmentsByAccount(
+        @Param("accountId") accountId: Long,
+        @Param("closedAt") closedAt: LocalDateTime,
+    ): Int
 }
