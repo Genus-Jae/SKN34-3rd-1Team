@@ -17,8 +17,8 @@ vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => (
   CoreApiConnectionStatus: () => null,
 }))
 
-const memberAccount: Account = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true }
-const adminAccount: Account = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true }
+const memberAccount: Account = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null }
+const adminAccount: Account = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true, company: null }
 
 beforeEach(() => {
   // 작업 화면 진입 후 readiness 확인도 실제 서버에 연결하지 않습니다.
@@ -85,7 +85,7 @@ describe('계정 화면', () => {
   it('가입에 성공하면 세션 계정으로 작업 채팅에 들어간다', async () => {
     const execute = vi.spyOn(appContainer.resolve('signUpUseCase'), 'execute').mockResolvedValue({
       outcome: 'session',
-      session: { expiresAt: '2026-09-07T00:00:00+09:00', account: { email: 'new@example.test', role: 'USER', tier: 'MEMBER', emailVerified: false } },
+      session: { expiresAt: '2026-09-07T00:00:00+09:00', account: { email: 'new@example.test', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null } },
     })
     renderApp('/signup')
     const form = screen.getByRole('form', { name: '회원가입' })
@@ -272,41 +272,152 @@ describe('작업 화면 사이드바', () => {
 })
 
 describe('기업 프로필 화면', () => {
-  it('사이드바에서 내 프로필로 이동한다', () => {
-    renderApp('/app/chat')
+  const registeredCompany = {
+    businessNumber: '1248100998',
+    companyName: '삼성전자(주)',
+    businessStatus: '계속사업자',
+    region: '서울특별시',
+    industry: '정보통신업',
+    foundedYear: 2020,
+    homepageUrl: null,
+    businessVerifiedAt: '2026-09-08T10:00:00',
+    updatedAt: '2026-09-08T10:00:00',
+  }
 
-    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
-    fireEvent.click(within(sidebar).getByRole('link', { name: '내 프로필' }))
+  it('사이드바에서 내 프로필로 이동하면 기업이 없을 때 등록 폼부터 보여 주고 나머지 섹션은 그대로 둔다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
+    renderApp('/app/chat')
+    fireEvent.click(within(screen.getByRole('complementary', { name: '작업 사이드바' })).getByRole('link', { name: '내 프로필' }))
 
     expect(screen.getByRole('heading', { name: '기업 프로필' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: '기업 기본정보' })).toBeTruthy()
+    const form = await screen.findByRole('form', { name: '기업 등록' })
+    expect(within(form).getByLabelText('사업자등록번호')).toBeTruthy()
+    expect(within(form).getByLabelText(/홈페이지/)).toBeTruthy()
+    expect(within(form).queryByLabelText(/휴대폰|직원 수|한 줄 소개/)).toBeNull()
+    expect((within(form).getByRole('button', { name: '기업 등록' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('region', { name: '기업 기본정보' })).toBeNull()
+    expect(screen.getByRole('region', { name: '협업·파트너 설정' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: '우대·인증 자격' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: '계정과 알림' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: '공개 범위' })).toBeTruthy()
+    expect(screen.getByText('기업 미등록')).toBeTruthy()
   })
 
-  it('아직 채우지 않은 선택 항목은 미입력으로 표시한다', () => {
+  it('조회 결과로 상호·상태를 채우고 소재지·업종·설립연도를 입력해 등록하면 기업 회원이 된다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
+    const lookup = vi.spyOn(appContainer.resolve('lookupBusinessUseCase'), 'execute').mockResolvedValue({
+      outcome: 'found',
+      business: { businessNumber: '1248100998', companyName: '삼성전자(주)', businessStatus: '계속사업자', isActive: true },
+    })
+    const register = vi.spyOn(appContainer.resolve('registerCompanyUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'registered', company: registeredCompany })
     renderApp('/app/profile')
+    const form = await screen.findByRole('form', { name: '기업 등록' })
 
-    const basics = screen.getByRole('region', { name: '기업 기본정보' })
-    expect(within(basics).getByText('홈페이지')).toBeTruthy()
-    expect(within(basics).getAllByText('미입력').length).toBe(2)
+    fireEvent.change(within(form).getByLabelText('사업자등록번호'), { target: { value: '124-81-00998' } })
+    fireEvent.click(within(form).getByRole('button', { name: '조회' }))
+    const result = await screen.findByRole('status', { name: '조회 결과' })
+    expect(within(result).getByText('삼성전자(주)')).toBeTruthy()
+    expect(within(result).getByText('계속사업자')).toBeTruthy()
+    expect(within(result).queryByText(/법인등록번호|과세/)).toBeNull()
+    expect(lookup).toHaveBeenCalledWith('124-81-00998')
+
+    fireEvent.change(within(form).getByLabelText('소재지'), { target: { value: '서울특별시' } })
+    fireEvent.change(within(form).getByLabelText('업종'), { target: { value: '정보통신업' } })
+    fireEvent.click(within(form).getByRole('button', { name: '기업 등록' }))
+    expect(screen.getByRole('alert').textContent).toContain('설립연도')
+    expect(register).not.toHaveBeenCalled()
+
+    fireEvent.change(within(form).getByLabelText('설립연도'), { target: { value: '2020' } })
+    fireEvent.click(within(form).getByRole('button', { name: '기업 등록' }))
+
+    const basics = await screen.findByRole('region', { name: '기업 기본정보' })
+    expect(register).toHaveBeenCalledWith('1248100998', {
+      region: '서울특별시', industry: '정보통신업', foundedYear: 2020, homepageUrl: null,
+    })
+    expect(within(basics).getByText('124-81-00998')).toBeTruthy()
+    expect(screen.getByText(/기업을 등록했습니다/)).toBeTruthy()
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    expect(within(sidebar).getByText('삼성전자(주) · 기업 회원')).toBeTruthy()
   })
 
-  it('완성도는 체크리스트에서 끝난 항목으로 계산한다', () => {
+  it('등록되지 않은 번호와 휴·폐업 사업자는 이유를 안내하고 등록하지 않는다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
+    vi.spyOn(appContainer.resolve('lookupBusinessUseCase'), 'execute')
+      .mockResolvedValueOnce({ outcome: 'not-found' })
+      .mockResolvedValueOnce({
+        outcome: 'found',
+        business: { businessNumber: '1112233334', companyName: '문 닫은 회사', businessStatus: '폐업자', isActive: false },
+      })
+    const register = vi.spyOn(appContainer.resolve('registerCompanyUseCase'), 'execute')
+    renderApp('/app/profile')
+    const form = await screen.findByRole('form', { name: '기업 등록' })
+
+    fireEvent.change(within(form).getByLabelText('사업자등록번호'), { target: { value: '12-34' } })
+    fireEvent.click(within(form).getByRole('button', { name: '조회' }))
+    expect(screen.getByRole('alert').textContent).toContain('숫자 10자리')
+
+    fireEvent.change(within(form).getByLabelText('사업자등록번호'), { target: { value: '1234567890' } })
+    fireEvent.click(within(form).getByRole('button', { name: '조회' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('등록되지 않은'))
+
+    fireEvent.change(within(form).getByLabelText('사업자등록번호'), { target: { value: '1112233334' } })
+    fireEvent.click(within(form).getByRole('button', { name: '조회' }))
+    await screen.findByText('계속사업자만 등록할 수 있습니다.')
+    expect((within(form).getByRole('button', { name: '기업 등록' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(register).not.toHaveBeenCalled()
+  })
+
+  it('등록된 기업은 조회 값과 담당자 입력을 보여 주고 수정 폼은 입력 항목만 바꾼다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(registeredCompany)
+    const update = vi.spyOn(appContainer.resolve('updateCompanyUseCase'), 'execute')
+      .mockResolvedValue({ ...registeredCompany, region: '부산광역시', homepageUrl: 'https://example.co.kr' })
     renderApp('/app/profile')
 
+    const basics = await screen.findByRole('region', { name: '기업 기본정보' })
+    expect(within(basics).getByText('삼성전자(주)', { exact: false })).toBeTruthy()
+    expect(within(basics).getByText('124-81-00998')).toBeTruthy()
+    expect(within(basics).getByText('사업자 확인')).toBeTruthy()
+    expect(within(basics).queryByText(/법인등록번호|과세유형/)).toBeNull()
+    expect(within(basics).getAllByText('미입력').length).toBe(1)
+
+    fireEvent.click(within(basics).getByRole('button', { name: '수정' }))
+    const form = screen.getByRole('form', { name: '기업 기본정보 수정' })
+    expect(within(form).queryByLabelText('사업자등록번호')).toBeNull()
+    expect((within(form).getByLabelText('설립연도') as HTMLInputElement).value).toBe('2020')
+    fireEvent.change(within(form).getByLabelText('소재지'), { target: { value: '부산광역시' } })
+    fireEvent.change(within(form).getByLabelText(/홈페이지/), { target: { value: ' https://example.co.kr ' } })
+    fireEvent.click(within(form).getByRole('button', { name: '저장' }))
+
+    await screen.findByText('기업 정보를 저장했습니다.')
+    expect(update).toHaveBeenCalledWith({
+      region: '부산광역시', industry: '정보통신업', foundedYear: 2020, homepageUrl: 'https://example.co.kr',
+    })
+    const updated = screen.getByRole('region', { name: '기업 기본정보' })
+    expect(within(updated).getByText('https://example.co.kr')).toBeTruthy()
+    expect(within(updated).getByText('부산광역시')).toBeTruthy()
+  })
+
+  it('완성도는 실제 기업 정보와 예시 설정을 합쳐 체크리스트로 계산한다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(registeredCompany)
+    renderApp('/app/profile')
+    await screen.findByRole('region', { name: '기업 기본정보' })
+
+    // 기업 등록·이메일 인증(회원 fixture)·역할과 관심 분야(예시)는 끝났고, 우대 자격 확인과 홈페이지는 남았습니다.
     const completion = screen.getByRole('progressbar', { name: '프로필 완성도' })
     expect(completion.getAttribute('aria-valuenow')).toBe('60')
 
-    // 관심 분야를 모두 끄면 '참여 역할과 관심 분야' 항목이 끝나지 않은 상태가 됩니다.
     const settings = screen.getByRole('region', { name: '협업·파트너 설정' })
     for (const area of ['AI', '사업화']) {
       fireEvent.click(within(settings).getByRole('button', { name: area, pressed: true }))
     }
-
     expect(completion.getAttribute('aria-valuenow')).toBe('40')
   })
 
-  it('담당자 정보와 서류 상태는 제안을 수락한 뒤에만 공개한다', () => {
+  it('담당자 정보와 서류 상태는 제안을 수락한 뒤에만 공개한다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
     renderApp('/app/profile')
+    await screen.findByRole('form', { name: '기업 등록' })
 
     const publicity = screen.getByRole('region', { name: '공개 범위' })
     const managerRow = within(publicity).getByText('담당자 이름·이메일').closest('tr')!
@@ -316,8 +427,10 @@ describe('기업 프로필 화면', () => {
     expect(cells[2]!.textContent).toBe('공개')
   })
 
-  it('우대·인증 자격은 판정하지 않고 등록 상태만 표시한다', () => {
+  it('우대·인증 자격은 판정하지 않고 등록 상태만 표시한다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
     renderApp('/app/profile')
+    await screen.findByRole('form', { name: '기업 등록' })
 
     const qualifications = screen.getByRole('region', { name: '우대·인증 자격' })
     expect(within(qualifications).getByText('확인 필요')).toBeTruthy()
@@ -325,16 +438,18 @@ describe('기업 프로필 화면', () => {
     expect(within(qualifications).queryByText('자격 있음')).toBeNull()
   })
 
-  it('프로필 임시 변경은 저장된 것처럼 표시하지 않고 화면 재진입 시 초기화한다', () => {
+  it('예시 설정 변경은 저장된 것처럼 표시하지 않고 화면 재진입 시 초기화한다', async () => {
+    vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
     renderApp('/app/profile')
-    expect(screen.getByText(/설정 변경은 저장·공개되지 않으며/)).toBeTruthy()
+    await screen.findByRole('form', { name: '기업 등록' })
+    expect(screen.getByText(/아직 예시 값이며 화면을 나가면 초기화됩니다/)).toBeTruthy()
     const input = screen.getByLabelText('보유 역량·실적') as HTMLTextAreaElement
     const original = input.value
     fireEvent.change(input, { target: { value: '임시 데모 입력' } })
     fireEvent.click(screen.getByRole('link', { name: '파트너 모집' }))
     fireEvent.click(screen.getByRole('link', { name: '내 프로필' }))
+    await screen.findByRole('form', { name: '기업 등록' })
     expect((screen.getByLabelText('보유 역량·실적') as HTMLTextAreaElement).value).toBe(original)
-    expect(fetch).not.toHaveBeenCalled()
   })
 })
 

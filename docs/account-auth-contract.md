@@ -30,7 +30,7 @@ Browser
 |---|---|---|
 | (익명) | 세션 없음 | 공개 화면: 검색·상세·원문 질문·요금제·파트너 모집 읽기(`/`, `/pricing`, `/partners`), 로그인·회원가입 |
 | `MEMBER` | 로그인 | 사이드바 작업 화면(`/app/chat` `/app/pricing` `/app/partners` `/app/profile` …) |
-| `COMPANY` | 이메일 인증 + 사업자 확인 + 필수 프로필 | 모집글 작성·제안. 기업 등록 단계에서 추가 |
+| `COMPANY` | 사업자등록번호 조회(Bizno)로 확인한 기업 등록 | 파트너 모집글 작성. 이메일 인증 조건은 인증 기능이 생길 때 더함 |
 | `ADMIN` | `account.role = ADMIN` | 위 전부 + `/app/admin/*` |
 
 ## 세션 쿠키
@@ -167,6 +167,36 @@ Cookie: govbiz_session=<JWT>
 | `isActive` | 계속사업자(상태 코드 `01`)만 `true`. 기업 등록은 이 값이 `true`일 때만 허용할 예정 |
 
 등록되지 않은 번호는 404 `BUSINESS_NOT_FOUND`이고, 국세청 조회가 안 되는 경우는 `BIZNO_*` 코드로 구분합니다.
+## 기업 등록·프로필
+
+기업은 계정당 하나이며 사업자등록번호는 Bizno 조회 API로 확인합니다. 조회 결과에서는 상호와 사업자 상태만 쓰고
+소재지·업종·설립연도와 홈페이지(선택)는 담당자가 입력합니다. 모든 요청은 세션 쿠키가 필요합니다.
+
+| 메서드·경로 | 용도 | 성공 |
+|---|---|---|
+| `GET /api/v1/me/company/lookup?businessNumber=` | 등록 전 미리보기. 하이픈 선택 | 200 `businessNumber`(10자리) `companyName` `businessStatus` `isActive` |
+| `GET /api/v1/me/company` | 내 기업 | 200 기업 응답, 없으면 404 `COMPANY_NOT_REGISTERED` |
+| `POST /api/v1/me/company` | 등록. 서버가 다시 조회해 계속사업자만 허용 | 201 기업 응답. 이후 `/auth/me`의 `tier`가 `COMPANY` |
+| `PUT /api/v1/me/company` | 담당자 입력 항목 수정 | 200 기업 응답 |
+
+```http
+POST /api/v1/me/company
+Content-Type: application/json
+Cookie: govbiz_session=<JWT>
+
+{ "businessNumber": "124-81-00998", "region": "서울특별시", "industry": "정보통신업", "foundedYear": 2020,
+  "homepageUrl": "https://example.co.kr" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `businessNumber` | 등록 때만. 숫자 10자리, 하이픈 선택. 상호·상태는 서버가 조회 결과로 채우므로 받지 않음 |
+| `region` `industry` | 1~40자 / 1~80자. 프런트는 17개 시·도와 표준산업분류 대분류 목록에서 고름 |
+| `foundedYear` | 1900~올해 |
+| `homepageUrl` | 선택. 500자 이하. 빈 문자열은 비운 것으로 저장 |
+
+기업 응답은 요청 필드(`businessNumber`·`region`·`industry`·`foundedYear`·`homepageUrl`)에 `companyName` `businessStatus`
+`businessVerifiedAt` `updatedAt`을 더한 것입니다. 세션·내 계정 응답의 `account.company`에는 `companyName`·`businessNumber` 요약이 실리고 기업이 없으면 `null`입니다.
 
 ## 내 계정·로그아웃
 
@@ -199,8 +229,12 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 | 이메일 형식·비밀번호 누락 등 요청 검증 실패 | 400 | `REQUEST_VALIDATION_FAILED` (`errors[].field`) |
 | 이메일 없음 또는 비밀번호 불일치 | 401 | `INVALID_CREDENTIALS` |
 | 이미 가입된(또는 탈퇴한) 이메일로 회원가입 | 409 | `EMAIL_ALREADY_REGISTERED` |
-| 국세청에 등록되지 않은 사업자등록번호 | 404 | `BUSINESS_NOT_FOUND` |
-| 국세청 조회 키 미설정 / 연결 실패 / 시간 초과 / 응답 오류 | 503 / 503 / 504 / 502 | `BIZNO_NOT_CONFIGURED` `BIZNO_UNAVAILABLE` `BIZNO_TIMEOUT` `BIZNO_UPSTREAM_ERROR`·`BIZNO_INVALID_RESPONSE` |
+| 기업을 등록하지 않은 계정의 기업 조회·수정 | 404 | `COMPANY_NOT_REGISTERED` |
+| 등록되지 않은 사업자등록번호 | 404 | `BUSINESS_NOT_FOUND` |
+| 휴업·폐업 사업자 등록 시도 | 422 | `BUSINESS_NOT_ACTIVE` (`businessStatus`) |
+| 이미 기업을 등록한 계정의 재등록 | 409 | `COMPANY_ALREADY_REGISTERED` |
+| 다른 계정이 등록한 사업자등록번호 | 409 | `BUSINESS_NUMBER_ALREADY_REGISTERED` |
+| Bizno 조회 키 미설정 / 연결 실패 / 시간 초과 / 응답 오류 | 503 / 503 / 504 / 502 | `BIZNO_NOT_CONFIGURED` `BIZNO_UNAVAILABLE` `BIZNO_TIMEOUT` `BIZNO_UPSTREAM_ERROR`·`BIZNO_INVALID_RESPONSE` |
 | 세션 쿠키 없음·서명 오류·절대/유휴 만료·로그아웃된 세션·삭제된 계정 | 401 | `AUTHENTICATION_REQUIRED` (`WWW-Authenticate: Bearer`) |
 | 정지된 계정의 로그인 또는 세션 사용 | 403 | `ACCOUNT_SUSPENDED` |
 | 세션 쿠키가 붙은 상태 변경 요청의 Origin이 없거나 허용 목록에 없음 | 403 | `SESSION_ORIGIN_REJECTED` |
@@ -233,5 +267,5 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 | `ACCOUNT_DEV_LOGIN_EMAIL` | `admin@govbiz.local` | 관리자 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_MEMBER_EMAIL` | `member@govbiz.local` | 회원 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_PASSWORD` | `govbiz-admin1` | 시드 계정을 만들 때 저장하는 비밀번호(8~72자) |
-| `BIZNO_API_KEY` | 빈 값 | 사업자등록번호 조회용 Bizno(bizno.net) API 키. 비어 있으면 조회가 503 |
+| `BIZNO_API_KEY` | 빈 값 | 사업자등록번호 조회용 Bizno(bizno.net) API 키. 비어 있으면 기업 조회·등록이 503 |
 | `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint. 경로는 `/api/fapi` 고정 |

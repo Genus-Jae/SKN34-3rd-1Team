@@ -1,17 +1,8 @@
-import type { CompanyProfile } from '../../../../domain/entities/CompanyProfile'
+import type { CompanyProfileDemo } from '../../../../domain/entities/CompanyProfile'
 
-// 화면을 먼저 만드는 단계에서 ViewModel이 쓰는 예시 값입니다. 실제 기업이 아닙니다.
-// API가 생기면 이 상수 대신 UseCase 호출 결과를 반환합니다. 테스트용 fixture는 data/fixtures가 따로 맡습니다.
-export const companyProfile: CompanyProfile = {
-  companyName: '예시 소프트웨어 주식회사',
-  businessRegistrationNumber: '000-00-00000',
-  region: '서울특별시 강남구',
-  industry: '소프트웨어 개발·공급',
-  foundedYear: 2024,
-  companyStage: '창업 3년 미만',
-  employeeCount: 5,
-  homepageUrl: null,
-  introduction: null,
+// 아직 API가 없는 섹션(협업·파트너 설정, 우대·인증 자격, 담당자·알림)이 쓰는 예시 값입니다. 실제 기업이 아닙니다.
+// 기업 기본정보는 GetMyCompanyUseCase 결과를 씁니다. 테스트용 fixture는 data/fixtures가 따로 맡습니다.
+export const companyProfileDemo: CompanyProfileDemo = {
   isDiscoverable: true,
   availableRoles: ['참여기관'],
   interestAreas: ['AI', '사업화'],

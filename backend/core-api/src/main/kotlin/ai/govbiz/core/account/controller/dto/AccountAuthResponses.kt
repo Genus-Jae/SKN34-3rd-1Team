@@ -35,6 +35,8 @@ data class AccountResponse(
     val role: AccountRole,
     val tier: AccountTier,
     val emailVerified: Boolean,
+    /** 등록한 기업 요약. 없으면 null이며 사이드바가 이메일만 보여 줍니다. */
+    val company: CompanySummaryResponse?,
 ) {
     companion object {
         fun from(account: Account): AccountResponse =
@@ -43,6 +45,7 @@ data class AccountResponse(
                 role = account.role,
                 tier = account.tier,
                 emailVerified = account.isEmailVerified,
+                company = account.company?.let(CompanySummaryResponse::from),
             )
     }
 }

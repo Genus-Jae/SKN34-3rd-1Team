@@ -4,6 +4,13 @@ import type { BrowseSupportProgramsUseCase } from '../../domain/usecases/BrowseS
 import type { CoreApiHealth } from '../../data/api/coreApiHealth'
 import type { SessionHintStorage } from '../../data/storage/sessionHintStorage'
 import type { AccountRepository } from '../../domain/repositories/AccountRepository'
+import type { CompanyRepository } from '../../domain/repositories/CompanyRepository'
+import type {
+  GetMyCompanyUseCase,
+  LookupBusinessUseCase,
+  RegisterCompanyUseCase,
+  UpdateCompanyUseCase,
+} from '../../domain/usecases/CompanyUseCases'
 import type { SampleItemRepository } from '../../domain/repositories/SampleItemRepository'
 import type { SupportProgramRepository } from '../../domain/repositories/SupportProgramRepository'
 import type { AskSupportProgramEvidenceQuestionUseCase } from '../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
@@ -24,6 +31,11 @@ export type FetchCoreApiHealth = (signal?: AbortSignal) => Promise<CoreApiHealth
 export type AppCradle = {
   browseSupportProgramsUseCase: BrowseSupportProgramsUseCase
   accountRepository: AccountRepository
+  companyRepository: CompanyRepository
+  getMyCompanyUseCase: GetMyCompanyUseCase
+  lookupBusinessUseCase: LookupBusinessUseCase
+  registerCompanyUseCase: RegisterCompanyUseCase
+  updateCompanyUseCase: UpdateCompanyUseCase
   interpretSupportProgramConversationUseCase: InterpretSupportProgramConversationUseCase
   askSupportProgramEvidenceQuestionUseCase: AskSupportProgramEvidenceQuestionUseCase
   devLogInUseCase: DevLogInUseCase

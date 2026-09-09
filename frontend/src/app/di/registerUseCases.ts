@@ -2,6 +2,12 @@ import { asFunction } from 'awilix/browser'
 import { BrowseSupportProgramsUseCase } from '../../domain/usecases/BrowseSupportProgramsUseCase'
 
 import { AskSupportProgramEvidenceQuestionUseCase } from '../../domain/usecases/AskSupportProgramEvidenceQuestionUseCase'
+import {
+  GetMyCompanyUseCase,
+  LookupBusinessUseCase,
+  RegisterCompanyUseCase,
+  UpdateCompanyUseCase,
+} from '../../domain/usecases/CompanyUseCases'
 import { DevLogInUseCase } from '../../domain/usecases/DevLogInUseCase'
 import { GetCurrentAccountUseCase } from '../../domain/usecases/GetCurrentAccountUseCase'
 import { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSupportProgramDetailUseCase'
@@ -27,6 +33,18 @@ export function registerUseCases(container: AppContainer) {
       createAskSupportProgramEvidenceQuestionUseCase,
     ).singleton(),
     devLogInUseCase: asFunction(createDevLogInUseCase).singleton(),
+    getMyCompanyUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new GetMyCompanyUseCase(companyRepository),
+    ).singleton(),
+    lookupBusinessUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new LookupBusinessUseCase(companyRepository),
+    ).singleton(),
+    registerCompanyUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new RegisterCompanyUseCase(companyRepository),
+    ).singleton(),
+    updateCompanyUseCase: asFunction(
+      ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new UpdateCompanyUseCase(companyRepository),
+    ).singleton(),
     getCurrentAccountUseCase: asFunction(createGetCurrentAccountUseCase).singleton(),
     getSupportProgramDetailUseCase: asFunction(
       createGetSupportProgramDetailUseCase,

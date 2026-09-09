@@ -15,7 +15,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false }
+const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false, company: null }
 const sessionResponse = { expiresAt: '2026-10-06T12:00:00+09:00', account }
 const logInCommand = { email: 'manager@company.co.kr', password: 'password1', rememberMe: true }
 

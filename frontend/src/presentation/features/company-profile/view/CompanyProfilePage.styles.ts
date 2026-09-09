@@ -5,7 +5,7 @@ function classes(...groups: string[]) {
 // 색상이나 CSS 속성이 아니라 기업 프로필 화면에서 맡는 UI 역할을 이름으로 사용합니다.
 // 카드·태그·버튼은 shared/workspace의 공용 스타일을 쓰고 여기서는 프로필 고유 배치만 다룹니다.
 export const companyProfileStyles = {
-  summaryTop: 'flex items-center justify-between gap-4 max-chat:flex-col max-chat:items-start',
+  summaryTop: 'flex items-center gap-4',
   summaryIdentity: 'flex items-center gap-4',
   summaryAvatar:
     'grid size-[3.25rem] shrink-0 place-items-center rounded-[0.9rem] bg-brand-accent text-[1.2rem] font-black text-app-ink',
@@ -63,6 +63,25 @@ export const companyProfileStyles = {
   publicityCell: 'border-t border-sample-border px-[0.7rem] py-[0.55rem] text-sample-muted',
   publicOpen: 'border-t border-sample-border px-[0.7rem] py-[0.55rem] font-bold text-[#087f46]',
   publicClosed: 'border-t border-sample-border px-[0.7rem] py-[0.55rem] text-sample-muted',
+  notice: 'm-0 rounded-[0.85rem] bg-[#e7f6ed] px-4 py-3 text-[0.8rem] font-semibold text-[#087f46]',
+  form: 'flex flex-col gap-3',
+  formGrid: 'grid grid-cols-1 gap-3 @min-[32rem]/column:grid-cols-2',
+  formField: 'flex min-w-0 flex-col gap-1',
+  formFieldWide: '@min-[32rem]/column:col-span-2',
+  formLabel: 'flex items-center gap-1 text-[0.72rem] font-bold text-sample-muted',
+  input: classes(
+    'min-h-10 w-full rounded-[0.75rem] border border-sample-border bg-white px-3 text-[0.85rem] text-app-ink',
+    'placeholder:text-sample-muted focus:border-[#087f46] focus:shadow-[0_0_0_3px_rgb(8_127_70_/_12%)] focus:outline-0',
+    'aria-[invalid=true]:border-[#c9505f]',
+  ),
+  lookupRow: 'flex flex-wrap items-end gap-2 [&>label]:min-w-[14rem] [&>label]:flex-1',
+  lookupResult: 'flex flex-col gap-1 rounded-[0.85rem] bg-[#f6f7f8] px-4 py-3',
+  lookupHeadline: 'flex flex-wrap items-center gap-2',
+  lookupName: 'text-[0.95rem] font-bold text-app-ink',
+  lookupDetail: 'text-[0.75rem] text-sample-muted',
+  lookupWarning: 'text-[0.75rem] font-bold text-[#8a5a00]',
+  formError: 'm-0 text-[0.78rem] font-bold text-[#9a3947]',
+  formActions: 'flex flex-wrap justify-end gap-2',
   checklist: 'flex flex-col gap-[0.45rem] text-[0.8rem]',
   checklistItem: 'relative flex items-center gap-[0.55rem]',
   doneMark: 'grid size-[1.125rem] shrink-0 place-items-center rounded-full bg-brand-accent text-app-ink',

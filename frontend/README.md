@@ -93,7 +93,7 @@ pnpm dev
 | `/app/partners/new` | 사이드바 | 모집글 작성 |
 | `/app/partners/detail?recruitmentId=...` | 사이드바 | 모집글 상세·매칭 근거·참여 제안 |
 | `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
-| `/app/profile` | 사이드바 | 기업 프로필, 공개 범위, 완성도 체크리스트 |
+| `/app/profile` | 사이드바 | 사업자등록번호 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정, 완성도 체크리스트. 나머지 섹션은 준비 중 |
 | `/app/admin/members` | 사이드바(관리자) | 어드민 회원·기업 목록과 운영 규칙 |
 
 `/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,
@@ -102,7 +102,11 @@ pnpm dev
 `/signup`은 `SignUpUseCase → AccountRepository → accountApi`로 실제 계정을 만들고 서버가 발급한 세션으로 바로 작업 채팅에
 들어갑니다. 비밀번호는 8~72자 길이만 검사하며 이미 가입된 이메일(409)·시도 제한(429)을 구분해 안내합니다. 약관 동의는 가입 버튼
 아래 안내 문구로 갈음하고 서버가 가입 시각을 기록합니다.
-`/partners` `/partners/detail` `/app/partners` `/app/profile` `/app/admin/members`는 화면만 있는 **데모 단계**입니다. 모집·회원 API가
+`/app/profile`의 기업 기본정보는 `CompanyRepository`(조회·등록·수정)에 연결됩니다. 기업이 없으면 그 카드 자리에 사업자등록번호
+조회 폼이 나오고, 조회로 받은 상호·사업자 상태는 읽기 전용이며 소재지(17개 시·도)·업종(표준산업분류 대분류)·설립연도와
+홈페이지(선택)만 입력합니다. 등록에 성공하면 세션 계정을 `tier=COMPANY`로 갱신해 사이드바가 상호를 보여 줍니다. 협업·파트너
+설정, 우대·인증 자격, 계정과 알림, 공개 범위 섹션은 아직 예시 값·준비 중이며 비밀번호 변경·계정 삭제는 다음 이슈에서 모달로 붙입니다.
+`/partners` `/partners/detail` `/app/partners` `/app/admin/members`는 화면만 있는 **데모 단계**입니다. 모집·회원 API가
 없어 ViewModel이 예시 값을 돌려줍니다.
 모집 작성도 입력을 검사한 뒤 목록으로 이동하며 등록·임시 저장하지 않습니다. 저장·제안 발송·회원 정지 등
 연결되지 않은 동작은 준비 중으로 비활성화했습니다. 프로필의 선택은 화면 안에서만 유지되고 추천에 전달되지 않습니다.
@@ -260,7 +264,7 @@ src/
 ├── presentation/features/auth/ # 로그인·회원가입 View와 각 페이지 ViewModel
 ├── presentation/features/partner-recruitment/ # 로그인 뒤 모집 목록·상세·작성 View와 각 페이지 ViewModel
 ├── presentation/features/public-partner-recruitment/ # 로그인 전 공개 모집 목록·상세 View와 ViewModel
-├── presentation/features/company-profile/ # 기업 프로필 View와 ViewModel
+├── presentation/features/company-profile/ # 기업 등록·기본정보 수정과 프로필 View, ViewModel, 준비 중 섹션의 예시 값
 ├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
 ├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 공용 예시 값, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
