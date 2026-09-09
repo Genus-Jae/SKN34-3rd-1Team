@@ -15,6 +15,9 @@
         <result column="deleted_at" property="deletedAt" />
         <result column="terms_agreed_at" property="termsAgreedAt" />
         <result column="created_at" property="createdAt" />
+        <result column="company_id" property="companyId" />
+        <result column="company_name" property="companyName" />
+        <result column="company_business_number" property="companyBusinessNumber" />
     </resultMap>
 
     <resultMap id="accountSessionDbRow"
@@ -35,7 +38,10 @@
         account.suspended_at,
         account.deleted_at,
         account.terms_agreed_at,
-        account.created_at
+        account.created_at,
+        company.id AS company_id,
+        company.company_name AS company_name,
+        company.business_number AS company_business_number
     </sql>
 
     <insert id="insertAccount"
@@ -63,6 +69,7 @@
         SELECT
             <include refid="accountColumns" />
         FROM account
+        LEFT JOIN company ON company.account_id = account.id
         WHERE account.id = #{id}
           AND account.deleted_at IS NULL
     </select>
@@ -71,9 +78,11 @@
         SELECT
             <include refid="accountColumns" />
         FROM account
+        LEFT JOIN company ON company.account_id = account.id
         WHERE account.email = #{email}
           AND account.deleted_at IS NULL
     </select>
+
 
     <insert id="insertSession"
             parameterType="ai.govbiz.core.account.repository.mapper.AccountSessionDbRow"

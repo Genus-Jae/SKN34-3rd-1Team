@@ -22,7 +22,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.use
 function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
 function start(path = '/?mode=filter', authenticated = path.startsWith('/app/')) {
   const store = createAppStore()
-  store.dispatch(sessionRestored(authenticated ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true } : null))
+  store.dispatch(sessionRestored(authenticated ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null } : null))
   render(<Provider store={store}><MemoryRouter initialEntries={[path]}><App /><Location /></MemoryRouter></Provider>)
   return store
 }

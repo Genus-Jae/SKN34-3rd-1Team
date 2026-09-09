@@ -108,10 +108,10 @@ function MenuIconGraphic({ name }: { name: MenuIcon }) {
   )
 }
 
-/** 계정 카드에 보여 줄 단계 문구입니다. 기업 등록이 붙기 전까지 회원은 등록 안내를 함께 봅니다. */
+/** 계정 카드에 보여 줄 단계 문구입니다. 기업을 등록하면 상호를, 아니면 등록 안내를 봅니다. */
 function tierLabel(account: Account): string {
   if (account.tier === 'ADMIN') return '관리자'
-  if (account.tier === 'COMPANY') return '기업 회원'
+  if (account.company !== null) return `${account.company.companyName} · 기업 회원`
   return account.emailVerified ? '회원 · 기업 미등록' : '회원 · 이메일 미인증'
 }
 

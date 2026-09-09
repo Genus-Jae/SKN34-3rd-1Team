@@ -16,21 +16,10 @@ export type CompanyQualification = {
 }
 
 /**
- * 기업 프로필입니다. 지역·업종·업력은 추천 점수의 근거가 되고,
- * 역할·관심 분야·보유 역량은 파트너 매칭에서 다른 기업에게 보입니다.
- * 담당자 이름과 이메일은 파트너 제안을 수락하기 전까지 공개하지 않습니다.
+ * 아직 API가 없는 프로필 섹션(협업·파트너 설정, 우대·인증 자격, 담당자·알림)의 예시 값입니다.
+ * 기업 기본정보는 `Company`가 맡습니다. 담당자 이름과 이메일은 파트너 제안을 수락하기 전까지 공개하지 않습니다.
  */
-export type CompanyProfile = {
-  companyName: string
-  businessRegistrationNumber: string
-  region: string
-  industry: string
-  foundedYear: number
-  companyStage: string
-  /** 선택 입력이라 아직 없으면 null입니다. */
-  employeeCount: number | null
-  homepageUrl: string | null
-  introduction: string | null
+export type CompanyProfileDemo = {
   isDiscoverable: boolean
   availableRoles: string[]
   interestAreas: string[]

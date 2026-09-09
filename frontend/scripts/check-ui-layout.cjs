@@ -109,6 +109,9 @@ async function main() {
         if (sessionAccount) json = { account: sessionAccount }
         else return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ code: 'AUTHENTICATION_REQUIRED' }) })
       } else if (url.pathname.endsWith('/auth/logout')) return route.fulfill({ status: 204, body: '' })
+      else if (url.pathname.endsWith('/me/company')) {
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'COMPANY_NOT_REGISTERED' }) })
+      }
       else if (url.pathname.endsWith('/readiness')) json = { ...source, sources: [source] }
       else if (url.pathname.endsWith('/interpret')) {
         calls.interpret++

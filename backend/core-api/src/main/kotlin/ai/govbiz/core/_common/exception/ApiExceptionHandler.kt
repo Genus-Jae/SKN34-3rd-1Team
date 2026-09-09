@@ -2,7 +2,11 @@ package ai.govbiz.core._common.exception
 
 import ai.govbiz.core.account.client.bizno.exception.BiznoClientException
 import ai.govbiz.core.account.service.exception.AccountSuspendedException
+import ai.govbiz.core.account.service.exception.BusinessNotActiveException
 import ai.govbiz.core.account.service.exception.BusinessNotFoundException
+import ai.govbiz.core.account.service.exception.BusinessNumberAlreadyRegisteredException
+import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredException
+import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
@@ -179,6 +183,45 @@ class ApiExceptionHandler {
             request,
         )
 
+    @ExceptionHandler(CompanyNotRegisteredException::class)
+    fun handleCompanyNotRegisteredException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:company-not-registered"),
+                "Company Not Registered",
+                "This account has not registered a company yet.",
+                "COMPANY_NOT_REGISTERED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(CompanyAlreadyRegisteredException::class)
+    fun handleCompanyAlreadyRegisteredException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:company-already-registered"),
+                "Company Already Registered",
+                "This account already has a registered company.",
+                "COMPANY_ALREADY_REGISTERED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(BusinessNumberAlreadyRegisteredException::class)
+    fun handleBusinessNumberAlreadyRegisteredException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:business-number-already-registered"),
+                "Business Number Already Registered",
+                "Another account has already registered this business number.",
+                "BUSINESS_NUMBER_ALREADY_REGISTERED",
+            ),
+            request,
+        )
+
     @ExceptionHandler(BusinessNotFoundException::class)
     fun handleBusinessNotFoundException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
         problemResponse(
@@ -191,6 +234,25 @@ class ApiExceptionHandler {
             ),
             request,
         )
+
+    @ExceptionHandler(BusinessNotActiveException::class)
+    fun handleBusinessNotActiveException(
+        exception: BusinessNotActiveException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val response = problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:business-not-active"),
+                "Business Not Active",
+                "Only an active business can be registered.",
+                "BUSINESS_NOT_ACTIVE",
+            ),
+            request,
+        )
+        response.body?.setProperty("businessStatus", exception.businessStatus)
+        return response
+    }
 
     @ExceptionHandler(BiznoClientException::class)
     fun handleBiznoClientException(

@@ -22,5 +22,17 @@ class LoginRateLimitedException(val retryAfterSeconds: Int) : RuntimeException()
 /** 세션 쿠키가 붙은 상태 변경 요청의 Origin이 허용 목록에 없을 때 발생합니다. */
 class SessionOriginRejectedException : RuntimeException()
 
-/** 국세청에 등록되지 않은 사업자등록번호입니다. */
+/** 기업을 아직 등록하지 않은 회원이 기업 조회·수정을 요청했을 때 발생합니다. */
+class CompanyNotRegisteredException : RuntimeException()
+
+/** 계정에 이미 기업이 등록되어 있을 때 발생합니다. */
+class CompanyAlreadyRegisteredException : RuntimeException()
+
+/** 등록되지 않은 사업자등록번호입니다. */
 class BusinessNotFoundException : RuntimeException()
+
+/** 휴업·폐업 사업자는 등록할 수 없습니다. [businessStatus]는 사업자 상태 원문입니다. */
+class BusinessNotActiveException(val businessStatus: String) : RuntimeException()
+
+/** 다른 계정이 이미 같은 사업자등록번호를 등록했을 때 발생합니다. */
+class BusinessNumberAlreadyRegisteredException : RuntimeException()
