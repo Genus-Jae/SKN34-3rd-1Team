@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link } from 'react-router'
 
 import { appPaths, publicPaths } from '../../../shared/routes/appPaths'
@@ -89,6 +90,28 @@ const frequentlyAskedQuestions = [
 
 type PricingPageLayout = 'public' | 'workspace'
 
+const pricingTitle = '기업의 다음 단계에 맞는 요금제'
+
+/** 글자 공간과 접근 가능한 제목은 유지하고 시각적인 글자만 순서대로 나타냅니다. */
+function PricingTitle() {
+  let characterIndex = 0
+  return <h1 className={pricingPageStyles.title} id="pricing-title" aria-label={pricingTitle}>
+    <span aria-hidden="true">
+      {pricingTitle.split(' ').map((word, wordIndex) => {
+        if (wordIndex > 0) characterIndex += 1
+        return <Fragment key={wordIndex}>
+          {wordIndex > 0 ? ' ' : null}
+          <span className={pricingPageStyles.titleWord}>
+            {Array.from(word).map((character, index) => <span key={index} data-pricing-title-character=""
+              className={pricingPageStyles.titleCharacter}
+              style={{ animationDelay: `${180 + characterIndex++ * 75}ms` }}>{character}</span>)}
+          </span>
+        </Fragment>
+      })}
+    </span>
+  </h1>
+}
+
 /**
  * 결제 기능 없이 현재 공개 기능과 출시 예정 요금제를 안내합니다. 로그인 전에는 헤더 아래 공개 페이지로,
  * 로그인 뒤에는 사이드바 안에서 같은 내용을 보여 주며 검색 진입 버튼만 각 세계의 검색 화면으로 향합니다.
@@ -98,13 +121,7 @@ export function PricingPage({ layout = 'public' }: { layout?: PricingPageLayout 
   return (
     <main className={pricingPageStyles.page}>
       <section className={pricingPageStyles.hero} aria-labelledby="pricing-title">
-        <p className={pricingPageStyles.badge}>
-          <span className={pricingPageStyles.badgeDot} aria-hidden="true" />
-          GovBiz 요금제
-        </p>
-        <h1 className={pricingPageStyles.title} id="pricing-title">
-          기업의 다음 단계에 맞는 요금제
-        </h1>
+        <PricingTitle />
         <p className={pricingPageStyles.description}>
           지원사업 탐색은 지금 무료로 시작하세요.
           <br />
