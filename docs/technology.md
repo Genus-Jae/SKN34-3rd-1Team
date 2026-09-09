@@ -51,7 +51,7 @@ MySQL의 `support_program`은 `(source_code, source_program_id)`를 고유키로
 이 원문 테이블은 명시적 기업마당 원문 질문에서 원문 수집·검증이 성공했을 때 채워집니다.
 `support_program_sync_status`는 공개 스냅샷·색인 준비·최근 동기화 결과를 분리해 기록합니다.
 `account`는 이메일(고유)·BCrypt 비밀번호 해시·역할·이메일 인증·정지·삭제 시각을, `account_session`은 세션 JWT의
-SHA-256 해시·만료·마지막 사용 시각을 계정 FK와 함께 저장합니다. `company`는 계정당 하나(계정·사업자번호 UNIQUE)로 사업자등록번호
+SHA-256 해시·만료·마지막 사용 시각을 계정 FK와 함께 저장합니다. `partner_recruitment`는 계정·기업·공고 FK와 계정+공고 UNIQUE로 모집글을 저장하고 역량은 JSON 배열입니다. `partner_proposal`은 모집글·제안 계정·기업 FK와 모집글+제안 계정 UNIQUE로 제안을 저장하고 결정·응답·철회 시각만 두어 상태는 조회 시점에 계산합니다. `company`는 계정당 하나(계정·사업자번호 UNIQUE)로 사업자등록번호
 조회 값(상호·사업자 상태)과 담당자 입력(소재지·업종·설립연도·홈페이지)을 저장합니다.
 스키마는 [Flyway migration](../backend/core-api/src/main/resources/db/migration)으로 관리합니다.
 

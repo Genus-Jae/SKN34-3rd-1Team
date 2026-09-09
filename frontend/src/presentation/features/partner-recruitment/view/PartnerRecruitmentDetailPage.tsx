@@ -1,33 +1,82 @@
 import { Link } from 'react-router'
 
+import { partnerProposalStatusLabels, partnerProposalStatusTones } from '../../../../domain/entities/PartnerProposal'
+import { partnerRoleLabels } from '../../../../domain/entities/PartnerRecruitment'
 import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import {
+  companyAgeLabel,
+  companyInitial,
+  companySummaryLine,
+  programDeadlineLabel,
+  recruitmentDeadlineLabel,
+} from '../../../shared/partner-recruitment/partnerRecruitmentLabels'
 import { appPaths } from '../../../shared/routes/appPaths'
 import { usePartnerRecruitmentDetailViewModel } from '../viewmodel/usePartnerRecruitmentDetailViewModel'
 import { partnerRecruitmentStyles } from './PartnerRecruitment.styles'
 
-/** 모집글 상세와 참여 제안 화면입니다. 공고 원문은 그대로 보여주고 매칭은 일치·확인 필요로만 나눕니다. */
+/** 모집글 상세와 참여 제안 화면입니다. 공고 원문은 그대로 보여주고 매칭은 예시로만 표시합니다. */
 export function PartnerRecruitmentDetailPage() {
   const {
+    phase,
     recruitment,
+    hasCompany,
+    profilePath,
+    proposalsPath,
+    matches,
+    proposalRequirement,
     proposalMessage,
     proposalMessageMaxLength,
     updateProposalMessage,
-    proposalOptions,
-    toggleProposalOption,
+    shareProfile,
+    toggleShareProfile,
     submitProposal,
+    isSendingProposal,
+    proposalError,
+    myProposal,
+    myProposalLabel,
+    canSendProposal,
+    receivedProposals,
+    receivedProposalsPhase,
+    linkCopyState,
+    copyLink,
+    linkCopyLabel,
     proposalFlowSteps,
   } = usePartnerRecruitmentDetailViewModel()
 
-  if (!recruitment) {
+  if (phase === 'loading') {
+    return <div className={workspacePageStyles.content} aria-label="모집글 불러오는 중">
+      <p className={workspacePageStyles.emptyNote}>모집글을 불러오는 중입니다.</p>
+    </div>
+  }
+
+  if (phase === 'failed') {
     return <div className={workspacePageStyles.content}>
-      <h1 className={workspacePageStyles.title}>준비되지 않은 모집글 상세입니다</h1>
-      <p className={workspacePageStyles.emptyNote}>요청한 모집글의 상세 예시가 없습니다. 다른 모집글로 대신 표시하지 않습니다.</p>
+      <h1 className={workspacePageStyles.title}>모집글을 불러오지 못했습니다</h1>
+      <p className={workspacePageStyles.emptyNote}>잠시 후 다시 시도해 주세요.</p>
       <Link className={workspacePageStyles.secondaryButton} to={appPaths.partners}>파트너 모집 목록</Link>
     </div>
   }
+
+  if (!recruitment) {
+    return <div className={workspacePageStyles.content}>
+      <h1 className={workspacePageStyles.title}>모집글을 찾을 수 없습니다</h1>
+      <p className={workspacePageStyles.emptyNote}>요청한 모집글이 없거나 내려갔습니다. 다른 모집글로 대신 표시하지 않습니다.</p>
+      <Link className={workspacePageStyles.secondaryButton} to={appPaths.partners}>파트너 모집 목록</Link>
+    </div>
+  }
+
+  const isClosed = recruitment.status === 'CLOSED'
+  const conditions = [
+    { label: '우리 역할', value: partnerRoleLabels[recruitment.ownRole] },
+    { label: '찾는 역할', value: `${partnerRoleLabels[recruitment.seekingRole]} ${recruitment.seekingCount}곳` },
+    { label: '희망 지역', value: recruitment.region },
+    { label: '희망 업력', value: companyAgeLabel(recruitment.minimumCompanyAgeYears) },
+    { label: '필요 역량', value: recruitment.capabilities.length > 0 ? recruitment.capabilities.join(', ') : '없음' },
+    { label: '제안 현황', value: `${recruitment.proposalCount}건` },
+  ]
 
   return (
     <>
@@ -55,26 +104,36 @@ export function PartnerRecruitmentDetailPage() {
           <button className={workspacePageStyles.secondaryButton} type="button" disabled>
             모집글 저장 · 준비 중
           </button>
-          <button className={workspacePageStyles.secondaryButton} type="button" disabled>
-            링크 복사 · 준비 중
+          <button
+            className={workspacePageStyles.secondaryButton}
+            type="button"
+            aria-live="polite"
+            aria-disabled={linkCopyState === 'failed'}
+            onClick={() => void copyLink()}
+          >
+            {linkCopyLabel}
           </button>
         </div>
       </header>
 
       <div className={workspacePageStyles.content}>
-        <p className={workspacePageStyles.emptyNote}>모집글 상세 데모입니다. 매칭은 예시이며 제안은 전송되지 않습니다. 입력은 화면을 나가면 사라집니다.</p>
+        <p className={workspacePageStyles.emptyNote}>
+          {recruitment.isMine
+            ? '내가 올린 모집글입니다. 받은 제안은 제안함에서 수락·거절합니다. 수정·마감은 준비 중입니다.'
+            : '매칭은 예시입니다. 제안을 보내면 상대가 수락한 뒤에만 담당자 이메일이 서로에게 공개됩니다.'}
+        </p>
         <div className={workspacePageStyles.columns}>
           <div className={workspacePageStyles.column}>
             <section className={workspacePageStyles.card} aria-label="모집 조건">
               <div className={partnerRecruitmentStyles.cardTop}>
                 <span className={partnerRecruitmentStyles.tagRow}>
-                  <span className={workspaceTagClassName('ok')}>기업마당 공고</span>
-                  <span className={workspaceTagClassName('muted')}>
-                    {recruitment.recruitmentStatusLabel}
+                  <span className={workspaceTagClassName(recruitment.isMine ? 'warn' : 'ok')}>
+                    {recruitment.isMine ? '내가 쓴 모집글' : '기업마당 공고'}
                   </span>
+                  <span className={workspaceTagClassName('muted')}>{isClosed ? '모집 마감' : '모집 중'}</span>
                 </span>
-                <span className={partnerRecruitmentStyles.cardDeadline}>
-                  {recruitment.recruitmentDeadline} · {recruitment.recruitmentDeadlineDate}
+                <span className={isClosed ? partnerRecruitmentStyles.mineDeadline : partnerRecruitmentStyles.cardDeadline}>
+                  {isClosed ? '모집 마감' : recruitmentDeadlineLabel(recruitment.recruitmentDeadline)} · {recruitment.recruitmentDeadline}
                 </span>
               </div>
 
@@ -83,12 +142,12 @@ export function PartnerRecruitmentDetailPage() {
               <div className={partnerRecruitmentStyles.detailAuthorCard}>
                 <span className="flex min-w-0 items-center gap-[0.65rem]">
                   <span className={partnerRecruitmentStyles.detailAuthorAvatar} aria-hidden="true">
-                    {recruitment.company.initial}
+                    {companyInitial(recruitment.company.companyName)}
                   </span>
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-[0.4rem]">
                       <span className={partnerRecruitmentStyles.detailAuthorName}>
-                        {recruitment.company.name}
+                        {recruitment.company.companyName}
                       </span>
                       <span
                         className={workspaceTagClassName(
@@ -97,12 +156,12 @@ export function PartnerRecruitmentDetailPage() {
                       >
                         {recruitment.company.isEmailVerified ? '이메일 인증' : '인증 전'}
                       </span>
-                      {recruitment.company.isBusinessNumberChecked ? (
-                        <span className={workspaceTagClassName('ok')}>사업자번호 형식 확인</span>
+                      {recruitment.company.isBusinessVerified ? (
+                        <span className={workspaceTagClassName('ok')}>사업자 확인</span>
                       ) : null}
                     </span>
                     <span className={partnerRecruitmentStyles.detailAuthorSummary}>
-                      {recruitment.companyDetailSummary}
+                      {companySummaryLine(recruitment.company)}
                     </span>
                   </span>
                 </span>
@@ -113,7 +172,7 @@ export function PartnerRecruitmentDetailPage() {
               </div>
 
               <div className={partnerRecruitmentStyles.conditionGrid}>
-                {recruitment.conditions.map((condition) => (
+                {conditions.map((condition) => (
                   <div className={partnerRecruitmentStyles.conditionCell} key={condition.label}>
                     <span className={partnerRecruitmentStyles.conditionLabel}>{condition.label}</span>
                     <span className={partnerRecruitmentStyles.conditionValue}>{condition.value}</span>
@@ -125,34 +184,34 @@ export function PartnerRecruitmentDetailPage() {
             <section className={workspacePageStyles.card} aria-label="연결된 공고">
               <p className={workspacePageStyles.sectionEyebrow}>연결된 공고</p>
               <div className={partnerRecruitmentStyles.cardTop}>
-                <span className={workspaceTagClassName('ok')}>{recruitment.programStatusLabel}</span>
+                <span className={workspaceTagClassName('ok')}>기업마당</span>
                 <span className={partnerRecruitmentStyles.cardDeadline}>
-                  {recruitment.programDeadline} · {recruitment.programDeadlineBadge}
+                  {programDeadlineLabel(recruitment.program.applicationEndDate)}
                 </span>
               </div>
               <div className="flex flex-col gap-[0.15rem]">
-                <strong className={workspacePageStyles.cardTitle}>{recruitment.programTitle}</strong>
+                <strong className={workspacePageStyles.cardTitle}>{recruitment.program.title}</strong>
                 <span className={partnerRecruitmentStyles.cardProgram}>
-                  {recruitment.programOrganization}
+                  {recruitment.program.organization}
                 </span>
               </div>
               <p className="m-0 text-[0.82rem] leading-[1.55] text-sample-muted">
-                {recruitment.programSummary}
+                {recruitment.program.summary}
               </p>
               <div className={partnerRecruitmentStyles.rawBox}>
                 <span>
                   <strong className={partnerRecruitmentStyles.rawBoxLabel}>신청기간 원문</strong> ·{' '}
-                  {recruitment.programApplicationPeriodRaw}
+                  {recruitment.program.applicationPeriod}
                 </span>
                 <span>
                   <strong className={partnerRecruitmentStyles.rawBoxLabel}>지원대상 원문</strong> ·{' '}
-                  {recruitment.programTargetRaw}
+                  {recruitment.program.targetDescription}
                 </span>
               </div>
               <div className={partnerRecruitmentStyles.linkRow}>
                 <a
                   className={partnerRecruitmentStyles.pillLink}
-                  href={recruitment.programSourceUrl}
+                  href={recruitment.program.sourceUrl}
                   rel="noreferrer"
                   target="_blank"
                 >
@@ -166,21 +225,11 @@ export function PartnerRecruitmentDetailPage() {
 
             <section className={workspacePageStyles.card} aria-label="모집 소개">
               <h2 className={workspacePageStyles.cardTitle}>모집 소개</h2>
-              {recruitment.introductionParagraphs.map((paragraph) => (
-                <p className={partnerRecruitmentStyles.bodyParagraph} key={paragraph.slice(0, 20)}>
+              {recruitment.body.split(/\n{2,}/).map((paragraph, index) => (
+                <p className={partnerRecruitmentStyles.bodyParagraph} key={`${index}-${paragraph.slice(0, 12)}`}>
                   {paragraph}
                 </p>
               ))}
-
-              <div className={partnerRecruitmentStyles.preparationBox}>
-                <span className={partnerRecruitmentStyles.preparationTitle}>함께 준비할 일</span>
-                {recruitment.preparationItems.map((item) => (
-                  <span className={partnerRecruitmentStyles.preparationItem} key={item}>
-                    <span className={partnerRecruitmentStyles.preparationDot} aria-hidden="true" />
-                    {item}
-                  </span>
-                ))}
-              </div>
 
               <p className={partnerRecruitmentStyles.disclaimer}>
                 모집글의 내용은 작성 기업이 직접 입력한 것이며 GovBiz가 검증하지 않습니다. 공고
@@ -199,83 +248,129 @@ export function PartnerRecruitmentDetailPage() {
           </div>
 
           <aside className={workspacePageStyles.column} aria-label="매칭과 참여 제안">
-            <section className={workspacePageStyles.card}>
+            <section className={workspacePageStyles.card} aria-label="우리 기업과의 매칭">
               <p className={workspacePageStyles.sectionEyebrow}>우리 기업과의 매칭</p>
-              <p className={workspacePageStyles.emptyNote}>
-                모집 조건과 내 프로필을 항목별로 비교했습니다. 확인 필요 항목은 상대에게 직접
-                물어보세요.
-              </p>
-              <div className={partnerRecruitmentStyles.sideList}>
-                {recruitment.matches.map((match) => (
-                  <div className={partnerRecruitmentStyles.matchRow} key={match.label}>
-                    <span>{match.label}</span>
-                    <span className={workspaceTagClassName(match.isMatched ? 'ok' : 'warn')}>
-                      {match.isMatched ? '일치' : '확인 필요'}
-                    </span>
+              {hasCompany ? (
+                <>
+                  <p className={workspacePageStyles.emptyNote}>
+                    예시 비교입니다. 추천 API가 생기면 등록한 소재지·업종·설립연도로 실제 비교하며, 확인 필요
+                    항목은 상대에게 직접 물어보세요.
+                  </p>
+                  <div className={partnerRecruitmentStyles.sideList}>
+                    {matches.map((match) => (
+                      <div className={partnerRecruitmentStyles.matchRow} key={match.label}>
+                        <span>{match.label}</span>
+                        <span className={workspaceTagClassName(match.isMatched ? 'ok' : 'warn')}>
+                          {match.isMatched ? '일치' : '확인 필요'}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <>
+                  <p className={workspacePageStyles.emptyNote}>
+                    기업을 등록하면 소재지·업종·설립연도로 모집 조건과의 일치를 보여 줍니다.
+                  </p>
+                  <Link className={workspacePageStyles.quietLink} to={profilePath}>프로필에서 기업 등록</Link>
+                </>
+              )}
             </section>
 
-            <form
-              className={partnerRecruitmentStyles.proposalCard}
-              onSubmit={submitProposal}
-              aria-label="참여 제안"
-            >
-              <div className="flex flex-col gap-1">
+            {recruitment.isMine ? (
+              <section className={workspacePageStyles.card} aria-label="받은 제안">
+                <p className={workspacePageStyles.sectionEyebrow}>받은 제안</p>
+                {receivedProposalsPhase === 'failed' ? (
+                  <p className={workspacePageStyles.emptyNote}>받은 제안을 불러오지 못했습니다. 제안함에서 다시 확인해 주세요.</p>
+                ) : receivedProposals.length === 0 ? (
+                  <p className={workspacePageStyles.emptyNote}>
+                    {receivedProposalsPhase === 'loading' ? '받은 제안을 불러오는 중입니다.' : '아직 이 모집글로 온 제안이 없습니다.'}
+                  </p>
+                ) : (
+                  <div className={partnerRecruitmentStyles.sideList}>
+                    {receivedProposals.map((proposal) => (
+                      <div className={partnerRecruitmentStyles.matchRow} key={proposal.id}>
+                        <span>{proposal.counterpart.companyName}</span>
+                        <span className={workspaceTagClassName(partnerProposalStatusTones[proposal.status])}>
+                          {partnerProposalStatusLabels[proposal.status]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Link className={workspacePageStyles.quietLink} to={proposalsPath}>제안함에서 수락·거절</Link>
+              </section>
+            ) : myProposal !== null ? (
+              <section className={partnerRecruitmentStyles.proposalCard} aria-label="내 제안 상태">
                 <p className={workspacePageStyles.sectionEyebrow}>참여 제안</p>
-                <strong className={workspacePageStyles.cardTitle}>
-                  {recruitment.company.name}에 제안 보내기
-                </strong>
-              </div>
+                <strong className={workspacePageStyles.cardTitle}>제안을 보냈습니다 · {myProposalLabel}</strong>
+                <p className={partnerRecruitmentStyles.disclaimer}>
+                  {myProposal.status === 'PENDING'
+                    ? '상대가 7일 안에 응답하지 않으면 만료됩니다. 철회는 제안함에서 할 수 있습니다.'
+                    : myProposal.status === 'ACCEPTED'
+                      ? '수락됐습니다. 제안함에서 상대 담당자 연락처를 확인하세요.'
+                      : '이 모집글에는 다시 제안할 수 없습니다.'}
+                </p>
+                <Link className={workspacePageStyles.secondaryButton} to={proposalsPath}>제안함 열기</Link>
+              </section>
+            ) : (
+              <form
+                className={partnerRecruitmentStyles.proposalCard}
+                onSubmit={(event) => void submitProposal(event)}
+                aria-label="참여 제안"
+              >
+                <div className="flex flex-col gap-1">
+                  <p className={workspacePageStyles.sectionEyebrow}>참여 제안</p>
+                  <strong className={workspacePageStyles.cardTitle}>
+                    {recruitment.company.companyName}에 제안 보내기
+                  </strong>
+                </div>
 
-              <div className={partnerRecruitmentStyles.field}>
-                <label htmlFor="proposal-message">제안 메시지</label>
-                <textarea
-                  className={partnerRecruitmentStyles.proposalTextarea}
-                  id="proposal-message"
-                  maxLength={proposalMessageMaxLength}
-                  placeholder="우리 기업이 맡을 역할과 확인하고 싶은 점을 적어 주세요."
-                  value={proposalMessage}
-                  onChange={(event) => updateProposalMessage(event.target.value)}
-                />
-                <span className={partnerRecruitmentStyles.proposalCounter}>
-                  {proposalMessage.length} / {proposalMessageMaxLength}
-                </span>
-              </div>
+                {hasCompany ? null : (
+                  <p className={workspacePageStyles.emptyNote}>
+                    제안은 기업을 등록한 회원만 보낼 수 있습니다. <Link className={workspacePageStyles.quietLink} to={profilePath}>프로필에서 기업 등록</Link>
+                  </p>
+                )}
 
-              <div className="flex flex-col gap-[0.45rem]">
+                <div className={partnerRecruitmentStyles.field}>
+                  <label htmlFor="proposal-message">제안 메시지</label>
+                  <textarea
+                    className={partnerRecruitmentStyles.proposalTextarea}
+                    id="proposal-message"
+                    maxLength={proposalMessageMaxLength}
+                    aria-invalid={proposalError !== null}
+                    aria-describedby={proposalError !== null ? 'proposal-error' : undefined}
+                    placeholder="우리 기업이 맡을 역할과 확인하고 싶은 점을 적어 주세요."
+                    value={proposalMessage}
+                    onChange={(event) => updateProposalMessage(event.target.value)}
+                  />
+                  <span className={partnerRecruitmentStyles.proposalCounter}>
+                    {proposalMessage.length} / {proposalMessageMaxLength}
+                  </span>
+                </div>
+
                 <label className={partnerRecruitmentStyles.checkboxLabel}>
                   <input
                     className={partnerRecruitmentStyles.checkbox}
                     type="checkbox"
                     name="shareProfile"
-                    checked={proposalOptions.shareProfile}
-                    onChange={() => toggleProposalOption('shareProfile')}
+                    checked={shareProfile}
+                    onChange={toggleShareProfile}
                   />
-                  기업 프로필 함께 보내기 (기본정보·역량·관심 분야)
+                  기업 기본정보 함께 보내기 (소재지·업종·설립연도)
                 </label>
-                <label className={partnerRecruitmentStyles.checkboxLabel}>
-                  <input
-                    className={partnerRecruitmentStyles.checkbox}
-                    type="checkbox"
-                    name="shareQualifications"
-                    checked={proposalOptions.shareQualifications}
-                    onChange={() => toggleProposalOption('shareQualifications')}
-                  />
-                  우대·인증 서류 상태도 공개
-                </label>
-              </div>
 
-              <button className={partnerRecruitmentStyles.proposalSubmit} type="submit" disabled>
-                참여 제안 보내기 · 준비 중
-              </button>
-
-              <p className={partnerRecruitmentStyles.disclaimer}>
-                상대가 수락하기 전에는 담당자 이름과 연락처가 공개되지 않습니다. 수락되면 메시지함이
-                열리고 양쪽 담당자 정보가 서로에게 표시됩니다.
-              </p>
-            </form>
+                {proposalError ? <p id="proposal-error" className={workspacePageStyles.emptyNote} role="alert">{proposalError}</p> : null}
+                <button
+                  className={partnerRecruitmentStyles.proposalSubmit}
+                  type="submit"
+                  disabled={!canSendProposal || !hasCompany || isSendingProposal}
+                >
+                  {isSendingProposal ? '보내는 중…' : recruitment.status === 'CLOSED' ? '모집이 마감됐습니다' : '참여 제안 보내기'}
+                </button>
+                <p className={partnerRecruitmentStyles.disclaimer}>{proposalRequirement}</p>
+              </form>
+            )}
 
             <section className={partnerRecruitmentStyles.noticeCard}>
               <p className={workspacePageStyles.sectionEyebrow}>제안 상태 흐름</p>
@@ -288,8 +383,7 @@ export function PartnerRecruitmentDetailPage() {
                 ))}
               </div>
               <p className={partnerRecruitmentStyles.noticeText}>
-                거절되거나 7일간 응답이 없으면 제안은 자동 종료되고 보낸 프로필은 상대에게 더 이상
-                보이지 않습니다.
+                거절되거나 7일간 응답이 없으면 제안은 만료되고, 같은 모집글에는 다시 제안할 수 없습니다.
               </p>
             </section>
           </aside>

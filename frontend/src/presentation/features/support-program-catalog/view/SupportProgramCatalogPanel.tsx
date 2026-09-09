@@ -5,6 +5,8 @@ import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCatalogFilters } from '../../../../domain/entities/SupportProgramCatalog'
 import { isAppPath, supportProgramDetailPath } from '../../../shared/routes/appPaths'
 import { defaultCatalogFilters, readCatalogFilters, writeCatalogFilters } from '../../../shared/support-program/catalogSearchParams'
+import { FilterChoices } from '../../../shared/workspace/FilterChoices'
+import { toFilterChoiceOptions } from '../../../shared/workspace/filterChoiceOptions'
 import { useSupportProgramCatalogViewModel } from '../viewmodel/useSupportProgramCatalogViewModel'
 
 const inputStyle = 'min-h-11 w-full min-w-0 rounded-xl border border-sample-border bg-white px-3 text-sm text-app-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary'
@@ -92,8 +94,8 @@ function CatalogFilters({ filters, regions, categories, startupStages, applicant
       <button type="submit" className={`${buttonStyle} shrink-0 bg-brand-primary text-white hover:bg-[#066538]`}>검색</button>
     </div>
     <div className="grid gap-4 border-t border-sample-border pt-4">
-      <CatalogFilterChoices label="지역" name="catalog-region" options={regions} selected={draft.region} onSelect={(region) => setDraft({ ...draft, region })} />
-      <CatalogFilterChoices label="분야" name="catalog-category" options={categories} selected={draft.category} onSelect={(category) => setDraft({ ...draft, category })} />
+      <FilterChoices label="지역" name="catalog-region" options={toFilterChoiceOptions(regions)} selected={draft.region} onSelect={(region) => setDraft({ ...draft, region })} />
+      <FilterChoices label="분야" name="catalog-category" options={toFilterChoiceOptions(categories)} selected={draft.category} onSelect={(category) => setDraft({ ...draft, category })} />
       <div className="grid gap-3 sm:grid-cols-2 sm:gap-x-8">
         <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">출처
           <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.sourceCode}
@@ -147,26 +149,6 @@ function CatalogExtraSelect({ label, options, selected, onSelect }: {
     </select>
   </label>
 }
-
-function CatalogFilterChoices({ label, name, options, selected, onSelect }: {
-  label: string; name: string; options: string[]; selected: string; onSelect: (value: string) => void
-}) {
-  const choices = selected && !options.includes(selected) ? [selected, ...options] : options
-  return <fieldset className="m-0 min-w-0 border-0 p-0">
-    <legend className="sr-only">{label}</legend>
-    <div className="flex gap-3 max-chat:flex-col max-chat:gap-2">
-      <span aria-hidden="true" className="w-13 shrink-0 pt-2.5 text-xs font-semibold text-sample-muted max-chat:pt-0">{label}</span>
-      <div className="flex min-w-0 flex-wrap gap-1.5">
-        {['', ...choices].map((value) => <label key={value} className="relative min-w-0 max-w-full cursor-pointer">
-          <input type="radio" name={name} value={value} aria-label={value || `전체 ${label}`} checked={selected === value}
-            onChange={() => onSelect(value)} className="peer sr-only" />
-          <span className="flex min-h-9 items-center justify-center rounded-lg border border-sample-border bg-white px-2.5 text-xs leading-relaxed text-sample-muted transition-colors [overflow-wrap:anywhere] hover:border-brand-primary hover:text-brand-primary peer-checked:border-brand-primary peer-checked:bg-brand-primary peer-checked:font-bold peer-checked:text-white peer-checked:hover:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-primary motion-reduce:transition-none">{value || '전체'}</span>
-        </label>)}
-      </div>
-    </div>
-  </fieldset>
-}
-
 function CatalogRow({ program, returnTo, inApp }: { program: SupportProgram; returnTo: string; inApp: boolean }) {
   const detailPath = supportProgramDetailPath({ sourceCode: program.sourceCode, sourceProgramId: program.id }, inApp)
   return <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_10rem_10rem] gap-5 border-t border-sample-border px-5 py-5 first:border-t-0 hover:bg-[#fafcfb] max-chat:grid-cols-1 max-chat:gap-2 max-chat:px-4">

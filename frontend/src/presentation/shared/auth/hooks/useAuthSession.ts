@@ -91,6 +91,8 @@ export function useAuthSession(
   return {
     account,
     devLogInError,
+    /** 프로필에서 기업을 등록했는지입니다. 모집글 작성·프로필 일치 표시가 같은 기준을 씁니다. */
+    hasCompany: account?.company !== null && account?.company !== undefined,
     isAuthenticated,
     isDevLoggingIn,
     logInAsDeveloper,

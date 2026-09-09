@@ -8,6 +8,7 @@ import { CompanyProfilePage } from './presentation/features/company-profile/view
 import { PartnerRecruitmentCreatePage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentCreatePage'
 import { PartnerRecruitmentDetailPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentDetailPage'
 import { PartnerRecruitmentListPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentListPage'
+import { PartnerProposalBoxPage } from './presentation/features/partner-proposal/view/PartnerProposalBoxPage'
 import { PricingPage } from './presentation/features/pricing/view/PricingPage'
 import { PublicPartnerRecruitmentDetailPage } from './presentation/features/public-partner-recruitment/view/PublicPartnerRecruitmentDetailPage'
 import { PublicPartnerRecruitmentListPage } from './presentation/features/public-partner-recruitment/view/PublicPartnerRecruitmentListPage'
@@ -68,6 +69,7 @@ function App() {
           <Route path={appPaths.partners} element={<PartnerRecruitmentListPage />} />
           <Route path={appPaths.partnerNew} element={<PartnerRecruitmentCreatePage />} />
           <Route path={appPaths.partnerDetail} element={<PartnerRecruitmentDetailPage />} />
+          <Route path={appPaths.proposals} element={<PartnerProposalBoxPage />} />
           <Route path={appPaths.profile} element={<CompanyProfilePage />} />
           <Route path={appPaths.supportProgramDetail} element={<SupportProgramDetailPage />} />
           <Route path={appPaths.supportProgramQuestion} element={<SupportProgramEvidenceQuestionPage />} />

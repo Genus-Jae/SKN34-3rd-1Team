@@ -486,6 +486,13 @@ C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 
 `BiznoClient`가 응답 검증과 오류를 `BiznoClientException`으로 바꿔 API 키가 담긴 URL이 로그·응답에 남지 않게 합니다.
 기업 등록은 `CompanyController → CompanyService → BiznoClient(사업자등록번호 조회) · CompanyRepository → MySQL`입니다. 서버가 등록 시점에
 사업자등록번호를 다시 조회해 계속사업자만 저장하고, 계정 조회는 `company`를 LEFT JOIN해 요약과 `tier=COMPANY`를 계산합니다.
+파트너 모집글은 `partner` 기능의 `PartnerRecruitmentController → PartnerRecruitmentService → PartnerRecruitmentRepository → MySQL`입니다.
+Service가 세션 계정의 기업, `support_program`에 현재 있는 공고, 접수 상태(`SupportProgramStatusResolver`), 마감일 규칙을 확인한 뒤 저장하고,
+공고당 한 건은 DB UNIQUE 제약이 보장합니다. 목록·상세는 기업·계정·공고를 JOIN해 읽고 모집 상태는 저장하지 않고 조회 시점에 계산합니다.
+파트너 제안은 `PartnerProposalController · PartnerProposalBoxController → PartnerProposalService → PartnerProposalRepository → MySQL`입니다.
+Service가 제안자의 기업, 모집글의 모집 상태, 당사자 여부를 확인하고, 수락·거절·철회는 `decision IS NULL AND withdrawn_at IS NULL`
+조건의 UPDATE 영향 행 수로 동시 처리를 막습니다. 제안 상태와 담당자 연락처 공개 여부는 `PartnerProposal` 도메인이 응답·철회·경과 시간·모집 상태로
+계산하며, 모집글 응답의 제안 수·내 제안은 `PartnerRecruitmentService`가 두 Repository를 묶어 붙입니다.
 로그인 성공 시 `SessionTokenHelper`가 계정 ID를 `sub`로 하는 HS256 JWT를 발급하고, DB에는 토큰의 SHA-256 해시와
 만료 시각만 저장합니다. 로그인이 필요한 Controller는 `Account` 파라미터를 선언하며
 `AuthenticatedAccountArgumentResolver`가 HttpOnly 세션 쿠키(`govbiz_session`)의 서명·만료를 검사한 뒤 세션 행으로 계정을

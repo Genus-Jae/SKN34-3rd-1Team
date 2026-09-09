@@ -14,20 +14,16 @@ export const partnerRecruitmentStyles = {
   listBadge: 'm-0 inline-flex items-center rounded-full bg-[#e7f6ed] px-3 py-[0.4rem] text-[0.75rem] font-bold text-[#087f46]',
   listTitle: 'm-0 break-keep text-[clamp(1.6rem,2.8vw,2.5rem)] font-extrabold leading-[1.35] tracking-[-0.06em] text-app-ink [text-wrap:balance]',
   listDescription: 'm-0 break-keep text-[0.88rem] leading-[1.7] text-sample-muted [text-wrap:pretty]',
-  toolbar: 'flex flex-wrap items-center justify-between gap-4',
-  tabs: 'inline-flex gap-[0.35rem] rounded-[0.85rem] border border-sample-border bg-[#f6f7f8] p-[0.35rem]',
-  tab: 'inline-flex items-center gap-[0.4rem] rounded-[0.6rem] px-[0.9rem] py-[0.6rem] text-[0.82rem] font-extrabold',
-  activeTab: 'bg-brand-primary text-white shadow-[0_4px_12px_rgb(32_33_36_/_14%)]',
-  inactiveTab: 'text-sample-muted',
-  tabCount: 'inline-flex rounded-full bg-[#e3e5e8] px-[0.4rem] py-[0.05rem] text-[0.66rem] text-sample-muted',
   search: classes(
-    'flex min-h-11 w-[300px] max-w-full items-center gap-2 rounded-[1rem] border border-sample-border bg-white px-[0.9rem]',
-    'text-[0.85rem] text-[#838a93]',
+    'flex min-h-11 w-[320px] max-w-full items-center gap-2 rounded-[1rem] border border-sample-border bg-white px-[0.9rem]',
+    'text-[0.85rem] text-[#838a93] focus-within:border-[#087f46] focus-within:shadow-[0_0_0_3px_rgb(8_127_70_/_12%)]',
   ),
-  filters: 'flex flex-wrap items-center gap-2',
-  filterLabel:
-    'mr-1 text-[0.72rem] font-extrabold tracking-[0.08em] text-sample-muted uppercase',
-  resultCount: 'ml-auto text-[0.78rem] text-sample-muted',
+  searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink outline-0 placeholder:text-sample-muted',
+  plainList: 'm-0 flex list-disc flex-col gap-1 pl-5 text-[0.78rem] leading-[1.5] text-sample-muted',
+  filterPanel: 'flex flex-col gap-3 rounded-[1rem] border border-sample-border bg-white p-4',
+  filterFooter: 'flex flex-wrap items-center justify-between gap-3',
+  resultCount: 'text-[0.78rem] text-sample-muted',
+  pagination: 'flex items-center justify-center gap-3 pt-2',
   cardGrid: 'grid grid-cols-1 gap-4 @min-[40rem]/column:grid-cols-2',
   cardTop: 'flex items-center justify-between gap-3',
   cardDeadline: 'text-[0.74rem] font-extrabold text-[#b75561]',
@@ -45,14 +41,9 @@ export const partnerRecruitmentStyles = {
   tagRow: 'flex flex-wrap gap-[0.35rem]',
   cardFooter: 'flex flex-wrap items-center justify-between gap-3 pt-1',
   cardFooterNote: 'flex flex-wrap items-center gap-[0.35rem] text-[0.72rem] text-sample-muted',
-  moreRow: 'flex justify-center pt-2',
   sideList: 'flex flex-col gap-2',
   sideItem: 'flex flex-col gap-[0.3rem] rounded-[0.85rem] bg-[#f6f7f8] px-[0.85rem] py-[0.7rem]',
   sideItemTitle: 'text-[0.8rem] font-bold leading-[1.4] text-app-ink',
-  statGrid: 'grid grid-cols-3 gap-2',
-  statCell: 'flex flex-col gap-[0.15rem] rounded-[0.85rem] bg-[#f6f7f8] px-3 py-[0.7rem]',
-  statValue: 'text-[1.2rem] font-bold text-app-ink',
-  statLabel: 'text-[0.68rem] text-sample-muted',
   noticeCard:
     'flex flex-col gap-[0.6rem] rounded-[1.4rem] border border-sample-border bg-[#f6f7f8] p-[1.2rem]',
   noticeText: 'm-0 text-[0.75rem] leading-[1.6] text-sample-muted',
@@ -74,10 +65,6 @@ export const partnerRecruitmentStyles = {
   pillLink:
     'rounded-[0.55rem] bg-[#e7f6ed] px-[0.7rem] py-[0.55rem] text-[0.74rem] font-extrabold text-[#087f46] no-underline hover:bg-[#d7efdf]',
   bodyParagraph: 'm-0 text-[0.88rem] leading-[1.7] text-app-ink',
-  preparationBox: 'flex flex-col gap-2 rounded-[1rem] bg-[#f6f7f8] px-4 py-[0.9rem]',
-  preparationTitle: 'text-[0.75rem] font-extrabold text-sample-muted',
-  preparationItem: 'flex items-center gap-2 text-[0.8rem] text-app-ink',
-  preparationDot: 'inline-block size-[6px] shrink-0 rounded-full bg-brand-primary',
   disclaimer: 'm-0 text-[0.72rem] leading-[1.55] text-sample-muted',
   matchRow:
     'flex items-center justify-between gap-2 rounded-[0.6rem] bg-[#f6f7f8] px-3 py-[0.6rem] text-[0.78rem] text-app-ink',
@@ -116,13 +103,13 @@ export const partnerRecruitmentStyles = {
     'flex items-center justify-between gap-4 rounded-[0.85rem] border border-brand-primary bg-white px-4 py-[0.9rem]',
   selectedProgramTitle: 'text-[0.95rem] font-bold text-app-ink',
   selectedProgramMeta: 'text-[0.72rem] text-sample-muted',
-  programSearchBox: classes(
-    'flex min-h-11 items-center gap-2 rounded-[1rem] border border-dashed border-sample-border bg-white px-[0.9rem]',
-    'text-[0.82rem] text-[#838a93]',
-  ),
+  programResultList: 'm-0 flex list-none flex-col gap-2 p-0',
+  programResult: 'flex items-center justify-between gap-3 rounded-[0.85rem] border border-sample-border bg-white px-4 py-[0.7rem]',
   fieldRow: 'grid grid-cols-1 gap-[1.1rem] @min-[28rem]/column:grid-cols-2',
   field: 'flex flex-col gap-2 text-[0.9rem] font-bold text-app-ink',
   fieldLabelRow: 'flex items-center gap-1',
+  unitField: 'flex items-center gap-2',
+  unitLabel: 'shrink-0 text-[0.85rem] font-semibold text-sample-muted',
   optionalMark: 'text-[0.8rem] font-medium text-sample-muted',
   fieldControl: classes(
     'box-border min-h-12 w-full rounded-[1rem] border border-sample-border bg-white px-[0.9rem] py-[0.8rem]',
@@ -145,9 +132,6 @@ export const partnerRecruitmentStyles = {
   capabilityRemove: 'shrink-0 cursor-pointer border-0 bg-transparent p-0 text-[0.75rem] leading-none text-[#087f46]',
   capabilityInput:
     'min-w-32 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink placeholder:text-sample-muted focus:outline-0',
-  toggleRow: 'flex items-center justify-between gap-4 rounded-[0.85rem] bg-[#f6f7f8] px-[0.9rem] py-3',
-  toggleTitle: 'block text-[0.85rem] font-bold text-app-ink',
-  toggleDescription: 'mt-[0.1rem] block text-[0.72rem] leading-[1.5] text-sample-muted',
   formActions: 'flex items-center justify-between gap-6 pt-2 max-chat:flex-col max-chat:items-stretch',
   formActionsNote: 'm-0 text-[0.82rem] leading-[1.6] text-sample-muted',
   formActionButtons: 'flex shrink-0 items-center gap-2',
@@ -162,12 +146,6 @@ export const partnerRecruitmentStyles = {
   requirementRow: 'flex items-start gap-2 text-[0.78rem] leading-[1.5] text-app-ink',
 } as const
 
-export function partnerTabClassName(isActive: boolean) {
-  const variant = isActive
-    ? partnerRecruitmentStyles.activeTab
-    : partnerRecruitmentStyles.inactiveTab
-  return `${partnerRecruitmentStyles.tab} ${variant}`
-}
 
 export function partnerRoleChoiceClassName(isSelected: boolean) {
   const variant = isSelected
