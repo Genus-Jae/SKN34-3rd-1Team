@@ -89,6 +89,22 @@ class CompanyFlowIntegrationTest {
                 .content("""{"businessNumber":"124-81-00998","region":"서울특별시","industry":"제조업","foundedYear":1800}"""),
         )
             .andExpect(status().isBadRequest())
+        // 올해를 넘는 설립연도와 http(s)가 아닌 홈페이지는 필드명을 실은 400입니다.
+        mockMvc.perform(
+            post("/api/v1/me/company").cookie(session).origin()
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"businessNumber":"124-81-00998","region":"서울특별시","industry":"제조업","foundedYear":2099}"""),
+        )
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("REQUEST_VALIDATION_FAILED"))
+            .andExpect(jsonPath("$.errors[0].field").value("foundedYear"))
+        mockMvc.perform(
+            post("/api/v1/me/company").cookie(session).origin()
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"businessNumber":"124-81-00998","region":"서울특별시","industry":"제조업","foundedYear":2020,"homepageUrl":"ftp://example.co.kr"}"""),
+        )
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors[0].field").value("homepageUrl"))
         mockMvc.perform(get("/api/v1/me/company/lookup").param("businessNumber", "9999999999").cookie(session))
             .andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.code").value("BIZNO_NOT_CONFIGURED"))

@@ -283,7 +283,7 @@ src/
 ├── presentation/features/partner-recruitment/ # 로그인 뒤 모집 목록·상세·작성 View와 각 페이지 ViewModel
 ├── presentation/features/public-partner-recruitment/ # 로그인 전 공개 모집 목록·상세 View와 ViewModel
 ├── presentation/features/partner-proposal/ # 제안함(받은·보낸 제안, 수락·거절·철회) View와 ViewModel
-├── presentation/features/company-profile/ # 기업 등록·기본정보 수정과 프로필 View, ViewModel, 준비 중 섹션의 예시 값
+├── presentation/features/company-profile/ # 기업 등록·기본정보 수정(사업자번호 자동 하이픈·연도 선택기·홈페이지 정규화)과 프로필 View, ViewModel, 준비 중 섹션의 예시 값
 ├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
 ├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 조회 훅·표시 helper, 받은 제안함 slice·훅과 보낸 제안함 훅, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
@@ -314,7 +314,7 @@ IME 조합, 스크롤 effect와 검색 결과 안내도 페이지 ViewModel이 �
 `presentation/shared/app-header`의 공용 헤더가 맡고, 로그인 뒤 작업 화면은 `presentation/shared/app-sidebar`의
 `WorkspaceLayout`이 헤더 대신 사이드바를 놓습니다. 어떤 화면이 어느 껍데기를 쓰는지는 `App`의 라우트가 결정합니다.
 파트너 모집·기업 프로필·어드민이 함께 쓰는 카드·태그·표·버튼 스타일과 켬·끔 스위치, 지원사업 검색과 파트너 모집이 함께 쓰는
-한 줄 라디오 필터(`FilterChoices`)는 `presentation/shared/workspace`에 둡니다. 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
+한 줄 라디오 필터(`FilterChoices`), 연도 하나를 고르는 `YearPicker`(넓은 화면은 12년 격자, 좁은 화면은 select)는 `presentation/shared/workspace`에 둡니다. 화면 고유 배치는 각 기능의 styles 파일에서 정의합니다.
 로그인 상태는 `presentation/shared/auth`의 Redux `auth` slice와 `useAuthSession`·`useRestoreAuthSession`이 소유합니다.
 `App`은 시작 시 세션을 복원하고, `RequireAuth(minimumTier)`·`GuestOnly`·`PublicOnly` 라우트 래퍼가 복원이 끝나기 전(`unknown`)에는
 리다이렉트하지 않다가 회원·관리자 단계에 따라 화면을 나눕니다. `PublicOnly`는 로그인한 사용자를 공개 URL에서 같은 내용의

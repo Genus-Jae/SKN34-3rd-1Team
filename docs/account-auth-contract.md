@@ -192,8 +192,8 @@ Cookie: govbiz_session=<JWT>
 |---|---|
 | `businessNumber` | 등록 때만. 숫자 10자리, 하이픈 선택. 상호·상태는 서버가 조회 결과로 채우므로 받지 않음 |
 | `region` `industry` | 1~40자 / 1~80자. 프런트는 17개 시·도와 표준산업분류 대분류 목록에서 고름 |
-| `foundedYear` | 1900~올해 |
-| `homepageUrl` | 선택. 500자 이하. 빈 문자열은 비운 것으로 저장 |
+| `foundedYear` | 1900~올해. 올해를 넘으면 400 `REQUEST_VALIDATION_FAILED`에 `errors[].field=foundedYear` |
+| `homepageUrl` | 선택. `http(s)://`로 시작하고 공백이 없는 500자 이하 주소. 앞뒤 공백은 다듬고 빈 문자열은 비운 것으로 저장. 다른 스킴은 400 `errors[].field=homepageUrl` |
 
 기업 응답은 요청 필드(`businessNumber`·`region`·`industry`·`foundedYear`·`homepageUrl`)에 `companyName` `businessStatus`
 `businessVerifiedAt` `updatedAt`을 더한 것입니다. 세션·내 계정 응답의 `account.company`에는 `companyName`·`businessNumber` 요약이 실리고 기업이 없으면 `null`입니다.

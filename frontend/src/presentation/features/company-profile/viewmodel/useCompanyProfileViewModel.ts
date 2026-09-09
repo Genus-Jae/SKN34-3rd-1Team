@@ -11,7 +11,10 @@ import {
   companyProfileLimits,
   companyRegions,
   formatBusinessNumber,
+  formatBusinessNumberInput,
   isValidBusinessNumber,
+  isValidHomepageUrl,
+  normalizeHomepageUrl,
 } from '../../../../domain/entities/Company'
 import type {
   GetMyCompanyUseCase,
@@ -29,6 +32,7 @@ import {
 
 export const companyProfileMessages = {
   businessNumberInvalid: '사업자등록번호는 숫자 10자리로 입력해 주세요.',
+  businessNumberHint: '숫자만 입력해도 하이픈이 자동으로 붙습니다. 10자리를 채우면 조회할 수 있습니다.',
   businessNotFound: '등록되지 않은 사업자등록번호입니다.',
   businessNotActive: (status: string | null) =>
     status === null ? '휴업·폐업 사업자는 등록할 수 없습니다.' : `${status} 상태의 사업자는 등록할 수 없습니다.`,
@@ -38,9 +42,12 @@ export const companyProfileMessages = {
   alreadyRegistered: '이 계정에는 이미 기업이 등록되어 있습니다. 화면을 새로고침해 주세요.',
   regionRequired: '소재지를 선택해 주세요.',
   industryRequired: '업종을 선택해 주세요.',
+  foundedYearRequired: '설립연도를 선택해 주세요.',
   foundedYearInvalid: (maxYear: number) =>
-    `설립연도는 ${companyProfileLimits.foundedYearMin}년부터 ${maxYear}년까지 입력할 수 있습니다.`,
+    `설립연도는 ${companyProfileLimits.foundedYearMin}년부터 ${maxYear}년까지 고를 수 있습니다.`,
+  homepageInvalid: 'https://로 시작하는 주소를 입력해 주세요. 예: https://company.co.kr',
   homepageTooLong: `홈페이지 주소는 ${companyProfileLimits.homepageMaxLength}자 이하로 입력해 주세요.`,
+  homepagePreview: (url: string) => `${url} 로 저장됩니다.`,
   saveFailed: '저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   saved: '기업 정보를 저장했습니다.',
   registered: '기업을 등록했습니다. 이제 파트너 모집글을 작성할 수 있습니다.',
@@ -68,7 +75,10 @@ export type ProfileFormValues = {
   homepageUrl: string
 }
 
-type FormError = { field: keyof ProfileFormValues | 'businessNumber' | null; message: string }
+export type ProfileFormField = keyof ProfileFormValues | 'businessNumber'
+
+/** 필드마다 문구를 두고, 특정 필드에 묶이지 않는 저장 실패는 `form`에 둡니다. */
+export type ProfileFormErrors = Partial<Record<ProfileFormField | 'form', string>>
 
 type CompanyUseCases = {
   getMyCompany: Pick<GetMyCompanyUseCase, 'execute'>
@@ -104,7 +114,9 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
   const [businessNumber, setBusinessNumber] = useState('')
   const [lookup, setLookup] = useState<LookupState>({ status: 'idle' })
   const [form, setForm] = useState<ProfileFormValues>(emptyForm)
-  const [formError, setFormError] = useState<FormError | null>(null)
+  const [formErrors, setFormErrors] = useState<ProfileFormErrors>({})
+  /** 검증에 실패했을 때 포커스를 옮길 첫 필드입니다. View가 옮긴 뒤 비웁니다. */
+  const [focusField, setFocusField] = useState<ProfileFormField | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -146,10 +158,11 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
   async function lookupBusiness() {
     if (lookup.status === 'looking') return
     if (!isValidBusinessNumber(businessNumber)) {
-      setFormError({ field: 'businessNumber', message: companyProfileMessages.businessNumberInvalid })
+      setFormErrors({ businessNumber: companyProfileMessages.businessNumberInvalid })
+      setFocusField('businessNumber')
       return
     }
-    setFormError(null)
+    setFormErrors({})
     setLookup({ status: 'looking' })
     try {
       const result = await resolved.lookupBusiness.execute(businessNumber)
@@ -169,26 +182,29 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
     }
   }
 
+  /** 모든 필드를 한 번에 검사해 문구를 모으고, 첫 오류 필드로 포커스를 보냅니다. */
   function validateForm(): CompanyProfileInput | null {
-    if (!form.region) {
-      setFormError({ field: 'region', message: companyProfileMessages.regionRequired })
-      return null
-    }
-    if (!form.industry) {
-      setFormError({ field: 'industry', message: companyProfileMessages.industryRequired })
-      return null
-    }
+    const errors: ProfileFormErrors = {}
+    if (!form.region) errors.region = companyProfileMessages.regionRequired
+    if (!form.industry) errors.industry = companyProfileMessages.industryRequired
     const foundedYear = Number(form.foundedYear)
-    if (!/^\d{4}$/.test(form.foundedYear) || foundedYear < companyProfileLimits.foundedYearMin || foundedYear > currentYear) {
-      setFormError({ field: 'foundedYear', message: companyProfileMessages.foundedYearInvalid(currentYear) })
+    if (form.foundedYear === '') {
+      errors.foundedYear = companyProfileMessages.foundedYearRequired
+    } else if (!/^\d{4}$/.test(form.foundedYear) || foundedYear < companyProfileLimits.foundedYearMin || foundedYear > currentYear) {
+      errors.foundedYear = companyProfileMessages.foundedYearInvalid(currentYear)
+    }
+    const homepageUrl = normalizeHomepageUrl(form.homepageUrl)
+    if (homepageUrl !== '') {
+      if (homepageUrl.length > companyProfileLimits.homepageMaxLength) errors.homepageUrl = companyProfileMessages.homepageTooLong
+      else if (!isValidHomepageUrl(homepageUrl)) errors.homepageUrl = companyProfileMessages.homepageInvalid
+    }
+
+    setFormErrors(errors)
+    const firstError = (['region', 'industry', 'foundedYear', 'homepageUrl'] as const).find((field) => errors[field] !== undefined)
+    if (firstError !== undefined) {
+      setFocusField(firstError)
       return null
     }
-    const homepageUrl = form.homepageUrl.trim()
-    if (homepageUrl.length > companyProfileLimits.homepageMaxLength) {
-      setFormError({ field: 'homepageUrl', message: companyProfileMessages.homepageTooLong })
-      return null
-    }
-    setFormError(null)
     return {
       region: form.region,
       industry: form.industry,
@@ -201,7 +217,8 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
     event.preventDefault()
     if (isSaving || account === null) return
     if (lookup.status !== 'found') {
-      setFormError({ field: 'businessNumber', message: companyProfileMessages.lookupRequired })
+      setFormErrors({ businessNumber: companyProfileMessages.lookupRequired })
+      setFocusField('businessNumber')
       return
     }
     const input = validateForm()
@@ -220,9 +237,9 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
         return
       }
       const isBusinessProblem = result.outcome === 'business-not-found' || result.outcome === 'business-not-active'
-      setFormError({ field: isBusinessProblem ? 'businessNumber' : null, message: registerFailureMessage(result) })
+      setFormErrors({ [isBusinessProblem ? 'businessNumber' : 'form']: registerFailureMessage(result) })
     } catch {
-      if (isMounted.current) setFormError({ field: null, message: companyProfileMessages.saveFailed })
+      if (isMounted.current) setFormErrors({ form: companyProfileMessages.saveFailed })
     } finally {
       if (isMounted.current) setIsSaving(false)
     }
@@ -244,7 +261,7 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
       setIsEditing(false)
       setNotice(companyProfileMessages.saved)
     } catch {
-      if (isMounted.current) setFormError({ field: null, message: companyProfileMessages.saveFailed })
+      if (isMounted.current) setFormErrors({ form: companyProfileMessages.saveFailed })
     } finally {
       if (isMounted.current) setIsSaving(false)
     }
@@ -252,14 +269,14 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
 
   function startEditing() {
     if (companyState.status === 'registered') setForm(toFormValues(companyState.company))
-    setFormError(null)
+    setFormErrors({})
     setNotice(null)
     setIsEditing(true)
   }
 
   function cancelEditing() {
     if (companyState.status === 'registered') setForm(toFormValues(companyState.company))
-    setFormError(null)
+    setFormErrors({})
     setIsEditing(false)
   }
 
@@ -319,20 +336,36 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
     regions: companyRegions,
     industries: companyIndustries,
     currentYear,
+    foundedYearMin: companyProfileLimits.foundedYearMin,
     businessNumber,
+    /** 입력 중 하이픈을 붙이고, 번호가 바뀌면 이전 조회 결과는 버립니다. */
     updateBusinessNumber: (value: string) => {
-      setBusinessNumber(value)
+      setBusinessNumber(formatBusinessNumberInput(value))
       setLookup({ status: 'idle' })
-      setFormError(null)
+      setFormErrors({})
     },
+    canLookup: isValidBusinessNumber(businessNumber) && lookup.status !== 'looking',
+    businessNumberHint: companyProfileMessages.businessNumberHint,
     lookup,
     lookupBusiness,
     form,
     updateForm: (field: keyof ProfileFormValues, value: string) => {
       setForm((current) => ({ ...current, [field]: value }))
-      setFormError(null)
+      setFormErrors((current) => {
+        const { [field]: _removed, form: _form, ...rest } = current
+        return rest
+      })
     },
-    formError,
+    formErrors,
+    focusField,
+    clearFocusField: () => setFocusField(null),
+    /** 스킴 없이 적은 주소는 저장 시 https://가 붙는다는 것을 미리 보여 줍니다. */
+    homepagePreview: (() => {
+      const normalized = normalizeHomepageUrl(form.homepageUrl)
+      return normalized !== '' && normalized !== form.homepageUrl.trim() && isValidHomepageUrl(normalized)
+        ? companyProfileMessages.homepagePreview(normalized)
+        : null
+    })(),
     isEditing,
     isSaving,
     startEditing,

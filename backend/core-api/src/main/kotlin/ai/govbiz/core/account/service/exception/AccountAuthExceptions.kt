@@ -36,3 +36,6 @@ class BusinessNotActiveException(val businessStatus: String) : RuntimeException(
 
 /** 다른 계정이 이미 같은 사업자등록번호를 등록했을 때 발생합니다. */
 class BusinessNumberAlreadyRegisteredException : RuntimeException()
+
+/** 요청 검증은 통과했지만 시계가 필요한 규칙(설립연도는 올해까지)에 걸린 기업 프로필 필드입니다. 400으로 필드명을 알립니다. */
+class CompanyProfileInvalidException(val field: String) : RuntimeException("company profile field $field is invalid")

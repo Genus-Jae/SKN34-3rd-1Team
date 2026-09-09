@@ -81,6 +81,7 @@ export const companyProfileStyles = {
   lookupDetail: 'text-[0.75rem] text-sample-muted',
   lookupWarning: 'text-[0.75rem] font-bold text-[#8a5a00]',
   formError: 'm-0 text-[0.78rem] font-bold text-[#9a3947]',
+  formHint: 'text-[0.72rem] text-sample-muted',
   formActions: 'flex flex-wrap justify-end gap-2',
   checklist: 'flex flex-col gap-[0.45rem] text-[0.8rem]',
   checklistItem: 'relative flex items-center gap-[0.55rem]',
