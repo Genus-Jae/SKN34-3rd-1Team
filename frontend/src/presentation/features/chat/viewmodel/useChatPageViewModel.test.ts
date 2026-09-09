@@ -5,7 +5,7 @@ import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
-import { emptyConversationContext } from '../../../../data/fixtures/supportProgramConversation'
+import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from '../../../../data/fixtures/supportProgramConversation'
 import type { useSupportProgramChat } from '../hooks/useSupportProgramChat'
 import { useChatPageViewModel } from './useChatPageViewModel'
 import type { useSupportProgramSearchReadiness } from '../hooks/useSupportProgramSearchReadiness'
@@ -45,6 +45,89 @@ afterEach(() => {
 })
 
 describe('useChatPageViewModel', () => {
+  it('원본 해석 상태 대신 화면에 필요한 제안·초기화·오류 상태를 제공한다', () => {
+    const { result } = renderHook(() => useChatPageViewModel())
+
+    expect(result.current).toMatchObject({ displayProposal: null, hasConfirmedSearch: false,
+      hasSearchToReset: false, interpretationError: undefined, canRetryInterpretation: false })
+    expect(result.current).not.toHaveProperty('confirmedContext')
+    expect(result.current).not.toHaveProperty('interpretation')
+    expect(result.current).not.toHaveProperty('pendingClarification')
+  })
+
+  it.each([
+    { query: null, conversationCount: 1, hasConfirmedSearch: false },
+    { query: '사업화 지원', conversationCount: 0, hasConfirmedSearch: true },
+  ])('확정 검색어 $query 또는 대화 $conversationCount건이 있으면 새 검색을 제공한다', ({ query, conversationCount, hasConfirmedSearch }) => {
+    hookMocks.chat.mockReturnValue(createChatHook({
+      confirmedContext: { ...emptyConversationContext, query }, conversationCount,
+    }))
+    const { result } = renderHook(() => useChatPageViewModel())
+
+    expect(result.current).toMatchObject({ hasConfirmedSearch, hasSearchToReset: true })
+  })
+
+  it('해석 오류와 재시도 가능 여부를 원본 요청의 존재에 따라 제공하고 재시도는 훅에 위임한다', () => {
+    let chat = createChatHook({ interpretation: { status: 'failed', error: '해석 실패',
+      request: { message: '지원사업', context: emptyConversationContext } } })
+    hookMocks.chat.mockImplementation(() => chat)
+    const { result, rerender } = renderHook(() => useChatPageViewModel())
+
+    expect(result.current).toMatchObject({ interpretationError: '해석 실패', canRetryInterpretation: true })
+    act(() => result.current.handleRetryInterpretation())
+    expect(chat.retryInterpretation).toHaveBeenCalledOnce()
+
+    chat = { ...chat, interpretation: { status: 'failed', error: '요청 없는 오류' } }
+    rerender()
+    expect(result.current).toMatchObject({ interpretationError: '요청 없는 오류', canRetryInterpretation: false })
+  })
+
+  it('요청 당시 조건으로 표시 제안을 만들고 검색 준비 변화에 따라 확인 가능 여부를 갱신한다', () => {
+    const chat = createChatHook({ interpretation: { status: 'ready',
+      request: { message: '사업화 지원', context: seoulConversationContext },
+      result: readyConversationProposal(seoulConversationContext) } })
+    let readiness = createReadinessHook({ canSearch: false })
+    hookMocks.chat.mockReturnValue(chat)
+    hookMocks.readiness.mockImplementation(() => readiness)
+    const { result, rerender } = renderHook(() => useChatPageViewModel())
+
+    expect(result.current.displayProposal).toMatchObject({ kind: 'ready', query: '사업화 지원',
+      changes: [], hasRetainedConditions: true, canConfirm: false })
+    act(() => result.current.handleConfirmInterpretation())
+    expect(chat.confirmInterpretation).not.toHaveBeenCalled()
+
+    readiness = createReadinessHook({ canSearch: true })
+    rerender()
+    expect(result.current.displayProposal).toMatchObject({ kind: 'ready', canConfirm: true })
+    act(() => result.current.handleConfirmInterpretation())
+    expect(chat.confirmInterpretation).toHaveBeenCalledOnce()
+
+    readiness = createReadinessHook({ canSearch: false })
+    rerender()
+    expect(result.current.displayProposal).toMatchObject({ kind: 'ready', canConfirm: false })
+  })
+
+  it.each(['interpretation', 'search'] as const)('%s 처리 중에는 미확정 질문을 숨기고 취소 뒤에는 제거한다', (operation) => {
+    let chat = createChatHook({ pendingClarification: { question: '어느 지역인가요?', draftContext: emptyConversationContext } })
+    const cancelInterpretation = vi.fn(() => { chat = { ...chat, interpretation: { status: 'idle' }, pendingClarification: null } })
+    chat = { ...chat, cancelInterpretation }
+    hookMocks.chat.mockImplementation(() => chat)
+    const { result, rerender } = renderHook(() => useChatPageViewModel())
+
+    expect(result.current.displayProposal).toEqual({ kind: 'clarification', question: '어느 지역인가요?' })
+    chat = { ...chat, isBusy: true, isInterpreting: operation === 'interpretation', isSearching: operation === 'search' }
+    rerender()
+    expect(result.current.displayProposal).toBeNull()
+
+    chat = { ...chat, isBusy: false, isInterpreting: false, isSearching: false }
+    rerender()
+    expect(result.current.displayProposal).toEqual({ kind: 'clarification', question: '어느 지역인가요?' })
+    act(() => result.current.cancelInterpretation())
+    rerender()
+    expect(cancelInterpretation).toHaveBeenCalledOnce()
+    expect(result.current.displayProposal).toBeNull()
+  })
+
   it('초안 수정은 기존 검색 결과의 자격 건수를 재집계하지 않고 새 결과가 오면 안내를 갱신한다', () => {
     const formatCounts = vi.spyOn(supportProgramEligibility, 'formatSupportProgramEligibilityCounts')
     let chat = createChatHook({ messages: [{
