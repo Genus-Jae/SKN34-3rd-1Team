@@ -31,6 +31,7 @@ const menuGroups: MenuGroup[] = [
         matches: (pathname) => pathname === appPaths.chat || pathname.startsWith(appPaths.supportProgramDetail),
       },
       { label: '중복 지원·수혜 검토', icon: 'shield', to: appPaths.combinationReviews, matches: (pathname) => pathname.startsWith(appPaths.combinationReviews) },
+      { label: '기업 맞춤 리포트', icon: 'inbox', to: appPaths.reports, matches: (pathname) => pathname === appPaths.reports },
       { label: '관심 공고함', icon: 'bookmark', badge: '준비 중' },
       {
         label: '파트너 모집',

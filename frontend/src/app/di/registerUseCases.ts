@@ -1,4 +1,5 @@
 import { CombinationReviewUseCase } from '../../domain/usecases/CombinationReviewUseCase'
+import { DailyReportUseCase } from '../../domain/usecases/DailyReportUseCase'
 import { reviewRequestJournal } from '../../data/storage/reviewRequestJournal'
 import { asValue } from 'awilix/browser'
 import { asFunction } from 'awilix/browser'
@@ -36,6 +37,7 @@ import type { AppContainer, AppCradle } from './types'
 /** Domain UseCase와 UseCase가 필요로 하는 Repository 연결을 등록합니다. */
 export function registerUseCases(container: AppContainer) {
   container.register({
+    dailyReportUseCase: asFunction(({ dailyReportRepository }: Pick<AppCradle, 'dailyReportRepository'>) => new DailyReportUseCase(dailyReportRepository)).singleton(),
     reviewRequestJournal: asValue(reviewRequestJournal),
     combinationReviewUseCase: asFunction(({ combinationReviewRepository }: Pick<AppCradle, 'combinationReviewRepository'>) => new CombinationReviewUseCase(combinationReviewRepository)).singleton(),
     browseSupportProgramsUseCase: asFunction(

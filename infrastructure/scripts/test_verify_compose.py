@@ -27,6 +27,8 @@ if [[ "${VERIFY_CHECK_SAFE_UPSTREAM_ENV:-false}" == "true" ]]; then
   [[ "$CNTRADE_NOTICE_SYNC_ENABLED" == "true" ]] || exit 104
   [[ "$CNTRADE_NOTICE_SYNC_INITIAL_DELAY" == "PT0S" && "$CNTRADE_NOTICE_SYNC_FIXED_DELAY" == "PT2S" ]] || exit 105
   [[ "$DATA_GO_KR_SERVICE_KEY" == "compose%2Bverification%2Fkey%3D" ]] || exit 106
+  [[ "$DAILY_REPORT_ENABLED" == "false" && "$DAILY_REPORT_MAIL_ENABLED" == "false" ]] || exit 107
+  [[ -z "$DAILY_REPORT_FROM$SMTP_HOST$SMTP_USERNAME$SMTP_PASSWORD" ]] || exit 108
 fi
 case "$*" in
   *" config --quiet")
@@ -125,6 +127,12 @@ class VerifyComposeSafetyTest(unittest.TestCase):
             BIZINFO_API_BASE_URL="https://must-not-call.invalid",
             OPENAI_BASE_URL="https://must-not-call.invalid/v1",
             OPENAI_API_KEY="must-not-use-real-model-key",
+            DAILY_REPORT_ENABLED="true",
+            DAILY_REPORT_MAIL_ENABLED="true",
+            DAILY_REPORT_FROM="reports@example.org",
+            SMTP_HOST="must-not-call.invalid",
+            SMTP_USERNAME="must-not-use-real-smtp-user",
+            SMTP_PASSWORD="must-not-use-real-smtp-password",
         )
         self.assertEqual(42, result.returncode)
         self.assertIn(" up --build --detach --remove-orphans", calls)
