@@ -60,9 +60,6 @@ export function AppHeader() {
           >
             요금제
           </Link>
-          <Link className={isMarketingPage ? appHeaderStyles.landingNavLink : appHeaderStyles.navLink} to="/examples/sample-item/hook">
-            상태관리 비교 예제
-          </Link>
         </div>
         <AccountMenu isMarketingPage={isMarketingPage} />
       </nav>
