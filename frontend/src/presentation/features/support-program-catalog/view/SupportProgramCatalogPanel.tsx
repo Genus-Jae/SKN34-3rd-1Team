@@ -28,7 +28,7 @@ export function SupportProgramCatalogPanel() {
           <h1 className="mt-2 mb-2 text-3xl font-bold tracking-tight max-chat:text-2xl">원하는 지원사업을 직접 골라보세요.</h1>
           <p className="m-0 text-sm leading-relaxed text-sample-muted">분야와 지역을 선택하면 저장된 공고를 바로 볼 수 있어요.</p>
         </header>
-        <CatalogFilters key={JSON.stringify(filters)} filters={filters} regions={catalog.regions} categories={catalog.categories} phase={catalog.phase} onApply={apply} />
+        <CatalogFilters key={JSON.stringify(filters)} filters={filters} regions={catalog.regions} categories={catalog.categories} onApply={apply} />
         <section aria-label="필터 검색 결과" className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="m-0 text-base font-bold" aria-live="polite">{catalog.data ? <>검색 결과 <span className="text-brand-primary">{catalog.data.total.toLocaleString()}건</span></> : '검색 결과'}</h2>
@@ -74,8 +74,8 @@ export function SupportProgramCatalogPanel() {
   )
 }
 
-function CatalogFilters({ filters, regions, categories, phase, onApply }: {
-  filters: SupportProgramCatalogFilters; regions: string[]; categories: string[]; phase: 'loading' | 'ready' | 'failed'; onApply: (filters: SupportProgramCatalogFilters) => void
+function CatalogFilters({ filters, regions, categories, onApply }: {
+  filters: SupportProgramCatalogFilters; regions: string[]; categories: string[]; onApply: (filters: SupportProgramCatalogFilters) => void
 }) {
   const [draft, setDraft] = useState(filters)
   return <form aria-label="공고 필터" className="grid gap-4 rounded-3xl border border-sample-border bg-white p-5 shadow-[0_4px_24px_rgb(32_33_36_/_3%)] max-chat:p-4"
@@ -90,9 +90,6 @@ function CatalogFilters({ filters, regions, categories, phase, onApply }: {
     <div className="grid gap-4 border-t border-sample-border pt-4">
       <CatalogFilterChoices label="지역" name="catalog-region" options={regions} selected={draft.region} onSelect={(region) => setDraft({ ...draft, region })} />
       <CatalogFilterChoices label="분야" name="catalog-category" options={categories} selected={draft.category} onSelect={(category) => setDraft({ ...draft, category })} />
-      {(!regions.length || !categories.length) && phase !== 'ready' ? <p role="status" className="m-0 text-xs leading-relaxed text-sample-muted">
-        {phase === 'loading' ? '지역·분야 선택지를 불러오고 있어요…' : '지역·분야 선택지를 불러오지 못했어요. 아래에서 다시 불러오기를 눌러주세요.'}
-      </p> : null}
       <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">접수 상태
         <select className={`${inputStyle} !min-h-9 !w-auto flex-1 sm:max-w-52`} value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as SupportProgramCatalogFilters['status'] })}>
           {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -119,7 +116,7 @@ function CatalogFilterChoices({ label, name, options, selected, onSelect }: {
         {['', ...choices].map((value) => <label key={value} className="relative min-w-0 max-w-full cursor-pointer">
           <input type="radio" name={name} value={value} aria-label={value || `전체 ${label}`} checked={selected === value}
             onChange={() => onSelect(value)} className="peer sr-only" />
-          <span className="flex min-h-9 items-center justify-center rounded-lg border border-sample-border bg-white px-2.5 text-xs leading-relaxed text-sample-muted transition-colors [overflow-wrap:anywhere] hover:border-brand-primary hover:text-brand-primary peer-checked:border-brand-primary peer-checked:bg-brand-primary peer-checked:font-bold peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-primary motion-reduce:transition-none">{value || '전체'}</span>
+          <span className="flex min-h-9 items-center justify-center rounded-lg border border-sample-border bg-white px-2.5 text-xs leading-relaxed text-sample-muted transition-colors [overflow-wrap:anywhere] hover:border-brand-primary hover:text-brand-primary peer-checked:border-brand-primary peer-checked:bg-brand-primary peer-checked:font-bold peer-checked:text-white peer-checked:hover:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-primary motion-reduce:transition-none">{value || '전체'}</span>
         </label>)}
       </div>
     </div>

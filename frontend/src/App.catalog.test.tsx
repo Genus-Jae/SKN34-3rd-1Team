@@ -8,6 +8,7 @@ import App from './App'
 import { createAppStore } from './app/store'
 import { supportPrograms } from './data/fixtures/supportPrograms'
 import { getSupportProgramSearchReturnTo } from './presentation/features/support-program-detail/view/supportProgramNavigation'
+import { defaultCatalogCategories, defaultCatalogRegions } from './presentation/features/support-program-catalog/viewmodel/catalogFilterOptions'
 import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
 vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => ({ CoreApiConnectionStatus: () => null }))
@@ -51,8 +52,8 @@ describe('지원사업 직접 필터 검색', () => {
     await screen.findByRole('link', { name: program.title })
     const regionGroup = within(screen.getByRole('group', { name: '지역' }))
     const categoryGroup = within(screen.getByRole('group', { name: '분야' }))
-    expect(regionGroup.getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...catalog.regions])
-    expect(categoryGroup.getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...catalog.categories])
+    expect(regionGroup.getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...defaultCatalogRegions])
+    expect(categoryGroup.getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...defaultCatalogCategories])
     expect(screen.queryByRole('combobox', { name: '지역' })).toBeNull()
     expect(screen.queryByRole('combobox', { name: '분야' })).toBeNull()
     expect((regionGroup.getByRole('radio', { name: '전체 지역' }) as HTMLInputElement).checked).toBe(true)
@@ -64,23 +65,90 @@ describe('지원사업 직접 필터 검색', () => {
     fireEvent.click(regionGroup.getByRole('radio', { name: '경북' }))
     expect(seoul.checked).toBe(false)
     expect((regionGroup.getByRole('radio', { name: '경북' }) as HTMLInputElement).checked).toBe(true)
+    expect(regionGroup.getByRole('radio', { name: '경북' }).nextElementSibling?.classList.contains('peer-checked:hover:text-white')).toBe(true)
     expect(regionGroup.getAllByRole('radio').every((radio) => (radio as HTMLInputElement).name === seoul.name)).toBe(true)
     expect(seoul.name).not.toBe((categoryGroup.getByRole('radio', { name: '전체 분야' }) as HTMLInputElement).name)
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('첫 응답을 기다릴 때 지역·분야 목록 로딩 상태를 구분해 보여준다', async () => {
+  it.each(['/', '/app/chat'])('%s에서 첫 응답 전부터 모든 기본 버튼을 표시하고 응답 후에도 버튼·초안을 유지한다', async (path) => {
     let resolve!: (response: Response) => void
     const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>((done) => { resolve = done }))
     vi.stubGlobal('fetch', fetchMock)
-    start()
-    expect(screen.getByText('지역·분야 선택지를 불러오고 있어요…')).toBeTruthy()
-    expect(screen.queryByRole('radio', { name: '서울' })).toBeNull()
+    start(`${path}?mode=filter`)
+    const form = screen.getByRole('form', { name: '공고 필터' })
+    const regions = within(screen.getByRole('group', { name: '지역' })).getAllByRole('radio')
+    const categories = within(screen.getByRole('group', { name: '분야' })).getAllByRole('radio')
+    expect(regions.map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...defaultCatalogRegions])
+    expect(categories.map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...defaultCatalogCategories])
+    expect(within(form).queryByRole('status')).toBeNull()
+    expect(within(screen.getByRole('region', { name: '필터 검색 결과' })).getByRole('status').textContent).toContain('공고를 불러오고 있어요')
+    fireEvent.click(screen.getByRole('radio', { name: '부산' }))
+    fireEvent.click(screen.getByRole('radio', { name: '창업' }))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '편집 중' } })
+    const focusedRadio = screen.getByRole('radio', { name: '창업' })
+    focusedRadio.focus()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     await act(async () => resolve(Response.json(catalog)))
-    expect(screen.queryByText('지역·분야 선택지를 불러오고 있어요…')).toBeNull()
-    expect(screen.getByRole('radio', { name: '서울' })).toBeTruthy()
-    expect(screen.getByRole('radio', { name: '수출' })).toBeTruthy()
+    expect(within(form).queryByRole('status')).toBeNull()
+    within(screen.getByRole('group', { name: '지역' })).getAllByRole('radio').forEach((radio, index) => expect(radio).toBe(regions[index]))
+    within(screen.getByRole('group', { name: '분야' })).getAllByRole('radio').forEach((radio, index) => expect(radio).toBe(categories[index]))
+    expect((screen.getByRole('radio', { name: '부산' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: '창업' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('편집 중')
+    expect(document.activeElement).toBe(focusedRadio)
+    expect(screen.getByTestId('location').textContent).toBe(`${path}?mode=filter`)
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it('첫 조회 중에도 기본 필터로 검색하고 이전 응답은 취소한다', async () => {
+    let resolve!: (response: Response) => void
+    const fetchMock = vi.fn().mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done }))
+      .mockResolvedValueOnce(Response.json(catalog))
+    vi.stubGlobal('fetch', fetchMock)
+    start()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('radio', { name: '전국' }))
+    fireEvent.click(screen.getByRole('radio', { name: '수출' }))
+    fireEvent.click(screen.getByRole('button', { name: '검색' }))
+    await screen.findByRole('link', { name: program.title })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true)
+    const request = new URL(fetchMock.mock.calls[1][0])
+    expect(request.searchParams.get('region')).toBe('전국')
+    expect(request.searchParams.get('category')).toBe('수출')
+    await act(async () => resolve(Response.json({ ...catalog, programs: [], total: 0, totalPages: 0 })))
+    expect(screen.getByRole('link', { name: program.title })).toBeTruthy()
+    expect((screen.getByRole('radio', { name: '전국' }) as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('빈 카탈로그에서도 기본 버튼을 유지하고 결과만 0건으로 표시한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ...catalog, programs: [], total: 0, totalPages: 0, regions: [], categories: [] })))
+    start()
+    await screen.findByText('조건에 맞는 공고가 없어요.')
+    expect(within(screen.getByRole('group', { name: '지역' })).getAllByRole('radio')).toHaveLength(19)
+    expect(within(screen.getByRole('group', { name: '분야' })).getAllByRole('radio')).toHaveLength(9)
+    fireEvent.click(screen.getByRole('radio', { name: '서울' }))
+    fireEvent.click(screen.getByRole('radio', { name: '수출' }))
+    expect((screen.getByRole('radio', { name: '서울' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: '수출' }) as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('서버의 새 분류를 기본 목록 뒤에 중복 없이 추가하고 정확한 값으로 검색한다', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ ...catalog,
+      regions: ['서울특별시', '서울'], categories: ['AI', '수출'] }))
+    vi.stubGlobal('fetch', fetchMock)
+    start()
+    await screen.findByRole('link', { name: program.title })
+    expect(within(screen.getByRole('group', { name: '지역' })).getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...defaultCatalogRegions, '서울특별시'])
+    expect(within(screen.getByRole('group', { name: '분야' })).getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual(['', ...defaultCatalogCategories, 'AI'])
+    fireEvent.click(screen.getByRole('radio', { name: '서울특별시' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'AI' }))
+    fireEvent.click(screen.getByRole('button', { name: '검색' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const request = new URL(fetchMock.mock.calls[1][0])
+    expect(request.searchParams.get('region')).toBe('서울특별시')
+    expect(request.searchParams.get('category')).toBe('AI')
   })
 
   it('편집만으로 요청하지 않고 검색으로 필터 적용·초기화를 수행한다', async () => {
@@ -164,10 +232,12 @@ describe('지원사업 직접 필터 검색', () => {
 
   it('현재 목록에 없는 URL 조건도 선택 상태를 잃지 않는다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(catalog)))
-    start('/?mode=filter&region=%EB%B6%80%EC%82%B0&category=%EA%B2%BD%EC%98%81')
+    start(`/?mode=filter&${new URLSearchParams({ region: '서울특별시', category: 'AI' })}`)
+    expect((screen.getByRole('radio', { name: '서울특별시' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'AI' }) as HTMLInputElement).checked).toBe(true)
     await screen.findByRole('link', { name: program.title })
-    expect((screen.getByRole('radio', { name: '부산' }) as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByRole('radio', { name: '경영' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: '서울특별시' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'AI' }) as HTMLInputElement).checked).toBe(true)
   })
 
   it('URL 페이지와 정렬을 복원하고 변경 시 첫 페이지로 이동한다', async () => {
@@ -192,14 +262,22 @@ describe('지원사업 직접 필터 검색', () => {
     vi.stubGlobal('fetch', fetchMock)
     start()
     await screen.findByRole('button', { name: '다시 불러오기' })
-    expect(screen.getByText('지역·분야 선택지를 불러오지 못했어요. 아래에서 다시 불러오기를 눌러주세요.')).toBeTruthy()
+    const form = screen.getByRole('form', { name: '공고 필터' })
+    expect(within(form).queryByRole('status')).toBeNull()
+    expect(within(form).getAllByRole('radio')).toHaveLength(28)
+    expect(within(screen.getByRole('region', { name: '필터 검색 결과' })).getByRole('alert')).toBeTruthy()
     expect(screen.queryByText('조건에 맞는 공고가 없어요.')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: '서울' }))
+    fireEvent.click(screen.getByRole('radio', { name: '수출' }))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '미적용 검색어' } })
     expect(fetchMock).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: '다시 불러오기' }))
     await screen.findByRole('link', { name: program.title })
-    expect(screen.queryByText('지역·분야 선택지를 불러오지 못했어요. 아래에서 다시 불러오기를 눌러주세요.')).toBeNull()
-    expect(screen.getByRole('radio', { name: '서울' })).toBeTruthy()
-    expect(screen.getByRole('radio', { name: '수출' })).toBeTruthy()
+    expect(within(form).getAllByRole('radio')).toHaveLength(28)
+    expect((screen.getByRole('radio', { name: '서울' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: '수출' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('미적용 검색어')
+    expect(fetchMock.mock.calls[1][0]).toBe(fetchMock.mock.calls[0][0])
   })
 
   it('탭을 떠날 때 조회를 취소하고 늦은 응답을 무시한다', async () => {
@@ -221,6 +299,7 @@ describe('지원사업 직접 필터 검색', () => {
     start()
     await act(async () => { await vi.advanceTimersByTimeAsync(10_001) })
     expect(screen.getByRole('button', { name: '다시 불러오기' })).toBeTruthy()
+    expect(within(screen.getByRole('form', { name: '공고 필터' })).getAllByRole('radio')).toHaveLength(28)
     expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true)
   })
 
