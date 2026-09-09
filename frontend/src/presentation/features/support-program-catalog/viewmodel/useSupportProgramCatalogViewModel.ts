@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { appContainer } from '../../../../app/appContainer'
 import type { SupportProgramCatalog, SupportProgramCatalogFilters } from '../../../../domain/entities/SupportProgramCatalog'
 import type { BrowseSupportProgramsUseCase } from '../../../../domain/usecases/BrowseSupportProgramsUseCase'
+import { defaultCatalogCategories, defaultCatalogRegions, mergeCatalogFilterOptions } from './catalogFilterOptions'
 
 type CatalogState = { key: string; phase: 'loading' | 'ready' | 'failed'; data: SupportProgramCatalog | null }
 
@@ -28,5 +29,7 @@ export function useSupportProgramCatalogViewModel(filters: SupportProgramCatalog
   }, [key, version, useCase])
   const phase = state.key === key ? state.phase : 'loading'
   return { phase, data: phase === 'ready' ? state.data : null,
-    regions: state.data?.regions ?? [], categories: state.data?.categories ?? [], retry: () => setVersion((value) => value + 1) }
+    regions: mergeCatalogFilterOptions(defaultCatalogRegions, state.data?.regions),
+    categories: mergeCatalogFilterOptions(defaultCatalogCategories, state.data?.categories),
+    retry: () => setVersion((value) => value + 1) }
 }
