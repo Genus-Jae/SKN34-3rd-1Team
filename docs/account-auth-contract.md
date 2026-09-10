@@ -358,6 +358,40 @@ Origin: http://127.0.0.1:5173
 만료로 계산), 기업 행 삭제, 모든 세션 삭제, `deleted_at` 표시를 합니다. 계정 행은 모집글·제안이 참조하므로 남기되 이메일을
 `deleted+<id>+<시각>@deleted.invalid`로 바꿉니다. 그래서 같은 이메일로 다시 가입하면 새 계정이 되고, 옛 계정으로는 로그인할 수 없습니다.
 
+## 비밀번호 재설정
+
+비밀번호를 잊은 회원이 로그인 없이 쓰는 흐름입니다. 가입 이메일로 30분짜리 일회용 링크를 보내고, 그 토큰으로 새
+비밀번호를 저장합니다. 두 요청 모두 세션 쿠키가 없으므로 Origin 검사 대상이 아닙니다.
+
+```http
+POST /api/v1/auth/password-reset
+
+{ "email": "manager@company.co.kr" }
+```
+
+가입 여부와 관계없이 **항상 204**라 응답으로 계정 존재가 드러나지 않습니다. 계정이 있으면 토큰을 만들어 SHA-256 해시만
+`account_password_reset`에 저장하고 원문은 메일 링크 `<frontend-base-url>/reset-password#token=<43자>`에만 싣습니다.
+토큰은 fragment라 HTTP 요청·접속 로그·Referer로 나가지 않습니다. 정지된 계정, 시간당 한도(기본 3회)를 넘긴 계정은 조용히
+건너뜁니다. 접속 주소 한도(분당 20회)는 로그인과 같이 쓰며 넘기면 429 `LOGIN_RATE_LIMITED`입니다.
+
+SMTP(`ACCOUNT_PASSWORD_RESET_MAIL_ENABLED=true`와 `SMTP_*`)가 없으면 개발용 로그인이 켜진 환경(Compose)에서만 토큰을
+저장하고 링크를 Core API 로그(WARN)로 남깁니다. 둘 다 없으면 503 `PASSWORD_RESET_MAIL_UNAVAILABLE`입니다.
+
+```http
+POST /api/v1/auth/password-reset/confirm
+
+{ "token": "<43자 URL-safe Base64>", "newPassword": "new-password-2" }
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `token` | 메일 링크의 43자 토큰. 형식이 다르면 400 |
+| `newPassword` | 8~72자(가입과 같음) |
+
+성공은 204입니다. 새 해시를 저장하고 **같은 계정의 남은 재설정 토큰과 모든 세션을 지워** 새 비밀번호로 다시 로그인해야
+합니다. 토큰이 없거나 만료됐거나 이미 쓴 토큰이면 422 `PASSWORD_RESET_TOKEN_INVALID`이며 셋을 구분하지 않습니다. 정지된
+계정은 403 `ACCOUNT_SUSPENDED`입니다. 프런트의 `/forgot-password`는 이메일 하나를 받고, 메일 링크가 여는 `/reset-password`는
+주소의 토큰과 새 비밀번호를 보냅니다.
 ## 오류
 
 모든 오류는 `application/problem+json`이며 `code` 속성으로 구분합니다. 비밀번호와 토큰 원문은 응답·로그에
@@ -369,6 +403,8 @@ Origin: http://127.0.0.1:5173
 | 이메일 없음 또는 비밀번호 불일치 | 401 | `INVALID_CREDENTIALS` |
 | 이미 가입된 이메일로 회원가입 | 409 | `EMAIL_ALREADY_REGISTERED` |
 | 비밀번호 변경·계정 삭제의 현재 비밀번호 불일치 | 422 | `CURRENT_PASSWORD_MISMATCH` |
+| 비밀번호 재설정 토큰이 없거나 만료·사용됨 | 422 | `PASSWORD_RESET_TOKEN_INVALID` |
+| SMTP가 없어 재설정 메일을 보낼 수 없음(개발용 로그인도 꺼짐) | 503 | `PASSWORD_RESET_MAIL_UNAVAILABLE` |
 | 기업을 등록하지 않은 계정의 기업 조회·수정 | 404 | `COMPANY_NOT_REGISTERED` |
 | 등록되지 않은 사업자등록번호 | 404 | `BUSINESS_NOT_FOUND` |
 | 휴업·폐업 사업자 등록 시도 | 422 | `BUSINESS_NOT_ACTIVE` (`businessStatus`) |
@@ -419,5 +455,10 @@ Origin: http://127.0.0.1:5173
 | `ACCOUNT_DEV_LOGIN_EMAIL` | `admin@govbiz.local` | 관리자 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_MEMBER_EMAIL` | `member@govbiz.local` | 회원 시드 계정 이메일 |
 | `ACCOUNT_DEV_LOGIN_PASSWORD` | `govbiz-admin1` | 시드 계정을 만들 때 저장하는 비밀번호(8~72자) |
+| `ACCOUNT_PASSWORD_RESET_MAIL_ENABLED` | `false` | 재설정 메일 SMTP 전송 여부. `SMTP_*`(리포트와 공용)를 함께 설정 |
+| `ACCOUNT_PASSWORD_RESET_FROM` | 빈 값 | 재설정 메일 발신 주소. 메일을 켜면 필수 |
+| `ACCOUNT_PASSWORD_RESET_FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | 메일 링크의 프런트 origin. 운영은 HTTPS |
+| `ACCOUNT_PASSWORD_RESET_TOKEN_TTL` | `PT30M` | 재설정 토큰 유효 시간(최대 24시간) |
+| `ACCOUNT_PASSWORD_RESET_MAX_REQUESTS_PER_HOUR` | `3` | 계정당 시간당 재설정 요청 한도. 넘기면 조용히 건너뜀 |
 | `BIZNO_API_KEY` | 빈 값 | 사업자등록번호 조회용 Bizno(bizno.net) API 키. 비어 있으면 기업 조회·등록이 503 |
 | `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint. 경로는 `/api/fapi` 고정 |

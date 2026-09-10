@@ -1,11 +1,11 @@
 import { Link } from 'react-router'
 
 import { useSignupViewModel } from '../viewmodel/useSignupViewModel'
-import { AuthBrandPanel } from './AuthBrandPanel'
+import { AuthLogo } from './AuthLogo'
 import { authPageStyles } from './AuthPage.styles'
 
 /**
- * 회원가입 화면입니다. 로그인 화면과 같은 껍데기를 쓰고 이메일과 비밀번호만 받습니다.
+ * 회원가입 화면입니다. 로그인 화면과 같은 껍데기를 쓰고 안내 문구 없이 이메일과 비밀번호만 받습니다.
  * 기업 정보는 가입 뒤 프로필 단계에서 받고, 약관 동의는 가입 버튼 아래 안내로 갈음해 가입 시각을 서버가 기록합니다.
  */
 export function SignupPage() {
@@ -24,21 +24,20 @@ export function SignupPage() {
 
   return (
     <main className={authPageStyles.page}>
-      <AuthBrandPanel />
-
       <section className={authPageStyles.formPanel}>
         <form className={authPageStyles.card} onSubmit={submit} aria-label="회원가입" noValidate>
-          <div className={authPageStyles.cardHeader}>
-            <p className={authPageStyles.cardEyebrow}>회원가입</p>
-            <h1 className={authPageStyles.cardTitle}>기업 계정 만들기</h1>
-            <p className={authPageStyles.cardDescription}>
-              이메일과 비밀번호만으로 시작합니다. 기업 정보는 가입 뒤 프로필에서 등록합니다.
-            </p>
+          <AuthLogo />
+          <h1 className="sr-only">회원가입</h1>
+
+          <div className={authPageStyles.divider}>
+            <span className={authPageStyles.dividerLine} aria-hidden="true" />
+            <span className={authPageStyles.dividerText}>이메일로 시작하기</span>
+            <span className={authPageStyles.dividerLine} aria-hidden="true" />
           </div>
 
           <div className={authPageStyles.fields}>
             <label className={authPageStyles.field}>
-              <span>이메일</span>
+              <span className={authPageStyles.fieldName}>이메일</span>
               <input
                 className={authPageStyles.fieldControl}
                 type="email"
@@ -47,14 +46,14 @@ export function SignupPage() {
                 required
                 aria-invalid={error?.field === 'email'}
                 aria-describedby={error?.field === 'email' ? 'signup-error' : undefined}
-                placeholder="manager@company.co.kr"
+                placeholder="이메일을 입력해 주세요."
                 value={email}
                 onChange={(event) => updateEmail(event.target.value)}
               />
             </label>
 
             <div className={authPageStyles.field}>
-              <label htmlFor="signup-password">비밀번호</label>
+              <label className={authPageStyles.fieldName} htmlFor="signup-password">비밀번호</label>
               <input
                 className={authPageStyles.fieldControl}
                 id="signup-password"
@@ -66,15 +65,15 @@ export function SignupPage() {
                 maxLength={72}
                 aria-invalid={error?.field === 'password'}
                 aria-describedby={error?.field === 'password' ? 'signup-password-hint signup-error' : 'signup-password-hint'}
-                placeholder="비밀번호 입력"
+                placeholder="비밀번호를 입력해 주세요. (8~72자)"
                 value={password}
                 onChange={(event) => updatePassword(event.target.value)}
               />
-              <span id="signup-password-hint" className={authPageStyles.fieldHint}>8자 이상 72자 이하로 입력합니다.</span>
+              <span id="signup-password-hint" className="sr-only">8자 이상 72자 이하로 입력합니다.</span>
             </div>
 
             <label className={authPageStyles.field}>
-              <span>비밀번호 확인</span>
+              <span className={authPageStyles.fieldName}>비밀번호 확인</span>
               <input
                 className={authPageStyles.fieldControl}
                 type="password"
@@ -83,7 +82,7 @@ export function SignupPage() {
                 required
                 aria-invalid={error?.field === 'passwordConfirmation'}
                 aria-describedby={error?.field === 'passwordConfirmation' ? 'signup-error' : undefined}
-                placeholder="비밀번호 다시 입력"
+                placeholder="비밀번호를 다시 입력해 주세요."
                 value={passwordConfirmation}
                 onChange={(event) => updatePasswordConfirmation(event.target.value)}
               />
@@ -96,18 +95,9 @@ export function SignupPage() {
           </button>
           <p className={authPageStyles.fieldHint}>가입하면 이용약관과 개인정보 처리방침에 동의한 것으로 봅니다.</p>
 
-          <div className={authPageStyles.divider}>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-            <span className={authPageStyles.dividerText}>이미 계정이 있나요?</span>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-          </div>
-
-          <Link className={authPageStyles.secondaryButton} to={loginPath}>
-            로그인
-          </Link>
-
-          <p className={authPageStyles.cardFooter}>
-            <Link className={authPageStyles.helperLink} to="/">가입 없이 지원사업 검색</Link>
+          <p className={authPageStyles.linksRow}>
+            <span className={authPageStyles.linksLead}>이미 계정이 있으신가요?</span>
+            <Link className={authPageStyles.footerLink} to={loginPath}>로그인</Link>
           </p>
         </form>
       </section>

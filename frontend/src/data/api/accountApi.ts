@@ -13,6 +13,8 @@ import {
 const SIGNUP_PATH = '/api/v1/auth/signup'
 const LOGIN_PATH = '/api/v1/auth/login'
 const DEV_LOGIN_PATH = '/api/v1/auth/dev-login'
+const PASSWORD_RESET_PATH = '/api/v1/auth/password-reset'
+const PASSWORD_RESET_CONFIRM_PATH = '/api/v1/auth/password-reset/confirm'
 const LOGOUT_PATH = '/api/v1/auth/logout'
 const CURRENT_ACCOUNT_PATH = '/api/v1/auth/me'
 const ACCOUNT_PATH = '/api/v1/me'
@@ -137,6 +139,28 @@ export async function deleteAccountApi(password: string, signal?: AbortSignal): 
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
     credentials: withSessionCookie,
+    signal,
+  })
+  await rejectFailedResponse(response)
+}
+
+/** 재설정 링크 요청입니다. 가입 여부와 관계없이 204라 응답으로 계정 존재를 알 수 없습니다. */
+export async function requestPasswordResetApi(email: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`${getCoreApiBaseUrl()}${PASSWORD_RESET_PATH}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+    signal,
+  })
+  await rejectFailedResponse(response)
+}
+
+/** 메일 링크의 토큰으로 새 비밀번호를 저장합니다. 성공은 204이고 토큰이 없거나 만료·사용됐으면 422입니다. */
+export async function resetPasswordApi(token: string, newPassword: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`${getCoreApiBaseUrl()}${PASSWORD_RESET_CONFIRM_PATH}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPassword }),
     signal,
   })
   await rejectFailedResponse(response)

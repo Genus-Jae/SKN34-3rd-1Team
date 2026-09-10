@@ -11,7 +11,9 @@ import { useReviewSessionIsolation } from './presentation/features/combination-r
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 
 import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
+import { ForgotPasswordPage } from './presentation/features/auth/view/ForgotPasswordPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
+import { ResetPasswordPage } from './presentation/features/auth/view/ResetPasswordPage'
 import { SignupPage } from './presentation/features/auth/view/SignupPage'
 import { SupportProgramSearchPage } from './presentation/features/support-program-catalog/view/SupportProgramSearchPage'
 import { CompanyProfilePage } from './presentation/features/company-profile/view/CompanyProfilePage'
@@ -87,6 +89,8 @@ function App() {
       <Route element={<GuestOnly />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Route>
 
       <Route element={<RequireAuth />}>

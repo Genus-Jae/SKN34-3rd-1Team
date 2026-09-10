@@ -133,9 +133,9 @@ describe('App navigation', () => {
 
     fireEvent.click(screen.getByRole('link', { name: '로그인' }))
 
-    expect(screen.getByRole('heading', { name: '다시 오셨군요' })).toBeTruthy()
+    expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy()
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
-    expect(screen.getByRole('link', { name: '기업 계정 만들기' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '회원가입' })).toBeTruthy()
   })
 
   it('로그인에 성공하면 사이드바가 있는 작업 채팅 화면으로 이동한다', async () => {

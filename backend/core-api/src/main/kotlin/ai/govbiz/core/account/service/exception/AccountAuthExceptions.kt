@@ -42,3 +42,9 @@ class CurrentPasswordMismatchException : RuntimeException()
 
 /** 요청 검증은 통과했지만 시계가 필요한 규칙(설립연도는 올해까지)에 걸린 기업 프로필 필드입니다. 400으로 필드명을 알립니다. */
 class CompanyProfileInvalidException(val field: String) : RuntimeException("company profile field $field is invalid")
+
+/** 비밀번호 재설정 토큰이 없거나 만료됐거나 이미 쓴 토큰일 때 발생합니다. 셋을 구분하지 않습니다. */
+class PasswordResetTokenInvalidException : RuntimeException()
+
+/** SMTP가 설정되지 않았거나 전송에 실패해 재설정 메일을 보낼 수 없을 때 발생합니다. */
+class PasswordResetMailUnavailableException(cause: Throwable? = null) : RuntimeException(cause)

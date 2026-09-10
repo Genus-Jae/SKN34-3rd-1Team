@@ -9,6 +9,8 @@ import type {
   ChangePasswordResult,
   DeleteAccountResult,
   LogInResult,
+  RequestPasswordResetResult,
+  ResetPasswordResult,
   SignUpResult,
 } from '../../domain/repositories/AccountRepository'
 import {
@@ -20,6 +22,8 @@ import {
   getCurrentAccountApi,
   logInApi,
   logOutApi,
+  requestPasswordResetApi,
+  resetPasswordApi,
   signUpApi,
 } from '../api/accountApi'
 import { toAccount, toAccountDeletionPreview, toAuthSession, type AuthSessionResponseDto } from '../models/AccountDto'
@@ -121,6 +125,34 @@ export class AccountRepositoryImpl implements AccountRepository {
     } catch (error) {
       const outcome = toPasswordFailure(error)
       if (outcome !== null) return outcome
+      throw error
+    }
+  }
+
+  /** 503(메일 불가)·429는 화면이 안내하는 업무 결과이고, 그 외 실패는 예외로 둡니다. 가입 여부는 응답에 없습니다. */
+  async requestPasswordReset(email: string, signal?: AbortSignal): Promise<RequestPasswordResetResult> {
+    try {
+      await requestPasswordResetApi(email, signal)
+      return { outcome: 'requested' }
+    } catch (error) {
+      if (error instanceof AccountApiError) {
+        if (error.status === 503) return { outcome: 'mail-unavailable' }
+        if (error.status === 429) return { outcome: 'rate-limited', retryAfterSeconds: error.retryAfterSeconds }
+      }
+      throw error
+    }
+  }
+
+  /** 422(토큰 없음·만료·사용됨)·429는 화면이 안내하는 업무 결과입니다. 성공해도 세션은 생기지 않습니다. */
+  async resetPassword(token: string, newPassword: string, signal?: AbortSignal): Promise<ResetPasswordResult> {
+    try {
+      await resetPasswordApi(token, newPassword, signal)
+      return { outcome: 'reset' }
+    } catch (error) {
+      if (error instanceof AccountApiError) {
+        if (error.status === 422) return { outcome: 'token-invalid' }
+        if (error.status === 429) return { outcome: 'rate-limited', retryAfterSeconds: error.retryAfterSeconds }
+      }
       throw error
     }
   }
