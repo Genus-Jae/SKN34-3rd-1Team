@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { partnerRecruitmentDetail, partnerRecruitmentSummaries } from '../../fixtures/partnerRecruitments'
 import { PartnerRecruitmentRepositoryImpl } from '../../repositories/PartnerRecruitmentRepositoryImpl'
-import { browsePartnerRecruitmentsApi, createPartnerRecruitmentApi, getPartnerRecruitmentApi } from '../partnerRecruitmentApi'
+import {
+  browsePartnerRecruitmentsApi,
+  closePartnerRecruitmentApi,
+  createPartnerRecruitmentApi,
+  getPartnerRecruitmentApi,
+  updatePartnerRecruitmentApi,
+} from '../partnerRecruitmentApi'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -66,6 +72,48 @@ describe('partnerRecruitmentApi', () => {
     expect(JSON.parse(init.body as string)).toEqual(input)
 
     await expect(getPartnerRecruitmentApi(101)).rejects.toThrow()
+  })
+
+  it('puts an update and posts a close on the owner endpoints', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ ...partnerRecruitmentDetail, title: '수정한 제목' }))
+      .mockResolvedValueOnce(jsonResponse({ ...partnerRecruitmentDetail, status: 'CLOSED' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { sourceCode: _sourceCode, sourceProgramId: _sourceProgramId, ...content } = input
+
+    await expect(updatePartnerRecruitmentApi(101, content)).resolves.toMatchObject({ title: '수정한 제목' })
+    const [updateUrl, updateInit] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(new URL(updateUrl).pathname).toBe('/api/v1/partners/recruitments/101')
+    expect(updateInit.method).toBe('PUT')
+    expect(JSON.parse(updateInit.body as string)).toEqual(content)
+
+    await expect(closePartnerRecruitmentApi(101)).resolves.toMatchObject({ status: 'CLOSED' })
+    const [closeUrl, closeInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(new URL(closeUrl).pathname).toBe('/api/v1/partners/recruitments/101/close')
+    expect(closeInit.method).toBe('POST')
+    expect(closeInit.credentials).toBe('include')
+  })
+
+  it('maps owner problems of update and close to outcomes', async () => {
+    const repository = new PartnerRecruitmentRepositoryImpl()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(problemResponse(403, 'RECRUITMENT_ACTION_FORBIDDEN'))
+      .mockResolvedValueOnce(problemResponse(422, 'RECRUITMENT_CLOSED'))
+      .mockResolvedValueOnce(problemResponse(422, 'RECRUITMENT_DEADLINE_NOT_ALLOWED', { latestAllowedDeadline: '2026-09-29' }))
+      .mockResolvedValueOnce(problemResponse(404, 'RECRUITMENT_NOT_FOUND'))
+      .mockResolvedValueOnce(problemResponse(422, 'RECRUITMENT_CLOSED'))
+      .mockResolvedValueOnce(problemResponse(403, 'RECRUITMENT_ACTION_FORBIDDEN'))
+      .mockResolvedValueOnce(problemResponse(500, null))
+    vi.stubGlobal('fetch', fetchMock)
+    const { sourceCode: _sourceCode, sourceProgramId: _sourceProgramId, ...content } = input
+
+    await expect(repository.update(101, content)).resolves.toEqual({ outcome: 'forbidden' })
+    await expect(repository.update(101, content)).resolves.toEqual({ outcome: 'closed' })
+    await expect(repository.update(101, content)).resolves.toEqual({ outcome: 'deadline-not-allowed', latestAllowedDeadline: '2026-09-29' })
+    await expect(repository.update(101, content)).resolves.toEqual({ outcome: 'not-found' })
+    await expect(repository.close(101)).resolves.toEqual({ outcome: 'already-closed' })
+    await expect(repository.close(101)).resolves.toEqual({ outcome: 'forbidden' })
+    await expect(repository.close(101)).rejects.toMatchObject({ status: 500 })
   })
 
   it('maps not-found to null and business problems to outcomes, rethrowing the rest', async () => {

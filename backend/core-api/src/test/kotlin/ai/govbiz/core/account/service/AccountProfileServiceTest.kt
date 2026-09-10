@@ -55,30 +55,25 @@ class AccountProfileServiceTest {
 
     @Test
     fun changePasswordStoresANewHashAndEndsTheOtherSessions() {
-        stubCredential()
         var storedHash: String? = null
         doAnswer { invocation ->
             storedHash = invocation.getArgument(1)
             null
         }.`when`(accountRepository).updatePasswordHash(anyLong(), AccountTestHelper.anyValue())
 
-        service.changePassword(account, "password1", "new-password-2", SESSION_TOKEN)
+        service.changePassword(account, "new-password-2", SESSION_TOKEN)
 
         assertTrue(passwordEncoder.matches("new-password-2", requireNotNull(storedHash)))
         verify(accountRepository).deleteSessionsByAccountIdExcept(7L, SessionTokenHelper.hash(SESSION_TOKEN))
     }
 
     @Test
-    fun changePasswordRejectsAWrongCurrentPasswordAShortNewPasswordAndAMissingSession() {
-        stubCredential()
-        assertThrows(CurrentPasswordMismatchException::class.java) {
-            service.changePassword(account, "wrong-password", "new-password-2", SESSION_TOKEN)
-        }
+    fun changePasswordRejectsAShortNewPasswordAndAMissingSession() {
         assertThrows(IllegalArgumentException::class.java) {
-            service.changePassword(account, "password1", "short", SESSION_TOKEN)
+            service.changePassword(account, "short", SESSION_TOKEN)
         }
         assertThrows(AuthenticationRequiredException::class.java) {
-            service.changePassword(account, "password1", "new-password-2", null)
+            service.changePassword(account, "new-password-2", null)
         }
 
         verify(accountRepository, never()).updatePasswordHash(anyLong(), AccountTestHelper.anyValue())

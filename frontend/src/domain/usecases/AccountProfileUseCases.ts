@@ -2,7 +2,7 @@ import type { AccountDeletionPreview } from '../entities/AccountDeletionPreview'
 import type { AccountRepository, ChangePasswordResult, DeleteAccountResult } from '../repositories/AccountRepository'
 import { isValidSignUpPassword, signUpPasswordLength } from './SignUpUseCase'
 
-/** 현재 비밀번호를 확인한 뒤 새 비밀번호로 바꿉니다. 새 비밀번호 규칙은 가입과 같고, 다른 기기의 세션은 서버가 끝냅니다. */
+/** 새 비밀번호로 바꿉니다. 본인 확인은 로그인 세션이 맡고, 새 비밀번호 규칙은 가입과 같으며, 다른 기기의 세션은 서버가 끝냅니다. */
 export class ChangePasswordUseCase {
   private readonly repository: Pick<AccountRepository, 'changePassword'>
 
@@ -10,12 +10,11 @@ export class ChangePasswordUseCase {
     this.repository = repository
   }
 
-  execute(currentPassword: string, newPassword: string, signal?: AbortSignal): Promise<ChangePasswordResult> {
+  execute(newPassword: string, signal?: AbortSignal): Promise<ChangePasswordResult> {
     if (!isValidSignUpPassword(newPassword)) {
       throw new RangeError(`newPassword must be ${signUpPasswordLength.min}~${signUpPasswordLength.max} characters`)
     }
-    if (currentPassword === newPassword) throw new RangeError('newPassword must differ from the current password')
-    return this.repository.changePassword(currentPassword, newPassword, signal)
+    return this.repository.changePassword(newPassword, signal)
   }
 }
 

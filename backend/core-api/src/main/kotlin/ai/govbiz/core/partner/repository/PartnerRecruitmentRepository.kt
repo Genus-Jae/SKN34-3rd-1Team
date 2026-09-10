@@ -65,6 +65,33 @@ class PartnerRecruitmentRepository(
     fun findById(id: Long): PartnerRecruitment? =
         recruitmentMapper.findRecruitmentById(id)?.toRecruitment()
 
+    /** 작성자의 수정입니다. 공고·기업·작성 시각은 그대로 두고 내용과 수정 시각만 바꿉니다. 이미 마감된 행은 바꾸지 않습니다. */
+    @Transactional
+    fun update(id: Long, content: PartnerRecruitmentInput, updatedAt: LocalDateTime): PartnerRecruitment {
+        val row = PartnerRecruitmentDbRow(
+            id = id,
+            title = content.title,
+            body = content.body,
+            ownRole = content.ownRole.name,
+            seekingRole = content.seekingRole.name,
+            seekingCount = content.seekingCount,
+            region = content.region,
+            minimumCompanyAgeYears = content.minimumCompanyAgeYears,
+            capabilitiesJson = objectMapper.writeValueAsString(content.capabilities),
+            recruitmentDeadline = content.recruitmentDeadline,
+            updatedAt = updatedAt,
+        )
+        check(recruitmentMapper.updateRecruitment(row) == 1) { "partner_recruitment row $id was not updated" }
+        return requireNotNull(findById(id)) { "partner_recruitment row $id was not readable" }
+    }
+
+    /** 수동 마감입니다. 마감 시각을 적고 수정 시각도 같이 바꿉니다. */
+    @Transactional
+    fun close(id: Long, closedAt: LocalDateTime): PartnerRecruitment {
+        check(recruitmentMapper.closeRecruitment(id, closedAt) == 1) { "partner_recruitment row $id was not closed" }
+        return requireNotNull(findById(id)) { "partner_recruitment row $id was not readable" }
+    }
+
     /** 같은 조건으로 한 페이지와 총 건수를 읽습니다. 모집 중 여부는 서울 기준 오늘 날짜로 SQL에서 거릅니다. */
     fun findSlice(query: PartnerRecruitmentQuery): PartnerRecruitmentSlice {
         val today = LocalDate.now(clock)

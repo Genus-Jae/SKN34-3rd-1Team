@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PartnerRecruitmentInput } from '../entities/PartnerRecruitment'
 import {
   BrowsePartnerRecruitmentsUseCase,
+  ClosePartnerRecruitmentUseCase,
   CreatePartnerRecruitmentUseCase,
   GetPartnerRecruitmentDetailUseCase,
+  UpdatePartnerRecruitmentUseCase,
   validatePartnerRecruitmentInput,
 } from './PartnerRecruitmentUseCases'
 
@@ -61,6 +63,20 @@ describe('PartnerRecruitmentUseCases', () => {
     expect(() => useCase.execute({ ...input, recruitmentDeadline: '2026/09/20' })).toThrow('recruitmentDeadline')
     expect(() => useCase.execute({ ...input, sourceProgramId: ' ' })).toThrow('program')
     expect(create).not.toHaveBeenCalled()
+  })
+
+  it('update normalizes the content without a program and close rejects impossible ids', async () => {
+    const update = vi.fn().mockResolvedValue({ outcome: 'updated' })
+    const close = vi.fn().mockResolvedValue({ outcome: 'closed' })
+    const { sourceCode: _sourceCode, sourceProgramId: _sourceProgramId, ...content } = input
+    await new UpdatePartnerRecruitmentUseCase({ update }).execute(7, { ...content, title: ' 수정 ', capabilities: [' 라벨링 ', '라벨링', ' '] })
+    expect(update).toHaveBeenCalledWith(7, { ...content, title: '수정', body: '본문', region: '서울', capabilities: ['라벨링'] }, undefined)
+    expect(() => new UpdatePartnerRecruitmentUseCase({ update }).execute(0, content)).toThrow(RangeError)
+    expect(() => new UpdatePartnerRecruitmentUseCase({ update }).execute(7, { ...content, title: '' })).toThrow(RangeError)
+
+    await new ClosePartnerRecruitmentUseCase({ close }).execute(7)
+    expect(close).toHaveBeenCalledWith(7, undefined)
+    expect(() => new ClosePartnerRecruitmentUseCase({ close }).execute(1.5)).toThrow(RangeError)
   })
 
   it('validatePartnerRecruitmentInput names the first broken field or null', () => {

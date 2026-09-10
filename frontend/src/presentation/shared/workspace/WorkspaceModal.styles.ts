@@ -30,9 +30,10 @@ export const workspaceModalStyles = {
     'aria-[invalid=true]:border-[#c9505f]',
   ),
   hint: 'text-[0.72rem] text-sample-muted',
+  // 입력하는 동안 규칙 충족·확인 일치를 바로 알려 주는 한 줄입니다. 색만이 아니라 앞의 기호로도 구분합니다.
+  hintOk: 'text-[0.72rem] font-bold text-[#087f46]',
+  hintBad: 'text-[0.72rem] font-bold text-[#9a3947]',
   error: 'm-0 text-[0.78rem] font-bold text-[#9a3947]',
-  strength: 'h-1.5 overflow-hidden rounded-full bg-[#f6f7f8]',
-  strengthBar: 'block h-full rounded-full bg-brand-primary transition-[width] motion-reduce:transition-none',
   consequences: 'rounded-[0.85rem] bg-[#fdecea] px-3 py-2.5 text-[0.8rem] text-app-ink',
   consequenceList: 'mt-1 mb-0 flex flex-col gap-0.5 pl-4',
   actions: 'flex flex-wrap justify-end gap-2 pt-1',

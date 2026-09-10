@@ -30,7 +30,6 @@ export type LogInResult =
 /** 현재 비밀번호 불일치는 화면이 칸 아래에 안내하는 업무 결과입니다. */
 export type ChangePasswordResult =
   | { outcome: 'changed' }
-  | { outcome: 'current-password-mismatch' }
   | { outcome: 'rate-limited'; retryAfterSeconds: number | null }
 
 export type DeleteAccountResult =
@@ -59,8 +58,8 @@ export interface AccountRepository {
   logOut(signal?: AbortSignal): Promise<void>
   /** 저장된 세션이 없거나 만료됐으면 null입니다. */
   getCurrentAccount(signal?: AbortSignal): Promise<Account | null>
-  /** 현재 비밀번호를 확인하고 바꿉니다. 성공하면 서버가 다른 기기의 세션을 끝냅니다. */
-  changePassword(currentPassword: string, newPassword: string, signal?: AbortSignal): Promise<ChangePasswordResult>
+  /** 로그인 세션으로 본인을 확인하고 새 비밀번호로 바꿉니다. 성공하면 서버가 다른 기기의 세션을 끝냅니다. */
+  changePassword(newPassword: string, signal?: AbortSignal): Promise<ChangePasswordResult>
   /** 삭제 확인 모달에 보여 줄, 함께 사라지는 것들의 수입니다. */
   getDeletionPreview(signal?: AbortSignal): Promise<AccountDeletionPreview>
   /** 현재 비밀번호를 확인하고 계정을 삭제합니다. 성공하면 세션 힌트를 지웁니다. */

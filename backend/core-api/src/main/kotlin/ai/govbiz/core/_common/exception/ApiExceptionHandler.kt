@@ -26,6 +26,7 @@ import ai.govbiz.core.combinationreview.service.exception.CombinationReviewRunEx
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRunConflictException
 import ai.govbiz.core.combinationreview.service.exception.ReviewRunFailureCode
 import ai.govbiz.core.partner.service.exception.CompanyRequiredException
+import ai.govbiz.core.partner.service.exception.RecruitmentActionForbiddenException
 import ai.govbiz.core.partner.service.exception.RecruitmentRegionFilterInvalidException
 import ai.govbiz.core.partner.service.exception.ProposalActionForbiddenException
 import ai.govbiz.core.partner.service.exception.ProposalAlreadySentException
@@ -516,7 +517,7 @@ class ApiExceptionHandler {
                 HttpStatus.UNPROCESSABLE_CONTENT,
                 URI.create("urn:govbiz:problem:recruitment-closed"),
                 "Recruitment Closed",
-                "The recruitment is no longer open for proposals.",
+                "The recruitment is no longer open.",
                 "RECRUITMENT_CLOSED",
             ),
             request,
@@ -544,6 +545,19 @@ class ApiExceptionHandler {
                 "Proposal Not Pending",
                 "The proposal is no longer pending.",
                 "PROPOSAL_NOT_PENDING",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentActionForbiddenException::class)
+    fun handleRecruitmentActionForbiddenException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.FORBIDDEN,
+                URI.create("urn:govbiz:problem:recruitment-action-forbidden"),
+                "Recruitment Action Forbidden",
+                "Only the recruitment owner can edit or close it.",
+                "RECRUITMENT_ACTION_FORBIDDEN",
             ),
             request,
         )

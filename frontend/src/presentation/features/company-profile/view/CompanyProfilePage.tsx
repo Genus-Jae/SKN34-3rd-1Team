@@ -5,6 +5,7 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { HelpTip } from '../../../shared/workspace/HelpTip'
 import { WorkspaceToggle } from '../../../shared/workspace/WorkspaceToggle'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { YearPicker } from '../../../shared/workspace/YearPicker'
@@ -49,6 +50,7 @@ const notificationRows: { key: NotificationKey; label: string }[] = [
  * 기업 프로필 화면입니다. 기업 기본정보는 사업자등록번호 조회로 등록·수정하고, 협업·파트너 설정은 모집글 상세와
  * 기업 프로필 보기에 나갑니다. 담당자 연락처는 제안을 수락한 뒤에만 공개되며 GovBiz는 역량·실적을 검증하지 않습니다.
  * 알림 설정은 발송 기능이 없어 아직 화면 상태로만 유지합니다.
+ * 완성도와 체크리스트는 맨 위 요약 카드에, "이 정보가 쓰이는 곳"·"공개 범위"는 해당 카드 제목 옆 `?` 도움말에 둡니다.
  */
 export function CompanyProfilePage() {
   const vm = useCompanyProfileViewModel()
@@ -61,9 +63,67 @@ export function CompanyProfilePage() {
     completionPercent,
     checklist,
     basicFields,
+    readOnlyFields,
     usageNotes,
     publicityRows,
   } = vm
+
+  // 옆 칸에 있던 안내는 관련 카드 제목 옆 ? 도움말로 옮겼습니다. 열어야 보이므로 본문 폭을 차지하지 않습니다.
+  const usageHelp = (
+    <HelpTip label="이 정보가 쓰이는 곳 도움말" title="이 정보가 쓰이는 곳">
+      <div className={companyProfileStyles.usageList}>
+        {usageNotes.map((note) => (
+          <div className={companyProfileStyles.usageItem} key={note.title}>
+            <span className={companyProfileStyles.usageIcon}>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                {usageIcons[note.icon]}
+              </svg>
+            </span>
+            <span>
+              <strong className={companyProfileStyles.usageTitle}>{note.title}</strong>
+              <span className={companyProfileStyles.usageDescription}>{note.description}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </HelpTip>
+  )
+  const publicityHelp = (
+    <HelpTip label="공개 범위 도움말" title="공개 범위">
+      <table className={companyProfileStyles.publicityTable}>
+        <thead>
+          <tr>
+            <th className={companyProfileStyles.publicityHeadCell}>항목</th>
+            <th className={companyProfileStyles.publicityHeadCell}>모집·찾기</th>
+            <th className={companyProfileStyles.publicityHeadCell}>제안 수락 후</th>
+          </tr>
+        </thead>
+        <tbody>
+          {publicityRows.map((row) => (
+            <tr key={row.label}>
+              <td className={companyProfileStyles.publicityCell}>{row.label}</td>
+              <td className={row.beforeAccept ? companyProfileStyles.publicOpen : companyProfileStyles.publicClosed}>
+                {row.beforeAccept ? '공개' : '비공개'}
+              </td>
+              <td className={row.afterAccept ? companyProfileStyles.publicOpen : companyProfileStyles.publicClosed}>
+                {row.afterAccept ? '공개' : '비공개'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </HelpTip>
+  )
 
   return (
     <>
@@ -73,12 +133,8 @@ export function CompanyProfilePage() {
       />
 
       <div className={workspacePageStyles.content}>
-        <p className={workspacePageStyles.emptyNote}>
-          기업 기본정보와 협업·파트너 설정은 저장되어 모집글과 기업 프로필 보기에 쓰입니다. 담당자 연락처는 제안을 수락한 뒤에만 공개됩니다.
-        </p>
         {notice ? <p className={companyProfileStyles.notice} role="status">{notice}</p> : null}
-        <div className={workspacePageStyles.columns}>
-          <div className={workspacePageStyles.column}>
+        <div className={workspacePageStyles.column}>
             <section className={workspacePageStyles.card} aria-label="프로필 요약">
               <div className={companyProfileStyles.summaryTop}>
                 <div className={companyProfileStyles.summaryIdentity}>
@@ -128,6 +184,35 @@ export function CompanyProfilePage() {
                     ? '사업자등록번호를 조회해 등록하면 기업 회원이 되어 파트너 모집글을 작성할 수 있습니다.'
                     : '보유 역량과 우대 자격을 채우면 파트너 매칭 근거가 더 정확해집니다.'}
                 </span>
+                {/* 완성도를 이루는 네 항목입니다. 진행 막대 바로 아래에 두어 무엇이 남았는지 한눈에 보이게 합니다. */}
+                <div className={companyProfileStyles.checklist} aria-label="완성도 체크리스트">
+                  {checklist.map((item) => (
+                    <div className={companyProfileStyles.checklistItem} key={item.label}>
+                      {item.isDone ? (
+                        <span className={companyProfileStyles.doneMark} aria-hidden="true">
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <span className={companyProfileStyles.todoMark} aria-hidden="true" />
+                      )}
+                      <span className={item.isDone ? companyProfileStyles.doneLabel : companyProfileStyles.todoLabel}>
+                        {item.label}
+                        <span className="sr-only"> · {item.isDone ? '완료' : '미완료'}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
 
@@ -141,18 +226,30 @@ export function CompanyProfilePage() {
                 <p className={workspacePageStyles.emptyNote} role="alert">기업 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
               </section>
             ) : null}
-            {companyState.status === 'unregistered' ? <RegistrationCard vm={vm} /> : null}
+            {companyState.status === 'unregistered' ? <RegistrationCard vm={vm} titleHelp={usageHelp} /> : null}
             {company !== null && vm.isEditing ? (
               <section className={workspacePageStyles.card} aria-label="기업 기본정보 수정">
                 <div className={workspacePageStyles.cardHeader}>
                   <div>
-                    <h2 className={workspacePageStyles.cardTitle}>기업 기본정보 수정</h2>
-                    <p className={workspacePageStyles.cardDescription}>
-                      기업명·사업자등록번호·사업자 상태는 조회 값이라 바꿀 수 없습니다.
-                    </p>
+                    <div className={companyProfileStyles.titleRow}>
+                      <h2 className={workspacePageStyles.cardTitle}>기업 기본정보 수정</h2>
+                      {usageHelp}
+                    </div>
                   </div>
                 </div>
                 <form className={companyProfileStyles.form} aria-label="기업 기본정보 수정" onSubmit={vm.submitUpdate} noValidate>
+                  {/* 조회 값이라 바꿀 수 없는 항목은 보기 화면과 같은 모양으로 그대로 보여 줍니다. */}
+                  <div className={companyProfileStyles.fieldGrid} role="group" aria-label="조회 값">
+                    {readOnlyFields.map((field) => (
+                      <div className={companyProfileStyles.field} key={field.label}>
+                        <span className={companyProfileStyles.fieldLabel}>{field.label}</span>
+                        <span className={companyProfileStyles.fieldValue}>
+                          {field.value}
+                          {field.tag ? <span className={workspaceTagClassName('ok')}>{field.tag}</span> : null}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                   <ProfileFields vm={vm} idPrefix="edit" />
                   {vm.formErrors.form ? <p className={companyProfileStyles.formError} role="alert">{vm.formErrors.form}</p> : null}
                   <div className={companyProfileStyles.formActions}>
@@ -169,7 +266,10 @@ export function CompanyProfilePage() {
             {company !== null && !vm.isEditing ? (
               <section className={workspacePageStyles.card} aria-label="기업 기본정보">
                 <div className={workspacePageStyles.cardHeader}>
-                  <h2 className={workspacePageStyles.cardTitle}>기업 기본정보</h2>
+                  <div className={companyProfileStyles.titleRow}>
+                    <h2 className={workspacePageStyles.cardTitle}>기업 기본정보</h2>
+                    {usageHelp}
+                  </div>
                   <button className={workspacePageStyles.secondaryButton} type="button" onClick={vm.startEditing}>
                     수정
                   </button>
@@ -206,7 +306,7 @@ export function CompanyProfilePage() {
               </section>
             ) : null}
 
-            <CompanyPartnerProfileSection vm={vm.partnerProfile} />
+            <CompanyPartnerProfileSection vm={vm.partnerProfile} titleHelp={publicityHelp} />
 
             <section className={workspacePageStyles.card} aria-label="계정과 알림">
               <h2 className={workspacePageStyles.cardTitle}>계정과 알림</h2>
@@ -252,116 +352,6 @@ export function CompanyProfilePage() {
             </section>
             <ChangePasswordModal vm={security.password} />
             <DeleteAccountModal vm={security.deletion} email={vm.account?.email ?? ''} />
-          </div>
-
-          <aside className={workspacePageStyles.column} aria-label="프로필 안내">
-            <section className={workspacePageStyles.card}>
-              <p className={workspacePageStyles.sectionEyebrow}>이 정보가 쓰이는 곳</p>
-              <div className={companyProfileStyles.usageList}>
-                {usageNotes.map((note) => (
-                  <div className={companyProfileStyles.usageItem} key={note.title}>
-                    <span className={companyProfileStyles.usageIcon}>
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        {usageIcons[note.icon]}
-                      </svg>
-                    </span>
-                    <span>
-                      <strong className={companyProfileStyles.usageTitle}>{note.title}</strong>
-                      <span className={companyProfileStyles.usageDescription}>
-                        {note.description}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className={workspacePageStyles.card} aria-label="공개 범위">
-              <p className={workspacePageStyles.sectionEyebrow}>공개 범위</p>
-              <table className={companyProfileStyles.publicityTable}>
-                <thead>
-                  <tr>
-                    <th className={companyProfileStyles.publicityHeadCell}>항목</th>
-                    <th className={companyProfileStyles.publicityHeadCell}>모집·찾기</th>
-                    <th className={companyProfileStyles.publicityHeadCell}>제안 수락 후</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {publicityRows.map((row) => (
-                    <tr key={row.label}>
-                      <td className={companyProfileStyles.publicityCell}>{row.label}</td>
-                      <td
-                        className={
-                          row.beforeAccept
-                            ? companyProfileStyles.publicOpen
-                            : companyProfileStyles.publicClosed
-                        }
-                      >
-                        {row.beforeAccept ? '공개' : '비공개'}
-                      </td>
-                      <td
-                        className={
-                          row.afterAccept
-                            ? companyProfileStyles.publicOpen
-                            : companyProfileStyles.publicClosed
-                        }
-                      >
-                        {row.afterAccept ? '공개' : '비공개'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-
-            <section className={workspacePageStyles.card} aria-label="완성도 체크리스트">
-              <p className={workspacePageStyles.sectionEyebrow}>완성도 체크리스트</p>
-              <div className={companyProfileStyles.checklist}>
-                {checklist.map((item) => (
-                  <div className={companyProfileStyles.checklistItem} key={item.label}>
-                    {item.isDone ? (
-                      <span className={companyProfileStyles.doneMark} aria-hidden="true">
-                        <svg
-                          width="11"
-                          height="11"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                      </span>
-                    ) : (
-                      <span className={companyProfileStyles.todoMark} aria-hidden="true" />
-                    )}
-                    <span
-                      className={
-                        item.isDone
-                          ? companyProfileStyles.doneLabel
-                          : companyProfileStyles.todoLabel
-                      }
-                    >
-                      {item.label}
-                      <span className="sr-only"> · {item.isDone ? '완료' : '미완료'}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </aside>
         </div>
       </div>
     </>
@@ -371,13 +361,16 @@ export function CompanyProfilePage() {
 type ViewModel = ReturnType<typeof useCompanyProfileViewModel>
 
 /** 기업이 없을 때 기본정보 카드 자리에 나오는 등록 폼입니다. 사업자등록번호 조회로 상호·상태를 채운 뒤 나머지를 입력합니다. */
-function RegistrationCard({ vm }: { vm: ViewModel }) {
+function RegistrationCard({ vm, titleHelp }: { vm: ViewModel; titleHelp: ReactNode }) {
   const lookupBusy = vm.lookup.status === 'looking'
   return (
     <section className={workspacePageStyles.card} aria-label="기업 등록">
       <div className={workspacePageStyles.cardHeader}>
         <div>
-          <h2 className={workspacePageStyles.cardTitle}>기업 등록</h2>
+          <div className={companyProfileStyles.titleRow}>
+            <h2 className={workspacePageStyles.cardTitle}>기업 등록</h2>
+            {titleHelp}
+          </div>
           <p className={workspacePageStyles.cardDescription}>
             사업자등록번호를 조회하면 기업명과 사업자 상태가 채워집니다. 소재지·업종·설립연도는 직접 입력하고 홈페이지는 선택입니다.
           </p>

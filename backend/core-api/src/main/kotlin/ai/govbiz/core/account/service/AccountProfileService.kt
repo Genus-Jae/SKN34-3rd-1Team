@@ -31,13 +31,12 @@ class AccountProfileService(
     @param:Qualifier("seoulClock") private val clock: Clock,
 ) {
 
-    /** 새 비밀번호를 저장하고 지금 쓰는 세션만 남긴 채 다른 기기의 세션을 끝냅니다. */
-    fun changePassword(account: Account, currentPassword: String, newPassword: String, sessionToken: String?) {
+    /** 새 비밀번호를 저장하고 지금 쓰는 세션만 남긴 채 다른 기기의 세션을 끝냅니다. 본인 확인은 세션이 맡고 현재 비밀번호는 다시 묻지 않습니다. */
+    fun changePassword(account: Account, newPassword: String, sessionToken: String?) {
         require(newPassword.length in AccountSignupService.PASSWORD_LENGTH) {
             "password must be ${AccountSignupService.PASSWORD_LENGTH} characters"
         }
         val token = sessionToken?.trim()?.takeIf(String::isNotEmpty) ?: throw AuthenticationRequiredException()
-        verifyCurrentPassword(account, currentPassword)
 
         accountRepository.updatePasswordHash(account.id, requireNotNull(passwordEncoder.encode(newPassword)))
         accountRepository.deleteSessionsByAccountIdExcept(account.id, SessionTokenHelper.hash(token))

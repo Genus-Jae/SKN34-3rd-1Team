@@ -30,7 +30,7 @@ const sortOptions: FilterChoiceOption[] = (Object.keys(partnerRecruitmentSortLab
 
 /**
  * 파트너 모집 목록의 대표 ViewModel입니다. 검색어·찾는 역할·지역은 입력 중인 초안으로 두었다가 조회 버튼에서 적용하고,
- * 내 글·정렬·페이지는 바로 적용해 모집 API로 조회합니다. 세션의 기업 등록 여부로 작성 안내 문구를 정합니다(작성 버튼은 공용 파트너 관리 머리글이 맡음).
+ * 정렬·페이지는 바로 적용해 모집 API로 조회합니다. 내 글은 "내 모집글" 탭이 따로 보여 줍니다. 세션의 기업 등록 여부로 작성 안내 문구를 정합니다(작성 버튼은 공용 파트너 관리 머리글이 맡음).
  */
 export function usePartnerRecruitmentListViewModel() {
   const { hasCompany } = useAuthSession()
@@ -62,7 +62,6 @@ export function usePartnerRecruitmentListViewModel() {
     clearRegions: () => setDraft((current) => ({ ...current, regions: [] })),
     /** 조회 버튼·Enter로 초안을 적용합니다. */
     submitSearch: () => update({ ...draft, keyword: draft.keyword.trim() }),
-    toggleMineOnly: () => update({ mineOnly: !query.mineOnly }),
     selectSort: (sort: string) => update({ sort: sort as PartnerRecruitmentSort }),
     goToPage: (target: number) => setQuery((current) => ({ ...current, page: target })),
     hasActiveNarrowing: hasPartnerRecruitmentNarrowing(query),

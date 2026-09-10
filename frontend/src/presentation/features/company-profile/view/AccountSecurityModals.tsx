@@ -5,7 +5,10 @@ import type { useAccountSecurityViewModel } from '../viewmodel/useAccountSecurit
 
 type SecurityViewModel = ReturnType<typeof useAccountSecurityViewModel>
 
-/** 비밀번호 변경 모달입니다. 세 칸이 모두 맞을 때만 변경 버튼이 활성이고, 서버 오류는 해당 칸 아래에 보여 줍니다. */
+/**
+ * 비밀번호 변경 모달입니다. 로그인한 세션이 본인 확인이라 현재 비밀번호는 묻지 않습니다.
+ * 새 비밀번호 규칙과 확인 일치는 입력하는 동안 바로 보여 주고, 둘 다 맞을 때만 변경 버튼이 활성입니다.
+ */
 export function ChangePasswordModal({ vm }: { vm: SecurityViewModel['password'] }) {
   const errorFor = (field: keyof typeof vm.form) =>
     vm.errors[field] ? <p id={`password-${field}-error`} className={workspaceModalStyles.error} role="alert">{vm.errors[field]}</p> : null
@@ -14,25 +17,10 @@ export function ChangePasswordModal({ vm }: { vm: SecurityViewModel['password'] 
     <WorkspaceModal
       isOpen={vm.isOpen}
       title="비밀번호 변경"
-      description="변경하면 다른 기기의 로그인은 모두 끝나고 이 기기만 남습니다."
+      description="일부 기기의 경우 계정에서 로그아웃될 수 있습니다."
       onClose={vm.close}
     >
       <form className={workspaceModalStyles.form} aria-label="비밀번호 변경" onSubmit={vm.submit} noValidate>
-        <div className={workspaceModalStyles.field}>
-          <label className={workspaceModalStyles.label} htmlFor="password-currentPassword">현재 비밀번호</label>
-          <input
-            className={workspaceModalStyles.input}
-            id="password-currentPassword"
-            type="password"
-            autoComplete="current-password"
-            aria-invalid={vm.errors.currentPassword !== undefined}
-            aria-describedby={vm.errors.currentPassword ? 'password-currentPassword-error' : undefined}
-            value={vm.form.currentPassword}
-            onChange={(event) => vm.update('currentPassword', event.target.value)}
-          />
-          {errorFor('currentPassword')}
-        </div>
-
         <div className={workspaceModalStyles.field}>
           <label className={workspaceModalStyles.label} htmlFor="password-newPassword">새 비밀번호</label>
           <input
@@ -47,10 +35,15 @@ export function ChangePasswordModal({ vm }: { vm: SecurityViewModel['password'] 
             value={vm.form.newPassword}
             onChange={(event) => vm.update('newPassword', event.target.value)}
           />
-          <div className={workspaceModalStyles.strength} aria-hidden="true">
-            <span className={workspaceModalStyles.strengthBar} style={{ width: `${vm.strengthPercent}%` }} />
-          </div>
-          {errorFor('newPassword') ?? <span id="password-newPassword-hint" className={workspaceModalStyles.hint}>{vm.lengthHint}</span>}
+          {errorFor('newPassword') ?? (
+            <span
+              id="password-newPassword-hint"
+              className={vm.newPasswordMeetsRule ? workspaceModalStyles.hintOk : workspaceModalStyles.hint}
+              data-state={vm.newPasswordMeetsRule ? 'ok' : 'pending'}
+            >
+              {vm.newPasswordMeetsRule ? '✓ ' : ''}{vm.lengthHint}
+            </span>
+          )}
         </div>
 
         <div className={workspaceModalStyles.field}>
@@ -60,12 +53,20 @@ export function ChangePasswordModal({ vm }: { vm: SecurityViewModel['password'] 
             id="password-confirmation"
             type="password"
             autoComplete="new-password"
-            aria-invalid={vm.errors.confirmation !== undefined}
-            aria-describedby={vm.errors.confirmation ? 'password-confirmation-error' : undefined}
+            aria-invalid={vm.errors.confirmation !== undefined || vm.confirmationState === 'mismatch'}
+            aria-describedby={vm.errors.confirmation ? 'password-confirmation-error' : vm.confirmationState === 'empty' ? undefined : 'password-confirmation-hint'}
             value={vm.form.confirmation}
             onChange={(event) => vm.update('confirmation', event.target.value)}
           />
-          {errorFor('confirmation')}
+          {errorFor('confirmation') ?? (vm.confirmationState === 'empty' ? null : (
+            <span
+              id="password-confirmation-hint"
+              className={vm.confirmationState === 'match' ? workspaceModalStyles.hintOk : workspaceModalStyles.hintBad}
+              data-state={vm.confirmationState}
+            >
+              {vm.confirmationState === 'match' ? `✓ ${vm.confirmationMatchHint}` : `✕ ${vm.confirmationMismatchHint}`}
+            </span>
+          ))}
         </div>
 
         {vm.errors.form ? <p className={workspaceModalStyles.error} role="alert">{vm.errors.form}</p> : null}

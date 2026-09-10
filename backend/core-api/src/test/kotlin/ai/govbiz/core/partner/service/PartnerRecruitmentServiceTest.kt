@@ -14,7 +14,9 @@ import ai.govbiz.core.partner.domain.PartnerRole
 import ai.govbiz.core.partner.repository.PartnerProposalRepository
 import ai.govbiz.core.partner.repository.PartnerRecruitmentRepository
 import ai.govbiz.core.partner.service.exception.CompanyRequiredException
+import ai.govbiz.core.partner.service.exception.RecruitmentActionForbiddenException
 import ai.govbiz.core.partner.service.exception.RecruitmentAlreadyExistsException
+import ai.govbiz.core.partner.service.exception.RecruitmentClosedException
 import ai.govbiz.core.partner.service.exception.RecruitmentDeadlineNotAllowedException
 import ai.govbiz.core.partner.service.exception.RecruitmentNotFoundException
 import ai.govbiz.core.partner.service.exception.RecruitmentProgramClosedException
@@ -26,6 +28,8 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.mockito.ArgumentMatchers.anyLong
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mock
 import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.doReturn
@@ -140,6 +144,52 @@ class PartnerRecruitmentServiceTest {
         assertThrows(RecruitmentAlreadyExistsException::class.java) {
             service.create(companyAccount, "BIZINFO", "PBLN-1", input())
         }
+    }
+
+    @Test
+    fun updateAndCloseRejectOtherMembersAndClosedRecruitments() {
+        doReturn(recruitment()).`when`(recruitmentRepository).findById(21L)
+        assertThrows(RecruitmentActionForbiddenException::class.java) {
+            service.update(AccountTestHelper.account(id = 8L), 21L, input())
+        }
+        assertThrows(RecruitmentActionForbiddenException::class.java) { service.close(AccountTestHelper.account(id = 8L), 21L) }
+
+        doReturn(recruitment().copy(closedAt = NOW)).`when`(recruitmentRepository).findById(22L)
+        assertThrows(RecruitmentClosedException::class.java) { service.update(companyAccount, 22L, input()) }
+        assertThrows(RecruitmentClosedException::class.java) { service.close(companyAccount, 22L) }
+        verify(recruitmentRepository, never()).update(anyLong(), AccountTestHelper.anyValue(), AccountTestHelper.anyValue())
+        verify(recruitmentRepository, never()).close(anyLong(), AccountTestHelper.anyValue())
+    }
+
+    @Test
+    fun updateKeepsTheDeadlineRuleAndReturnsTheRefreshedView() {
+        doReturn(recruitment()).`when`(recruitmentRepository).findById(21L)
+        assertThrows(RecruitmentDeadlineNotAllowedException::class.java) {
+            service.update(companyAccount, 21L, input(recruitmentDeadline = LocalDate.of(2026, 9, 30)))
+        }
+
+        val edited = input(recruitmentDeadline = LocalDate.of(2026, 9, 25))
+        doReturn(recruitment().copy(content = edited)).`when`(recruitmentRepository)
+            .update(eq(21L), AccountTestHelper.anyValue(), AccountTestHelper.anyValue())
+        doReturn(null).`when`(proposalRepository).findByRecruitmentAndProposer(21L, 7L)
+        doReturn(mapOf(21L to 2)).`when`(proposalRepository).countByRecruitmentIds(listOf(21L))
+
+        val view = service.update(companyAccount, 21L, edited)
+
+        assertEquals(2, view.proposalCount)
+        verify(recruitmentRepository).update(eq(21L), AccountTestHelper.anyValue(), AccountTestHelper.anyValue())
+    }
+
+    @Test
+    fun closeMarksTheRecruitmentClosedAndRereadsIt() {
+        doReturn(recruitment()).`when`(recruitmentRepository).findById(21L)
+        doReturn(recruitment().copy(closedAt = NOW)).`when`(recruitmentRepository).close(eq(21L), AccountTestHelper.anyValue())
+        doReturn(null).`when`(proposalRepository).findByRecruitmentAndProposer(21L, 7L)
+        doReturn(emptyMap<Long, Int>()).`when`(proposalRepository).countByRecruitmentIds(listOf(21L))
+
+        service.close(companyAccount, 21L)
+
+        verify(recruitmentRepository).close(eq(21L), AccountTestHelper.anyValue())
     }
 
     @Test

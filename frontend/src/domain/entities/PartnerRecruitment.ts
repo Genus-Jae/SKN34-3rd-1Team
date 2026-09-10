@@ -97,8 +97,5 @@ export type PartnerRecruitmentInput = {
   recruitmentDeadline: string
 }
 
-/** 모집 조건과 내 프로필을 항목별로 비교한 결과입니다. 아직 예시로만 표시합니다. */
-export type PartnerRecruitmentMatch = {
-  label: string
-  isMatched: boolean
-}
+/** 모집글 수정 입력입니다. 묶인 공고는 바꿀 수 없으므로 공고 식별자가 없습니다. */
+export type PartnerRecruitmentContentInput = Omit<PartnerRecruitmentInput, 'sourceCode' | 'sourceProgramId'>

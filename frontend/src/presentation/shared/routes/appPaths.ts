@@ -17,6 +17,8 @@ export const appPaths = {
   partners: `${APP_PREFIX}/partners`,
   partnerDetail: `${APP_PREFIX}/partners/detail`,
   partnerNew: `${APP_PREFIX}/partners/new`,
+  partnerEdit: `${APP_PREFIX}/partners/edit`,
+  myPartners: `${APP_PREFIX}/partners/mine`,
   proposals: `${APP_PREFIX}/proposals`,
   profile: `${APP_PREFIX}/profile`,
   admin: `${APP_PREFIX}/admin`,

@@ -292,7 +292,6 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
     { label: '사업자등록번호 확인과 기업 기본정보', isDone: company !== null },
     { label: '이메일 인증', isDone: account?.emailVerified ?? false },
     { label: '협업·파트너 설정', isDone: partnerProfile.isSet },
-    { label: '홈페이지', isDone: company?.homepageUrl != null },
   ]
   const completionPercent = Math.round(
     (checklist.filter((item) => item.isDone).length / checklist.length) * 100,
@@ -313,6 +312,12 @@ export function useCompanyProfileViewModel(useCases: Partial<CompanyUseCases> = 
     summaryTags: company === null ? [] : [company.region, company.industry, company.businessStatus],
     completionPercent,
     checklist,
+    /** 조회로 채워져 수정 폼에서 바꿀 수 없는 항목입니다. 수정 폼이 입력란 위에 그대로 보여 줍니다. */
+    readOnlyFields: company === null ? [] : [
+      { label: '기업명', value: company.companyName, tag: '사업자 확인' },
+      { label: '사업자등록번호', value: formatBusinessNumber(company.businessNumber) },
+      { label: '사업자 상태', value: company.businessStatus },
+    ],
     basicFields: company === null ? [] : [
       { label: '기업명', value: company.companyName, tag: '사업자 확인' },
       { label: '사업자등록번호', value: formatBusinessNumber(company.businessNumber) },

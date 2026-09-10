@@ -110,11 +110,12 @@ export async function getCurrentAccountApi(signal?: AbortSignal): Promise<Accoun
   return accountDtoSchema.parse(currentAccountResponseDtoSchema.parse(await response.json()).account)
 }
 
-export async function changePasswordApi(currentPassword: string, newPassword: string, signal?: AbortSignal): Promise<void> {
+/** 로그인 세션이 본인 확인이므로 새 비밀번호만 보냅니다. */
+export async function changePasswordApi(newPassword: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`${getCoreApiBaseUrl()}${PASSWORD_PATH}`, {
     method: 'PUT',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ currentPassword, newPassword }),
+    body: JSON.stringify({ newPassword }),
     credentials: withSessionCookie,
     signal,
   })
