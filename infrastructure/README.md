@@ -92,9 +92,12 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `OPENAI_RANKING_REASONING_EFFORT` | `none` | 랭킹 추론 수준(`none` 또는 `low`). `.env.example`은 `low`; 비용·지연 증가 가능 |
 | `LLM_MODEL_TIMEOUT_SECONDS` | `25.0` | 조건 해석·원문 근거 답변의 OpenAI 호출 제한시간(초) |
 | `LLM_RUN_TIMEOUT_SECONDS` | `30.0` | 조건 해석·원문 근거 답변의 Agent 실행 제한시간(초) |
+| `LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS` | `60.0` | 중복 지원 검토 전용 OpenAI 호출 제한시간(초) |
+| `LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS` | `70.0` | 중복 지원 검토 전용 Agent 실행 제한시간(초) |
 | `LLM_RANKING_MODEL_TIMEOUT_SECONDS` | `45.0` | 후보 점수화 전용 OpenAI 호출 제한시간(초) |
 | `LLM_RANKING_RUN_TIMEOUT_SECONDS` | `50.0` | 후보 점수화 전용 Agent 실행 제한시간(초) |
 | `AI_SERVICE_READ_TIMEOUT` | `35s` | Core API의 AI Health·조건 해석·원문 근거 답변 읽기 제한시간 |
+| `AI_COMBINATION_REVIEW_READ_TIMEOUT` | `75s` | Core API의 중복 지원 검토 전용 읽기 제한시간 |
 | `AI_RANKING_READ_TIMEOUT` | `55s` | Core API의 후보 점수화 전용 읽기 제한시간 |
 | `SUPPORT_PROGRAM_REQUEST_PER_CLIENT_PER_MINUTE` | `6` | 검색·원문 질문이 공유하는 접속 주소별 최근 60초 허용 요청 수 |
 | `SUPPORT_PROGRAM_REQUEST_GLOBAL_PER_MINUTE` | `60` | Core 프로세스 전체의 최근 60초 허용 요청 수 |
@@ -119,6 +122,7 @@ OpenAI는 공고 임베딩과 후보 점수화의 필수 의존성입니다. 키
 시작이 실패하고, 실행 중 AI 호출이 실패하면 Core API가 오류 종류에 따라 502·503·504로
 전달합니다. 후보 점수화는 모델 `45s` → Agent 실행 `50s` → Core 전용 읽기 `55s` 순서입니다.
 조건 해석·원문 근거 답변은 기존 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`를 유지합니다.
+중복 지원 검토는 긴 공식 원문 분석을 위해 모델 `60s` → Agent 실행 `70s` → Core 전용 읽기 `75s`를 사용합니다.
 검색 화면은 순차적인 의미 검색과 점수화의 Core 읽기 제한 `30s + 55s`에 여유를 둔 `90s` 후
 요청을 취소하고 수동 재시도를 허용합니다. 시간 초과는 성공이나 빈 결과로 바꾸지 않고 명시적인 오류로
 반환합니다. 이 값은 대기 상한이지 응답속도 목표가 아니며 자동 재시도는 하지 않습니다.

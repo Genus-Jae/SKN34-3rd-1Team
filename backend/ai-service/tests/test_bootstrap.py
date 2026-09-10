@@ -128,6 +128,10 @@ async def test_builds_and_wires_agent_in_the_composition_root(
     evidence_agent = container.support_program_evidence_answer_service._agent
     assert evidence_agent._agent.model_settings.timeout == 1.25
     assert evidence_agent._run_timeout_seconds == 1.75
+    combination_agent = container.combination_review_service.agent
+    assert combination_agent._agent.model_settings.timeout == 60
+    assert combination_agent._agent.model_settings.extra_args == {"timeout": 60}
+    assert combination_agent._run_timeout_seconds == 70
     assert captured_client_arguments == {
         "api_key": "private-key",
         "timeout": 1.25,

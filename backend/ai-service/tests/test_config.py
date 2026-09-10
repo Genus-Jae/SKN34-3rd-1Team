@@ -1,6 +1,8 @@
 import pytest
 
 from app.config import (
+    DEFAULT_LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS,
+    DEFAULT_LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS,
     DEFAULT_LLM_MODEL_TIMEOUT_SECONDS,
     DEFAULT_LLM_RUN_TIMEOUT_SECONDS,
     DEFAULT_OPENAI_MODEL,
@@ -14,6 +16,8 @@ def configure_required_openai_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.delenv("LLM_RANKING_MODEL_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("LLM_RANKING_RUN_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("OPENAI_RANKING_MODEL", raising=False)
     monkeypatch.delenv("OPENAI_RANKING_REASONING_EFFORT", raising=False)
     monkeypatch.delenv("OPENAI_RANKING_SERVICE_TIER", raising=False)
@@ -62,6 +66,8 @@ def test_default_timeouts_allow_measured_ranking_latency(monkeypatch: pytest.Mon
 
     assert settings.llm_model_timeout_seconds == 25.0
     assert settings.llm_run_timeout_seconds == 30.0
+    assert settings.llm_combination_review_model_timeout_seconds == DEFAULT_LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS
+    assert settings.llm_combination_review_run_timeout_seconds == DEFAULT_LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS
 
 
 def test_accepts_the_thirty_second_timeout_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -221,6 +227,39 @@ def test_ranking_accepts_values_over_30_without_changing_other_agents(monkeypatc
     assert settings.llm_ranking_run_timeout_seconds == 60
 
 
+def test_combination_review_accepts_its_independent_timeout_budget(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL_TIMEOUT_SECONDS", "2")
+    monkeypatch.setenv("LLM_RUN_TIMEOUT_SECONDS", "3")
+    monkeypatch.setenv("LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS", " 75.5 ")
+    monkeypatch.setenv("LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS", "90")
+
+    settings = Settings.from_environment()
+
+    assert settings.llm_combination_review_model_timeout_seconds == 75.5
+    assert settings.llm_combination_review_run_timeout_seconds == 90
+    assert (settings.llm_model_timeout_seconds, settings.llm_run_timeout_seconds) == (2, 3)
+
+
+@pytest.mark.parametrize("name", [
+    "LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS",
+    "LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS",
+])
+@pytest.mark.parametrize("value", ["", "private-invalid-setting", "0", "-1", "nan", "inf", "-inf", "120.01"])
+def test_invalid_combination_review_timeouts_fail_startup(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(SettingsConfigurationError, match=name) as captured:
+        Settings.from_environment()
+    assert "private-invalid-setting" not in str(captured.value)
+
+
+@pytest.mark.parametrize("model,run", [(60, 60), (70, 60), (120, 120)])
+def test_combination_review_model_deadline_must_be_less_than_run_deadline(monkeypatch, model, run):
+    monkeypatch.setenv("LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS", str(model))
+    monkeypatch.setenv("LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS", str(run))
+    with pytest.raises(SettingsConfigurationError, match="must be less than"):
+        Settings.from_environment()
+
+
 @pytest.mark.parametrize("name", ["LLM_RANKING_MODEL_TIMEOUT_SECONDS", "LLM_RANKING_RUN_TIMEOUT_SECONDS"])
 @pytest.mark.parametrize("value", ["", "private-invalid-setting", "0", "-1", "nan", "inf", "-inf", "60.01"])
 def test_invalid_ranking_timeouts_fail_startup_instead_of_silently_reverting(monkeypatch, name, value):
@@ -243,3 +282,10 @@ def test_direct_settings_construction_also_rejects_invalid_ranking_timeout(value
     with pytest.raises(SettingsConfigurationError):
         Settings(openai_api_key="test-key", openai_model="test-model", llm_model_timeout_seconds=25,
                  llm_run_timeout_seconds=30, llm_ranking_model_timeout_seconds=value)
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan"), 121, True])
+def test_direct_settings_construction_also_rejects_invalid_combination_review_timeout(value):
+    with pytest.raises(SettingsConfigurationError):
+        Settings(openai_api_key="test-key", openai_model="test-model", llm_model_timeout_seconds=25,
+                 llm_run_timeout_seconds=30, llm_combination_review_model_timeout_seconds=value)

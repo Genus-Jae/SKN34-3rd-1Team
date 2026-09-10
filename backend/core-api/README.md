@@ -37,6 +37,8 @@ V6는 검토 입력, V7은 실행 스냅샷·원본 파일 이력을 저장합�
 
 자동 수집은 BIZINFO의 숫자형 `PBLN_...` ID와 세부사업 ID가 없는 공고를 지원합니다. 공식 상세에 직접 연결된
 기업마당 PDF/HWPX 및 중기부 사업공고의 PDF/HWPX를 읽습니다. 사용자 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색은 지원하지 않습니다.
+같은 공고에 읽을 수 있는 공식 문서가 있으면 크기 제한을 넘거나 텍스트를 추출할 수 없는 첨부는 제외 사유와 파일명을
+`coverageWarnings`에 남기고 분석을 계속합니다. 공고 하나의 모든 지원 형식 첨부가 제외되면 기존처럼 기술 실패로 종료합니다.
 원문·입력·결과는 실행마다 보존하며 기존 검색 Qdrant 색인과 분리됩니다. 자동 수집 근거를 사람 검수 완료로 표시하지 않습니다.
 같은 요청 키는 AI를 재호출하지 않습니다. 새 실행은 계정 식별자로 기존 공개 요청 제한을 공유하며,
 검토별 DB 동시 실행 1개·Core 프로세스별 중복 검토 2개 한도를 추가로 적용합니다.
@@ -378,6 +380,7 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `AI_SERVICE_BASE_URL` | `http://127.0.0.1:8000` | 내부 AI Service 주소 |
 | `AI_SERVICE_CONNECT_TIMEOUT` | `1s` | AI Service 연결 제한시간 |
 | `AI_SERVICE_READ_TIMEOUT` | `35s` | AI Health·대화 조건 해석·원문 근거 답변 응답 제한시간 |
+| `AI_COMBINATION_REVIEW_READ_TIMEOUT` | `75s` | 중복 지원·수혜 분석 전용 응답 제한시간 |
 | `AI_RANKING_READ_TIMEOUT` | `55s` | 지원사업 최종 점수화 전용 응답 제한시간 |
 | `AI_SEMANTIC_SEARCH_READ_TIMEOUT` | `30s` | 의미 검색·색인 응답 제한시간 |
 | `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | 이미 공개된 공고의 누락 벡터 자동 복구 여부 |
@@ -390,6 +393,7 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 `HttpAiSupportProgramRankingClient`에만 주입합니다. 공유 `aiServiceRestClient`의 `35s`와
 의미 검색·색인의 `aiSemanticSearchRestClient` `30s`는 유지합니다. 대화 조건 해석·원문 근거 답변의
 AI 모델·Agent 제한도 기존 `25s`·`30s`이며 Health와 함께 공유 Core 제한을 사용합니다.
+중복 검토는 AI 모델 `60s`·Agent 실행 `70s`보다 긴 `aiCombinationReviewRestClient` `75s`를 사용합니다.
 검색은 의미 검색과 점수화를 순서대로 호출하므로 브라우저 검색 제한은 두 Core 읽기 제한
 `30s + 55s`에 여유를 둔 `90s`입니다. 이 값은 요청 제한이며 응답시간 보장은 아닙니다.
 AI의 HTTP 504나 Core 읽기 시간 초과는 기존대로 `TIMEOUT → 504 AI_SERVICE_TIMEOUT`으로 전달하며

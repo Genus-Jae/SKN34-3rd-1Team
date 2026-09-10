@@ -1,6 +1,7 @@
 package ai.govbiz.core.combinationreview.client
 
 import ai.govbiz.core._common.exception.AiServiceCallException
+import ai.govbiz.core._common.exception.AiServiceFailure
 import ai.govbiz.core.combinationreview.client.dto.AiCombinationReviewRequest
 import ai.govbiz.core.combinationreview.client.exception.AiCombinationReviewClientException
 import ai.govbiz.core.combinationreview.client.exception.AiCombinationReviewClientException.Reason
@@ -66,6 +67,20 @@ class AiCombinationReviewClientTest {
     }
 
     @Test
+    fun preservesTheInternalTimeoutClassification() {
+        val request = json.readValue(resource("contract-request.json"), AiCombinationReviewRequest::class.java)
+        server.expect(requestTo("http://ai.test/internal/v1/combination-reviews/analyze"))
+            .andRespond(withStatus(HttpStatus.GATEWAY_TIMEOUT)
+                .body("""{"detail":{"code":"COMBINATION_REVIEW_TIMEOUT"}}""")
+                .contentType(MediaType.APPLICATION_JSON))
+
+        val failure = assertThrows(AiServiceCallException::class.java) { client.analyze(request) }
+
+        assertEquals(AiServiceFailure.TIMEOUT, failure.failure)
+        server.verify()
+    }
+
+    @Test
     fun rejectsRedirectInsteadOfTreatingItsBodyAsSuccess() {
         server.expect(requestTo("http://ai.test/internal/v1/combination-reviews/configuration")).andRespond(withStatus(HttpStatus.FOUND))
         assertThrows(AiServiceCallException::class.java) { client.configuration() }
@@ -74,7 +89,7 @@ class AiCombinationReviewClientTest {
     private fun resource(name: String) = requireNotNull(javaClass.getResourceAsStream("/combinationreview/$name")).bufferedReader().use { it.readText() }
     @TestConfiguration(proxyBeanMethods = false)
     class Config {
-        @Bean("aiServiceRestClient")
+        @Bean("aiCombinationReviewRestClient")
         fun restClient(builder: RestClient.Builder): RestClient = builder.baseUrl("http://ai.test").build()
     }
 }

@@ -10,7 +10,7 @@ FastAPI, OpenAI 임베딩, Qdrant로 전체 공고에서 관련 후보를 찾고
 ## 책임
 
 중복 지원 검토는 `app/combination_review`의 `Router → Service → 구체 Agent → OpenAI → 검증된 응답` 경로를 사용합니다.
-기존 `OPENAI_MODEL`과 일반 모델 시간 제한을 재사용합니다. 도구·handoff 없이 structured output 한 번을 요청하며
+기존 `OPENAI_MODEL`과 중복 검토 전용 `60s` 모델·`70s` 실행 제한을 사용합니다. 도구·handoff 없이 structured output 한 번을 요청하며
 `max_turns=1`, 출력 최대 6,000 tokens, `store=False`, tracing 비활성화를 적용합니다.
 입력은 최대 512블록·120,000자이며 이미지에 이미 포함된 cl100k_base로 계산한 JSON 입력이 100,000 tokens를 넘으면 거절합니다.
 모델 컨텍스트에 맞추려고 본문·각주·붙임을 조용히 잘라내지 않습니다. 이 경로는 임베딩/Qdrant를 사용하지 않습니다.
@@ -509,6 +509,8 @@ OPENAI_RANKING_REASONING_EFFORT=low
 OPENAI_RANKING_SERVICE_TIER=priority
 LLM_MODEL_TIMEOUT_SECONDS=25.0
 LLM_RUN_TIMEOUT_SECONDS=30.0
+LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS=60.0
+LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS=70.0
 LLM_RANKING_MODEL_TIMEOUT_SECONDS=45.0
 LLM_RANKING_RUN_TIMEOUT_SECONDS=50.0
 QDRANT_URL=http://localhost:6333
@@ -544,6 +546,10 @@ EMBEDDING_TIMEOUT_SECONDS=15
 상위 요청 제한도 함께 맞춰야 하며 AI 설정은 다른 서비스의 제한까지 자동 검증하지 않습니다.
 같은 OpenAI client를 공유하되 역할별 모델을 사용하며, 순위화의 `ModelSettings.extra_args.timeout`으로 HTTP 제한을
 요청별로 덮어씁니다. 이는 HTTP 옵션이며 OpenAI JSON 요청 본문에 추가되는 필드가 아닙니다.
+중복 지원 검토는 긴 공식 원문과 최대 6,000 token 구조화 출력을 위해 모델·HTTP `60s` < 전체 Agent `70s` <
+Core 전용 읽기 `75s`를 사용합니다. 두 `LLM_COMBINATION_REVIEW_*` 값은 유한한 0초 초과·120초 이하이며
+모델 제한이 전체 제한보다 작아야 합니다. timeout은 내부 HTTP 504 `COMBINATION_REVIEW_TIMEOUT`과
+민감한 원문·오류 메시지를 제외한 `failure_kind`, 오류 클래스, 사업·근거 수, `elapsed_ms` 로그로 구분합니다.
 조건 해석·원문 근거 답변은 기존 모델·HTTP `25s`, 전체 Agent `30s`, Core 읽기 `35s`를 유지합니다.
 기존 비순위화 timeout 환경변수는 0초 초과·30초 이하 이외의 값에 기존 기본값 대체 정책을 유지합니다.
 시간 제한 분리에서는 모델·후보 20개·출력 상한 10,000 tokens·프롬프트·자격 검증을 변경하지 않았습니다.

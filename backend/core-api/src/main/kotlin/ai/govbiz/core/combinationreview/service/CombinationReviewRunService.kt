@@ -57,12 +57,31 @@ class CombinationReviewRunService(
             run.input.programs.forEachIndexed { index, program ->
                 val fetched = sources.collect(program.identity)
                 warnings.addAll(fetched.warnings.map { "사업 ${index + 1}: $it" })
+                var parsedDocumentCount = 0
+                var rejectedReason: CombinationReviewSourceClientException.Reason? = null
                 fetched.files.forEach { file ->
-                    val parsed = documentMapper.fromBytes(file.bytes, file.format)
+                    val parsed = try {
+                        documentMapper.fromBytes(file.bytes, file.format)
+                    } catch (error: CombinationReviewSourceClientException) {
+                        if (error.reason !in setOf(
+                                CombinationReviewSourceClientException.Reason.UNSUPPORTED,
+                                CombinationReviewSourceClientException.Reason.TOO_LARGE,
+                            )
+                        ) throw error
+                        rejectedReason = error.reason
+                        warnings.add("사업 ${index + 1}: 자동 분석 제외 첨부(SOURCE_${error.reason.name}): ${file.fileName.take(250)}. 원본 대조가 필요합니다.")
+                        return@forEach
+                    }
                     val document = documentMapper.toDocument(file, index, parsed, LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS))
                     documents.add(document)
                     parsed.forEach { block -> blocks.add(ReviewEvidenceBlock("E${blocks.size}", index, document.rawHash, block.locator, block.text)) }
                     raw.add(file.bytes)
+                    parsedDocumentCount++
+                }
+                if (parsedDocumentCount == 0) {
+                    throw CombinationReviewSourceClientException(
+                        rejectedReason ?: CombinationReviewSourceClientException.Reason.UNSUPPORTED,
+                    )
                 }
             }
             if (blocks.size > 512 || blocks.sumOf { it.text.length } > 120_000) throw CombinationReviewRunException(ReviewRunFailureCode.SOURCE_TOO_LARGE)

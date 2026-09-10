@@ -17,6 +17,7 @@ import ai.govbiz.core.combinationreview.repository.CombinationReviewRepository
 import ai.govbiz.core.combinationreview.repository.CombinationReviewRunRepository
 import ai.govbiz.core.combinationreview.service.exception.*
 import jakarta.servlet.http.Cookie
+import java.io.ByteArrayOutputStream
 import java.time.LocalDateTime
 import java.util.UUID
 import java.util.concurrent.Callable
@@ -30,6 +31,8 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.*
+import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.pdmodel.PDPage
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -115,6 +118,42 @@ class CombinationReviewRunIntegrationTest {
         val stored = requireNotNull(runs.findOwned(ownerId, reviewId, id))
         assertEquals(CombinationReviewHashHelper.sha256(general), stored.evidence!!.documents.first().rawHash)
         assertTrue(stored.evidence.blocks.any { it.text.contains("글로벌기업 협업 프로그램") })
+    }
+
+    @Test
+    fun skipsUnreadableAttachmentWhenTheSameProgramHasAUsableOfficialDocument() {
+        val blankPdf = blankPdf()
+        `when`(source.collect(g)).thenReturn(ReviewAttachmentsResult(
+            "공식 공고",
+            listOf(
+                ReviewAttachmentResult("https://www.mss.go.kr/general.hwpx", "공고문.hwpx", "HWPX", general),
+                ReviewAttachmentResult("https://www.mss.go.kr/appendix.pdf", "이미지형 붙임.pdf", "PDF", blankPdf),
+            ),
+            emptyList(),
+        ))
+
+        val runId = id(start().andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("SUCCEEDED")))
+        val stored = requireNotNull(runs.findOwned(ownerId, reviewId, runId))
+        assertEquals(2, stored.evidence!!.documents.size)
+        assertTrue(stored.evidence.coverageWarnings.any {
+            it.contains("SOURCE_UNSUPPORTED") && it.contains("이미지형 붙임.pdf")
+        })
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM combination_review_run_source WHERE run_id = ?", Int::class.java, runId))
+    }
+
+    @Test
+    fun failsWhenAProgramHasNoUsableOfficialDocument() {
+        `when`(source.collect(g)).thenReturn(ReviewAttachmentsResult(
+            "공식 공고",
+            listOf(ReviewAttachmentResult("https://www.mss.go.kr/appendix.pdf", "이미지형 붙임.pdf", "PDF", blankPdf())),
+            emptyList(),
+        ))
+
+        val response = start().andExpect(status().isUnprocessableContent())
+            .andExpect(jsonPath("$.code").value("SOURCE_UNSUPPORTED")).andReturn().response
+        val runId = json.readTree(response.contentAsString).path("runId").asLong()
+        assertEquals(ReviewRunStatus.FAILED, runs.findOwned(ownerId, reviewId, runId)!!.status)
+        verifyNoInteractions(ai)
     }
 
     @Test
@@ -273,6 +312,13 @@ class CombinationReviewRunIntegrationTest {
     }
 
     private fun fetched(bytes: ByteArray, name: String) = ReviewAttachmentsResult("공식 공고", listOf(ReviewAttachmentResult("https://www.mss.go.kr/common/board/Download.do?bcIdx=1&cbIdx=310&streFileNm=$name", name, "HWPX", bytes)), listOf("기관 해석 미확인"))
+    private fun blankPdf(): ByteArray = ByteArrayOutputStream().use { output ->
+        PDDocument().use { document ->
+            document.addPage(PDPage())
+            document.save(output)
+        }
+        output.toByteArray()
+    }
     private fun resource(name: String) = requireNotNull(javaClass.getResourceAsStream("/combinationreview/$name")).use { it.readBytes() }
     private fun session(): Pair<Long, Cookie> {
         val account = accounts.createAccount(NewAccount("${UUID.randomUUID()}@example.com", "test-hash", LocalDateTime.now()))

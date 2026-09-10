@@ -119,7 +119,22 @@ class CombinationReviewSourceClientTest {
     }
 
     @Test
-    fun enforcesExactTotalAttachmentBoundary() {
+    fun skipsOversizedAttachmentWhenAnotherSupportedAttachmentRemains() {
+        val downloads = listOf(download(0), download(1))
+        stubPage(page(downloads = downloads))
+        server.expect(requestTo(downloads[0])).andRespond(withSuccess(byteArrayOf(1), MediaType.APPLICATION_PDF)
+            .header(HttpHeaders.CONTENT_LENGTH, (MAX_REVIEW_ATTACHMENT_BYTES + 1).toString()))
+        server.expect(requestTo(downloads[1])).andRespond(withSuccess(byteArrayOf(2), MediaType.APPLICATION_PDF))
+
+        val result = client.collect(identity)
+
+        assertEquals(listOf(downloads[1]), result.files.map { it.sourceUrl })
+        assertTrue(result.warnings.any { it.contains("파일 크기 제한 초과") })
+        server.verify()
+    }
+
+    @Test
+    fun enforcesTotalAttachmentBoundaryByKeepingFilesWithinTheLimit() {
         val twoDownloads = listOf(download(0), download(1))
         val threeDownloads = twoDownloads + download(2)
         `when`(html.fetchHtml(pageUrl, identity.sourceProgramId)).thenReturn(
@@ -134,7 +149,9 @@ class CombinationReviewSourceClientTest {
         }
         server.expect(requestTo(download(2))).andRespond(withSuccess(byteArrayOf(1), MediaType.APPLICATION_PDF))
         assertEquals(MAX_REVIEW_ATTACHMENTS_TOTAL_BYTES, client.collect(identity).files.sumOf { it.bytes.size })
-        assertEquals(Reason.TOO_LARGE, assertThrows(CombinationReviewSourceClientException::class.java) { client.collect(identity) }.reason)
+        val limited = client.collect(identity)
+        assertEquals(MAX_REVIEW_ATTACHMENTS_TOTAL_BYTES, limited.files.sumOf { it.bytes.size })
+        assertTrue(limited.warnings.any { it.contains("공고별 전체 크기 제한 초과") })
         server.verify()
     }
 }

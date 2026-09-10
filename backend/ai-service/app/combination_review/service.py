@@ -34,5 +34,7 @@ class CombinationReviewService:
             return {**self.configuration(), **result}
         except CombinationReviewError:
             raise
+        except TimeoutError as error:
+            raise CombinationReviewError("COMBINATION_REVIEW_TIMEOUT") from error
         except Exception as error:
             raise CombinationReviewError("COMBINATION_REVIEW_FAILED") from error
