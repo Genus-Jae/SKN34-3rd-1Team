@@ -136,6 +136,17 @@ class CombinationReviewRepositoryIntegrationTest {
     }
 
     @Test
+    fun deletesOnlyTheOwnedReviewAndCascadesItsPrograms() {
+        val created = repository.create(ownerId, draft())
+        assertFalse(repository.deleteOwned(otherId, created.id))
+        assertEquals(2, programCount(created.id))
+        assertTrue(repository.deleteOwned(ownerId, created.id))
+        assertNull(repository.findOwned(ownerId, created.id))
+        assertEquals(0, programCount(created.id))
+        assertFalse(repository.deleteOwned(ownerId, created.id))
+    }
+
+    @Test
     fun staleOrMissingReviewUpdatesLeaveTheCurrentSnapshotUntouched() {
         val created = repository.create(ownerId, draft())
         assertTrue(repository.replaceOwned(ownerId, created.id, 1, draft("최신", "x", "y")))

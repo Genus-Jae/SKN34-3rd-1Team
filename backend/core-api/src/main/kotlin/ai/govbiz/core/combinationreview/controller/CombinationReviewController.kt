@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Min
 import java.net.URI
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -46,6 +47,12 @@ class CombinationReviewController(private val service: CombinationReviewService)
     fun detail(account: Account, @PathVariable @Min(1) id: Long): ResponseEntity<CombinationReviewResponse> =
         ResponseEntity.ok().cacheControl(CacheControl.noStore())
             .body(CombinationReviewResponse.from(service.findOwned(account, id)))
+
+    @DeleteMapping("/{id}")
+    fun delete(account: Account, @PathVariable @Min(1) id: Long): ResponseEntity<Void> {
+        service.deleteOwned(account, id)
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build()
+    }
 
     @PutMapping("/{id}/inputs")
     fun replace(

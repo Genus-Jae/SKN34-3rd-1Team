@@ -30,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
@@ -113,6 +114,23 @@ class CombinationReviewApiIntegrationTest {
     }
 
     @Test
+    fun deletesOnlyTheOwnedReviewAndItsPrograms() {
+        val id = create()
+        mvc.perform(delete("$BASE/$id").cookie(other).header(HttpHeaders.ORIGIN, ORIGIN))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("COMBINATION_REVIEW_NOT_FOUND"))
+        assertEquals(1, countReviews())
+
+        mvc.perform(delete("$BASE/$id").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN))
+            .andExpect(status().isNoContent())
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+            .andExpect(content().string(""))
+        assertEquals(0, countReviews())
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM combination_review_program WHERE review_id = ?", Int::class.java, id))
+        mvc.perform(get("$BASE/$id").cookie(owner)).andExpect(status().isNotFound())
+    }
+
+    @Test
     fun returnsTheSameNotFoundContractForMissingAndOtherOwnersEvenForAnAdmin() {
         val id = create()
         jdbc.update("UPDATE account SET role = 'ADMIN' WHERE id = ?", otherId)
@@ -184,7 +202,7 @@ class CombinationReviewApiIntegrationTest {
             "deleted" -> jdbc.update("UPDATE account SET deleted_at = NOW(6) WHERE id = ?", ownerId)
             "suspended" -> jdbc.update("UPDATE account SET suspended_at = NOW(6) WHERE id = ?", ownerId)
         }
-        val requests = listOf(get(BASE), get("$BASE/$id"), post(BASE).content(payload()), put("$BASE/$id/inputs").content(replacement()))
+        val requests = listOf(get(BASE), get("$BASE/$id"), post(BASE).content(payload()), put("$BASE/$id/inputs").content(replacement()), delete("$BASE/$id"))
         for (request in requests) {
             if (cookie != null) request.cookie(cookie)
             mvc.perform(request.header(HttpHeaders.ORIGIN, ORIGIN).contentType(MediaType.APPLICATION_JSON))
@@ -243,6 +261,7 @@ class CombinationReviewApiIntegrationTest {
         for (id in listOf("0", "-1", "abc", "9223372036854775808")) {
             mvc.perform(get("$BASE/$id").cookie(owner)).andExpect(status().isBadRequest())
             write(put("$BASE/$id/inputs"), replacement()).andExpect(status().isBadRequest())
+            mvc.perform(delete("$BASE/$id").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN)).andExpect(status().isBadRequest())
         }
         for ((name, value) in listOf("size" to "0", "size" to "51", "size" to "abc", "beforeId" to "0", "beforeId" to "-1", "beforeId" to "abc")) {
             mvc.perform(get(BASE).cookie(owner).param(name, value)).andExpect(status().isBadRequest())

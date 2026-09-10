@@ -102,6 +102,17 @@ class CombinationReviewRepository(
         return true
     }
 
+    /** 부모 삭제로 선택 공고, 실행 이력과 보관 원문까지 FK 순서대로 함께 삭제한다. */
+    @Transactional
+    fun deleteOwned(ownerAccountId: Long, reviewId: Long): Boolean {
+        require(ownerAccountId > 0 && reviewId > 0) { "ownerAccountId and reviewId must be positive" }
+        return when (val deleted = mapper.deleteReview(ownerAccountId, reviewId)) {
+            0 -> false
+            1 -> true
+            else -> error("unexpected review delete count: $deleted")
+        }
+    }
+
     private fun insertPrograms(reviewId: Long, input: CombinationReviewInput) {
         input.programs.forEachIndexed { position, program ->
             val facts = program.participation

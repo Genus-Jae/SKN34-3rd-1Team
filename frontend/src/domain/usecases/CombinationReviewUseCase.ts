@@ -8,6 +8,7 @@ export class CombinationReviewUseCase {
   list(beforeId?: number, signal?: AbortSignal) { return this.repository.list(beforeId, signal) }
   get(id: number, signal?: AbortSignal) { return this.repository.get(id, signal) }
   create(draft: ReviewDraft, signal?: AbortSignal) { return this.repository.create(validateReviewDraft(draft), signal) }
+  delete(id: number, signal?: AbortSignal) { return this.repository.delete(id, signal) }
   replace(id: number, revision: number, draft: ReviewDraft, signal?: AbortSignal) { return this.repository.replace(id, revision, validateReviewDraft(draft), signal) }
   runs(id: number, beforeId?: number, signal?: AbortSignal) { return this.repository.runs(id, beforeId, signal) }
   run(id: number, runId: number, signal?: AbortSignal) { return this.repository.run(id, runId, signal) }

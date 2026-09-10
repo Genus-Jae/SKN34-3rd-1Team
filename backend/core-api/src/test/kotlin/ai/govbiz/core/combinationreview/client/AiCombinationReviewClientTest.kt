@@ -67,6 +67,21 @@ class AiCombinationReviewClientTest {
     }
 
     @Test
+    fun distinguishesRejectedAnalysisOutputFromServiceUnavailability() {
+        val request = json.readValue(resource("contract-request.json"), AiCombinationReviewRequest::class.java)
+        server.expect(requestTo("http://ai.test/internal/v1/combination-reviews/analyze"))
+            .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                .body("""{"detail":{"code":"COMBINATION_REVIEW_FAILED"}}""")
+                .contentType(MediaType.APPLICATION_JSON))
+        server.expect(requestTo("http://ai.test/internal/v1/combination-reviews/analyze"))
+            .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE))
+
+        assertEquals(Reason.INVALID_RESPONSE, assertThrows(AiCombinationReviewClientException::class.java) { client.analyze(request) }.reason)
+        assertEquals(AiServiceFailure.UNAVAILABLE, assertThrows(AiServiceCallException::class.java) { client.analyze(request) }.failure)
+        server.verify()
+    }
+
+    @Test
     fun preservesTheInternalTimeoutClassification() {
         val request = json.readValue(resource("contract-request.json"), AiCombinationReviewRequest::class.java)
         server.expect(requestTo("http://ai.test/internal/v1/combination-reviews/analyze"))

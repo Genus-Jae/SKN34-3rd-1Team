@@ -10,8 +10,9 @@
 ## 서비스 경계
 
 중복 지원 검토의 현재 입력은 `기존 세션 Account 해석 → CombinationReviewController → CombinationReviewService
-→ CombinationReviewRepository → CombinationReviewMapper → Mapper XML → MySQL`로 생성·조회·수정합니다.
-목록은 소유자·생성 ID 커서로 조회하고, 수정은 소유자·입력 버전 조건으로 원자적으로 교체합니다.
+→ CombinationReviewRepository → CombinationReviewMapper → Mapper XML → MySQL`로 생성·조회·수정·삭제합니다.
+목록은 소유자·생성 ID 커서로 조회하고, 수정은 소유자·입력 버전 조건으로 원자적으로 교체합니다. 삭제도 소유자 조건으로 수행하며
+선택 공고·실행 이력·보관 원문은 외래 키로 함께 삭제됩니다.
 타인 검토와 없는 검토는 404, 본인 검토의 버전 충돌은 409입니다. 세션 쿠키 쓰기 요청의 Origin 검사는 유지합니다.
 분석 POST는 `CombinationReviewRunController → CombinationReviewRunService`로 들어가 다음 경로를 실행합니다.
 
@@ -21,11 +22,13 @@
    공고별로 읽을 수 있는 문서가 있으면 크기 제한 초과·텍스트 추출 불가 첨부는 경고와 함께 제외하고, 모두 제외되면 실행을 실패 처리.
 4. `CombinationReviewRunRepository`: 원문 바이트·해시·메타데이터·텍스트를 짧은 transaction에서 보존.
 5. `AiCombinationReviewFacade → AiCombinationReviewClient → AI Router → CombinationReviewService → CombinationReviewAgent → OpenAI` 단일 호출.
-6. AI와 Core에서 사업쌍·단계·인용을 검증하고 실행 성공/실패 저장. 현재 입력은 덮어쓰지 않음.
+6. AI와 Core에서 사업쌍·단계·인용을 검증하고 실행 성공/실패 저장. AI는 서버가 원문에서 만든 인용 선택지 번호만 고르고,
+   코드가 정확한 원문과 근거 ID를 복원한다. 다른 사업쌍의 선택지나 범위 밖 번호는 실패 처리. 현재 입력은 덮어쓰지 않음.
 
 네트워크 호출은 DB transaction 밖에서 수행합니다. 같은 요청 키는 기존 실행을 반환하고 새 키의 동시 실행은 DB에서 막습니다.
 계정별 새 분석은 기존 공개 요청량 제한을 공유하며 자체 동시 실행 한도도 적용합니다. 기존 Qdrant 검색은 사용하지 않습니다.
-자동 수집 원문은 사람 검수 전으로 표시합니다. 화면은 미연결이며 [계약·원문 관리·중단 복구](duplicate-support-review-design.md)를 참고하세요.
+자동 수집 원문은 사람 검수 전으로 표시합니다. 사용자 화면은 3단계 입력·분석 흐름으로 연결되어 있으며
+[계약·원문 관리·중단 복구](duplicate-support-review-design.md)를 참고하세요.
 
 Core의 Run Service는 실행 순서·근거 묶음 구성·상태 저장을 맡습니다. AI Facade는 요청 변환·Client 호출·응답 검증을 감추고,
 `client/mapper/AiCombinationReviewMapper`가 전송 DTO와 내부 모델 사이를 변환합니다. Facade는 상위 Service나 DB를 호출하지 않습니다.
@@ -636,12 +639,14 @@ PDF·첨부·다른 제공처 확장은 후속 범위입니다.
 
 ## 중복 지원·수혜 검토 사용자 화면 (5-1)
 
-`/app/combination-reviews`는 본인 목록·커서 조회, `/new`는 공고 2~3개 선택·저장,
-`/:reviewId`는 입력 수정·실행·이력·원본 다운로드를 제공한다. RequireAuth와 WorkspaceLayout을 사용한다.
+`/app/combination-reviews`는 본인 목록·커서 조회·확인 후 삭제, `/new`와 `/:reviewId`는
+`제목·공고 선택 → 공고별 참여 상태 → 공고 분석`의 3단계 흐름을 제공한다. 분석 단계에서 실행·이력·원본 다운로드를
+제공하며 RequireAuth와 WorkspaceLayout을 사용한다.
 호출은 `View → ViewModel → CombinationReviewUseCase → Domain Repository 계약 → Data 구현 → HTTP/Zod → Core API`다.
 공고 선택은 기존 BrowseSupportProgramsUseCase의 무료 카탈로그 API를 재사용하며 접수 종료·미지원 자동 분석을 구분한다.
+저장된 원본 식별자는 상세 API로 공고명과 기관명을 보완해 참여 상태 화면에서 `사업 1`이 어떤 공고인지 함께 표시한다.
 
-저장과 분석은 별도 버튼으로 실행한다. 입력 충돌 시 편집 내용을 유지하고 최신 입력 조회·명시적 적용을 제공한다.
+두 번째 단계 완료 시 입력을 저장하고 분석 단계로 이동하되 분석은 자동 실행하지 않는다. 입력 충돌 시 편집 내용을 유지하고 최신 입력 조회·명시적 적용을 제공한다.
 동기 분석 POST 응답을 최대 120초 기다리며 서버 실행 취소를 보장하지 않는다. 미확인 요청의 키·버전·추가 설명만
 계정별 탭 sessionStorage에 보관하고, 같은 요청 확인으로 재전송한다. 조회·마운트·로그인으로 POST하지 않는다.
 저장소를 쓸 수 없으면 분석을 시작하지 않으며 일반 입력 초안·결과는 브라우저에 영속 저장하지 않는다.
@@ -649,5 +654,5 @@ PDF·첨부·다른 제공처 확장은 후속 범위입니다.
 RUNNING을 시간만으로 실패 처리하거나 새 유료 요청으로 교체하지 않는다. FAILED/INTERRUPTED는 정상 근거 부족과 구분한다.
 
 결과의 사업 순서·참여 상태·인용은 해당 Run의 스냅샷으로 표시한다. 여섯 단계의 판단 범위·질문·기관 확인·수집 한계와
-자동 수집/사람 미검수 상태를 표시하며 원본은 세션을 포함한 GET으로 내려받는다. 5-2의 비로그인 선택 유지·작업 이어보기,
+자동 수집/사람 미검수 상태를 표시하며, 단계별 상세는 한 번에 하나만 펼쳐 확인한다. 원본은 세션을 포함한 GET으로 내려받는다. 5-2의 비로그인 선택 유지·작업 이어보기,
 신청서 작성 도우미, 실제 OpenAI 품질 평가는 포함하지 않는다.
