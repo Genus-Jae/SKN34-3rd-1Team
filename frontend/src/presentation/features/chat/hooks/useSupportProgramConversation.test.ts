@@ -213,6 +213,8 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(result.current.isInterpreting).toBe(true)
     act(() => vi.advanceTimersByTime(1))
     expect(result.current.interpretation.error).toBe('조건 해석 시간이 초과되었습니다. 다시 해석해 주세요.')
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ role: 'assistant', failure: 'interpretation',
+      text: '조건 해석 시간이 초과되었습니다. 다시 해석해 주세요.' })
     expect(interpret.mock.calls[0][1].aborted).toBe(true)
     expect(interpret).toHaveBeenCalledOnce()
     await act(async () => result.current.retryInterpretation())
@@ -222,6 +224,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     pending.resolve(clarification)
     await act(async () => first)
     expect(store.getState().chat.interpretation.result?.status).toBe('READY')
+    expect(store.getState().chat.messages.filter((message) => message.failure === 'interpretation')).toHaveLength(1)
     expect(vi.getTimerCount()).toBe(0)
   })
 

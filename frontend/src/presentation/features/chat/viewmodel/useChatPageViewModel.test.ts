@@ -80,6 +80,11 @@ describe('useChatPageViewModel', () => {
     chat = { ...chat, interpretation: { status: 'failed', error: '요청 없는 오류' } }
     rerender()
     expect(result.current).toMatchObject({ interpretationError: '요청 없는 오류', canRetryInterpretation: false })
+    chat = { ...chat, interpretation: { status: 'ready',
+      request: { message: '새 질문', context: emptyConversationContext },
+      result: readyConversationProposal(seoulConversationContext) } }
+    rerender()
+    expect(result.current.canRetryInterpretation).toBe(false)
   })
 
   it('요청 당시 조건으로 표시 제안을 만들고 검색 준비 변화에 따라 확인 가능 여부를 갱신한다', () => {
@@ -377,6 +382,7 @@ function createChatHook(overrides: Partial<ChatHook> = {}): ChatHook {
     isSearching: false,
     messages: [{ id: 'welcome', role: 'assistant', text: '안녕하세요.' }],
     searchError: null,
+    inputError: null,
     selectSuggestion: vi.fn(),
     startNewConversation: vi.fn(),
     submitMessage: vi.fn().mockResolvedValue(undefined),

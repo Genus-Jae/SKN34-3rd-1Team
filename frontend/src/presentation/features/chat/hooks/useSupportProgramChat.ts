@@ -72,6 +72,7 @@ export function useSupportProgramChat(
   const messages = useAppSelector(selectChatMessages)
   const canRetrySearch = useAppSelector(selectCanRetryChatSearch)
   const searchError = useAppSelector(selectChatSearchError)
+  const inputError = useAppSelector((state) => state.chat.searchStatus === 'failed' ? null : state.chat.searchError)
   const searchOptions = useAppSelector((state) => state.chat.searchOptions)
   const searchRequestId = useAppSelector((state) => state.chat.activeRequestId)
   const interpretation = useAppSelector((state) => state.chat.interpretation)
@@ -348,6 +349,7 @@ export function useSupportProgramChat(
     messages,
     cancelSearch,
     searchError,
+    inputError,
     selectSuggestion,
     startNewConversation,
     submitMessage,

@@ -9,6 +9,7 @@ import {
   conversationReset,
   draftChanged,
   interpretationFailed,
+  interpretationCancelled,
   interpretationStarted,
   interpretationSucceeded,
   proposalConfirmed,
@@ -178,6 +179,49 @@ describe('대화의 로그인 세션 경계', () => {
         result: readyConversationProposal({ ...emptyConversationContext, query: '새 회사 지원사업' }) }))
       expect(store.getState().chat.interpretation.result?.proposedContext.query).toBe('새 회사 지원사업')
     }
+  })
+})
+
+describe('요청 실패 대화 기록', () => {
+  it.each(['search', 'timeout', 'interpretation'] as const)('%s 실패는 요청당 assistant 메시지 하나만 기록한다', (phase) => {
+    const store = createAppStore()
+    const interpretation = interpretationStarted({ message: '서울 지원사업', context: emptyConversationContext })
+    const search = searchStarted('서울 지원사업')
+    const requestId = phase === 'interpretation' ? interpretation.payload.requestId : search.payload.requestId
+    store.dispatch(phase === 'interpretation' ? interpretation : search)
+    const failure = phase === 'interpretation'
+      ? interpretationFailed({ requestId, message: '조건 해석 실패' })
+      : phase === 'timeout' ? searchTimedOut({ requestId, query: '서울 지원사업' })
+        : searchFailed({ requestId, query: '서울 지원사업', message: '검색 실패' })
+    store.dispatch(failure)
+    const failedState = store.getState().chat
+    expect(failedState.messages).toHaveLength(3)
+    expect(failedState.messages.at(-1)).toMatchObject({ role: 'assistant',
+      failure: phase === 'interpretation' ? 'interpretation' : 'search', text: expect.any(String) })
+    store.dispatch(failure)
+    expect(store.getState().chat).toBe(failedState)
+    if (phase === 'timeout') {
+      store.dispatch(searchFailed({ requestId, query: '서울 지원사업', message: '늦게 도착한 실패' }))
+      expect(store.getState().chat).toBe(failedState)
+    }
+  })
+
+  it.each(['search', 'interpretation'] as const)('%s 사용자 취소나 늦은 실패는 실패 말풍선을 기록하지 않는다', (phase) => {
+    const store = createAppStore()
+    if (phase === 'search') {
+      const started = searchStarted('서울 지원사업')
+      store.dispatch(started)
+      const request = { requestId: started.payload.requestId, query: '서울 지원사업' }
+      store.dispatch(searchCancelled(request))
+      store.dispatch(searchFailed({ ...request, message: '취소된 요청의 오류' }))
+    } else {
+      const started = interpretationStarted({ message: '서울 지원사업', context: emptyConversationContext })
+      store.dispatch(started)
+      store.dispatch(interpretationCancelled(started.payload.requestId))
+      store.dispatch(interpretationFailed({ requestId: started.payload.requestId, message: '취소된 요청의 오류' }))
+    }
+    expect(store.getState().chat.messages).toHaveLength(2)
+    expect(store.getState().chat.messages.some((message) => message.failure)).toBe(false)
   })
 })
 

@@ -161,6 +161,7 @@ describe('Redux chat flow', () => {
     expect(chat.draft).toBe('서울')
     expect(chat.searchError).toBe('지원사업을 검색하지 못했습니다. 잠시 후 다시 시도해 주세요.')
     expect(chat.searchError).not.toContain('private server detail')
+    expect(chat.messages.at(-1)).toMatchObject({ role: 'assistant', failure: 'search', text: chat.searchError })
   })
 
   it.each([
@@ -185,7 +186,7 @@ describe('Redux chat flow', () => {
     expect(result.current.draft).toBe('수출')
     expect(result.current.canRetrySearch).toBe(true)
     expect(store.getState().chat.messages.slice(0, 3)).toEqual(priorMessages)
-    expect(store.getState().chat.messages.at(-1)?.text).toBe('수출')
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ role: 'assistant', failure: 'search', text: message })
 
     await act(async () => vi.advanceTimersByTimeAsync(60_000))
     expect(execute).toHaveBeenCalledTimes(2)
@@ -276,7 +277,8 @@ describe('Redux chat flow', () => {
 
     pending.resolve({ query: '창업', programs: [supportPrograms[1]] })
     await search
-    expect(store.getState().chat.messages).toHaveLength(4)
+    expect(store.getState().chat.messages).toHaveLength(5)
+    expect(store.getState().chat.messages.filter((message) => message.failure === 'search')).toHaveLength(1)
     expect(store.getState().chat.messages.at(-1)?.programs?.[0]?.id).toBe('fixture-seoul-ai-business')
   })
 
