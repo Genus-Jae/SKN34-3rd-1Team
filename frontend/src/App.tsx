@@ -1,3 +1,8 @@
+import { useEffect } from 'react'
+
+import { useAppDispatch, useAppSelector } from './app/hooks'
+import { conversationReset } from './presentation/features/chat/state/chatSlice'
+import { selectAuthStatus } from './presentation/shared/auth/state/authSlice'
 import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
 import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
 import { DailyReportEmailPage } from './presentation/features/daily-report/view/DailyReportEmailPage'
@@ -45,6 +50,20 @@ function PublicLayout() {
 function App() {
   useRestoreAuthSession()
   useReviewSessionIsolation()
+  const dispatchToStore = useAppDispatch()
+  const authStatus = useAppSelector(selectAuthStatus)
+  const { pathname } = useLocation()
+
+  useEffect(() => {
+    const path = pathname.replace(/\/+$/, '') || publicPaths.landing
+    // 상세·원문 질문 왕복은 검색 흐름에 포함하고, 다른 메뉴로 나가면 비로그인 대화를 비웁니다.
+    const inSearchFlow = path === publicPaths.landing
+      || path === publicPaths.supportProgramDetail
+      || path === publicPaths.supportProgramQuestion
+    if (authStatus === 'anonymous' && !inSearchFlow) {
+      dispatchToStore(conversationReset())
+    }
+  }, [authStatus, dispatchToStore, pathname])
 
   return (
     <Routes>

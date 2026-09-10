@@ -474,7 +474,7 @@ describe('App navigation', () => {
     expect(
       (screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement)
         .value,
-    ).toBe('서울 AI 지원사업')
+    ).toBe('') // 비로그인 대화 초안은 검색 흐름을 떠나면 초기화한다.
   })
 
   it.each([
