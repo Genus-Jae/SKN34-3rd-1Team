@@ -16,7 +16,7 @@ export const ProgramResults = memo(function ProgramResults({ programs, totalCoun
   const lockedCount = resultToken ? Math.max(0, totalCount - programs.length) : 0
   const returnTo = `${appPaths.chat}?searchResult=${encodeURIComponent(resultToken ?? '')}`
   return (
-    <section aria-label="지원사업 검색 결과">
+    <section aria-label="지원사업 검색 결과" data-search-results>
       <h2 className={chatPageStyles.resultSectionTitle}>검색 결과 · {lockedCount ? `${totalCount}건 중 ${programs.length}건 공개` : `${programs.length}건`}</h2>
       <p className={chatPageStyles.conditionsHint}>
         검색 결과의 순서를 유지합니다. 관련도와 신청 자격은 다르며, 각 공고의 조건 확인·확인 필요 표시를 확인하세요.

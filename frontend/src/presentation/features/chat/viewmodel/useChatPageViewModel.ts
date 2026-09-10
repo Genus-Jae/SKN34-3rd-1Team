@@ -76,8 +76,18 @@ export function useChatPageViewModel() {
     if (!timeline) return
     const overflowY = getComputedStyle(timeline).overflowY
     if (['auto', 'scroll'].includes(overflowY)) {
-      // 짧은 첫 메시지도 문서를 밀어내지 않고, 고정된 대화 영역 안에서만 스크롤합니다.
-      timeline.scrollTop = timeline.scrollHeight
+      const latestContent = timeline.lastElementChild
+      const hasResults = chat.messages.at(-1)?.programs?.length
+        && !chat.isSearching && chat.interpretation.status === 'idle'
+      if (hasResults && latestContent) {
+        // 안내문 길이에 관계없이 결과 제목과 첫 공고부터 보이도록 목록 상단을 맞춥니다.
+        const resultStart = latestContent.querySelector('[data-search-results]') ?? latestContent
+        timeline.scrollTop += resultStart.getBoundingClientRect().top
+          - timeline.getBoundingClientRect().top - timeline.clientTop
+      } else {
+        // 로딩·조건 안내는 문서를 밀어내지 않고 대화 영역 안에서 보여 줍니다.
+        timeline.scrollTop = timeline.scrollHeight
+      }
     } else if (hasNewContent) {
       // 문서 스크롤을 사용하는 모바일 작업 화면은 새 내용을 문서 안에서 보여 줍니다.
       timeline.lastElementChild?.scrollIntoView?.({ block: 'start' })
