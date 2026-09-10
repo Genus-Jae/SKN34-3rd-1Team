@@ -1,6 +1,7 @@
 import { createSelector, createSlice, nanoid, type PayloadAction } from '@reduxjs/toolkit'
 
 import type { RootState } from '../../../../app/store'
+import type { RestoredSupportProgramSearchResult, SupportProgramSearchResult } from '../../../../domain/entities/SupportProgramSearchResult'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCompanyConditions, SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
 import type { SupportProgramConversationContext, SupportProgramInterpretation, SupportProgramInterpretRequest, SupportProgramLastSearch, SupportProgramPendingClarification } from '../../../../domain/entities/SupportProgramConversation'
@@ -18,6 +19,9 @@ export type SupportProgramChatMessage = {
   text: string
   failure?: 'search' | 'interpretation'
   programs?: SupportProgram[]
+  totalCount?: number
+  resultToken?: string | null
+  expiresAt?: string | null
   searchOptions?: ChatSearchOptions
   searchQuery?: string
 }
@@ -66,6 +70,34 @@ const chatSlice = createSlice({
       prepare() {
         return { payload: { welcomeMessage: createWelcomeMessage() } }
       },
+    },
+    searchResultRestored: {
+      reducer(state, action: PayloadAction<{ result: RestoredSupportProgramSearchResult; welcomeMessage: SupportProgramChatMessage;
+        questionId: string; answerId: string }>) {
+        const { result, welcomeMessage, questionId, answerId } = action.payload
+        const next = createInitialState(welcomeMessage)
+        next.accountEmail = state.accountEmail
+        next.conversationQuery = result.context.query
+        next.searchOptions = conversationContextToSearchOptions(result.context)
+        next.confirmedSearch = result.context.query ? { query: result.context.query, ...copySearchOptions(next.searchOptions) } : null
+        next.lastSearch = { context: result.context, resultCount: result.totalCount }
+        next.messages.push({ id: questionId, role: 'user', text: result.query || '최신 지원사업',
+          searchQuery: result.query, searchOptions: copySearchOptions(next.searchOptions) })
+        next.messages.push({ id: answerId, role: 'assistant', programs: result.programs, totalCount: result.totalCount,
+          resultToken: result.resultToken, expiresAt: result.expiresAt, searchQuery: result.query,
+          searchOptions: copySearchOptions(next.searchOptions),
+          text: createSearchResponseText(result.programs, result.context.acceptingOnly, result.totalCount) })
+        return next
+      },
+      prepare(result: RestoredSupportProgramSearchResult) {
+        return { payload: { result, welcomeMessage: createWelcomeMessage(), questionId: nanoid(), answerId: nanoid() } }
+      },
+    },
+    searchResultRestoreFailed: {
+      reducer(state, action: PayloadAction<{ messageId: string; message: string }>) {
+        state.messages.push({ id: action.payload.messageId, role: 'assistant', text: action.payload.message })
+      },
+      prepare(message: string) { return { payload: { messageId: nanoid(), message } } },
     },
     draftChanged(state, action: PayloadAction<string>) {
       if (state.interpretation.status === 'pending') return
@@ -216,29 +248,28 @@ const chatSlice = createSlice({
     searchSucceeded: {
       reducer(
         state,
-        action: PayloadAction<{
-          messageId: string
-          programs: SupportProgram[]
-          requestId: string
-        }>,
+        action: PayloadAction<Omit<SupportProgramSearchResult, 'query'> & { messageId: string; requestId: string }>,
       ) {
         if (state.activeRequestId !== action.payload.requestId || !state.activeSearchContext) return
         const context = state.activeSearchContext
-        state.lastSearch = { context, resultCount: action.payload.programs.length }
+        state.lastSearch = { context, resultCount: action.payload.totalCount }
         state.activeRequestId = null
         state.activeSearchContext = null
         state.messages.push({
           id: action.payload.messageId,
           role: 'assistant',
-          text: createSearchResponseText(action.payload.programs, context.acceptingOnly),
+          text: createSearchResponseText(action.payload.programs, context.acceptingOnly, action.payload.totalCount),
           programs: action.payload.programs,
+          totalCount: action.payload.totalCount,
+          resultToken: action.payload.resultToken,
+          expiresAt: action.payload.expiresAt,
           searchOptions: conversationContextToSearchOptions(context),
           searchQuery: context.query ?? undefined,
         })
         state.searchError = null
         state.searchStatus = 'idle'
       },
-      prepare(payload: { programs: SupportProgram[]; requestId: string }) {
+      prepare(payload: Omit<SupportProgramSearchResult, 'query'> & { requestId: string }) {
         return {
           payload: {
             ...payload,
@@ -261,6 +292,8 @@ const chatSlice = createSlice({
 
 export const {
   conversationReset,
+  searchResultRestored,
+  searchResultRestoreFailed,
   draftChanged,
   interpretationStarted,
   interpretationSucceeded,
@@ -320,7 +353,8 @@ function createWelcomeMessage(): SupportProgramChatMessage {
   }
 }
 
-function createSearchResponseText(programs: SupportProgram[], acceptingOnly: boolean) {
+function createSearchResponseText(programs: SupportProgram[], acceptingOnly: boolean, totalCount: number) {
+  if (totalCount > programs.length) return `추천 결과 ${totalCount}건 중 ${programs.length}건을 먼저 보여드릴게요. 표시된 공고 기준으로 ${formatSupportProgramEligibilityCounts(programs)}입니다. 회원가입 또는 로그인하면 추가 결과를 확인할 수 있어요. 최종 신청 자격은 원문을 확인해 주세요.`
   return programs.length > 0
     ? `${acceptingOnly ? '현재 접수 중인 공고에서' : '접수 상태 전체에서'} ${formatSupportProgramEligibilityCounts(programs)}을 찾았습니다. 조건 확인은 공식 API 본문 기준이며 최종 신청 자격을 보장하지 않습니다. 확인 필요 공고는 원문 조건을 추가로 확인해 주세요.`
     : '현재 일치하는 공고를 찾지 못했습니다. 지역이나 분야를 바꿔 다시 검색해 보세요.'

@@ -133,6 +133,17 @@ describe('useChatPageViewModel', () => {
     expect(result.current.displayProposal).toBeNull()
   })
 
+  it('잠긴 결과의 전체 수와 실제 표시 수·자격 집계를 스크린 리더에 구분해 알린다', () => {
+    hookMocks.chat.mockReturnValue(createChatHook({ messages: [{ id: 'preview', role: 'assistant', text: '일부 공개',
+      programs: supportPrograms.slice(0, 2), totalCount: 5,
+      resultToken: '4595df20-ea11-4b17-a37e-c82e1b5c9142', expiresAt: '2026-09-10T12:30:00Z' }] }))
+    const { result } = renderHook(() => useChatPageViewModel())
+    expect(result.current.searchStatusAnnouncement).toContain('검색 결과 5건 중 2건을 표시했습니다.')
+    expect(result.current.searchStatusAnnouncement).toContain('표시된 공고: 조건 확인 공고 0건, 확인 필요 공고 2건')
+    expect(result.current.searchStatusAnnouncement).toContain('추가 3건은 회원가입 또는 로그인 후 확인')
+    expect(result.current.searchStatusAnnouncement).not.toContain('5건을 표시했습니다.')
+  })
+
   it('초안 수정은 기존 검색 결과의 자격 건수를 재집계하지 않고 새 결과가 오면 안내를 갱신한다', () => {
     const formatCounts = vi.spyOn(supportProgramEligibility, 'formatSupportProgramEligibilityCounts')
     let chat = createChatHook({ messages: [{

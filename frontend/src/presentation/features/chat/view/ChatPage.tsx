@@ -237,7 +237,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
                 </div>
               ) : null}
               {message.programs?.length ? (
-                <ProgramResults programs={message.programs} />
+                <ProgramResults programs={message.programs} totalCount={message.totalCount} resultToken={message.resultToken} />
               ) : null}
             </div>
           </article>

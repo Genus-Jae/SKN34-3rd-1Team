@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { completeSearchResult } from './data/fixtures/supportProgramSearchResult'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
 import { sessionRestored, signedIn } from './presentation/shared/auth/state/authSlice'
@@ -126,7 +127,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
       : null)
 
     await act(async () => {
-      complete(json(phase === 'search' ? { query: seoulConversationContext.query, programs: [] }
+      complete(json(phase === 'search' ? completeSearchResult({ query: seoulConversationContext.query, programs: [] })
         : readyConversationProposal(seoulConversationContext)))
       await pending
     })
@@ -190,7 +191,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(resetState.pendingClarification).toBeNull()
     expect(resetState.messages).toHaveLength(1)
     await act(async () => {
-      complete(json(phase === 'search' ? { query: seoulConversationContext.query, programs: [] }
+      complete(json(phase === 'search' ? completeSearchResult({ query: seoulConversationContext.query, programs: [] })
         : readyConversationProposal(seoulConversationContext)))
       await pending
     })
@@ -602,7 +603,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
       .mockResolvedValueOnce(searchTimeoutResponse())
-      .mockResolvedValueOnce(json({ query: seoulConversationContext.query, programs: [] }))
+      .mockResolvedValueOnce(json(completeSearchResult({ query: seoulConversationContext.query, programs: [] })))
     vi.stubGlobal('fetch', fetchMock)
     const { store } = renderConversationApp()
     await submitMessage('서울 SW 사업화')
@@ -635,7 +636,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
       .mockResolvedValueOnce(new Response('', { status: 503 }))
       .mockResolvedValueOnce(new Response('', { status: 503 }))
-      .mockResolvedValueOnce(json({ query: seoulConversationContext.query, programs: [] }))
+      .mockResolvedValueOnce(json(completeSearchResult({ query: seoulConversationContext.query, programs: [] })))
     vi.stubGlobal('fetch', fetchMock)
     const { store } = renderConversationApp()
     await submitMessage('서울 SW 사업화')
@@ -723,7 +724,7 @@ function mockConversationNetwork(proposals: SupportProgramInterpretation[]) {
     }
     if (String(url).endsWith('/search')) {
       searchRequests.push(body)
-      return json({ query: body.query, programs: [] })
+      return json(completeSearchResult({ query: body.query, programs: [] }))
     }
     throw new Error(`Unexpected endpoint: ${url}`)
   })

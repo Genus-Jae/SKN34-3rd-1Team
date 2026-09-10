@@ -1,3 +1,4 @@
+import type { RestoredSupportProgramSearchResult, SupportProgramSearchResult } from '../entities/SupportProgramSearchResult'
 import type { SupportProgram } from '../entities/SupportProgram'
 import type { SupportProgramCatalog, SupportProgramCatalogFilters } from '../entities/SupportProgramCatalog'
 import type { SupportProgramEvidenceAnswer } from '../entities/SupportProgramEvidenceAnswer'
@@ -39,7 +40,8 @@ export type SupportProgramEvidenceQuestionResult =
 export interface SupportProgramRepository {
   browseCatalog(command: SupportProgramCatalogFilters, signal?: AbortSignal): Promise<SupportProgramCatalog>
   interpretConversation(command: SupportProgramInterpretRequest, signal?: AbortSignal): Promise<SupportProgramInterpretation>
-  search(command: SupportProgramSearch, signal?: AbortSignal): Promise<SupportProgram[]>
+  search(command: SupportProgramSearch, signal?: AbortSignal): Promise<SupportProgramSearchResult>
+  restoreSearch(resultToken: string, signal?: AbortSignal): Promise<RestoredSupportProgramSearchResult>
   getSearchReadiness(signal?: AbortSignal): Promise<SupportProgramSearchReadiness>
   getDetail(identity: SupportProgramIdentity, signal?: AbortSignal): Promise<SupportProgram | null>
   answerEvidenceQuestion(

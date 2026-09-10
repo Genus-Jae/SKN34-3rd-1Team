@@ -11,6 +11,7 @@ import { getCoreApiBaseUrl } from './coreApiConfig'
 import {
   supportProgramDtoSchema,
   supportProgramSearchResponseDtoSchema,
+  restoredSupportProgramSearchResponseDtoSchema,
   type SupportProgramDto,
   type SupportProgramSearchResponseDto,
 } from '../models/SupportProgramDto'
@@ -157,6 +158,7 @@ export async function searchSupportProgramsApi(
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...command, acceptingOnly: command.acceptingOnly ?? true }),
+      credentials: 'include',
       signal,
     },
   )
@@ -179,6 +181,30 @@ export async function searchSupportProgramsApi(
     throw new SupportProgramApiError('Core API returned support programs for a different search query.')
   }
   return result
+}
+
+export class SupportProgramSearchRestoreApiError extends SupportProgramApiError {
+  readonly reason: 'unauthorized' | 'expired'
+
+  constructor(reason: 'unauthorized' | 'expired') {
+    super('Core API could not restore the saved support program search.')
+    this.name = 'SupportProgramSearchRestoreApiError'
+    this.reason = reason
+  }
+}
+
+/** 인증된 사용자가 보관된 결과만 읽습니다. 검색 endpoint를 다시 호출하지 않습니다. */
+export async function restoreSupportProgramSearchApi(resultToken: string, signal?: AbortSignal) {
+  if (!z.uuid().safeParse(resultToken).success) throw new SupportProgramSearchRestoreApiError('expired')
+  const response = await fetch(`${getCoreApiBaseUrl()}${SEARCH_SUPPORT_PROGRAMS_PATH}/results`, {
+    method: 'POST', credentials: 'include', cache: 'no-store',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resultToken }), signal,
+  })
+  if (response.status === 401) throw new SupportProgramSearchRestoreApiError('unauthorized')
+  if (response.status === 410) throw new SupportProgramSearchRestoreApiError('expired')
+  if (!response.ok) throw new SupportProgramApiError('Core API could not restore the saved search.')
+  return restoredSupportProgramSearchResponseDtoSchema.parse(await response.json())
 }
 
 /** 검색 전에 공고 동기화와 검색 인덱스 준비 상태를 확인합니다. */

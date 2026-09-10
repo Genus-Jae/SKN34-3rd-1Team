@@ -144,8 +144,9 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `GET /api/v1/health/ai-service` | AI Service의 내부 Health 응답 확인 |
 | `GET /api/v1/support-programs/readiness` | 공개 공고 스냅샷·검색 색인·최근 동기화 결과 상태 |
 | `GET /api/v1/support-programs/catalog` | AI 없이 키워드·지역·분야·접수 상태로 공고 목록을 필터링·정렬·페이지 조회 |
-| `GET /api/v1/support-programs/search` | 현재 MySQL 공고 카탈로그의 검색 또는 최신 목록 |
-| `POST /api/v1/support-programs/search` | 이번 검색에만 기업 조건을 반영한 자연어 검색 |
+| `GET /api/v1/support-programs/search` | 현재 MySQL 공고 카탈로그 검색 또는 최신 목록(비로그인 2개·로그인 최대 5개) |
+| `POST /api/v1/support-programs/search` | 이번 검색에만 기업 조건을 반영한 자연어 검색(비로그인 2개·로그인 최대 5개) |
+| `POST /api/v1/support-programs/search/results` | 로그인 후 기존 검색 결과와 조건 복원(검색·모델 재호출 없음) |
 | `POST /api/v1/support-programs/conversation/interpret` | 현재 발화로 조건 변경 초안을 만들며 사용자 확인 전에는 검색하지 않음 |
 | `GET /api/v1/support-programs/detail` | 제공처 코드와 원본 ID로 현재 공고 상세 조회 |
 | `POST /api/v1/support-programs/detail/answers` | 특정 공고의 공식 원문 근거 질문·답변 |
@@ -217,11 +218,11 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 결과 설명�
   `acceptingOnly`의 기본값은 `true`이고
   이때 `OPEN` 공고만 대상으로 삼습니다. 검색어가 있으면 검증된 의미 검색 상위 20개와 전체 적격 공고의
   키워드 상위 20개를 같은 가중치의 RRF(`1 / (60 + 순위)`)로 결합하고, 최대 20개를 AI가 점수화하여
-  기준을 통과한 0~5개를 반환합니다. 키워드는 색인 본문의 NFC·소문자 토큰 집합 교집합 수로 정렬하고
+  기준을 통과한 0~5개를 선정한 후 아래 로그인별 노출 정책을 적용합니다. 키워드는 색인 본문의 NFC·소문자 토큰 집합 교집합 수로 정렬하고
   동점은 최신순·제공처 포함 ID순입니다. RRF 동점은 의미 검색 순위·제공처 포함 ID순입니다.
   의미 검색 실패는 오류로 반환합니다. 게시된 공고나 미복구 기존 공고가 있지만 준비된 색인이 하나도 없으면
   자연어 검색은 빈 결과가 아니라 503을 반환합니다. 최초 빈 DB와 준비된 제공처의 정상 0건은 구별합니다.
-  빈 검색어는 AI를 호출하지 않고 이미 공개된 DB 스냅샷에서 최신순 최대 5개를 반환하므로 이후 Qdrant 장애에도
+  빈 검색어는 AI를 호출하지 않고 이미 공개된 DB 스냅샷에서 최신순 최대 5개를 선정하므로 이후 Qdrant 장애에도
   목록을 유지합니다. 아직 공개 세대·지문이 없는 신규/미검증 제공처의 공고는 이 최신 목록에 포함하지 않습니다.
 - POST 검색: JSON의 `query`는 비어 있지 않은 최대 500 UTF-16 코드 단위 문자열이고,
   `acceptingOnly`는 생략 시 `true`입니다. 명시한 값은 JSON 부울만 허용하며 `null`·문자열·숫자는 거부합니다.
@@ -235,8 +236,28 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 결과 설명�
   `AiSupportProgramRankingFacade`는 원질의를 바꾸지 않고 별도의 `companyConditions`와 ISO `referenceDate`를
   점수화 요청에 전달합니다. 설립일·서울 기준일·표제는 후보 검색어에 넣지 않으며 사용자 질의의 날짜는 보존합니다.
   지역 정보가 없거나 다르다는 이유만으로 Core에서 후보를 제외하지 않습니다.
-  조건은 저장·응답 메타데이터에 포함하지 않으며, 공개 `query`는 trim한 원질의 그대로입니다.
+  조건은 계정·기업 DB에 저장하지 않으며, 공개 `query`는 trim한 원질의 그대로입니다. 로그인 복원을 위한
+  임시 결과 스냅샷에는 이번 검색 조건을 함께 보관합니다.
   GET 검색·POST 검색·대화 조건 해석·원문 근거 질문은 같은 요청 제한을 공유합니다.
+- 공개 검색 노출: GET·POST 모두 `Controller → SupportProgramSearchPreviewService → SupportProgramSearchService`로
+  검색하며, 응답은 `{query, programs, totalCount, resultToken, expiresAt}`입니다. `totalCount`는 이번에 선정된
+  최대 5개의 개수이며 전체 DB 공고 수가 아닙니다. 비로그인은 처음 2개만 받고, 일반 회원을 포함한 로그인 계정은
+  최대 5개를 모두 받습니다. 숨겨진 공고의 ID·표제·URL·본문 등 실제 내용은 비로그인 응답에 포함하지 않습니다.
+  비로그인 결과가 3개 이상일 때만 소문자 UUID `resultToken`과 UTC ISO-8601 `expiresAt`이 존재하고,
+  나머지 경우 두 값은 `null`입니다. 기존 내부 검색과 일일 보고서·평가의 최대 5개 결과는 그대로 유지합니다.
+- 로그인 결과 복원: 인증된 `POST /api/v1/support-programs/search/results`에 `{resultToken}`을 보냅니다.
+  `Controller → SupportProgramSearchPreviewService`에서 보관된 원본 결과를 그대로 반환하며 검색·DB·모델을
+  다시 호출하지 않습니다. 응답은 검색 응답에 `context: {query, acceptingOnly, companyConditions}`를 추가한
+  형태이며, `resultToken`과 `expiresAt`은 `null`입니다. 조건 텍스트는 최초 검색에서 정규화한 값이고
+  기업 조건 미입력 값은 `null`입니다. 빈 GET 검색은 응답 `query`가 `""`, 대화용 `context.query`가 `null`입니다.
+  이 조회는 검색·해석·근거 질문의 AI 요청 제한을 소비하지 않습니다. 세션 쿠키가 있는 POST에는 기존과 같이
+  허용된 `Origin` 또는 `Referer`가 필요합니다.
+  최초 복원 시 토큰이 `account.id`에 귀속되며 같은 계정의 재시도는 동일 결과를 반환합니다. 미인증·유효하지 않은
+  세션은 401, 다른 계정·만료·미존재·용량 초과로 제거된 토큰은 모두 410 `SUPPORT_PROGRAM_SEARCH_RESULT_EXPIRED`입니다.
+  결과는 단일 Core 프로세스 메모리에 발급 시점부터 30분간 최대 128개 보관하고, 한도 도달 시 가장 오래된 결과부터
+  제거합니다. 조회·로그인으로 만료가 연장되지 않으며 서버 재시작 시 사라집니다. 실패 시 자동으로 모델을 다시 호출하지
+  않으므로 새 검색은 사용자가 요청해야 합니다. 여러 Core 인스턴스 사이에서는 이 메모리를 공유하지 않습니다.
+  GET·POST 검색과 복원은 성공·오류 응답에 모두 `Cache-Control: no-store`를 사용합니다.
 - 자격 검토: 조건 유무와 관계없이 점수화 계약은 `govbiz-support-program-ranking-v5`입니다.
   저장된 공식 API 본문 `summary` 최대 6,000, 지원대상 `targetDescription` 최대 2,000 Unicode code point를
   AI에 전달합니다. 둘 중 하나라도 잘리면 `sourceTextTruncated=true`이며 대상·지역 모두 `UNKNOWN`만 허용합니다.

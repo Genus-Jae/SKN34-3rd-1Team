@@ -90,20 +90,37 @@ AI Service는 호스트에 포트를 게시하지 않습니다. MySQL·Qdrant·C
 POST /api/v1/support-programs/search (조건 검색)
 GET /api/v1/support-programs/search (기존 단문·최신 목록)
   → SupportProgramController
-    → SupportProgramSearchService
-      → SupportProgramRepository → MyBatis Mapper → Mapper XML → MySQL
-        → 빈 검색: findPublishedPresent로 공개 세대·지문이 있는 DB 공고 선택
-        → 자연어 검색: findSearchablePresent로 위 조건에 index_ready=true 추가
-      → 접수 상태 계산·필터
-      ├→ 빈 검색어: 최신순 최대 5개 반환
-      └→ 검색어 있음:
-          AiSupportProgramRetrievalFacade → AiSupportProgramIndexClient
-            → AI Service → 현재 색인 검증 → 질의 임베딩 캐시/OpenAI → Qdrant 후보 최대 20개
-            → Core: 전체 적격 공고의 키워드 상위 20개와 RRF 결합 → 후보 최대 20개
-          AiSupportProgramRankingFacade → HttpAiSupportProgramRankingClient
-            → AI Service → 정확일치 랭킹 응답 캐시, 없으면 단일 Agent → OpenAI 점수화·검증
-          Core의 응답 검증 → 최종 추천 0~5개
+    → SupportProgramSearchPreviewService (인증별 공개 범위·결과 보관)
+      → SupportProgramSearchService
+        → SupportProgramRepository → MyBatis Mapper → Mapper XML → MySQL
+          → 빈 검색: findPublishedPresent로 공개 세대·지문이 있는 DB 공고 선택
+          → 자연어 검색: findSearchablePresent로 위 조건에 index_ready=true 추가
+        → 접수 상태 계산·필터
+        ├→ 빈 검색어: 최신순 최대 5개 반환
+        └→ 검색어 있음:
+            AiSupportProgramRetrievalFacade → AiSupportProgramIndexClient
+              → AI Service → 현재 색인 검증 → 질의 임베딩 캐시/OpenAI → Qdrant 후보 최대 20개
+              → Core: 전체 적격 공고의 키워드 상위 20개와 RRF 결합 → 후보 최대 20개
+            AiSupportProgramRankingFacade → HttpAiSupportProgramRankingClient
+              → AI Service → 정확일치 랭킹 응답 캐시, 없으면 단일 Agent → OpenAI 점수화·검증
+            Core의 응답 검증 → 최종 추천 0~5개
 ```
+
+공개 GET·POST 검색은 로그인 세션에 따라 비회원에게 앞의 최대 2건, 회원에게 최대 5건을 반환합니다.
+응답의 `totalCount`는 전체 카탈로그 건수가 아니라 이번 추천 결과 수(0~5건)입니다. 비회원의 추가 결과가 있으면
+Core의 `SupportProgramSearchPreviewService`가 원본 결과·검색 조건을 최대 30분/128개까지 메모리에 보관하고,
+브라우저에는 공개 2건과 난수 `resultToken`, `expiresAt`만 전달합니다. 잠긴 카드에는 원본 내용을 전달하지 않습니다.
+
+```text
+선택한 잠금 카드 → 회원가입/로그인 → POST /api/v1/support-programs/search/results
+  → SupportProgramController → SupportProgramSearchPreviewService
+    → 세션 인증·토큰 만료·소유 계정 확인 → 보관된 전체 결과와 검색 조건
+```
+
+복원은 추가 검색·임베딩·랭킹 호출 없이 같은 결과를 반환하며 첫 조회 계정에 토큰을 귀속시킵니다.
+같은 계정의 재시도는 허용하지만 만료·퇴거·서버 재시작·다른 계정의 조회는 410으로 명시합니다.
+보관은 단일 Core 프로세스에 한정되며 검색·복원 응답에는 `Cache-Control: no-store`를 설정합니다.
+일일 리포트·평가는 기존 내부 `SupportProgramSearchService`를 계속 사용하고, 공개 카탈로그·상세 조회는 이 제한과 분리합니다.
 
 Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보냅니다. Core의 공개 DTO는
 날짜·길이·문자 입력을 검증한 뒤 조건 Domain 모델로 변환합니다. 검색 Service는 요청별 서울 날짜를

@@ -38,6 +38,7 @@ import { GetSupportProgramSearchReadinessUseCase } from '../../domain/usecases/G
 import { LogInUseCase } from '../../domain/usecases/LogInUseCase'
 import { LogOutUseCase } from '../../domain/usecases/LogOutUseCase'
 import { PrepareSampleItemUseCase } from '../../domain/usecases/PrepareSampleItemUseCase'
+import { RestoreSupportProgramSearchUseCase } from '../../domain/usecases/RestoreSupportProgramSearchUseCase'
 import { SearchSupportProgramsUseCase } from '../../domain/usecases/SearchSupportProgramsUseCase'
 import { SignUpUseCase } from '../../domain/usecases/SignUpUseCase'
 import { InterpretSupportProgramConversationUseCase } from '../../domain/usecases/InterpretSupportProgramConversationUseCase'
@@ -46,6 +47,9 @@ import type { AppContainer, AppCradle } from './types'
 /** Domain UseCase와 UseCase가 필요로 하는 Repository 연결을 등록합니다. */
 export function registerUseCases(container: AppContainer) {
   container.register({
+    restoreSupportProgramSearchUseCase: asFunction(
+      ({ supportProgramRepository }: Pick<AppCradle, 'supportProgramRepository'>) => new RestoreSupportProgramSearchUseCase(supportProgramRepository),
+    ).singleton(),
     dailyReportUseCase: asFunction(({ dailyReportRepository }: Pick<AppCradle, 'dailyReportRepository'>) => new DailyReportUseCase(dailyReportRepository)).singleton(),
     reviewRequestJournal: asValue(reviewRequestJournal),
     combinationReviewUseCase: asFunction(({ combinationReviewRepository }: Pick<AppCradle, 'combinationReviewRepository'>) => new CombinationReviewUseCase(combinationReviewRepository)).singleton(),

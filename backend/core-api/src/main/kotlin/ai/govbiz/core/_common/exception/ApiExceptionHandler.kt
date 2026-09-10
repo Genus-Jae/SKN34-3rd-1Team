@@ -33,6 +33,7 @@ import ai.govbiz.core.partner.service.exception.RecruitmentNotFoundException
 import ai.govbiz.core.partner.service.exception.RecruitmentProgramClosedException
 import ai.govbiz.core.partner.service.exception.RecruitmentProgramNotFoundException
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
+import ai.govbiz.core.supportprogram.service.search.exception.SupportProgramSearchResultExpiredException
 import ai.govbiz.core.supportprogram.service.catalog.exception.SupportProgramCatalogFilterException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceUnavailableException
@@ -57,6 +58,16 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(SupportProgramSearchResultExpiredException::class)
+    fun handleSearchResultExpired(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.GONE, URI.create("urn:govbiz:problem:support-program-search-result-expired"),
+                "Search Result Expired", "The saved search result is no longer available. Please search again.",
+                "SUPPORT_PROGRAM_SEARCH_RESULT_EXPIRED",
+            ), request,
+        )
 
     @ExceptionHandler(CombinationReviewRunConflictException::class)
     fun handleCombinationReviewRunConflict(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
@@ -563,6 +574,7 @@ class ApiExceptionHandler {
             request,
         )
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .headers(response.headers)
             .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
             .contentType(MediaType.APPLICATION_PROBLEM_JSON)
             .body(response.body)
@@ -704,7 +716,9 @@ class ApiExceptionHandler {
             .contentType(MediaType.APPLICATION_PROBLEM_JSON)
             .headers { headers ->
                 if (request.requestURI == "/api/v1/combination-reviews" ||
-                    request.requestURI.startsWith("/api/v1/combination-reviews/")) {
+                    request.requestURI.startsWith("/api/v1/combination-reviews/") ||
+                    request.requestURI == "/api/v1/support-programs/search" ||
+                    request.requestURI == "/api/v1/support-programs/search/results") {
                     headers.cacheControl = "no-store"
                 }
             }

@@ -1,3 +1,4 @@
+import { completeSearchResult } from '../../../../data/fixtures/supportProgramSearchResult'
 import { describe, expect, it } from 'vitest'
 
 import { createAppStore, type AppStore } from '../../../../app/store'
@@ -7,6 +8,8 @@ import type { Account } from '../../../../domain/entities/Account'
 import { sessionRestored, signedIn, signedOut } from '../../../shared/auth/state/authSlice'
 import {
   conversationReset,
+  searchResultRestored,
+  searchResultRestoreFailed,
   draftChanged,
   interpretationFailed,
   interpretationCancelled,
@@ -86,7 +89,7 @@ describe('대화의 로그인 세션 경계', () => {
     const search = searchStarted('다른 무역 검색', { acceptingOnly: false, companyConditions: { region: '대구' } })
     store.dispatch(search)
     expect(store.getState().chat.lastSearch).toBeNull()
-    store.dispatch(searchSucceeded({ requestId: search.payload.requestId, programs: [] }))
+    store.dispatch(searchSucceeded(completeSearchResult({ requestId: search.payload.requestId, programs: [] })))
     expect(store.getState().chat.lastSearch).toEqual({ resultCount: 0, context: {
       ...emptyConversationContext, query: '다른 무역 검색', acceptingOnly: false,
       companyConditions: { ...emptyConversationContext.companyConditions, region: '대구' },
@@ -143,14 +146,14 @@ describe('대화의 로그인 세션 경계', () => {
     const nextState = store.getState().chat
     const oldRequest = { query: oldSearch.payload.query, requestId: oldSearch.payload.requestId }
 
-    store.dispatch(searchSucceeded({ requestId: oldRequest.requestId, programs: [supportPrograms[0]] }))
+    store.dispatch(searchSucceeded(completeSearchResult({ requestId: oldRequest.requestId, programs: [supportPrograms[0]] })))
     store.dispatch(searchFailed({ ...oldRequest, message: '이전 계정의 오류' }))
     store.dispatch(searchTimedOut(oldRequest))
     store.dispatch(searchCancelled(oldRequest))
 
     expect(store.getState().chat).toBe(nextState)
     if (startNextSearch) {
-      store.dispatch(searchSucceeded({ requestId: nextSearch.payload.requestId, programs: [supportPrograms[1]] }))
+      store.dispatch(searchSucceeded(completeSearchResult({ requestId: nextSearch.payload.requestId, programs: [supportPrograms[1]] })))
       expect(store.getState().chat.messages.at(-1)?.programs).toEqual([supportPrograms[1]])
     }
   })
@@ -179,6 +182,48 @@ describe('대화의 로그인 세션 경계', () => {
         result: readyConversationProposal({ ...emptyConversationContext, query: '새 회사 지원사업' }) }))
       expect(store.getState().chat.interpretation.result?.proposedContext.query).toBe('새 회사 지원사업')
     }
+  })
+})
+
+describe('검색 공개 수와 복원 결과', () => {
+  it('두 공고만 표시해도 마지막 검색 요약은 서버가 찾은 전체 추천 수를 유지한다', () => {
+    const store = createAppStore()
+    const started = searchStarted('무역 지원')
+    store.dispatch(started)
+    store.dispatch(searchSucceeded({ requestId: started.payload.requestId, programs: supportPrograms.slice(0, 2), totalCount: 5,
+      resultToken: '4595df20-ea11-4b17-a37e-c82e1b5c9142', expiresAt: '2026-09-10T12:30:00Z' }))
+    expect(store.getState().chat.lastSearch?.resultCount).toBe(5)
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ totalCount: 5, programs: supportPrograms.slice(0, 2) })
+    expect(store.getState().chat.messages.at(-1)?.text).toContain('추천 결과 5건 중 2건')
+    expect(store.getState().chat.messages.at(-1)?.text).toContain('표시된 공고 기준')
+  })
+
+  it('복원은 선택한 전체 결과·조건으로 새 대화를 만들고 로그인 소유자와 결과 순서를 유지한다', () => {
+    const store = createAppStore()
+    store.dispatch(signedIn(account))
+    completeSearch(store)
+    store.dispatch(draftChanged('복원과 무관한 이전 초안'))
+    const context = { ...seoulConversationContext, query: '무역 지원',
+      companyConditions: { ...seoulConversationContext.companyConditions, region: '대구' } }
+    store.dispatch(searchResultRestored({ ...completeSearchResult({ query: context.query, programs: supportPrograms.slice(0, 5) }), context }))
+    const state = store.getState().chat
+    expect(state.accountEmail).toBe(account.email)
+    expect(state.messages).toHaveLength(3)
+    expect(state.draft).toBe('')
+    expect(selectConversationContext(store.getState())).toEqual(context)
+    expect(state.lastSearch).toEqual({ context, resultCount: 5 })
+    expect(state.messages.at(-1)).toMatchObject({ programs: supportPrograms.slice(0, 5), totalCount: 5,
+      resultToken: null, expiresAt: null })
+    expect(state.searchStatus).toBe('idle')
+    expect(state.pendingProposal).toBeNull()
+  })
+
+  it('복원 실패 안내는 재검색 가능한 실패 상태를 만들지 않는다', () => {
+    const store = createAppStore()
+    store.dispatch(searchResultRestoreFailed('검색 결과 보관 시간이 지났습니다. 새로 검색해 주세요.'))
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ role: 'assistant', text: '검색 결과 보관 시간이 지났습니다. 새로 검색해 주세요.' })
+    expect(store.getState().chat.searchStatus).toBe('idle')
+    expect(store.getState().chat.confirmedSearch).toBeNull()
   })
 })
 
@@ -233,7 +278,7 @@ function completeSearch(store: AppStore) {
   store.dispatch(proposalConfirmed(interpretation.payload.requestId))
   const search = searchStarted(seoulConversationContext.query!, store.getState().chat.searchOptions, interpretation.payload.messageId)
   store.dispatch(search)
-  store.dispatch(searchSucceeded({ requestId: search.payload.requestId, programs: [supportPrograms[0]] }))
+  store.dispatch(searchSucceeded(completeSearchResult({ requestId: search.payload.requestId, programs: [supportPrograms[0]] })))
 }
 
 function expectClearedConversation(store: AppStore, accountEmail: string | null) {

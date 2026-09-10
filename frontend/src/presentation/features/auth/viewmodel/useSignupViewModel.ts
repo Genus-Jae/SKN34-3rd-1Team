@@ -1,11 +1,11 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 
 import { appContainer } from '../../../../app/appContainer'
 import { useAppDispatch } from '../../../../app/hooks'
 import { isValidSignUpPassword, type SignUpUseCase, signUpPasswordLength } from '../../../../domain/usecases/SignUpUseCase'
 import { signedIn } from '../../../shared/auth/state/authSlice'
-import { appPaths } from '../../../shared/routes/appPaths'
+import { loginPathFor, readReturnPath } from '../../../shared/auth/returnPath'
 
 type AccountSignUpUseCase = Pick<SignUpUseCase, 'execute'>
 
@@ -25,13 +25,14 @@ type SignupError = { field: 'email' | 'password' | 'passwordConfirmation' | null
 
 /**
  * 회원가입 화면의 대표 ViewModel입니다. 이메일과 비밀번호만 받고 기업 정보는 가입 뒤 프로필이 맡습니다.
- * 가입에 성공하면 서버가 세션 쿠키를 발급하므로 계정을 Store에 올리고 바로 작업 채팅으로 이동합니다.
+ * 가입에 성공하면 서버가 세션 쿠키를 발급하므로 계정을 Store에 올리고 선택한 복귀 경로 또는 작업 채팅으로 이동합니다.
  */
 export function useSignupViewModel(
   signUpUseCase: AccountSignUpUseCase = appContainer.resolve('signUpUseCase'),
 ) {
   const dispatchToStore = useAppDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
@@ -82,7 +83,7 @@ export function useSignupViewModel(
         return
       }
       dispatchToStore(signedIn(result.session.account))
-      navigate(appPaths.chat, { replace: true })
+      navigate(readReturnPath(location.search), { replace: true })
     } catch {
       if (!isMounted.current) return
       setError({ field: null, message: signupMessages.requestFailed })
@@ -92,6 +93,7 @@ export function useSignupViewModel(
   }
 
   return {
+    loginPath: loginPathFor(readReturnPath(location.search, '')),
     email,
     password,
     passwordConfirmation,

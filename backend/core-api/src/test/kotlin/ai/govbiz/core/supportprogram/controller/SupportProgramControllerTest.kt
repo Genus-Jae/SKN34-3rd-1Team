@@ -2,43 +2,46 @@ package ai.govbiz.core.supportprogram.controller
 
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.ApiExceptionHandler
+import ai.govbiz.core.account.service.AccountSessionService
+import ai.govbiz.core.account.web.AuthenticatedAccountArgumentResolver
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
-import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
-import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReview
-import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReviewStatus
 import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityAssessment
-import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityStatus
 import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityEvidence
 import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityEvidenceField
-import ai.govbiz.core.supportprogram.facade.SupportProgramRankingFacade
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReview
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityReviewStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramEligibilityStatus
+import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.facade.AiSupportProgramRetrievalFacade
+import ai.govbiz.core.supportprogram.facade.SupportProgramRankingFacade
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
-import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
-import ai.govbiz.core.supportprogram.service.evidence.SupportProgramEvidenceService
-import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
-import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceUnavailableException
-import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchService
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.admission.config.SupportProgramRequestAdmissionProperties
-import ai.govbiz.core.supportprogram.service.readiness.SupportProgramSearchReadinessService
+import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramEvidenceAnswerResult
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramEvidenceAnswerStatus
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramEvidenceCitationResult
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchReadinessResult
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchState
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSourceReadinessResult
-import java.time.OffsetDateTime
+import ai.govbiz.core.supportprogram.service.evidence.SupportProgramEvidenceService
+import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
+import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceUnavailableException
+import ai.govbiz.core.supportprogram.service.readiness.SupportProgramSearchReadinessService
+import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchPreviewService
+import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchService
 import java.time.Clock
-import java.time.LocalDate
 import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.ZoneId
-import org.junit.jupiter.api.Assertions.assertEquals
 import java.util.stream.Stream
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
 import org.hamcrest.Matchers.nullValue
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -89,13 +92,14 @@ class SupportProgramControllerTest {
         mockMvc = MockMvcBuilders
             .standaloneSetup(
                 SupportProgramController(
-                    searchService = service,
+                    searchService = SupportProgramSearchPreviewService(service, Clock.systemUTC()),
                     readinessService = readinessService,
                     detailService = SupportProgramDetailService(supportProgramRepository),
                     evidenceService = evidenceService,
                     requestAdmissionService = SupportProgramRequestAdmissionService(SupportProgramRequestAdmissionProperties()),
                 ),
             )
+            .setCustomArgumentResolvers(AuthenticatedAccountArgumentResolver { Mockito.mock(AccountSessionService::class.java) })
             .setControllerAdvice(ApiExceptionHandler())
             .build()
     }

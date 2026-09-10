@@ -1,3 +1,4 @@
+import { completeSearchResult } from '../fixtures/supportProgramSearchResult'
 import { describe, expect, it } from 'vitest'
 
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from '../fixtures/supportPrograms'
@@ -132,9 +133,9 @@ describe('지원사업 자격 판정 HTTP 계약', () => {
 
   it('동일 제공처·원본 ID 중복은 거부하고 다른 제공처의 같은 ID는 유지한다', () => {
     const same = { ...supportPrograms[0], title: '동일 공고의 충돌 제목' }
-    expect(supportProgramSearchResponseDtoSchema.safeParse({ query: '사업화', programs: [supportPrograms[0], same] }).success).toBe(false)
+    expect(supportProgramSearchResponseDtoSchema.safeParse(completeSearchResult({ query: '사업화', programs: [supportPrograms[0], same] })).success).toBe(false)
     const other = { ...same, sourceCode: 'KSTARTUP', sourceUrl: 'https://www.k-startup.go.kr/program' }
-    expect(supportProgramSearchResponseDtoSchema.safeParse({ query: '사업화', programs: [supportPrograms[0], other] }).success).toBe(true)
+    expect(supportProgramSearchResponseDtoSchema.safeParse(completeSearchResult({ query: '사업화', programs: [supportPrograms[0], other] })).success).toBe(true)
   })
 
   it.each(['\n', '\r', '\t', '\u0000', '\u200b', '\ud800'])('설명과 인용의 제어문자·형식문자·서로게이트를 거부한다 (%#)', (invalid) => {

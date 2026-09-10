@@ -222,6 +222,9 @@ export function useSupportProgramChat(
 
         const searchSucceededAction = searchSucceeded({
           programs: searchResult.programs,
+          totalCount: searchResult.totalCount,
+          resultToken: searchResult.resultToken,
+          expiresAt: searchResult.expiresAt,
           requestId,
         })
         dispatchAction(searchSucceededAction)

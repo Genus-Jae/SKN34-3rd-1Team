@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { appContainer } from '../../../../app/appContainer'
 import { useAppDispatch } from '../../../../app/hooks'
 import type { LogInUseCase } from '../../../../domain/usecases/LogInUseCase'
-import { readReturnPath } from '../../../shared/auth/returnPath'
+import { readReturnPath, signupPathFor } from '../../../shared/auth/returnPath'
 import { signedIn } from '../../../shared/auth/state/authSlice'
 
 type AccountLogInUseCase = Pick<LogInUseCase, 'execute'>
@@ -92,6 +92,7 @@ export function useLoginViewModel(
   }
 
   return {
+    signupPath: signupPathFor(readReturnPath(location.search, '')),
     email,
     password,
     rememberMe,

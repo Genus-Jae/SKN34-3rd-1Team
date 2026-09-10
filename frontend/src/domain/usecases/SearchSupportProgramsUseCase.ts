@@ -1,12 +1,9 @@
-import type { SupportProgram } from '../entities/SupportProgram'
+import type { SupportProgramSearchResult } from '../entities/SupportProgramSearchResult'
 import type { SupportProgramRepository, SupportProgramSearch } from '../repositories/SupportProgramRepository'
 
 type SupportProgramSearchRepository = Pick<SupportProgramRepository, 'search'>
 
-export type SearchSupportProgramsResult = {
-  programs: SupportProgram[]
-  query: string
-}
+export type SearchSupportProgramsResult = SupportProgramSearchResult
 
 export class SearchSupportProgramsUseCase {
   private readonly repository: SupportProgramSearchRepository
@@ -17,12 +14,9 @@ export class SearchSupportProgramsUseCase {
 
   async execute(command: SupportProgramSearch, signal?: AbortSignal): Promise<SearchSupportProgramsResult> {
     const normalizedQuery = command.query.trim()
-    return {
-      query: normalizedQuery,
-      programs: await this.repository.search(
-        { ...command, query: normalizedQuery, acceptingOnly: command.acceptingOnly ?? true },
-        signal,
-      ),
-    }
+    return this.repository.search(
+      { ...command, query: normalizedQuery, acceptingOnly: command.acceptingOnly ?? true },
+      signal,
+    )
   }
 }

@@ -2,6 +2,8 @@ package ai.govbiz.core.supportprogram.controller
 
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.ApiExceptionHandler
+import ai.govbiz.core.account.service.AccountSessionService
+import ai.govbiz.core.account.web.AuthenticatedAccountArgumentResolver
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.admission.config.SupportProgramRequestAdmissionProperties
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
@@ -11,7 +13,9 @@ import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchState
 import ai.govbiz.core.supportprogram.service.evidence.SupportProgramEvidenceService
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
 import ai.govbiz.core.supportprogram.service.readiness.SupportProgramSearchReadinessService
+import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchPreviewService
 import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchService
+import java.time.Clock
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -46,8 +50,9 @@ class SupportProgramRequestAdmissionControllerTest {
             now::get,
         )
         return MockMvcBuilders.standaloneSetup(
-            SupportProgramController(search, readiness, detail, evidence, admission),
-        ).setControllerAdvice(ApiExceptionHandler()).build()
+            SupportProgramController(SupportProgramSearchPreviewService(search, Clock.systemUTC()), readiness, detail, evidence, admission),
+        ).setCustomArgumentResolvers(AuthenticatedAccountArgumentResolver { Mockito.mock(AccountSessionService::class.java) })
+            .setControllerAdvice(ApiExceptionHandler()).build()
     }
 
     private fun searchRequest(address: String = "192.0.2.1"): MockHttpServletRequestBuilder =

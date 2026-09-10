@@ -1,3 +1,4 @@
+import { completeSearchResult } from '../data/fixtures/supportProgramSearchResult'
 import { asValue } from 'awilix/browser'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -40,10 +41,10 @@ describe('Awilix application container and Service Locator', () => {
   })
 
   it('resolves the production graph and executes the Core API search', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(completeSearchResult({
       query: '서울 AI',
       programs: [supportPrograms[0]],
-    }), {
+    })), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }))
@@ -80,7 +81,7 @@ describe('Awilix application container and Service Locator', () => {
   })
 
   it('injects a repository override into the real search use case', async () => {
-    const search = vi.fn().mockResolvedValue([supportPrograms[3]])
+    const search = vi.fn().mockResolvedValue(completeSearchResult({ query: '수출', programs: [supportPrograms[3]] }))
     const repository: SupportProgramRepository = {
       browseCatalog: vi.fn(),
       interpretConversation: vi.fn(),
@@ -88,6 +89,7 @@ describe('Awilix application container and Service Locator', () => {
       getDetail: vi.fn(),
       getSearchReadiness: vi.fn(),
       search,
+      restoreSearch: vi.fn(),
     }
     const container = createAppContainer()
     container.register({ supportProgramRepository: asValue(repository) })
