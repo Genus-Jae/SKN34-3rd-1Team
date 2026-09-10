@@ -11,6 +11,17 @@ import org.springframework.web.client.RestClient
 class AiServiceClientConfig {
 
     @Bean
+    fun aiCombinationReviewRestClient(
+        restClientBuilder: RestClient.Builder,
+        properties: AiServiceClientProperties,
+    ): RestClient = buildRestClient(
+        restClientBuilder,
+        properties.baseUrl,
+        properties.connectTimeout,
+        properties.combinationReviewReadTimeout,
+    )
+
+    @Bean
     fun aiRankingRestClient(
         restClientBuilder: RestClient.Builder,
         properties: AiServiceClientProperties,

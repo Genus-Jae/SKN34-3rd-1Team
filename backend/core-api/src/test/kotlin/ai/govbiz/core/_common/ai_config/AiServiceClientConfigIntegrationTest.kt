@@ -3,6 +3,7 @@ package ai.govbiz.core._common.ai_config
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.AiServiceFailure
 import ai.govbiz.core._health_ai_service.client.AiServiceHealthClient
+import ai.govbiz.core.combinationreview.client.AiCombinationReviewClient
 import ai.govbiz.core.supportprogram.client.ai.HttpAiSupportProgramRankingClient
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramRankingRequest
 import com.sun.net.httpserver.HttpExchange
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Assertions.assertTimeout
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mock
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
@@ -170,6 +172,35 @@ class AiServiceClientConfigIntegrationTest {
         val exception = assertThrows(AiServiceCallException::class.java) {
             client.rankSupportPrograms(AiSupportProgramRankingRequest("AI", "govbiz-support-program-ranking-v5", 1, emptyList()))
         }
+
+        assertEquals(AiServiceFailure.TIMEOUT, exception.failure)
+        assertEquals(0L, requestReceived.count)
+    }
+
+    @Test
+    fun appliesTheCombinationReviewSpecificReadTimeoutInsteadOfTheSharedTimeout() {
+        val requestReceived = CountDownLatch(1)
+        server.createContext("/internal/v1/combination-reviews/configuration") { exchange ->
+            requestReceived.countDown()
+            try {
+                Thread.sleep(Duration.ofSeconds(2).toMillis())
+                sendJson(exchange, """{"contractVersion":"combination-review-v1","model":"test","promptVersion":"test"}""")
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                exchange.close()
+            }
+        }
+        server.start()
+        val properties = AiServiceClientProperties(
+            URI.create("http://127.0.0.1:${server.address.port}"), CONNECT_TIMEOUT,
+            Duration.ofSeconds(35), combinationReviewReadTimeout = Duration.ofMillis(150),
+        )
+        val client = AiCombinationReviewClient(
+            AiServiceClientConfig().aiCombinationReviewRestClient(RestClient.builder(), properties),
+            mock(tools.jackson.databind.ObjectMapper::class.java),
+        )
+
+        val exception = assertThrows(AiServiceCallException::class.java) { client.configuration() }
 
         assertEquals(AiServiceFailure.TIMEOUT, exception.failure)
         assertEquals(0L, requestReceived.count)

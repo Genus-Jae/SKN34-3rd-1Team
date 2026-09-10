@@ -1,7 +1,8 @@
 import asyncio
 import json
 
-from agents import Agent, Model, ModelSettings, RunConfig, Runner
+from agents import Agent, Model, ModelSettings, ModelTimeoutError, RunConfig, Runner
+from openai import APITimeoutError
 from openai.types.shared import Reasoning
 from app.combination_review.models import AnalysisSelection, AnalyzeRequest
 from app.combination_review.prompt import INSTRUCTIONS
@@ -15,7 +16,8 @@ class CombinationReviewAgent:
             name="GovBiz Combination Review", model=model, instructions=INSTRUCTIONS,
             output_type=AnalysisSelection,
             model_settings=ModelSettings(max_tokens=6000, reasoning=Reasoning(effort="none"),
-                                         store=False, timeout=model_timeout_seconds),
+                                         store=False, timeout=model_timeout_seconds,
+                                         extra_args={"timeout": model_timeout_seconds}),
         )
         self._run_config = RunConfig(tracing_disabled=True, trace_include_sensitive_data=False)
 
@@ -23,9 +25,12 @@ class CombinationReviewAgent:
         payload = request.model_dump()
         payload["evidence"] = [{"index": i, **block.model_dump(exclude={"id"})}
                                for i, block in enumerate(request.evidence)]
-        async with asyncio.timeout(self._run_timeout_seconds):
-            result = await Runner.run(self._agent, json.dumps(payload, ensure_ascii=False),
-                                      max_turns=1, run_config=self._run_config)
+        try:
+            async with asyncio.timeout(self._run_timeout_seconds):
+                result = await Runner.run(self._agent, json.dumps(payload, ensure_ascii=False),
+                                          max_turns=1, run_config=self._run_config)
+        except (ModelTimeoutError, APITimeoutError, TimeoutError) as error:
+            raise TimeoutError("Combination review agent timed out") from error
         if not isinstance(result.final_output, AnalysisSelection):
             raise ValueError("invalid combination review output")
         return AnalysisSelection.model_validate(result.final_output.model_dump())

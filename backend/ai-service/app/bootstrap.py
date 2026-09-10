@@ -91,8 +91,8 @@ def build_application_container(
 
     combination_agent = CombinationReviewAgent(
         model=general_model or OpenAIResponsesModel(model=settings.openai_model, openai_client=openai_client),
-        model_timeout_seconds=settings.llm_model_timeout_seconds,
-        run_timeout_seconds=settings.llm_run_timeout_seconds,
+        model_timeout_seconds=settings.llm_combination_review_model_timeout_seconds,
+        run_timeout_seconds=settings.llm_combination_review_run_timeout_seconds,
     )
 
     qdrant_client = AsyncQdrantClient(

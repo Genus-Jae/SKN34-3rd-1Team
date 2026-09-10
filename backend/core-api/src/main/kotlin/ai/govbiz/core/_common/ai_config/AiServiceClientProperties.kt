@@ -13,6 +13,7 @@ data class AiServiceClientProperties(
     val readTimeout: Duration,
     val semanticSearchReadTimeout: Duration = Duration.ofSeconds(30),
     val rankingReadTimeout: Duration = Duration.ofSeconds(55),
+    val combinationReviewReadTimeout: Duration = Duration.ofSeconds(75),
 ) {
 
     init {
@@ -21,5 +22,6 @@ data class AiServiceClientProperties(
         validatePositiveDuration(readTimeout, "app.ai-service.read-timeout")
         validatePositiveDuration(semanticSearchReadTimeout, "app.ai-service.semantic-search-read-timeout")
         validatePositiveDuration(rankingReadTimeout, "app.ai-service.ranking-read-timeout")
+        validatePositiveDuration(combinationReviewReadTimeout, "app.ai-service.combination-review-read-timeout")
     }
 }

@@ -55,6 +55,8 @@ def test_real_runner_returns_the_same_contract_consumed_by_core():
     assert len(model.calls) == 1
     assert service.agent._agent.tools == []
     assert service.agent._agent.model_settings.store is False
+    assert service.agent._agent.model_settings.extra_args == {"timeout": 2}
+    assert service.agent._run_timeout_seconds == 3
     assert service.agent._run_config.tracing_disabled is True
 
 
@@ -130,11 +132,16 @@ def test_too_large_context_rejected_without_model_call(monkeypatch):
     agent.analyze.assert_not_called()
 
 
-def test_refusal_or_timeout_is_not_a_normal_insufficient_evidence_answer():
-    for error in [TimeoutError(), RuntimeError("private upstream detail")]:
-        agent = SimpleNamespace(analyze=AsyncMock(side_effect=error))
-        with pytest.raises(CombinationReviewError, match="COMBINATION_REVIEW_FAILED"):
-            asyncio.run(CombinationReviewService(agent, "test-model").analyze(AnalyzeRequest.model_validate(request_data())))
+def test_timeout_is_distinguished_from_a_normal_insufficient_evidence_answer():
+    agent = SimpleNamespace(analyze=AsyncMock(side_effect=TimeoutError()))
+    with pytest.raises(CombinationReviewError, match="COMBINATION_REVIEW_TIMEOUT"):
+        asyncio.run(CombinationReviewService(agent, "test-model").analyze(AnalyzeRequest.model_validate(request_data())))
+
+
+def test_execution_failure_is_not_a_normal_insufficient_evidence_answer():
+    agent = SimpleNamespace(analyze=AsyncMock(side_effect=RuntimeError("private upstream detail")))
+    with pytest.raises(CombinationReviewError, match="COMBINATION_REVIEW_FAILED"):
+        asyncio.run(CombinationReviewService(agent, "test-model").analyze(AnalyzeRequest.model_validate(request_data())))
 
 
 def test_fastapi_contract_and_generic_failure_response():
@@ -155,3 +162,23 @@ def test_fastapi_contract_and_generic_failure_response():
         assert failure.status_code == 503
         assert failure.json() == {"detail":{"code":"COMBINATION_REVIEW_FAILED"}}
         assert "secret-detail" not in failure.text
+
+
+def test_fastapi_timeout_response_and_safe_diagnostic_log(caplog):
+    app = create_app(settings=Settings(openai_api_key="unused-test-key", openai_model="test-model",
+                                       llm_model_timeout_seconds=2, llm_run_timeout_seconds=3))
+    service, _ = make_service()
+    service.agent = SimpleNamespace(analyze=AsyncMock(side_effect=TimeoutError("private-timeout-detail")))
+    app.state.container.combination_review_service = service
+    caplog.set_level("WARNING", logger="app.combination_review.router")
+
+    with TestClient(app) as client:
+        failure = client.post("/internal/v1/combination-reviews/analyze", json=request_data())
+
+    assert failure.status_code == 504
+    assert failure.json() == {"detail": {"code": "COMBINATION_REVIEW_TIMEOUT"}}
+    assert "failure_kind=timeout" in caplog.text
+    assert "error_type=TimeoutError" in caplog.text
+    assert "program_count=2" in caplog.text
+    assert "evidence_count=2" in caplog.text
+    assert "private-timeout-detail" not in caplog.text

@@ -18,6 +18,7 @@
 1. `CombinationReviewRunRepository → MyBatis → MySQL`: 소유자·버전·요청 키 확인 후 RUNNING 입력 스냅샷 예약.
 2. `CombinationReviewSourceClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 수집.
 3. `client/mapper/CombinationReviewDocumentMapper`: PDFBox 또는 HWPX ZIP/XML의 텍스트·위치를 추출하고 첨부 DTO를 내부 문서 모델로 변환.
+   공고별로 읽을 수 있는 문서가 있으면 크기 제한 초과·텍스트 추출 불가 첨부는 경고와 함께 제외하고, 모두 제외되면 실행을 실패 처리.
 4. `CombinationReviewRunRepository`: 원문 바이트·해시·메타데이터·텍스트를 짧은 transaction에서 보존.
 5. `AiCombinationReviewFacade → AiCombinationReviewClient → AI Router → CombinationReviewService → CombinationReviewAgent → OpenAI` 단일 호출.
 6. AI와 Core에서 사업쌍·단계·인용을 검증하고 실행 성공/실패 저장. 현재 입력은 덮어쓰지 않음.
@@ -551,6 +552,7 @@ OpenAI 호출·응답 검증·오류 처리는 각 Service에 남겨 둡니다.
 
 추천 점수화는 전용 설정으로 모델 `45s` → Agent 실행 `50s` → Core 읽기 `55s`를 사용합니다.
 조건 해석·근거 답변은 기존 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`를 유지합니다.
+중복 지원 검토는 모델 `60s` → Agent 실행 `70s` → 전용 Core 읽기 `75s`를 사용하고 timeout을 AI 내부 504와 안전한 진단 로그로 구분합니다.
 AI Health도 Core의 기존 공유 읽기 설정을 사용합니다. 공고 의미 검색 전체는 AI에서 `25s`, Core 읽기는
 `30s`이며, 검색 화면은 의미 검색과 점수화의 순차 호출을 고려해 `90s` 후 요청을 취소합니다.
 C02 해석은 별도 `40s` 제한이며 사용자 확인을 사이에 두므로 검색 요청에 해석을 합치지 않습니다.

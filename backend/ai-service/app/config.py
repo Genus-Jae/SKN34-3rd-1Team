@@ -9,7 +9,10 @@ DEFAULT_LLM_MODEL_TIMEOUT_SECONDS = 25.0
 DEFAULT_LLM_RUN_TIMEOUT_SECONDS = 30.0
 DEFAULT_LLM_RANKING_MODEL_TIMEOUT_SECONDS = 45.0
 DEFAULT_LLM_RANKING_RUN_TIMEOUT_SECONDS = 50.0
+DEFAULT_LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS = 60.0
+DEFAULT_LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS = 70.0
 MAX_LLM_RANKING_TIMEOUT_SECONDS = 60.0
+MAX_LLM_COMBINATION_REVIEW_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +31,8 @@ class Settings:
     embedding_timeout_seconds: float = 15.0
     llm_ranking_model_timeout_seconds: float = DEFAULT_LLM_RANKING_MODEL_TIMEOUT_SECONDS
     llm_ranking_run_timeout_seconds: float = DEFAULT_LLM_RANKING_RUN_TIMEOUT_SECONDS
+    llm_combination_review_model_timeout_seconds: float = DEFAULT_LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS
+    llm_combination_review_run_timeout_seconds: float = DEFAULT_LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS
     openai_ranking_model: str | None = None
     openai_ranking_reasoning_effort: Literal["none", "low"] = "none"
     openai_ranking_service_tier: Literal["default", "priority"] = "default"
@@ -45,6 +50,16 @@ class Settings:
                 raise SettingsConfigurationError(f"{name} must be finite and greater than 0, up to 60 seconds")
         if self.llm_ranking_model_timeout_seconds >= self.llm_ranking_run_timeout_seconds:
             raise SettingsConfigurationError("LLM_RANKING_MODEL_TIMEOUT_SECONDS must be less than LLM_RANKING_RUN_TIMEOUT_SECONDS")
+        for name, value in (
+            ("LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS", self.llm_combination_review_model_timeout_seconds),
+            ("LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS", self.llm_combination_review_run_timeout_seconds),
+        ):
+            if isinstance(value, bool) or not isfinite(value) or not 0 < value <= MAX_LLM_COMBINATION_REVIEW_TIMEOUT_SECONDS:
+                raise SettingsConfigurationError(f"{name} must be finite and greater than 0, up to 120 seconds")
+        if self.llm_combination_review_model_timeout_seconds >= self.llm_combination_review_run_timeout_seconds:
+            raise SettingsConfigurationError(
+                "LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS must be less than LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS"
+            )
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -74,11 +89,19 @@ class Settings:
                 environ.get("LLM_RUN_TIMEOUT_SECONDS", legacy_run_timeout),
                 default=DEFAULT_LLM_RUN_TIMEOUT_SECONDS,
             ),
-            llm_ranking_model_timeout_seconds=_ranking_timeout(
+            llm_ranking_model_timeout_seconds=_strict_timeout(
                 "LLM_RANKING_MODEL_TIMEOUT_SECONDS", DEFAULT_LLM_RANKING_MODEL_TIMEOUT_SECONDS,
             ),
-            llm_ranking_run_timeout_seconds=_ranking_timeout(
+            llm_ranking_run_timeout_seconds=_strict_timeout(
                 "LLM_RANKING_RUN_TIMEOUT_SECONDS", DEFAULT_LLM_RANKING_RUN_TIMEOUT_SECONDS,
+            ),
+            llm_combination_review_model_timeout_seconds=_strict_timeout(
+                "LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS",
+                DEFAULT_LLM_COMBINATION_REVIEW_MODEL_TIMEOUT_SECONDS,
+            ),
+            llm_combination_review_run_timeout_seconds=_strict_timeout(
+                "LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS",
+                DEFAULT_LLM_COMBINATION_REVIEW_RUN_TIMEOUT_SECONDS,
             ),
             qdrant_url=_optional_value(environ.get("QDRANT_URL")) or "http://localhost:6333",
             qdrant_api_key=_optional_value(environ.get("QDRANT_API_KEY")),
@@ -114,7 +137,7 @@ def _positive_float(value: str | None, *, default: float) -> float:
     return parsed if 0 < parsed <= 30 else default
 
 
-def _ranking_timeout(name: str, default: float) -> float:
+def _strict_timeout(name: str, default: float) -> float:
     value = environ.get(name)
     if value is None:
         return default

@@ -63,11 +63,27 @@ class CombinationReviewSourceClient(
             }
             if (selected.isEmpty()) fail(Reason.UNSUPPORTED)
             if (selected.size > 4 || warnings.distinct().size > 12) fail(Reason.TOO_LARGE)
-            val files = selected.map { (link, descriptor) ->
-                val bytes = download(URI(link), MAX_REVIEW_ATTACHMENT_BYTES)
-                ReviewAttachmentResult(link, descriptor.first.take(300), descriptor.second, bytes)
+            val files = mutableListOf<ReviewAttachmentResult>()
+            var totalBytes = 0
+            var skippedForSize = false
+            selected.forEach { (link, descriptor) ->
+                val bytes = try {
+                    download(URI(link), MAX_REVIEW_ATTACHMENT_BYTES)
+                } catch (error: CombinationReviewSourceClientException) {
+                    if (error.reason != Reason.TOO_LARGE) throw error
+                    skippedForSize = true
+                    warnings.add("미수집 첨부(파일 크기 제한 초과): ${descriptor.first.take(250)}")
+                    return@forEach
+                }
+                if (totalBytes + bytes.size > MAX_REVIEW_ATTACHMENTS_TOTAL_BYTES) {
+                    skippedForSize = true
+                    warnings.add("미수집 첨부(공고별 전체 크기 제한 초과): ${descriptor.first.take(250)}")
+                    return@forEach
+                }
+                files.add(ReviewAttachmentResult(link, descriptor.first.take(300), descriptor.second, bytes))
+                totalBytes += bytes.size
             }
-            if (files.sumOf { it.bytes.size } > MAX_REVIEW_ATTACHMENTS_TOTAL_BYTES) fail(Reason.TOO_LARGE)
+            if (files.isEmpty()) fail(if (skippedForSize) Reason.TOO_LARGE else Reason.UNSUPPORTED)
             return ReviewAttachmentsResult(title, files, warnings.distinct())
         } catch (error: CombinationReviewSourceClientException) {
             throw error

@@ -48,6 +48,7 @@ class AiServiceClientPropertiesTest {
         assertEquals(READ_TIMEOUT, properties.readTimeout)
         assertEquals(Duration.ofSeconds(30), properties.semanticSearchReadTimeout)
         assertEquals(Duration.ofSeconds(55), properties.rankingReadTimeout)
+        assertEquals(Duration.ofSeconds(75), properties.combinationReviewReadTimeout)
     }
 
     @ParameterizedTest
@@ -133,6 +134,18 @@ class AiServiceClientPropertiesTest {
     }
 
     @Test
+    fun rejectsNonPositiveCombinationReviewTimeout() {
+        for (timeout in listOf(Duration.ZERO, Duration.ofMillis(-1))) {
+            assertThrows(IllegalArgumentException::class.java) {
+                AiServiceClientProperties(
+                    URI.create("http://127.0.0.1:8000"), CONNECT_TIMEOUT, READ_TIMEOUT,
+                    combinationReviewReadTimeout = timeout,
+                )
+            }
+        }
+    }
+
+    @Test
     fun bindsRankingTimeoutIndependentlyAndInjectsItsDedicatedBeanOnlyIntoRanking() {
         ApplicationContextRunner()
             .withUserConfiguration(
@@ -146,17 +159,23 @@ class AiServiceClientPropertiesTest {
                 "app.ai-service.connect-timeout=1s",
                 "app.ai-service.read-timeout=35s",
                 "app.ai-service.ranking-read-timeout=75s",
+                "app.ai-service.combination-review-read-timeout=90s",
             )
             .run { context ->
                 val properties = context.getBean(AiServiceClientProperties::class.java)
                 assertEquals(Duration.ofSeconds(75), properties.rankingReadTimeout)
                 assertEquals(Duration.ofSeconds(35), properties.readTimeout)
                 assertEquals(Duration.ofSeconds(30), properties.semanticSearchReadTimeout)
+                assertEquals(Duration.ofSeconds(90), properties.combinationReviewReadTimeout)
                 val ranking = context.getBean("aiRankingRestClient", RestClient::class.java)
                 val shared = context.getBean("aiServiceRestClient", RestClient::class.java)
                 val semantic = context.getBean("aiSemanticSearchRestClient", RestClient::class.java)
+                val combination = context.getBean("aiCombinationReviewRestClient", RestClient::class.java)
                 assertNotSame(ranking, shared)
                 assertNotSame(ranking, semantic)
+                assertNotSame(combination, shared)
+                assertNotSame(combination, ranking)
+                assertNotSame(combination, semantic)
                 assertSame(ranking, ReflectionTestUtils.getField(context.getBean(HttpAiSupportProgramRankingClient::class.java), "restClient"))
                 assertSame(shared, ReflectionTestUtils.getField(context.getBean(AiServiceHealthClient::class.java), "restClient"))
                 assertSame(shared, ReflectionTestUtils.getField(context.getBean(AiSupportProgramConversationClient::class.java), "restClient"))
@@ -179,6 +198,10 @@ class AiServiceClientPropertiesTest {
             null,
         )
         assertConstructorRejectsNull(URI.create("http://127.0.0.1:8000"), CONNECT_TIMEOUT, READ_TIMEOUT, null)
+        assertConstructorRejectsNull(
+            URI.create("http://127.0.0.1:8000"), CONNECT_TIMEOUT, READ_TIMEOUT,
+            combinationReviewReadTimeout = null,
+        )
     }
 
     private fun assertConstructorRejectsNull(
@@ -186,6 +209,7 @@ class AiServiceClientPropertiesTest {
         connectTimeout: Duration?,
         readTimeout: Duration?,
         rankingReadTimeout: Duration? = Duration.ofSeconds(55),
+        combinationReviewReadTimeout: Duration? = Duration.ofSeconds(75),
     ) {
         val constructor = AiServiceClientProperties::class.java.getDeclaredConstructor(
             URI::class.java,
@@ -193,9 +217,13 @@ class AiServiceClientPropertiesTest {
             Duration::class.java,
             Duration::class.java,
             Duration::class.java,
+            Duration::class.java,
         )
         val exception = assertThrows(InvocationTargetException::class.java) {
-            constructor.newInstance(baseUrl, connectTimeout, readTimeout, Duration.ofSeconds(30), rankingReadTimeout)
+            constructor.newInstance(
+                baseUrl, connectTimeout, readTimeout, Duration.ofSeconds(30), rankingReadTimeout,
+                combinationReviewReadTimeout,
+            )
         }
         assertInstanceOf(
             NullPointerException::class.java,

@@ -87,6 +87,34 @@ class CombinationReviewLiveSourceTest {
         println("LIVE_SOURCE $id title=${fetched.title} files=${fetched.files.size} totalBytes=${fetched.files.sumOf { it.bytes.size }} parsedFiles=${parsed.size} failedFiles=${failures.size} totalBlocks=${parsed.sumOf { it.size }} totalChars=${parsed.flatten().sumOf { it.text.length }} paidCalls=0")
     }
 
+    @Test
+    fun keepsUsableDocumentsForNoticesThatIncludeAnImageOnlyAppendix() {
+        val http = buildRestClient(RestClient.builder(), URI("https://www.bizinfo.go.kr"), Duration.ofSeconds(5), Duration.ofSeconds(30))
+        val collector = CombinationReviewSourceClient(BizInfoSourceDocumentClient(http), http)
+        val mapper = CombinationReviewDocumentMapper()
+        val failures = mutableMapOf<String, MutableList<Pair<String, CombinationReviewSourceClientException.Reason>>>()
+
+        for (id in listOf("PBLN_000000000126309", "PBLN_000000000126337")) {
+            val fetched = collector.collect(ReviewProgramIdentity("BIZINFO", id))
+            var parsedFiles = 0
+            fetched.files.forEach { file ->
+                try {
+                    val blocks = mapper.fromBytes(file.bytes, file.format)
+                    assertTrue(blocks.isNotEmpty())
+                    parsedFiles++
+                } catch (error: CombinationReviewSourceClientException) {
+                    failures.getOrPut(id) { mutableListOf() }.add(file.fileName to error.reason)
+                }
+            }
+            assertTrue(parsedFiles > 0, "$id must retain at least one usable official document")
+            println("LIVE_SOURCE $id files=${fetched.files.size} parsedFiles=$parsedFiles rejected=${failures[id].orEmpty()} paidCalls=0")
+        }
+
+        assertTrue(failures["PBLN_000000000126337"].orEmpty().any { (name, reason) ->
+            name.contains("(붙임)") && reason == CombinationReviewSourceClientException.Reason.UNSUPPORTED
+        })
+    }
+
     private fun parameter(uri: URI, name: String): String = uri.rawQuery.orEmpty().split('&')
         .single { it.substringBefore('=') == name }.substringAfter('=')
 }

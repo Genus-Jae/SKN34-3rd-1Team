@@ -123,7 +123,7 @@ jobs:
 
       - name: Validate retrieval evaluation fixture and metrics
         working-directory: evaluation/support-program-search
-        run: python -m unittest discover
+        run: ../../backend/ai-service/.venv/bin/python -m unittest discover
 
       - name: Test offline review tools
         working-directory: evaluation/support-program-search

@@ -14,7 +14,7 @@ import org.springframework.web.client.RestClient
 import tools.jackson.databind.ObjectMapper
 
 @Component
-class AiCombinationReviewClient(@param:Qualifier("aiServiceRestClient") private val client: RestClient, private val json: ObjectMapper) {
+class AiCombinationReviewClient(@param:Qualifier("aiCombinationReviewRestClient") private val client: RestClient, private val json: ObjectMapper) {
     fun configuration(): AiReviewConfigurationPayload = executeAiServiceCall {
         client.get().uri("/internal/v1/combination-reviews/configuration").retrieve()
             .onStatus({ it.value() != 200 }, { _, _ -> throw AiServiceCallException.unavailable(null) })
@@ -32,6 +32,7 @@ class AiCombinationReviewClient(@param:Qualifier("aiServiceRestClient") private 
                 }.getOrDefault(false)
                 throw AiCombinationReviewClientException(if (tooLarge) Reason.CONTEXT_TOO_LARGE else Reason.INVALID_RESPONSE)
             })
+            .onStatus({ it.value() == 504 }, { _, _ -> throw AiServiceCallException.timeout(null) })
             .onStatus({ it.value() != 200 }, { _, _ -> throw AiServiceCallException.unavailable(null) })
             .body(AiCombinationReviewPayload::class.java)
             ?: throw AiCombinationReviewClientException(Reason.INVALID_RESPONSE)
