@@ -232,7 +232,7 @@ Cookie: govbiz_session=<JWT>
 
 | 메서드·경로 | 용도 | 성공 |
 |---|---|---|
-| `GET /api/v1/partners/recruitments` | 목록. `keyword`(제목·공고·기관·기업명, 100자) `seekingRole`(LEAD·PARTICIPANT·DEMAND) `region`(시·도 또는 전국) `mine`(세션 필요) `sort`(DEADLINE·RECENT) `page` `pageSize`(1~50, 기본 20) | 200 `recruitments[]` `total` `page` `pageSize` `totalPages` |
+| `GET /api/v1/partners/recruitments` | 목록. `keyword`(제목·공고·기관·기업명, 100자) `seekingRole`(LEAD·PARTICIPANT·DEMAND, 여러 번 보내 함께 고름) `region`(시·도 또는 전국, 여러 번 보내 함께 고름) `mine`(세션 필요) `sort`(DEADLINE·RECENT) `page` `pageSize`(1~50, 기본 20) | 200 `recruitments[]` `total` `page` `pageSize` `totalPages` |
 | `GET /api/v1/partners/recruitments/{id}` | 상세 | 200 모집글 응답, 없으면 404 `RECRUITMENT_NOT_FOUND` |
 | `POST /api/v1/partners/recruitments` | 작성. 서버가 공고 존재·접수 상태·마감일·중복을 확인 | 201 모집글 응답 |
 
@@ -252,7 +252,7 @@ Cookie: govbiz_session=<JWT>
 | `title` `body` | 1~80자 / 1~2000자 |
 | `ownRole` | `LEAD` 또는 `PARTICIPANT`. 수요처는 찾는 역할로만 씀 |
 | `seekingRole` `seekingCount` | 찾는 역할과 기업 수(1~9곳) |
-| `region` | 공고 분류와 같은 시·도 이름 또는 `전국`(20자 이하). 목록에서 지역을 고르면 전국 모집글도 함께 보임 |
+| `region` | 공고 분류와 같은 시·도 이름 또는 `전국`(20자 이하). 목록에서 지역을 고르면 그 지역들과 전국 모집글이 함께 보임 |
 | `minimumCompanyAgeYears` | 찾는 기업의 최소 업력(년), 1~50. 생략·null이면 무관 |
 | `capabilities` | 30자 이하 문자열 최대 10개. 중복은 한 번만 저장 |
 | `recruitmentDeadline` | 오늘 이후이면서 공고 접수 마감 전날까지. 접수 마감일이 없는 공고는 제한 없음 |

@@ -5,10 +5,12 @@ import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.partner.controller.dto.CreatePartnerRecruitmentRequest
 import ai.govbiz.core.partner.controller.dto.PartnerRecruitmentListResponse
 import ai.govbiz.core.partner.controller.dto.PartnerRecruitmentResponse
+import ai.govbiz.core.partner.domain.PartnerRecruitmentInput
 import ai.govbiz.core.partner.domain.PartnerRecruitmentQuery
 import ai.govbiz.core.partner.domain.PartnerRecruitmentSort
 import ai.govbiz.core.partner.domain.PartnerRole
 import ai.govbiz.core.partner.service.PartnerRecruitmentService
+import ai.govbiz.core.partner.service.exception.RecruitmentRegionFilterInvalidException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -40,15 +42,16 @@ class PartnerRecruitmentController(
     }
 
     /**
-     * 목록은 비로그인도 읽을 수 있습니다. 검색어·찾는 역할·지역·정렬은 화면 조건과 같고,
+     * 목록은 비로그인도 읽을 수 있습니다. 검색어·찾는 역할·지역·정렬은 화면 조건과 같고 역할·지역은 같은 이름의
+     * 파라미터를 여러 번 보내 함께 고를 수 있습니다(`region=서울&region=부산`).
      * `mine=true`는 세션이 있어야 하며 마감된 내 글도 포함합니다.
      */
     @GetMapping
     fun list(
         account: Account?,
         @RequestParam(defaultValue = "") @Size(max = PartnerRecruitmentQuery.MAX_KEYWORD_LENGTH) keyword: String,
-        @RequestParam(required = false) seekingRole: PartnerRole?,
-        @RequestParam(defaultValue = "") @Size(max = 20) region: String,
+        @RequestParam(required = false) seekingRole: List<PartnerRole>?,
+        @RequestParam(required = false) region: List<String>?,
         @RequestParam(defaultValue = "false") mine: Boolean,
         @RequestParam(defaultValue = "DEADLINE") sort: PartnerRecruitmentSort,
         @RequestParam(defaultValue = "1") @Min(1) @Max(100_000) page: Int,
@@ -56,10 +59,13 @@ class PartnerRecruitmentController(
     ): PartnerRecruitmentListResponse {
         // 세션 쿠키 유무는 웹 계층만 알 수 있으므로 내 글 조회의 로그인 요구는 여기서 판단합니다.
         if (mine && account == null) throw AuthenticationRequiredException()
+        // 목록 파라미터(List<String>)의 요소 길이는 메서드 검증이 보지 못하므로 여기서 확인합니다.
+        val regions = region.orEmpty().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        if (regions.any { it.length > PartnerRecruitmentInput.MAX_REGION_LENGTH }) throw RecruitmentRegionFilterInvalidException()
         val query = PartnerRecruitmentQuery(
             keyword = keyword.trim(),
-            seekingRole = seekingRole,
-            region = region.trim(),
+            seekingRoles = seekingRole.orEmpty().toSet(),
+            regions = regions,
             mineAccountId = if (mine) account?.id else null,
             sort = sort,
             page = page,

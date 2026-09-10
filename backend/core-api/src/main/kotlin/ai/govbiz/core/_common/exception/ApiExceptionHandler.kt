@@ -23,6 +23,7 @@ import ai.govbiz.core.combinationreview.service.exception.CombinationReviewRunEx
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRunConflictException
 import ai.govbiz.core.combinationreview.service.exception.ReviewRunFailureCode
 import ai.govbiz.core.partner.service.exception.CompanyRequiredException
+import ai.govbiz.core.partner.service.exception.RecruitmentRegionFilterInvalidException
 import ai.govbiz.core.partner.service.exception.ProposalActionForbiddenException
 import ai.govbiz.core.partner.service.exception.ProposalAlreadySentException
 import ai.govbiz.core.partner.service.exception.ProposalNotFoundException
@@ -129,6 +130,18 @@ class ApiExceptionHandler {
             "K-Startup filters require the KSTARTUP source.",
             "REQUEST_VALIDATION_FAILED",
             listOf(ValidationError("sourceCode", "INVALID_VALUE")),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentRegionFilterInvalidException::class)
+    fun handleRecruitmentRegionFilterInvalidException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        validationProblem(
+            HttpStatus.BAD_REQUEST,
+            URI.create("urn:govbiz:problem:request-validation-failed"),
+            "Request Validation Failed",
+            "Each region filter must be at most 20 characters.",
+            "REQUEST_VALIDATION_FAILED",
+            listOf(ValidationError("region", "INVALID_VALUE")),
             request,
         )
 

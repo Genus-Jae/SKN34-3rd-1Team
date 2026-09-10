@@ -10,6 +10,10 @@ import { ReviewParticipation } from './ReviewParticipation'
 import { ReviewRunResult } from './ReviewRunResult'
 import { runLabels } from './reviewLabels'
 import { reviewStyles as s } from './CombinationReview.styles'
+import { workspacePageStyles } from '../../../shared/workspace/WorkspacePage.styles'
+import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
+
+const listTitle = '중복 지원·수혜 검토'
 
 const sessionKeys = new WeakMap<object, number>()
 let nextSessionKey = 0
@@ -35,9 +39,9 @@ export function CombinationReviewListPage() {
 }
 function ReviewList() {
   const vm = useReviewListViewModel()
-  if (vm.error?.status === 401) return <main className={s.page}><ReviewError error={vm.error} /></main>
-  return <main className={s.page}>
-    <header className="flex flex-wrap items-center justify-between gap-4"><div><p className={s.muted}>내 작업</p><h1 className={s.heading}>중복 지원·수혜 검토</h1></div><Link className={s.primary} to={appPaths.combinationReviewNew}>새 검토</Link></header>
+  const header = <WorkspacePageHeader title={listTitle} actions={<Link className={workspacePageStyles.primaryButton} to={appPaths.combinationReviewNew}>새 검토</Link>} />
+  if (vm.error?.status === 401) return <>{header}<main className={workspacePageStyles.content}><ReviewError error={vm.error} /></main></>
+  return <>{header}<main className={workspacePageStyles.content}>
     <p className={s.muted}>사업 2~3개의 참여 사실과 공식 원문을 비교합니다. 저장한 검토와 실행 이력은 본인만 조회할 수 있습니다.</p>
     <ReviewError error={vm.error} />
     {vm.busy.length > 0 && <p role="status">검토 목록을 불러오는 중입니다.</p>}
@@ -45,7 +49,7 @@ function ReviewList() {
     <ul className="space-y-3">{vm.page?.items.map((item) => <li key={item.id}><Link className={`${s.card} block hover:border-emerald-600`} to={`${appPaths.combinationReviews}/${item.id}`}><strong>{item.title}</strong><p className={s.muted}>입력 버전 {item.inputRevision} · 수정 {item.updatedAt}</p></Link></li>)}</ul>
     {vm.error && <button className={s.button} disabled={vm.busy.length > 0} onClick={() => void vm.load()}>목록 다시 불러오기</button>}
     {vm.page?.nextBeforeId && <button className={s.button} disabled={vm.busy.length > 0} onClick={() => void vm.load(vm.page!.nextBeforeId!)}>이전 검토 더 보기</button>}
-  </main>
+  </main></>
 }
 
 export function CombinationReviewEditorPage({ create = false }: { create?: boolean }) {
@@ -53,7 +57,7 @@ export function CombinationReviewEditorPage({ create = false }: { create?: boole
   const { reviewId } = useParams()
   const id = create ? null : Number(reviewId)
   if (!account) return null
-  if (!create && (!Number.isSafeInteger(id) || id! <= 0)) return <main className={s.page}><p role="alert">올바른 검토 주소가 아닙니다.</p><Link to={appPaths.combinationReviews}>목록으로</Link></main>
+  if (!create && (!Number.isSafeInteger(id) || id! <= 0)) return <><WorkspacePageHeader parent={{ to: appPaths.combinationReviews, label: listTitle }} title="검토" /><main className={workspacePageStyles.content}><p role="alert">올바른 검토 주소가 아닙니다.</p><Link className={workspacePageStyles.quietLink} to={appPaths.combinationReviews}>목록으로</Link></main></>
   return <ReviewEditor key={`${sessionKey(account)}:${id ?? 'new'}`} id={id} account={account.email} />
 }
 function ReviewEditor({ id, account }: { id: number | null; account: string }) {
@@ -62,10 +66,11 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
   const analysisBusy = vm.busy.includes('analysis')
   const unsupported = vm.draft.programs.some((p) => !supportsAutomaticReview(p))
   const running = vm.runs?.items.some((run) => run.status === 'RUNNING')
-  if (vm.error?.status === 401) return <main className={s.page}><ReviewError error={vm.error} /></main>
-  return <main className={s.page}>
-    <Link className="text-sm font-semibold text-emerald-800" to={appPaths.combinationReviews}>← 검토 목록</Link>
-    <header><p className={s.muted}>중복 지원·수혜 검토</p><h1 className={s.heading}>{id ? '검토 입력과 실행 이력' : '새 검토'}</h1>{vm.review && <p className={s.muted}>검토 #{id} · 저장 입력 버전 {vm.review.inputRevision}</p>}</header>
+  // 상위 화면 이름(중복 지원·수혜 검토)을 누르면 검토 목록으로 돌아갑니다.
+  const header = <WorkspacePageHeader parent={{ to: appPaths.combinationReviews, label: listTitle }} title={id ? '검토 입력과 실행 이력' : '새 검토'} />
+  if (vm.error?.status === 401) return <>{header}<main className={workspacePageStyles.content}><ReviewError error={vm.error} /></main></>
+  return <>{header}<main className={workspacePageStyles.content}>
+    {vm.review && <p className={s.muted}>검토 #{id} · 저장 입력 버전 {vm.review.inputRevision}</p>}
     <ReviewError error={vm.error} />
     {vm.error?.runId && <button className={s.button} disabled={vm.busy.includes('run')} onClick={() => vm.selectRun(vm.error!.runId!)}>실패 실행 #{vm.error.runId} 확인</button>}
     {vm.rejectedRevision && vm.pending && <button className={s.button} onClick={vm.clearRejectedRequest}>버전 충돌로 거절된 실행 요청 정리</button>}
@@ -118,5 +123,5 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
         {vm.run && <><button className={s.button} disabled={vm.busy.includes('run')} onClick={() => vm.selectRun(vm.run!.id)}>선택한 실행 상태 조회</button><ReviewRunResult run={vm.run} currentRevision={vm.review!.inputRevision} download={vm.download} downloading={vm.busy.includes('download')} /></>}
       </>}
     </>}
-  </main>
+  </main></>
 }

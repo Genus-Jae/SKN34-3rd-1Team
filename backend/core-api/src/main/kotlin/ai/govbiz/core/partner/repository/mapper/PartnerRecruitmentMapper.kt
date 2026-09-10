@@ -18,12 +18,14 @@ interface PartnerRecruitmentMapper {
 
     fun findRecruitmentById(@Param("id") id: Long): PartnerRecruitmentDbRow?
 
-    /** [keywordPattern]은 LIKE 패턴으로 이미 이스케이프된 값이며 비어 있으면 검색어 조건을 두지 않습니다. */
+    /**
+     * [keywordPattern]은 LIKE 패턴으로 이미 이스케이프된 값이며 비어 있으면 검색어 조건을 두지 않습니다.
+     * [seekingRoles]·[regions]는 IN 목록이며 null이면 조건을 두지 않습니다. [regions]에는 Repository가 전국을 더해 줍니다.
+     */
     fun findRecruitments(
         @Param("keywordPattern") keywordPattern: String?,
-        @Param("seekingRole") seekingRole: String?,
-        @Param("region") region: String?,
-        @Param("nationwideRegion") nationwideRegion: String,
+        @Param("seekingRoles") seekingRoles: List<String>?,
+        @Param("regions") regions: List<String>?,
         @Param("mineAccountId") mineAccountId: Long?,
         @Param("today") today: LocalDate,
         @Param("sortByRecent") sortByRecent: Boolean,
@@ -33,9 +35,8 @@ interface PartnerRecruitmentMapper {
 
     fun countRecruitments(
         @Param("keywordPattern") keywordPattern: String?,
-        @Param("seekingRole") seekingRole: String?,
-        @Param("region") region: String?,
-        @Param("nationwideRegion") nationwideRegion: String,
+        @Param("seekingRoles") seekingRoles: List<String>?,
+        @Param("regions") regions: List<String>?,
         @Param("mineAccountId") mineAccountId: Long?,
         @Param("today") today: LocalDate,
     ): Long

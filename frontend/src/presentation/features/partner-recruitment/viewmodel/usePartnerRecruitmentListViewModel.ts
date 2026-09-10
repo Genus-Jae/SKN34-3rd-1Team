@@ -8,25 +8,34 @@ import {
   type PartnerRecruitmentQuery,
   type PartnerRecruitmentSort,
 } from '../../../../domain/entities/PartnerRecruitmentQuery'
-import { regionNamesNationwideFirst } from '../../../../domain/entities/Region'
+import { regionNamesWithoutNationwide } from '../../../../domain/entities/Region'
 import { useAuthSession } from '../../../shared/auth/hooks/useAuthSession'
 import { usePartnerRecruitmentBrowse } from '../../../shared/partner-recruitment/usePartnerRecruitmentBrowse'
-import { appPaths } from '../../../shared/routes/appPaths'
 import { toFilterChoiceOptions, type FilterChoiceOption } from '../../../shared/workspace/filterChoiceOptions'
 
 const roleOptions: FilterChoiceOption[] = (Object.keys(partnerRoleLabels) as PartnerRole[])
   .map((role) => ({ value: role, label: partnerRoleLabels[role] }))
-const regionOptions = toFilterChoiceOptions(regionNamesNationwideFirst)
+// "전체"가 전국 모집글까지 뜻하므로 전국은 선택지에 두지 않습니다.
+const regionOptions = toFilterChoiceOptions(regionNamesWithoutNationwide)
+
+/** 조회 버튼을 눌러야 적용되는 조건입니다. 정렬·내 글만은 바로 적용되므로 여기 없습니다. */
+type PartnerRecruitmentDraft = Pick<PartnerRecruitmentQuery, 'keyword' | 'seekingRoles' | 'regions'>
+const emptyDraft: PartnerRecruitmentDraft = { keyword: '', seekingRoles: [], regions: [] }
+
+function toggled<Value>(values: Value[], value: Value): Value[] {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
+}
 const sortOptions: FilterChoiceOption[] = (Object.keys(partnerRecruitmentSortLabels) as PartnerRecruitmentSort[])
   .map((sort) => ({ value: sort, label: partnerRecruitmentSortLabels[sort] }))
 
 /**
- * 파트너 모집 목록의 대표 ViewModel입니다. 검색어·찾는 역할·지역·내 글·정렬·페이지 조건을 소유하고
- * 모집 API로 조회하며, 세션의 기업 등록 여부로 작성 진입과 예시 추천 표시를 정합니다.
+ * 파트너 모집 목록의 대표 ViewModel입니다. 검색어·찾는 역할·지역은 입력 중인 초안으로 두었다가 조회 버튼에서 적용하고,
+ * 내 글·정렬·페이지는 바로 적용해 모집 API로 조회합니다. 세션의 기업 등록 여부로 작성 안내 문구를 정합니다(작성 버튼은 공용 파트너 관리 머리글이 맡음).
  */
 export function usePartnerRecruitmentListViewModel() {
-  const { account, hasCompany } = useAuthSession()
+  const { hasCompany } = useAuthSession()
   const [query, setQuery] = useState<PartnerRecruitmentQuery>(defaultPartnerRecruitmentQuery)
+  const [draft, setDraft] = useState<PartnerRecruitmentDraft>(emptyDraft)
   const { phase, page, retry } = usePartnerRecruitmentBrowse(query)
 
   /** 조건이 바뀌면 첫 페이지부터 다시 봅니다. */
@@ -36,51 +45,31 @@ export function usePartnerRecruitmentListViewModel() {
 
   return {
     hasCompany,
-    /** 기업을 등록하지 않은 회원은 작성 대신 프로필로 안내합니다. */
-    createPath: hasCompany ? appPaths.partnerNew : appPaths.profile,
-    createLabel: hasCompany ? '모집글 작성' : '기업 등록 후 작성',
     phase,
     recruitments: page?.recruitments ?? [],
     total: page?.total ?? 0,
     totalPages: page?.totalPages ?? 0,
     retry,
     query,
+    draft,
     roleOptions,
     regionOptions,
     sortOptions,
-    updateKeyword: (keyword: string) => update({ keyword }),
-    selectSeekingRole: (seekingRole: string) => update({ seekingRole: seekingRole as PartnerRole | '' }),
-    selectRegion: (region: string) => update({ region }),
+    updateKeyword: (keyword: string) => setDraft((current) => ({ ...current, keyword })),
+    toggleSeekingRole: (role: string) => setDraft((current) => ({ ...current, seekingRoles: toggled(current.seekingRoles, role as PartnerRole) })),
+    clearSeekingRoles: () => setDraft((current) => ({ ...current, seekingRoles: [] })),
+    toggleRegion: (region: string) => setDraft((current) => ({ ...current, regions: toggled(current.regions, region) })),
+    clearRegions: () => setDraft((current) => ({ ...current, regions: [] })),
+    /** 조회 버튼·Enter로 초안을 적용합니다. */
+    submitSearch: () => update({ ...draft, keyword: draft.keyword.trim() }),
     toggleMineOnly: () => update({ mineOnly: !query.mineOnly }),
     selectSort: (sort: string) => update({ sort: sort as PartnerRecruitmentSort }),
     goToPage: (target: number) => setQuery((current) => ({ ...current, page: target })),
     hasActiveNarrowing: hasPartnerRecruitmentNarrowing(query),
-    clearNarrowing: () => setQuery({ ...defaultPartnerRecruitmentQuery, sort: query.sort }),
+    clearNarrowing: () => {
+      setDraft(emptyDraft)
+      setQuery({ ...defaultPartnerRecruitmentQuery, sort: query.sort })
+    },
     resultSummary: page === null ? partnerRecruitmentSortLabels[query.sort] : `${page.total}건 · ${partnerRecruitmentSortLabels[query.sort]}`,
-    // 추천은 아직 예시입니다. 기업을 등록해야 계산할 수 있으므로 등록 전에는 비워 둡니다.
-    recommendedRecruitments: hasCompany
-      ? [
-          {
-            title: 'AI 실증 과제 데이터 구축·라벨링 참여기관',
-            reasons: [
-              { label: '지역 일치', isMatched: true },
-              { label: '역할 일치', isMatched: true },
-              { label: '역량 확인 필요', isMatched: false },
-            ],
-          },
-          {
-            title: '청년 창업기업 공동 R&D, AI 모델 개발 파트너',
-            reasons: [
-              { label: '분야 일치', isMatched: true },
-              { label: '업력 일치', isMatched: true },
-            ],
-          },
-        ]
-      : [],
-    profileSummary: hasCompany
-      ? `${account?.company?.companyName} 기준 예시 추천입니다. 추천 API가 생기면 소재지·업종·설립연도 일치로 계산합니다.`
-      : '기업을 등록하면 소재지·업종·설립연도로 모집 조건과의 일치를 보여 줍니다.',
-    // 아직 API가 없는 기능은 목록에서 준비 중으로만 알립니다.
-    upcomingFeatures: ['파트너 찾기(기업 검색)', '내 모집글 수정·마감', '프로필 기반 추천·매칭'],
   }
 }

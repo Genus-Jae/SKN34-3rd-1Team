@@ -87,7 +87,7 @@ pnpm dev
 | `/` | 헤더 | AI 대화 검색·필터 검색 탭, 자연어 조건 해석·제안 확인, 결과 카드 |
 | `/?mode=filter` | 헤더 | 키워드·지역·분야·출처·접수 상태와 K-Startup 추가 필터, 최신순·마감순, 페이지 이동 |
 | `/pricing` | 헤더 | 무료·프로·팀 요금제 소개, 출시 예정 안내, FAQ, 무료 검색 진입 |
-| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하며 제안·작성은 로그인 안내 |
+| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하고 작성 기업 정보는 흐리게 가리며, 자세히 보기·제안 버튼은 로그인하면 할 수 있는 일 다이얼로그(배경 흐림)로 안내 |
 | `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 헤더 | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
 | `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
@@ -98,12 +98,12 @@ pnpm dev
 | `/reset-password` | 없음 | 메일 링크(`#token=`)로 여는 새 비밀번호 설정. 성공하면 로그인으로 안내 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
 | `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
-| `/app/partners` | 사이드바 | 파트너 모집 목록. 모집 API를 검색·찾는 역할·지역·내 글·정렬·페이지 조건으로 조회, 예시 추천. 작성 버튼은 기업 등록 회원만 |
+| `/app/partners` | 사이드바(파트너 관리 · 모집글 탭) | 파트너 모집 목록. 검색어·찾는 역할(복수)·지역(복수, 전체가 전국까지 뜻함)은 조회 버튼으로 적용하고 내 글·정렬·페이지는 바로 적용해 모집 API 조회. 카드는 폭에 따라 3·2·1열, 작성 버튼은 기업 등록 회원만 |
 | `/app/partners/new` | 사이드바 | 모집글 작성. 접수 중 공고를 검색해 고르고 등록하면 상세로 이동. 기업 미등록 회원은 프로필 등록 안내 |
 | `/app/partners/detail?recruitmentId=...` | 사이드바 | 모집 API의 상세·예시 매칭·참여 제안 보내기·링크 복사. 내 글이면 받은 제안 요약 |
-| `/app/proposals` | 사이드바 | 제안함. 받은 제안 수락·거절, 보낸 제안 철회, 수락된 제안의 상대 담당자 연락처 |
+| `/app/proposals` | 사이드바(파트너 관리 · 제안함 탭) | 제안함. 받은 제안 수락·거절, 보낸 제안 철회, 수락된 제안의 상대 담당자 연락처 |
 | `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
-| `/app/profile` | 사이드바 | 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정, 완성도 체크리스트. 나머지 섹션은 준비 중 |
+| `/app/profile` | 사이드바 계정 카드 메뉴 | 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정, 완성도 체크리스트. 나머지 섹션은 준비 중 |
 | `/app/admin/members` | 사이드바(관리자) | 어드민 회원·기업 목록과 운영 규칙 |
 
 `/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,

@@ -9,6 +9,7 @@ import App from './App'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
 import { partnerRecruitmentDetail, partnerRecruitmentPage } from './data/fixtures/partnerRecruitments'
+import { maskedCompanyLabel } from './presentation/features/public-partner-recruitment/view/publicPartnerMessages'
 import type { Account } from './domain/entities/Account'
 import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
@@ -48,10 +49,25 @@ describe('공개 파트너 모집', () => {
     // 내 글 표시와 프로필 일치는 로그인 뒤에만 의미가 있습니다.
     expect(screen.queryByText('내가 쓴 모집글')).toBeNull()
     expect(screen.queryByText(/예시 일치/)).toBeNull()
-    expect(screen.getByRole('link', { name: '로그인하고 제안하기' }).getAttribute('href')).toBe('/login?next=%2Fpartners')
-    expect(screen.getAllByRole('link', { name: '자세히 보기' })[0]!.getAttribute('href')).toBe('/partners/detail?recruitmentId=101')
+    // 작성 기업 정보는 로그인 뒤에만 보여 주므로 상호·소재지가 DOM에도 없습니다.
+    expect(screen.queryByText(partnerRecruitmentPage.recruitments[0]!.company.companyName)).toBeNull()
+    expect(screen.getAllByRole('img', { name: maskedCompanyLabel })).toHaveLength(4)
+    // 오른쪽 로그인 안내 카드는 없고, 자세히 보기가 로그인 안내 다이얼로그를 엽니다.
+    expect(screen.queryByRole('complementary', { name: '로그인 안내' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '모집 원칙' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '로그인하고 제안하기' })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getAllByRole('button', { name: '자세히 보기' })[0]!)
+    const dialog = screen.getByRole('dialog', { name: '로그인하면 할 수 있는 일' })
+    expect(within(dialog).getByRole('link', { name: '로그인하고 제안하기' }).getAttribute('href'))
+      .toBe('/login?next=%2Fpartners%2Fdetail%3FrecruitmentId%3D101')
+    expect(within(dialog).queryByRole('link', { name: '기업 계정 만들기' })).toBeNull()
+    expect(within(dialog).getByText('모집글을 직접 올리고 제안 받습니다.')).toBeTruthy()
+    expect(within(dialog).queryByText(/담당자 이름과 연락처/)).toBeNull()
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(appContainer.resolve('browsePartnerRecruitmentsUseCase').execute).toHaveBeenCalledWith(
-      { keyword: '', seekingRole: '', region: '', mineOnly: false, sort: 'DEADLINE', page: 1 },
+      { keyword: '', seekingRoles: [], regions: [], mineOnly: false, sort: 'DEADLINE', page: 1 },
       expect.any(AbortSignal),
     )
     expect(fetch).not.toHaveBeenCalled()
@@ -65,9 +81,14 @@ describe('공개 파트너 모집', () => {
     expect(screen.getByText('서울 AI 스타트업 실증 지원사업')).toBeTruthy()
     expect(screen.queryByRole('form', { name: '참여 제안' })).toBeNull()
     expect(screen.queryByText('우리 기업과의 매칭')).toBeNull()
-    expect(screen.getByRole('link', { name: '로그인하고 제안하기' }).getAttribute('href'))
+    expect(screen.queryByText(partnerRecruitmentDetail.company.companyName)).toBeNull()
+    expect(screen.getByRole('img', { name: maskedCompanyLabel })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: '로그인하고 제안하기' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '로그인하고 제안하기' }))
+    const dialog = screen.getByRole('dialog', { name: '로그인하면 할 수 있는 일' })
+    expect(within(dialog).getByRole('link', { name: '로그인하고 제안하기' }).getAttribute('href'))
       .toBe('/login?next=%2Fpartners%2Fdetail%3FrecruitmentId%3D101')
-    expect(screen.getByRole('link', { name: '기업 계정 만들기' }).getAttribute('href')).toBe('/signup')
+    expect(within(dialog).queryByRole('link', { name: '기업 계정 만들기' })).toBeNull()
   })
 
   it.each(['999', 'abc', ''])('없는 공개 상세는 다른 글로 대체하지 않는다: %s', async (id) => {
@@ -79,7 +100,8 @@ describe('공개 파트너 모집', () => {
 
   it('공개 상세의 로그인 안내를 따라가면 로그인 뒤 같은 모집글의 내부 상세로 돌아온다', async () => {
     renderApp('/partners/detail?recruitmentId=101', null)
-    fireEvent.click(await screen.findByRole('link', { name: '로그인하고 제안하기' }))
+    fireEvent.click(await screen.findByRole('button', { name: '로그인하고 제안하기' }))
+    fireEvent.click(screen.getByRole('link', { name: '로그인하고 제안하기' }))
     expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy()
   })
 })
@@ -87,7 +109,7 @@ describe('공개 파트너 모집', () => {
 describe('로그인 상태의 공개 주소', () => {
   it.each([
     ['/', '지원사업 검색어'],
-    ['/partners', '함께 신청할 기업 찾기'],
+    ['/partners', '파트너 관리'],
   ])('%s에 오면 사이드바 안의 같은 화면으로 보낸다', (path, expected) => {
     renderApp(path, memberAccount)
 
@@ -102,6 +124,8 @@ describe('로그인 상태의 공개 주소', () => {
 
     expect(await screen.findByRole('form', { name: '참여 제안' })).toBeTruthy()
     expect(screen.queryByRole('link', { name: '로그인하고 제안하기' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '로그인하고 제안하기' })).toBeNull()
+    expect(screen.queryByRole('img', { name: maskedCompanyLabel })).toBeNull()
     expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
   })
 

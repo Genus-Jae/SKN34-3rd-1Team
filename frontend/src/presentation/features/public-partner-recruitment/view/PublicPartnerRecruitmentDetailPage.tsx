@@ -4,21 +4,30 @@ import { partnerRoleLabels } from '../../../../domain/entities/PartnerRecruitmen
 import { workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
 import {
   companyAgeLabel,
-  companyInitial,
-  companySummaryLine,
   programDeadlineLabel,
   recruitmentDeadlineLabel,
 } from '../../../shared/partner-recruitment/partnerRecruitmentLabels'
 import { publicPaths } from '../../../shared/routes/appPaths'
 import { usePublicPartnerRecruitmentDetailViewModel } from '../viewmodel/usePublicPartnerRecruitmentDetailViewModel'
+import { MaskedCompanyRow } from './MaskedCompanyRow'
+import { PublicLoginPromptDialog } from './PublicLoginPromptDialog'
 import { publicPartnerRecruitmentStyles as styles } from './PublicPartnerRecruitment.styles'
 
 /**
- * 로그인 전 공개 모집글 상세입니다. 공고 원문과 모집 조건은 그대로 보여 주지만 프로필 매칭과 참여 제안 폼은
- * 두지 않고, 로그인하면 같은 모집글의 내부 상세로 돌아오도록 안내합니다.
+ * 로그인 전 공개 모집글 상세입니다. 공고 원문과 모집 조건은 그대로 보여 주지만 작성 기업 정보는 가리고, 프로필 매칭과
+ * 참여 제안 폼은 두지 않습니다. 제안 버튼은 로그인하면 할 수 있는 일을 다이얼로그로 안내하고 로그인 뒤 같은 모집글의
+ * 내부 상세로 돌아옵니다.
  */
 export function PublicPartnerRecruitmentDetailPage() {
-  const { phase, recruitment, loginPath, signupPath, proposalFlowSteps } = usePublicPartnerRecruitmentDetailViewModel()
+  const {
+    phase,
+    recruitment,
+    loginPath,
+    proposalFlowSteps,
+    isLoginPromptOpen,
+    openLoginPrompt,
+    closeLoginPrompt,
+  } = usePublicPartnerRecruitmentDetailViewModel()
 
   if (phase === 'loading') {
     return (
@@ -63,21 +72,15 @@ export function PublicPartnerRecruitmentDetailPage() {
           </span>
         </div>
         <h1 className={styles.detailTitle}>{recruitment.title}</h1>
+        <div className={styles.heroActions}>
+          <button className={workspacePageStyles.primaryButton} type="button" onClick={openLoginPrompt}>로그인하고 제안하기</button>
+        </div>
       </div>
 
       <div className={styles.columns}>
         <div className={styles.column}>
           <section className={styles.card} aria-label="모집 조건">
-            <div className={styles.authorRow}>
-              <span className={styles.authorAvatar} aria-hidden="true">{companyInitial(recruitment.company.companyName)}</span>
-              <span className="min-w-0">
-                <span className={styles.authorName}>{recruitment.company.companyName}</span>
-                <span className={styles.authorSummary}>{companySummaryLine(recruitment.company)}</span>
-              </span>
-              <span className={`ml-auto ${workspaceTagClassName(recruitment.company.isEmailVerified ? 'ok' : 'muted')}`}>
-                {recruitment.company.isEmailVerified ? '이메일 인증' : '인증 전'}
-              </span>
-            </div>
+            <MaskedCompanyRow />
             <div className={styles.conditionGrid}>
               {conditions.map((condition) => (
                 <div className={styles.conditionCell} key={condition.label}>
@@ -120,19 +123,6 @@ export function PublicPartnerRecruitmentDetailPage() {
         </div>
 
         <aside className={styles.column} aria-label="참여 제안 안내">
-          <section className={styles.ctaCard} aria-labelledby="public-partner-proposal-title">
-            <h2 className={styles.ctaTitle} id="public-partner-proposal-title">제안하려면 로그인이 필요합니다</h2>
-            <ul className={styles.ctaList}>
-              <li>로그인하면 이 모집글로 바로 돌아와 참여 제안을 보낼 수 있습니다.</li>
-              <li>기업 프로필을 등록하면 모집 조건과의 일치 항목을 함께 확인합니다.</li>
-            </ul>
-            <div className={styles.ctaButtons}>
-              <Link className={workspacePageStyles.primaryButton} to={loginPath}>로그인하고 제안하기</Link>
-              <Link className={workspacePageStyles.secondaryButton} to={signupPath}>기업 계정 만들기</Link>
-            </div>
-            <p className={styles.ctaNote}>담당자 이름과 연락처는 제안이 수락된 뒤에만 서로에게 공개됩니다.</p>
-          </section>
-
           <section className={styles.noticeCard} aria-label="제안 상태 흐름">
             <p className={workspacePageStyles.sectionEyebrow}>제안 상태 흐름</p>
             <div className={styles.flowRow}>
@@ -147,6 +137,8 @@ export function PublicPartnerRecruitmentDetailPage() {
           </section>
         </aside>
       </div>
+
+      <PublicLoginPromptDialog isOpen={isLoginPromptOpen} loginPath={loginPath} onClose={closeLoginPrompt} />
     </main>
   )
 }

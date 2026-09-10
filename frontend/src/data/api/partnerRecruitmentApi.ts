@@ -20,13 +20,14 @@ export async function browsePartnerRecruitmentsApi(
 ): Promise<PartnerRecruitmentListDto> {
   const params = new URLSearchParams({
     keyword: query.keyword,
-    region: query.region,
     mine: String(query.mineOnly),
     sort: query.sort,
     page: String(query.page),
     pageSize: String(partnerRecruitmentPageSize),
   })
-  if (query.seekingRole) params.set('seekingRole', query.seekingRole)
+  // 역할·지역은 같은 이름을 여러 번 보내 함께 고릅니다. 비어 있으면 보내지 않습니다.
+  for (const role of query.seekingRoles) params.append('seekingRole', role)
+  for (const region of query.regions) params.append('region', region)
   const response = await fetch(`${getCoreApiBaseUrl()}${RECRUITMENTS_PATH}?${params}`, {
     headers: { Accept: 'application/json' },
     credentials: withSessionCookie,

@@ -5,6 +5,7 @@ import {
   workspaceTagClassName,
   type WorkspaceTagTone,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { useAdminMembersViewModel } from '../viewmodel/useAdminMembersViewModel'
 import {
   adminMembersPageStyles,
@@ -31,17 +32,14 @@ export function AdminMembersPage() {
 
   return (
     <>
-      <header className={workspacePageStyles.header}>
-        <div className={workspacePageStyles.headerTitleGroup}>
-          <p className={workspacePageStyles.eyebrow}>관리자 · 회원·기업</p>
-          <h1 className={workspacePageStyles.title}>회원·기업 목록</h1>
-        </div>
-        <div className={workspacePageStyles.headerActions}>
+      <WorkspacePageHeader
+        title="회원·기업 목록"
+        actions={
           <button className={workspacePageStyles.secondaryButton} type="button" disabled>
             CSV 내보내기 · 준비 중
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <div className={workspacePageStyles.content}>
         <p className={workspacePageStyles.emptyNote}>관리자 화면 데모입니다. 회원·정책은 예시이며 조회·정지·메일 발송·내보내기는 연결되지 않았습니다.</p>

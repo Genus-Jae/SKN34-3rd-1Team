@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import type { DailyReport, DailyReportItem } from '../../../../domain/entities/DailyReport'
 import { appPaths, supportProgramDetailPath } from '../../../shared/routes/appPaths'
 import { workspacePageStyles as styles } from '../../../shared/workspace/WorkspacePage.styles'
+import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { useDailyReportViewModel } from '../viewmodel/useDailyReportViewModel'
 
 const inputClass = 'w-full rounded-xl border border-sample-border bg-white p-3 text-sm outline-offset-2 focus:outline-brand-primary disabled:opacity-60'
@@ -14,10 +15,10 @@ export function DailyReportPage() {
   const settings = vm.settings
   return (
     <>
-      <header className={styles.header}>
-        <div className={styles.headerTitleGroup}><p className={styles.eyebrow}>DAILY REPORT</p><h1 className={styles.title}>기업 맞춤 리포트</h1></div>
-        <button className={styles.secondaryButton} type="button" disabled={busy} onClick={() => void vm.load()}>상태 새로고침</button>
-      </header>
+      <WorkspacePageHeader
+        title="기업 맞춤 리포트"
+        actions={<button className={styles.secondaryButton} type="button" disabled={busy} onClick={() => void vm.load()}>상태 새로고침</button>}
+      />
       <main className={styles.content}>
         <p className={noteClass}>등록한 지역·업종과 지원 목적에 맞는 접수 중 공고를 모아 봅니다. 관련도는 검색 순위를 위한 점수이며, 선정확률이나 신청 자격 보장이 아닙니다.</p>
         {vm.error && <p role="alert" className={warningClass}>{vm.error}</p>}

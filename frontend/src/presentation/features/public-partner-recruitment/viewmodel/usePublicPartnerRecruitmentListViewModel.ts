@@ -1,17 +1,23 @@
 import { useState } from 'react'
 
+import type { PartnerRecruitmentSummary } from '../../../../domain/entities/PartnerRecruitment'
 import { defaultPartnerRecruitmentQuery, type PartnerRecruitmentQuery } from '../../../../domain/entities/PartnerRecruitmentQuery'
 import { loginPathFor } from '../../../shared/auth/returnPath'
 import { usePartnerRecruitmentBrowse } from '../../../shared/partner-recruitment/usePartnerRecruitmentBrowse'
 import { publicPaths } from '../../../shared/routes/appPaths'
 
 /**
- * 로그인 전 공개 파트너 모집 목록의 대표 ViewModel입니다. 모집 중인 글을 마감 임박순으로 읽기만 제공하고
- * 제안·작성·프로필 일치는 로그인으로 안내합니다.
+ * 로그인 전 공개 파트너 모집 목록의 대표 ViewModel입니다. 모집 중인 글을 마감 임박순으로 읽기만 제공하고,
+ * 자세히 보기를 누르면 로그인하면 할 수 있는 일을 다이얼로그로 안내합니다.
  */
 export function usePublicPartnerRecruitmentListViewModel() {
   const [query, setQuery] = useState<PartnerRecruitmentQuery>(defaultPartnerRecruitmentQuery)
   const { phase, page, retry } = usePartnerRecruitmentBrowse(query)
+  // 자세히 보기를 누른 모집글입니다. 로그인·회원가입 뒤 그 모집글의 내부 상세로 돌아오도록 복귀 경로를 담습니다.
+  const [promptRecruitmentId, setPromptRecruitmentId] = useState<number | null>(null)
+  const promptReturnPath = promptRecruitmentId === null
+    ? null
+    : `${publicPaths.partnerDetail}?${new URLSearchParams({ recruitmentId: String(promptRecruitmentId) })}`
 
   return {
     phase,
@@ -23,13 +29,8 @@ export function usePublicPartnerRecruitmentListViewModel() {
     goToPage: (target: number) => setQuery((current) => ({ ...current, page: target })),
     retry,
     resultSummary: page === null ? '마감 임박순' : `모집 중 ${page.total}건 · 마감 임박순`,
-    loginPath: loginPathFor(publicPaths.partners),
-    signupPath: publicPaths.signup,
-    // 로그인해야 할 수 있는 일을 화면 위쪽에서 한 번에 알립니다.
-    memberBenefits: [
-      '모집글에 참여 제안을 보내고 수락 뒤 담당자와 연락합니다.',
-      '우리 기업 프로필과 모집 조건의 일치 항목을 확인합니다.',
-      '공고에 묶인 모집글을 직접 올리고 제안을 받습니다.',
-    ],
+    loginPrompt: promptReturnPath === null ? null : { loginPath: loginPathFor(promptReturnPath) },
+    openLoginPrompt: (recruitment: PartnerRecruitmentSummary) => setPromptRecruitmentId(recruitment.id),
+    closeLoginPrompt: () => setPromptRecruitmentId(null),
   }
 }

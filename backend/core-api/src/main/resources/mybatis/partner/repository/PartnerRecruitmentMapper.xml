@@ -172,14 +172,14 @@
                 OR company.company_name LIKE #{keywordPattern} ESCAPE '!'
             )
         </if>
-        <if test="seekingRole != null">
-            AND recruitment.seeking_role = #{seekingRole}
+        <if test="seekingRoles != null">
+            AND recruitment.seeking_role IN
+            <foreach collection="seekingRoles" item="seekingRole" open="(" separator=", " close=")">#{seekingRole}</foreach>
         </if>
-        <if test="region != null and region == nationwideRegion">
-            AND recruitment.region = #{nationwideRegion}
-        </if>
-        <if test="region != null and region != nationwideRegion">
-            AND recruitment.region IN (#{region}, #{nationwideRegion})
+        <!-- regions에는 Repository가 전국을 더해 두므로 고른 지역과 전국 모집글이 함께 나옵니다. -->
+        <if test="regions != null">
+            AND recruitment.region IN
+            <foreach collection="regions" item="region" open="(" separator=", " close=")">#{region}</foreach>
         </if>
         <choose>
             <when test="mineAccountId != null">

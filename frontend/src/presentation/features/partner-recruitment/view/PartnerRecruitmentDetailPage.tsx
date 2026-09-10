@@ -6,6 +6,7 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import {
   companyAgeLabel,
   companyInitial,
@@ -80,41 +81,26 @@ export function PartnerRecruitmentDetailPage() {
 
   return (
     <>
-      <header className={workspacePageStyles.header}>
-        <div className={workspacePageStyles.headerTitleGroup}>
-          <Link className={workspacePageStyles.headerBackLink} to={appPaths.partners}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            파트너 모집 목록
-          </Link>
-          <h1 className={workspacePageStyles.title}>모집글 상세</h1>
-        </div>
-        <div className={workspacePageStyles.headerActions}>
-          <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+      <WorkspacePageHeader
+        parent={{ to: appPaths.partners, label: '파트너 관리' }}
+        title="모집글 상세"
+        actions={
+          <>
+            <button className={workspacePageStyles.secondaryButton} type="button" disabled>
             모집글 저장 · 준비 중
-          </button>
-          <button
+            </button>
+            <button
             className={workspacePageStyles.secondaryButton}
             type="button"
             aria-live="polite"
             aria-disabled={linkCopyState === 'failed'}
             onClick={() => void copyLink()}
-          >
+            >
             {linkCopyLabel}
-          </button>
-        </div>
-      </header>
+            </button>
+          </>
+        }
+      />
 
       <div className={workspacePageStyles.content}>
         <p className={workspacePageStyles.emptyNote}>
@@ -148,13 +134,6 @@ export function PartnerRecruitmentDetailPage() {
                     <span className="flex flex-wrap items-center gap-[0.4rem]">
                       <span className={partnerRecruitmentStyles.detailAuthorName}>
                         {recruitment.company.companyName}
-                      </span>
-                      <span
-                        className={workspaceTagClassName(
-                          recruitment.company.isEmailVerified ? 'ok' : 'muted',
-                        )}
-                      >
-                        {recruitment.company.isEmailVerified ? '이메일 인증' : '인증 전'}
                       </span>
                       {recruitment.company.isBusinessVerified ? (
                         <span className={workspaceTagClassName('ok')}>사업자 확인</span>

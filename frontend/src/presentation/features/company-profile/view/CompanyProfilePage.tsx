@@ -6,6 +6,7 @@ import {
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
 import { WorkspaceToggle } from '../../../shared/workspace/WorkspaceToggle'
+import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { YearPicker } from '../../../shared/workspace/YearPicker'
 import { formatBusinessNumber } from '../../../../domain/entities/Company'
 import { useAccountSecurityViewModel } from '../viewmodel/useAccountSecurityViewModel'
@@ -66,17 +67,10 @@ export function CompanyProfilePage() {
 
   return (
     <>
-      <header className={workspacePageStyles.header}>
-        <div className={workspacePageStyles.headerTitleGroup}>
-          <p className={workspacePageStyles.eyebrow}>내 프로필</p>
-          <h1 className={workspacePageStyles.title}>기업 프로필</h1>
-        </div>
-        <div className={workspacePageStyles.headerActions}>
-          <span className={workspaceTagClassName('muted')}>
-            프로필 완성도 {completionPercent}%
-          </span>
-        </div>
-      </header>
+      <WorkspacePageHeader
+        title="내 프로필"
+        actions={<span className={workspaceTagClassName('muted')}>프로필 완성도 {completionPercent}%</span>}
+      />
 
       <div className={workspacePageStyles.content}>
         <p className={workspacePageStyles.emptyNote}>

@@ -5,32 +5,25 @@ function classes(...groups: string[]) {
 // 색상이나 CSS 속성이 아니라 파트너 모집 화면들에서 맡는 UI 역할을 이름으로 사용합니다.
 // 카드·태그·버튼은 shared/workspace의 공용 스타일을 쓰고 여기서는 모집 화면 고유 배치를 다룹니다.
 export const partnerRecruitmentStyles = {
-  listHeader: classes(
-    'sticky top-0 z-[3] flex flex-wrap items-center justify-between gap-6 border-b border-sample-border',
-    'bg-[rgb(255_255_255_/_96%)] backdrop-blur',
-    'px-[clamp(1.25rem,5vw,4.5rem)] py-9 max-chat:px-4 max-chat:py-6',
-  ),
-  listTitleGroup: 'flex min-w-0 flex-col items-start gap-3',
-  listBadge: 'm-0 inline-flex items-center rounded-full bg-[#e7f6ed] px-3 py-[0.4rem] text-[0.75rem] font-bold text-[#087f46]',
-  listTitle: 'm-0 break-keep text-[clamp(1.6rem,2.8vw,2.5rem)] font-extrabold leading-[1.35] tracking-[-0.06em] text-app-ink [text-wrap:balance]',
-  listDescription: 'm-0 break-keep text-[0.88rem] leading-[1.7] text-sample-muted [text-wrap:pretty]',
   search: classes(
     'flex min-h-11 w-[320px] max-w-full items-center gap-2 rounded-[1rem] border border-sample-border bg-white px-[0.9rem]',
     'text-[0.85rem] text-[#838a93] focus-within:border-[#087f46] focus-within:shadow-[0_0_0_3px_rgb(8_127_70_/_12%)]',
   ),
+  searchRow: 'flex flex-wrap items-center gap-2',
   searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink outline-0 placeholder:text-sample-muted',
   plainList: 'm-0 flex list-disc flex-col gap-1 pl-5 text-[0.78rem] leading-[1.5] text-sample-muted',
   filterPanel: 'flex flex-col gap-3 rounded-[1rem] border border-sample-border bg-white p-4',
   filterFooter: 'flex flex-wrap items-center justify-between gap-3',
   resultCount: 'text-[0.78rem] text-sample-muted',
   pagination: 'flex items-center justify-center gap-3 pt-2',
-  cardGrid: 'grid grid-cols-1 gap-4 @min-[40rem]/column:grid-cols-2',
+  // 폭에 따라 3열·2열·1열로 저절로 줄어드는 격자입니다. 한 줄은 최대 3열(카드 폭이 전체의 1/3 이상)이고 같은 줄의 카드는 같은 높이로 늘어납니다.
+  cardGrid: 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,max(300px,calc((100%_-_2rem)/3))),1fr))]',
   cardTop: 'flex items-center justify-between gap-3',
   cardDeadline: 'text-[0.74rem] font-extrabold text-[#b75561]',
   mineDeadline: 'text-[0.74rem] font-extrabold text-sample-muted',
   cardTitle:
-    'm-0 text-[1.02rem] font-bold leading-[1.4] tracking-[-0.025em] text-app-ink [overflow-wrap:anywhere]',
-  cardProgram: 'm-0 text-[0.75rem] leading-[1.5] text-sample-muted',
+    'm-0 line-clamp-2 text-[1.02rem] font-bold leading-[1.4] tracking-[-0.025em] text-app-ink [overflow-wrap:anywhere]',
+  cardProgram: 'm-0 line-clamp-2 text-[0.75rem] leading-[1.5] text-sample-muted',
   authorRow: 'flex items-center gap-2 rounded-[0.85rem] bg-[#f6f7f8] px-3 py-[0.6rem]',
   authorAvatar:
     'grid size-7 shrink-0 place-items-center rounded-[0.5rem] text-[0.75rem] font-extrabold',
@@ -38,8 +31,10 @@ export const partnerRecruitmentStyles = {
   authorAvatarMine: 'bg-brand-accent text-app-ink',
   authorName: 'block text-[0.78rem] font-bold text-app-ink',
   authorSummary: 'mt-[0.05rem] block text-[0.68rem] text-sample-muted',
-  tagRow: 'flex flex-wrap gap-[0.35rem]',
-  cardFooter: 'flex flex-wrap items-center justify-between gap-3 pt-1',
+  // 긴 태그는 한 줄 말줄임으로 자르고 전체 문구는 title로 보여 줍니다.
+  tagRow: 'flex flex-wrap gap-[0.35rem] [&>span]:max-w-full [&>span]:shrink [&>span]:truncate',
+  // 카드 높이가 달라도 하단 줄은 항상 바닥에 붙습니다.
+  cardFooter: 'mt-auto flex flex-wrap items-center justify-between gap-3 pt-1',
   cardFooterNote: 'flex flex-wrap items-center gap-[0.35rem] text-[0.72rem] text-sample-muted',
   sideList: 'flex flex-col gap-2',
   sideItem: 'flex flex-col gap-[0.3rem] rounded-[0.85rem] bg-[#f6f7f8] px-[0.85rem] py-[0.7rem]',

@@ -36,15 +36,18 @@ export const appSidebarStyles = {
   pendingBadge:
     'ml-auto inline-flex rounded-full bg-[#e9ecef] px-[0.45rem] py-[0.1rem] text-[0.62rem] font-bold text-sample-muted',
   account: 'mt-auto flex flex-col gap-[0.6rem] max-chat:mt-4',
+  // 계정 카드는 내 프로필·로그아웃을 여는 버튼입니다.
   accountCard:
-    'flex items-center gap-[0.65rem] rounded-[0.7rem] bg-[#f6f7f8] p-3',
+    'flex w-full cursor-pointer items-center gap-[0.65rem] rounded-[0.7rem] border-0 bg-[#f6f7f8] p-3 text-left hover:bg-[#eef1f3] aria-expanded:bg-[#eef1f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+  accountMenuIcon: 'ml-auto shrink-0 text-sample-muted',
+  accountMenu: 'flex flex-col gap-1 rounded-[0.7rem] border border-sample-border bg-white p-1.5 shadow-[0_12px_32px_rgb(32_33_36_/_10%)]',
+  accountMenuButton:
+    'flex w-full cursor-pointer items-center gap-[0.65rem] rounded-[0.55rem] border-0 bg-transparent px-3 py-2 text-left text-[0.82rem] font-semibold text-sample-muted hover:bg-[#f6f7f8] hover:text-app-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary',
   accountAvatar:
     'grid size-8 shrink-0 place-items-center rounded-[0.6rem] bg-brand-primary text-[0.85rem] font-extrabold text-white',
   accountName: 'block text-[0.8rem] font-bold text-app-ink',
   accountCompany:
     'mt-[0.1rem] block overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-sample-muted',
-  accountActions: 'flex items-center gap-3 pl-[0.35rem]',
-  logoutButton: 'cursor-pointer border-0 bg-transparent p-0 text-[0.72rem] font-semibold text-sample-muted hover:text-brand-primary hover:underline',
   workspace: '@container/workspace flex min-h-0 min-w-0 flex-col overflow-y-auto max-chat:overflow-visible',
 } as const
 

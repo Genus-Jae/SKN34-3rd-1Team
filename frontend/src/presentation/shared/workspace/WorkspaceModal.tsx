@@ -7,20 +7,23 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 /**
  * 작업 화면들이 함께 쓰는 확인·입력 모달입니다. 열리면 첫 입력에 포커스를 두고 Tab을 안에서 돌리며,
  * Esc·배경 클릭·닫기 버튼으로 닫고 닫힌 뒤에는 열었던 요소로 포커스를 돌려줍니다.
- * 내용과 버튼은 부르는 쪽이 그리고, 여기서는 틀과 접근성만 맡습니다. `tone="danger"`는 되돌릴 수 없는 동작에 씁니다.
+ * 내용과 버튼은 부르는 쪽이 그리고, 여기서는 틀과 접근성만 맡습니다. `tone="danger"`는 되돌릴 수 없는 동작에,
+ * `blurBackdrop`은 뒤 화면을 흐리게 가려야 하는 안내에, `tone="accent"`는 안내 카드처럼 옅은 초록 바탕에 씁니다.
  */
 export function WorkspaceModal({
   isOpen,
   title,
   description,
   tone = 'default',
+  blurBackdrop = false,
   onClose,
   children,
 }: {
   isOpen: boolean
   title: string
   description?: string
-  tone?: 'default' | 'danger'
+  tone?: 'default' | 'danger' | 'accent'
+  blurBackdrop?: boolean
   onClose: () => void
   children: ReactNode
 }) {
@@ -64,10 +67,10 @@ export function WorkspaceModal({
   }
 
   return (
-    <div className={workspaceModalStyles.overlay} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className={`${workspaceModalStyles.overlay} ${blurBackdrop ? workspaceModalStyles.overlayBlur : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <div
         ref={dialogRef}
-        className={`${workspaceModalStyles.dialog} ${tone === 'danger' ? workspaceModalStyles.dialogDanger : ''}`}
+        className={`${workspaceModalStyles.dialog} ${tone === 'danger' ? workspaceModalStyles.dialogDanger : tone === 'accent' ? workspaceModalStyles.dialogAccent : workspaceModalStyles.dialogDefault}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
