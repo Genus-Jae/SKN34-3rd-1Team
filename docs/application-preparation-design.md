@@ -2,9 +2,9 @@
 
 [문서 목록](README.md) · [시스템 구조](architecture/README.md) · [계정·인증 계약](account-auth-contract.md)
 
-- 관련 이슈: [#185 — skn-89](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185)
-- 상태: **1장 제약·범위·계약 확정. Production 코드·DB·AI·화면은 아직 구현하지 않았다.**
-- 설계 기준: 2026-09-10, 팀 `main`의 PR #184 병합 커밋 `3b938c1`.
+- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187)
+- 상태: **고정 양식 manifest와 신청 준비 생성·목록·상세의 Domain·MySQL·Core API·Frontend 기본 흐름을 구현했다. 문항 입력·AI 초안은 미구현이다.**
+- 설계 기준: 2026-09-11, 팀 `main`의 PR #186 병합 커밋 `bfe44aa`.
 - 기능 이름: 화면에서는 **신청 문서 작성 도우미**, 코드에서는 `applicationpreparation` / `application_preparation` / `application-preparation`을 사용한다.
 
 ## 1. 해결할 문제와 기능 정의
@@ -179,6 +179,7 @@ AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초�
 
 | 메서드·경로 | 역할 |
 |---|---|
+| GET `/application-preparations/forms` | 로그인 회원에게 현재 지원하는 고정 양식·분야·문항 표시. 조회만으로 준비 건을 만들지 않음 |
 | POST `/application-preparations` | 공고·지원 분야·양식 버전으로 신청 준비 건 생성 |
 | GET `/application-preparations` | 본인 신청 준비 목록 |
 | GET `/application-preparations/{id}` | 본인 현재 입력·문항·작성 상태 조회 |
@@ -298,7 +299,7 @@ GitHub 이슈에서 skn-번호 확정
 | 작업 단위 | 이슈·브랜치 | PR 결과물 | 필수 검증 |
 |---|---|---|---|
 | 제약·계약 확정 | `skn-89` / #185 | 이 문서, 공식 대상·범위·공개/AI 계약 | 링크·원문 위치·`git diff --check` |
-| 신청 준비 기본 흐름 | 새 번호 배정 필요 | 검수 양식, 신청 준비 생성·목록·상세의 Domain·DB·Core API·Frontend | Core·MySQL 8.4·Frontend |
+| 신청 준비 기본 흐름 | `skn-90` / #187 | 검수 양식, 신청 준비 생성·목록·상세의 Domain·DB·Core API·Frontend | Core·MySQL 8.4·Frontend |
 | 문항별 질문과 사실 확인 | 새 번호 배정 필요 | AI 답변 해석, 사실 제안·확인, 문항 입력 저장과 화면 | AI Service·Core 계약·Frontend |
 | 초안 생성·수정·확인 | 새 번호 배정 필요 | 초안 실행·이력, 직접 수정, 확인·재확인 상태와 화면 | AI Service·Core·Frontend·Stub 연결 |
 | 전체 흐름 안정화 | 새 번호 배정 필요 | 로그인 복귀·세션 격리·장애·Compose 통합과 운영 문서 | 변경 서비스 전체·Compose·`git diff --check` |

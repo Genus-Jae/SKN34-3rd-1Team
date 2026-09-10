@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "formVersionId": "bizinfo-pbln-000000000118979-innovation-voucher-2026-v1",
+  "sourceCode": "BIZINFO",
+  "sourceProgramId": "PBLN_000000000118979",
+  "programTitle": "2026년 2차 중소기업 혁신바우처 사업 지원계획 공고",
+  "formTitle": "중소기업 혁신바우처 사업 계획서(일반 등)",
+  "sourceUrl": "https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=PBLN_000000000118979",
+  "attachmentFileName": "(제2026-133호)_2026년_중소기업_혁신바우처_사업_2차_지원계획_공고.hwpx",
+  "attachmentBytes": 136375,
+  "attachmentSha256": "3ce95215a893ec1d058932ff4890cdcd7157c0c1940d1f4e86822acb45a0df01",
+  "verificationStatus": "SOURCE_HASH_AND_LOCATORS_VERIFIED",
+  "institutionReviewed": false,
+  "supportedServiceFields": ["CONSULTING", "TECHNICAL_SUPPORT", "MARKETING"],
+  "sections": [
+    {
+      "key": "company-overview",
+      "title": "기업 개요",
+      "locator": "HWPX Contents/section0.xml paragraphs 692-707",
+      "description": "업체와 담당자 기본정보, 주요 연혁, 생산품, 판매처를 작성합니다."
+    },
+    {
+      "key": "voucher-plan",
+      "title": "바우처 활용 계획",
+      "locator": "HWPX Contents/section0.xml paragraphs 709-724",
+      "description": "신청 분야별 과제명과 과제 내용, 일정, 목표를 작성합니다."
+    },
+    {
+      "key": "voucher-necessity",
+      "title": "바우처 지원 필요성",
+      "locator": "HWPX Contents/section0.xml paragraphs 726-729",
+      "description": "활용 계획과 기업활동의 관련성 및 바우처 도입 필요성을 작성합니다."
+    }
+  ]
+}

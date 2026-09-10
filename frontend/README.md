@@ -97,6 +97,9 @@ pnpm dev
 | `/forgot-password` | 없음 | 가입 이메일로 비밀번호 재설정 링크 요청. 가입 여부와 무관한 같은 안내 |
 | `/reset-password` | 없음 | 메일 링크(`#token=`)로 여는 새 비밀번호 설정. 성공하면 로그인으로 안내 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
+| `/app/application-preparations` | 사이드바 | 내 신청 준비 목록과 생성 ID 커서 페이지. 조회만으로 신청 준비나 AI 실행을 만들지 않음 |
+| `/app/application-preparations/new` | 사이드바 | 검수된 혁신바우처 사업계획서와 지원 분야를 확인하고 명시적으로 신청 준비 시작 |
+| `/app/application-preparations/:preparationId` | 사이드바 | 본인 신청 준비의 공식 문항·작성 전 상태 표시. 문항 입력·AI 초안은 후속 기능 |
 | `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
 | `/app/partners` | 사이드바(파트너 관리 · 모집글 탭) | 파트너 모집 목록. 검색어·찾는 역할(복수)·지역(복수, 전체가 전국까지 뜻함)은 조회 버튼으로 적용하고 내 글·정렬·페이지는 바로 적용해 모집 API 조회. 카드는 폭에 따라 3·2·1열, 작성 버튼은 기업 등록 회원만 |
 | `/app/partners/new` | 사이드바 | 모집글 작성. 접수 중 공고를 검색해 고르고 등록하면 상세로 이동. 기업 미등록 회원은 프로필 등록 안내 |
@@ -135,6 +138,11 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 두 파트너 feature가 함께 쓰는 조회 훅과 표시 helper는 `presentation/shared/partner-recruitment`에 둡니다.
 아직 화면이 없는 관심 공고함은 사이드바에서
 링크가 아니라 "준비 중" 표시로 둡니다. 새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
+
+신청 문서 작성 도우미는 `View → ViewModel → ApplicationPreparationUseCase → ApplicationPreparationRepository →
+data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 `GET /forms`로 고정 양식을 읽고 사용자가 생성 버튼을 누를 때만
+POST를 보냅니다. 목록·상세는 로그인 계정 소유 데이터만 읽으며 AI Service를 호출하지 않습니다. 첫 양식의
+`institutionReviewed=false`를 그대로 표시해 공식 출처·구조 확인과 기관 검수를 구분합니다.
 
 사이드바와 각 화면의 머리말은 화면에 고정하고 본문 칸만 스크롤합니다. 작업 채팅의 입력창은 화면 아래에
 붙어 있고 대화만 그 위에서 스크롤됩니다. 한 칸으로 접히는 좁은 화면에서는 고정을 풀어 문서 전체가 스크롤됩니다.

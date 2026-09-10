@@ -4,6 +4,8 @@ import type { BrowseSupportProgramsUseCase } from '../../domain/usecases/BrowseS
 import type { CoreApiHealth } from '../../data/api/coreApiHealth'
 import type { SessionHintStorage } from '../../data/storage/sessionHintStorage'
 import type { AccountRepository } from '../../domain/repositories/AccountRepository'
+import type { ApplicationPreparationRepository } from '../../domain/repositories/ApplicationPreparationRepository'
+import type { ApplicationPreparationUseCase } from '../../domain/usecases/ApplicationPreparationUseCase'
 import type { CompanyRepository } from '../../domain/repositories/CompanyRepository'
 import type { PartnerProposalRepository } from '../../domain/repositories/PartnerProposalRepository'
 import type { PartnerRecruitmentRepository } from '../../domain/repositories/PartnerRecruitmentRepository'
@@ -53,6 +55,8 @@ export type FetchCoreApiHealth = (signal?: AbortSignal) => Promise<CoreApiHealth
 
 /** Awilix가 생성·연결할 수 있는 전체 의존성 목록입니다. */
 export type AppCradle = {
+  applicationPreparationRepository: ApplicationPreparationRepository
+  applicationPreparationUseCase: ApplicationPreparationUseCase
   dailyReportRepository: import('../../domain/repositories/DailyReportRepository').DailyReportRepository
   dailyReportUseCase: import('../../domain/usecases/DailyReportUseCase').DailyReportUseCase
   combinationReviewRepository: import('../../domain/repositories/CombinationReviewRepository').CombinationReviewRepository
