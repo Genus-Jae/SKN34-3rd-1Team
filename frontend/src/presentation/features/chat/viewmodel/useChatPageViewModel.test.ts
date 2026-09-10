@@ -199,19 +199,42 @@ describe('useChatPageViewModel', () => {
     expect(harness.focus).toHaveBeenCalledOnce()
   })
 
-  it('과거 대화가 있는 내부 overflow 화면은 최초 진입·상세 복귀에도 문서 이동 없이 마지막 내용을 표시한다', () => {
+  it('과거 결과가 있는 내부 overflow 화면은 최초 진입·상세 복귀에도 마지막 결과의 처음을 표시한다', () => {
     const initial = createChatHook({ messages: [
       { id: 'old-question', role: 'user', text: '서울 지원사업' },
       { id: 'old-answer', role: 'assistant', text: '이전 검색 결과', programs: [supportPrograms[0]] },
     ] })
     const harness = renderScrollHarness(initial, true)
-    expect(harness.model().timelineRef.current?.scrollTop).toBe(1_000)
+    expect(harness.model().timelineRef.current?.scrollTop).toBe(400)
     harness.model().timelineRef.current!.scrollTop = 0
     harness.rerender({ ...initial, draft: '작성 중인 새 질문' })
     expect(harness.model().timelineRef.current?.scrollTop).toBe(0)
     harness.rerender({ ...initial, interpretation: { status: 'clarification' } })
     expect(harness.model().timelineRef.current?.scrollTop).toBe(1_000)
     expect(harness.scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it.each(['auto', 'scroll'] as const)('내부 %s 화면의 긴 새 결과는 목록의 처음으로 이동하고 초안 수정은 읽던 위치를 유지한다', (overflowY) => {
+    const initial = createChatHook()
+    const pending = { ...initial,
+      messages: [...initial.messages, { id: 'question', role: 'user' as const, text: '서울 AI 창업지원' }],
+      isSearching: true, isBusy: true }
+    const harness = renderScrollHarness(pending, true, { overflowY })
+    const timeline = harness.model().timelineRef.current!
+    expect(timeline.scrollTop).toBe(1_000)
+
+    const completed = { ...pending, isSearching: false, isBusy: false,
+      messages: [...pending.messages, { id: 'answer', role: 'assistant' as const,
+        text: '검색 결과', programs: supportPrograms }] }
+    harness.rerender(completed)
+
+    expect(timeline.scrollTop).toBe(400)
+    expect(timeline.querySelector('[data-search-results]')!.getBoundingClientRect().top)
+      .toBe(timeline.getBoundingClientRect().top + timeline.clientTop)
+    expect(harness.scrollIntoView).not.toHaveBeenCalled()
+    timeline.scrollTop = 480
+    harness.rerender({ ...completed, draft: '다음 질문을 작성 중' })
+    expect(timeline.scrollTop).toBe(480)
   })
 
   it.each([
@@ -458,12 +481,21 @@ function renderScrollHarness(
         if (!element) return
         element.style.overflowY = internal ? dimensions.overflowY ?? 'auto' : 'visible'
         Object.defineProperties(element, {
+          clientTop: { value: 2, configurable: true },
           clientHeight: { value: dimensions.clientHeight ?? (internal ? 400 : 1_000), configurable: true },
           scrollHeight: { value: dimensions.scrollHeight ?? 1_000, configurable: true },
         })
+        element.getBoundingClientRect = () => new DOMRect(0, 100, 600, element.clientHeight)
       } }, createElement('article', { ref: (element: HTMLElement | null) => {
         if (element && !Object.hasOwn(element, 'scrollIntoView')) element.scrollIntoView = scrollIntoView
-      } }, '마지막 표시 내용')),
+        if (element) element.getBoundingClientRect = () => new DOMRect(
+          0, 100 + element.parentElement!.clientTop + 250 - element.parentElement!.scrollTop, 600, 750,
+        )
+      } }, '마지막 표시 내용', createElement('section', { 'data-search-results': true, ref: (element: HTMLElement | null) => {
+        if (element) element.getBoundingClientRect = () => new DOMRect(
+          0, 100 + viewModel.timelineRef.current!.clientTop + 400 - viewModel.timelineRef.current!.scrollTop, 600, 600,
+        )
+      } }, '검색 결과'))),
       createElement('textarea', { ref: (element: HTMLTextAreaElement | null) => {
         viewModel.composerInputRef.current = element
         if (element) element.focus = focus
