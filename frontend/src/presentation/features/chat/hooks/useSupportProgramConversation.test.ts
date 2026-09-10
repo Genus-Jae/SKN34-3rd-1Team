@@ -13,6 +13,7 @@ import { SupportProgramInterpretationError } from '../../../../domain/errors/Sup
 import { SupportProgramRequestError } from '../../../../domain/errors/SupportProgramRequestError'
 import type { InterpretSupportProgramConversationUseCase } from '../../../../domain/usecases/InterpretSupportProgramConversationUseCase'
 import type { SearchSupportProgramsUseCase } from '../../../../domain/usecases/SearchSupportProgramsUseCase'
+import { signedIn, signedOut } from '../../../shared/auth/state/authSlice'
 import { useSupportProgramChat } from './useSupportProgramChat'
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -24,6 +25,51 @@ const clarification: SupportProgramInterpretation = {
 }
 
 describe('해석 → 명시적 확인 → 기존 검색', () => {
+  it.each(['interpretation', 'search'] as const)('%s 중 로그아웃은 마운트된 화면의 요청과 타이머를 취소하고 늦은 응답을 무시한다', async (phase) => {
+    vi.useFakeTimers()
+    const pendingInterpretation = deferred<SupportProgramInterpretation>()
+    const pendingSearch = deferred<Awaited<ReturnType<SearchSupportProgramsUseCase['execute']>>>()
+    const interpret = vi.fn<InterpretSupportProgramConversationUseCase['execute']>()
+      .mockResolvedValue(readyConversationProposal(seoulConversationContext))
+    if (phase === 'interpretation') interpret.mockReturnValueOnce(pendingInterpretation.promise)
+    const search = vi.fn<SearchSupportProgramsUseCase['execute']>().mockReturnValueOnce(pendingSearch.promise)
+    const { result, store } = renderConversation(interpret, search)
+    const account = { email: 'first@example.test', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: true, company: null }
+    act(() => store.dispatch(signedIn(account)))
+    act(() => result.current.updateDraft('서울 SW 사업화'))
+    let request!: Promise<void>
+    if (phase === 'search') {
+      await act(async () => result.current.submitMessage())
+      act(() => { request = result.current.confirmInterpretation() })
+    } else {
+      act(() => { request = result.current.submitMessage() })
+    }
+    const signal = phase === 'search' ? search.mock.calls[0][1] : interpret.mock.calls[0][1]
+    expect(signal?.aborted).toBe(false)
+
+    act(() => store.dispatch(signedOut()))
+
+    expect(signal?.aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(result.current.messages).toHaveLength(1)
+    expect(result.current.draft).toBe('')
+    expect(result.current.isBusy).toBe(false)
+    expect(result.current.confirmedContext).toEqual(emptyConversationContext)
+
+    act(() => store.dispatch(signedIn({ ...account, email: 'second@example.test' })))
+    act(() => result.current.updateDraft('새 계정의 대화'))
+    await act(async () => result.current.submitMessage())
+    const newConversation = store.getState().chat
+    expect(newConversation.interpretation.status).toBe('ready')
+    await act(async () => {
+      if (phase === 'search') pendingSearch.resolve({ query: '사업화 지원', programs: [supportPrograms[0]] })
+      else pendingInterpretation.resolve(clarification)
+      await request
+    })
+    expect(store.getState().chat).toEqual(newConversation)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('검색 중 작성한 다음 초안은 실패한 검색을 재시도해도 지우지 않는다', async () => {
     const pending = deferred<Awaited<ReturnType<SearchSupportProgramsUseCase['execute']>>>()
     const search = vi.fn<SearchSupportProgramsUseCase['execute']>()
