@@ -1,5 +1,5 @@
 from itertools import combinations
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -63,29 +63,48 @@ class AnalyzeRequest(Contract):
 
 
 class CitationSelection(Contract):
+    citationOptionIndex: int = Field(ge=0, le=2047)
+
+
+class CitationOption(Contract):
     evidenceIndex: int = Field(ge=0, le=511)
     quote: str = Field(min_length=4, max_length=800)
 
 
-class StageSelection(Contract):
+Question = Annotated[str, Field(min_length=1, max_length=300)]
+Limitation = Annotated[str, Field(min_length=1, max_length=500)]
+
+
+class StageSelectionBase(Contract):
     stage: Stage
-    judgment: Judgment
     scope: str = Field(min_length=1, max_length=500)
     explanation: str = Field(min_length=1, max_length=1000)
-    questions: list[str] = Field(max_length=5)
+    questions: list[Question] = Field(max_length=5)
+
+
+class DefinitiveStageSelection(StageSelectionBase):
+    judgment: Literal["RESTRICTION_APPLIES", "PERMISSION_IN_SCOPE"]
+    requiresInstitutionConfirmation: Literal[False]
+    citations: list[CitationSelection] = Field(min_length=1, max_length=8)
+
+
+class NeedsFactsStageSelection(StageSelectionBase):
+    judgment: Literal["NEEDS_FACTS"]
+    questions: list[Question] = Field(min_length=1, max_length=5)
     requiresInstitutionConfirmation: bool
     citations: list[CitationSelection] = Field(max_length=8)
 
-    @model_validator(mode="after")
-    def bounded_judgment(self) -> Self:
-        if any(not q.strip() or len(q) > 300 for q in self.questions):
-            raise ValueError("invalid question")
-        if self.judgment in {"PERMISSION_IN_SCOPE", "RESTRICTION_APPLIES"}:
-            if not self.citations or self.requiresInstitutionConfirmation:
-                raise ValueError("definitive judgment requires confirmed evidence")
-        if self.judgment == "NEEDS_FACTS" and not self.questions:
-            raise ValueError("missing fact questions")
-        return self
+
+class DeferredStageSelection(StageSelectionBase):
+    judgment: Literal["INSUFFICIENT_EVIDENCE", "CONFLICTING_EVIDENCE"]
+    requiresInstitutionConfirmation: bool
+    citations: list[CitationSelection] = Field(max_length=8)
+
+
+StageSelection = Annotated[
+    DefinitiveStageSelection | NeedsFactsStageSelection | DeferredStageSelection,
+    Field(discriminator="judgment"),
+]
 
 
 class PairSelection(Contract):
@@ -93,20 +112,25 @@ class PairSelection(Contract):
     secondProgramIndex: int = Field(ge=1, le=2)
     stages: list[StageSelection] = Field(min_length=6, max_length=6)
 
-    @model_validator(mode="after")
-    def all_stages(self) -> Self:
-        if self.firstProgramIndex >= self.secondProgramIndex or {s.stage for s in self.stages} != STAGES:
-            raise ValueError("invalid pair/stages")
-        return self
-
-
 class AnalysisSelection(Contract):
     summary: str = Field(min_length=1, max_length=1200)
     pairs: list[PairSelection] = Field(min_length=1, max_length=3)
-    limitations: list[str] = Field(min_length=1, max_length=12)
+    limitations: list[Limitation] = Field(min_length=1, max_length=12)
 
 
-def validate_selection(request: AnalyzeRequest, output: AnalysisSelection) -> None:
+def build_citation_options(request: AnalyzeRequest) -> list[CitationOption]:
+    return [
+        CitationOption(evidenceIndex=evidence_index, quote=quote)
+        for evidence_index, evidence in enumerate(request.evidence)
+        for quote in _split_exact_quotes(evidence.text)
+    ]
+
+
+def validate_selection(
+    request: AnalyzeRequest,
+    output: AnalysisSelection,
+    citation_options: list[CitationOption],
+) -> None:
     expected = set(combinations(range(len(request.programs)), 2))
     actual = [(p.firstProgramIndex, p.secondProgramIndex) for p in output.pairs]
     if len(actual) != len(expected) or set(actual) != expected:
@@ -114,9 +138,34 @@ def validate_selection(request: AnalyzeRequest, output: AnalysisSelection) -> No
     if any(not item.strip() or len(item) > 500 for item in output.limitations):
         raise ValueError("invalid limitation")
     for pair in output.pairs:
+        if pair.firstProgramIndex >= pair.secondProgramIndex or {stage.stage for stage in pair.stages} != STAGES:
+            raise ValueError("invalid pair/stages")
         for stage in pair.stages:
+            if any(not question.strip() for question in stage.questions):
+                raise ValueError("invalid question")
             for citation in stage.citations:
-                if citation.evidenceIndex >= len(request.evidence):
-                    raise ValueError("out-of-range citation")
-                if citation.quote not in request.evidence[citation.evidenceIndex].text:
-                    raise ValueError("citation is not an exact source quote")
+                if citation.citationOptionIndex >= len(citation_options):
+                    raise ValueError("out-of-range citation option")
+                selected = request.evidence[citation_options[citation.citationOptionIndex].evidenceIndex]
+                if selected.programIndex not in {pair.firstProgramIndex, pair.secondProgramIndex}:
+                    raise ValueError("citation option belongs to another pair")
+
+
+def _split_exact_quotes(text: str) -> list[str]:
+    quotes: list[str] = []
+    start = 0
+    while start < len(text):
+        while start < len(text) and text[start].isspace():
+            start += 1
+        if start >= len(text):
+            break
+        end = min(start + 800, len(text))
+        if end < len(text):
+            boundary = max(text.rfind("\n", start + 200, end), text.rfind(" ", start + 200, end))
+            if boundary > start:
+                end = boundary
+        quote = text[start:end].strip()
+        if len(quote) >= 4:
+            quotes.append(quote)
+        start = end
+    return quotes

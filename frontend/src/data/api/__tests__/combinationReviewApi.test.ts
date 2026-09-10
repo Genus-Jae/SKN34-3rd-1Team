@@ -48,6 +48,14 @@ describe('combination review HTTP boundary', () => {
     await expect(repository.replace(12, 2, reviewFixture)).resolves.toBeUndefined()
     expect(fetch).toHaveBeenCalledTimes(1)
   })
+  it('deletes the owned review with an explicit DELETE and accepts only 204', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetch)
+    await expect(repository.delete(12)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0][0]).toMatch(/\/api\/v1\/combination-reviews\/12$/)
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'DELETE', credentials: 'include', cache: 'no-store' })
+  })
   it('distinguishes an absent endpoint from an owned review not found', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(Response.json({ status: 404, error: 'Not Found' }, { status: 404 }))
       .mockResolvedValueOnce(Response.json({ code: 'COMBINATION_REVIEW_NOT_FOUND' }, { status: 404 }))

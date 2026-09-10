@@ -68,4 +68,8 @@
         INNER JOIN combination_review r ON r.id = p.review_id
         WHERE r.id = #{reviewId} AND r.owner_account_id = #{ownerAccountId}
     </delete>
+    <delete id="deleteReview">
+        DELETE FROM combination_review
+        WHERE id = #{reviewId} AND owner_account_id = #{ownerAccountId}
+    </delete>
 </mapper>

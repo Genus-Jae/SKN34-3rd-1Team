@@ -2,7 +2,7 @@ import json
 import tiktoken
 
 from app.combination_review.agent import CombinationReviewAgent
-from app.combination_review.models import AnalyzeRequest, CONTRACT_VERSION, validate_selection
+from app.combination_review.models import AnalyzeRequest, CONTRACT_VERSION, build_citation_options, validate_selection
 from app.combination_review.prompt import PROMPT_VERSION
 
 
@@ -24,13 +24,16 @@ class CombinationReviewService:
             # cl100k_base is already bundled by the service image; no runtime tokenizer download.
             if len(tiktoken.get_encoding("cl100k_base").encode(json.dumps(request.model_dump(), ensure_ascii=False), disallowed_special=())) > 100_000:
                 raise CombinationReviewError("CONTEXT_TOO_LARGE")
+            citation_options = build_citation_options(request)
             output = await self.agent.analyze(request)
-            validate_selection(request, output)
+            validate_selection(request, output, citation_options)
             result = output.model_dump()
             for pair in result["pairs"]:
                 for stage in pair["stages"]:
                     for citation in stage["citations"]:
-                        citation["evidenceId"] = request.evidence[citation.pop("evidenceIndex")].id
+                        option = citation_options[citation.pop("citationOptionIndex")]
+                        citation["evidenceId"] = request.evidence[option.evidenceIndex].id
+                        citation["quote"] = option.quote
             return {**self.configuration(), **result}
         except CombinationReviewError:
             raise

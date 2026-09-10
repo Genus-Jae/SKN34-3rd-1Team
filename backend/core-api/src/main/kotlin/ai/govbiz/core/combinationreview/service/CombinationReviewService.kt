@@ -31,4 +31,8 @@ class CombinationReviewService(private val repository: CombinationReviewReposito
         if (repository.findOwned(account.id, reviewId) == null) throw CombinationReviewNotFoundException()
         throw CombinationReviewRevisionConflictException()
     }
+
+    fun deleteOwned(account: Account, reviewId: Long) {
+        if (!repository.deleteOwned(account.id, reviewId)) throw CombinationReviewNotFoundException()
+    }
 }

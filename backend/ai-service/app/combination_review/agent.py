@@ -4,7 +4,7 @@ import json
 from agents import Agent, Model, ModelSettings, ModelTimeoutError, RunConfig, Runner
 from openai import APITimeoutError
 from openai.types.shared import Reasoning
-from app.combination_review.models import AnalysisSelection, AnalyzeRequest
+from app.combination_review.models import AnalysisSelection, AnalyzeRequest, build_citation_options
 from app.combination_review.prompt import INSTRUCTIONS
 
 
@@ -22,9 +22,16 @@ class CombinationReviewAgent:
         self._run_config = RunConfig(tracing_disabled=True, trace_include_sensitive_data=False)
 
     async def analyze(self, request: AnalyzeRequest) -> AnalysisSelection:
-        payload = request.model_dump()
-        payload["evidence"] = [{"index": i, **block.model_dump(exclude={"id"})}
-                               for i, block in enumerate(request.evidence)]
+        payload = request.model_dump(exclude={"evidence"})
+        payload["citationOptions"] = [
+            {
+                "citationOptionIndex": index,
+                "programIndex": request.evidence[option.evidenceIndex].programIndex,
+                "locator": request.evidence[option.evidenceIndex].locator,
+                "quote": option.quote,
+            }
+            for index, option in enumerate(build_citation_options(request))
+        ]
         try:
             async with asyncio.timeout(self._run_timeout_seconds):
                 result = await Runner.run(self._agent, json.dumps(payload, ensure_ascii=False),
