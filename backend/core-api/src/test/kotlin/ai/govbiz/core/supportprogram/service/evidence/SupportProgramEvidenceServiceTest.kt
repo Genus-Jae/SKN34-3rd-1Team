@@ -20,11 +20,17 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertNotSame
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
+import org.mockito.ArgumentMatchers.anyList
+import org.mockito.ArgumentMatchers.anyString
+import org.mockito.Mockito.mockingDetails
+import org.mockito.Mockito.times
 import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.inOrder
@@ -241,6 +247,88 @@ class SupportProgramEvidenceServiceTest {
         assertSame(failure, exception)
         verifyNoInteractions(repository, sourceDocumentFacade, aiEvidenceFacade)
     }
+
+    @Test
+    fun reusesImmutableChunksAcrossQuestionsAndRefreshTimesButStillChecksTheCurrentDocument() {
+        val program = SupportProgramTestHelper.catalogProgram("PBLN_TEST").program
+        val first = document(program, LocalDateTime.of(2026, 9, 5, 11, 0))
+        val refreshed = first.copy(fetchedAt = LocalDateTime.of(2026, 9, 5, 12, 0))
+        doReturn(program).`when`(detailService).get("BIZINFO", program.id)
+        doReturn(first, refreshed).`when`(repository).findPresentSourceDocument("BIZINFO", program.id)
+        doReturn(answer()).`when`(aiEvidenceFacade).answer(anyString(), anyList(), anyString())
+
+        service.answer("BIZINFO", program.id, QUESTION)
+        service.answer("BIZINFO", program.id, "문의처는 어디인가요?")
+
+        val chunks = requestedChunks()
+        assertSame(chunks[0], chunks[1])
+        assertEquals(SupportProgramEvidenceChunker.chunk(first), chunks[0])
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (chunks[0] as MutableList<SupportProgramEvidenceChunk>).clear()
+        }
+        verify(repository, times(2)).findPresentSourceDocument("BIZINFO", program.id)
+        verifyNoInteractions(sourceDocumentFacade)
+    }
+
+    @Test
+    fun replacesPreparedChunksImmediatelyWhenTheCurrentContentChanges() {
+        val program = SupportProgramTestHelper.catalogProgram("PBLN_TEST").program
+        val first = document(program, LocalDateTime.of(2026, 9, 5, 11, 0))
+        val changed = document(program, first.fetchedAt, "신청 방법이 방문 접수로 변경되었습니다.")
+        doReturn(program).`when`(detailService).get("BIZINFO", program.id)
+        doReturn(first, changed).`when`(repository).findPresentSourceDocument("BIZINFO", program.id)
+        doReturn(answer()).`when`(aiEvidenceFacade).answer(anyString(), anyList(), anyString())
+
+        repeat(2) { service.answer("BIZINFO", program.id, QUESTION) }
+
+        val chunks = requestedChunks()
+        assertNotSame(chunks[0], chunks[1])
+        assertEquals(SupportProgramEvidenceChunker.chunk(changed), chunks[1])
+        assertNotEquals(chunks[0][0].id, chunks[1][0].id)
+    }
+
+    @Test
+    fun boundsTheChunkCacheAndKeepsIdenticalTextFromDifferentProgramsSeparate() {
+        val programs = (0..32).map { SupportProgramTestHelper.catalogProgram("PBLN_CACHE_$it").program }
+        val fetchedAt = LocalDateTime.of(2026, 9, 5, 11, 0)
+        doReturn(answer()).`when`(aiEvidenceFacade).answer(anyString(), anyList(), anyString())
+        for (program in programs) {
+            doReturn(program).`when`(detailService).get("BIZINFO", program.id)
+            doReturn(document(program, fetchedAt)).`when`(repository).findPresentSourceDocument("BIZINFO", program.id)
+            service.answer("BIZINFO", program.id, QUESTION)
+        }
+        service.answer("BIZINFO", programs.first().id, QUESTION)
+
+        val chunks = requestedChunks()
+        assertNotEquals(chunks[0][0].documentId, chunks[1][0].documentId)
+        assertNotEquals(chunks[0][0].id, chunks[1][0].id)
+        assertEquals(chunks.first(), chunks.last())
+        assertNotSame(chunks.first(), chunks.last())
+    }
+
+    @Test
+    fun doesNotUsePreparedChunksWhenRefreshingTheSourceFails() {
+        val program = SupportProgramTestHelper.catalogProgram("PBLN_TEST").program
+        val fresh = document(program, LocalDateTime.of(2026, 9, 5, 11, 0))
+        val stale = fresh.copy(fetchedAt = LocalDateTime.of(2026, 9, 5, 4, 59))
+        doReturn(program).`when`(detailService).get("BIZINFO", program.id)
+        doReturn(fresh, stale).`when`(repository).findPresentSourceDocument("BIZINFO", program.id)
+        doReturn(answer()).`when`(aiEvidenceFacade).answer(anyString(), anyList(), anyString())
+        doThrow(sourceFailure()).`when`(sourceDocumentFacade).load(program)
+
+        service.answer("BIZINFO", program.id, QUESTION)
+        assertThrows(SupportProgramEvidenceUnavailableException::class.java) {
+            service.answer("BIZINFO", program.id, QUESTION)
+        }
+
+        assertEquals(1, requestedChunks().size)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun requestedChunks(): List<List<SupportProgramEvidenceChunk>> =
+        mockingDetails(aiEvidenceFacade).invocations.filter { it.method.name == "answer" }
+            .map { it.arguments[1] as List<SupportProgramEvidenceChunk> }
 
     private fun answer() = SupportProgramEvidenceAnswerResult(
         answer = "공식 원문에서 온라인 신청을 확인했습니다.",

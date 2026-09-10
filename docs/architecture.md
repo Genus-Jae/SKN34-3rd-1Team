@@ -135,6 +135,9 @@ Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보�
    오름차순의 최대 5개를 AI 없이 반환합니다. 자연어 검색의 빈 후보가 전체 색인 장애 때문이면 503으로 알리고,
    최초 빈 DB나 준비된 제공처의 정상 0건이면 빈 목록을 반환합니다. 미공개 제공처 데이터는 노출하지 않습니다.
 3. 비어 있지 않은 질의는 대상 공고 전체의 정확한 ID·내용 해시를 AI Service에 전달합니다.
+   Core는 적격 공고 전체 값과 순서가 같은 동안 단일 불변 스냅샷의 검색 문서·해시·정규화 본문을 재사용합니다.
+   스냅샷 크기는 제한하며 큰 입력은 저장하지 않고 정상 처리합니다. 가변 목록을 복사하고 HTTP 호출을 락으로
+   직렬화하지 않습니다. DB 조회·접수 상태 계산·공개/색인 준비 검증·키워드 순위 계산은 매 요청 유지합니다.
    최신 공고 20개를 먼저 자르지 않습니다. Qdrant가 반환해야 할 개수는 `min(대상 공고 수, 20)`입니다.
 4. `AiSupportProgramRetrievalFacade`는 의미 검색 응답의 질의·ID·해시·중복·유한 점수·내림차순·개수를
    검증한 뒤 전체 적격 공고의 동일 색인 본문에서 키워드 상위 20개를 구합니다. 질의와 본문을 NFC로
@@ -255,10 +258,11 @@ POST /api/v1/support-programs/detail/answers
       BizInfoSupportProgramSourceDocumentFacade → BizInfoSourceDocumentClient
         → 기업마당 공식 HTTPS 상세 페이지의 HTML만 수집·읽기 가능한 텍스트로 정규화
       → SupportProgramRepository → MySQL 원문 UPSERT
-  → SupportProgramEvidenceChunker → 결정적 청크 최대 50개
+  → 같은 공고 ID·내용 해시의 불변 청크 재사용 (Core 인스턴스별 최근 32개 공고)
+    → 없으면 SupportProgramEvidenceChunker → 결정적 청크 최대 50개
   → AiSupportProgramEvidenceFacade → AI Service
       → 별도 Qdrant evidence 컬렉션에 청크 색인
-      → 질문과 가까운 청크 최대 5개 검색
+      → 질문과 가까운 청크 최대 5개 검색 (동일 질문 임베딩은 최대 256개/300초 재사용)
       → 단일 typed Agent → OpenAI 근거 답변·짧은 인용 번호 선택
       → Agent가 검증한 번호를 요청의 원래 청크 ID로 복원
   → Core가 청크·인용을 검증 → 답변과 원문 발췌·URL 반환
@@ -597,7 +601,11 @@ AI Service의 랭킹·조건 해석 모델·HTTP·Agent 시간 초과는 내부 
 조건 해석 실패는 일반 오류로 합치지 않고 시간 초과·일시 이용 불가를 구분하며, AI 로그에는 실패 종류·오류 클래스명·
 경과 시간만 남깁니다. 요청 문장·기업 조건·모델 응답과 원문 예외는 기록하지 않습니다.
 의미 검색의 준비·임베딩·Qdrant 시간과 랭킹의 준비·모델·검증 시간, 캐시 상태·후보 수·총시간은
-`app` INFO로 기록하며 캐시 키는 남기지 않습니다. lifespan은 기존 app/root handler를 재사용하거나
+`app` INFO로 기록합니다. Core도 DB·후보 준비·의미/키워드 검색·랭킹·전체 성공/실패 시간을 기록합니다.
+상세 근거 질문에는 색인·검색·답변 단계 시간, 질문/청크 임베딩 캐시 지표를 기록하며, 대화·랭킹·근거 답변에는
+SDK가 반환한 입력·출력·캐시 입력·추론 토큰 수를 기록합니다. 입력·원문·응답 본문·캐시 키는 남기지 않습니다.
+근거 질문 임베딩은 인스턴스별 256개/300초, 내용이 같은 청크 벡터는 128개/300초 재사용합니다.
+공고·청크 ID나 인용 계약을 바꾸지 않으며 매회 Qdrant 검증과 실패 전파를 유지합니다. lifespan은 기존 app/root handler를 재사용하거나
 stderr handler 하나를 추가합니다. 전역·OpenAI·HTTP 로그 수준은 바꾸지 않습니다.
 시간 초과 외 LLM 실행 실패·색인 미준비·Qdrant 실패는 내부 503으로 반환되고 Core는 공개
 `503 AI_SERVICE_UNAVAILABLE`로 변환합니다. Core가 관측한 연결·읽기 timeout 및 점수화·색인 API의

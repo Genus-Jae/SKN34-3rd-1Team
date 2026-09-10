@@ -7,6 +7,9 @@ import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.facade.SupportProgramRankingFacade
 import ai.govbiz.core.supportprogram.facade.AiSupportProgramRetrievalFacade
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import java.time.LocalDate
 import java.time.Clock
 import java.time.Instant
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.Mockito
 import org.mockito.junit.jupiter.MockitoExtension
+import org.slf4j.LoggerFactory
 
 @ExtendWith(MockitoExtension::class)
 class SupportProgramSearchServiceTest {
@@ -443,6 +447,57 @@ class SupportProgramSearchServiceTest {
         assertEquals(listOf(seoul, busan, null), ranking.calls.map { it.companyConditions })
         assertNull(ranking.calls.last().referenceDate)
         Mockito.verify(retrieval).retrieve("사업화", programs)
+    }
+
+    @Test
+    fun recordsDatabasePreparationRetrievalRankingAndTotalTimingWithoutUserOrProgramText() {
+        val query = "사용자 비공개 질문"
+        val conditions = SupportProgramCompanyConditions(region = "비공개 소재지")
+        val programs = listOf(catalogProgram("private", summary = "비공개 본문"))
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve("$query\n${conditions.region}", programs)
+        ranking.response = { it.map(CatalogSupportProgram::program) }
+
+        val messages = timingLogs { service().search(query, false, conditions) }
+
+        assertEquals(5, messages.size)
+        for (stage in listOf("database_fetch", "eligibility_prepare", "retrieval", "ranking", "total")) {
+            assertTrue(messages.any { it.contains("stage=$stage outcome=success duration_ms=") })
+        }
+        assertTrue(messages.all { it.substringAfter("duration_ms=").toDouble() >= 0.0 })
+        assertFalse(messages.any { it.contains("비공개") || it.contains("private") })
+    }
+
+    @Test
+    fun recordsFailedRankingAndTotalTimingWithoutLoggingTheExceptionOrHidingFailure() {
+        val programs = listOf(catalogProgram("private"))
+        Mockito.doReturn(programs).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doReturn(programs).`when`(retrieval).retrieve("비공개 질문", programs)
+        ranking.response = { throw IllegalStateException("비공개 오류 본문") }
+
+        val messages = timingLogs {
+            val failure = assertThrows(IllegalStateException::class.java) {
+                service().search("비공개 질문", false)
+            }
+            assertEquals("비공개 오류 본문", failure.message)
+        }
+
+        assertTrue(messages.any { it.contains("stage=ranking outcome=failure duration_ms=") })
+        assertTrue(messages.any { it.contains("stage=total outcome=failure duration_ms=") })
+        assertFalse(messages.any { it.contains("비공개") || it.contains("private") })
+    }
+
+    private fun timingLogs(action: () -> Unit): List<String> {
+        val logger = LoggerFactory.getLogger(SupportProgramSearchService::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+        try {
+            action()
+            return appender.list.map { it.formattedMessage }
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
     }
 
     private fun service() = SupportProgramSearchService(

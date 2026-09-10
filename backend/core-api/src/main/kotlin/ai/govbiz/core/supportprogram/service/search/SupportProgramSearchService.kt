@@ -14,6 +14,7 @@ import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchResult
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchTrace
 import java.time.LocalDate
 import java.time.Clock
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 
@@ -67,37 +68,43 @@ class SupportProgramSearchService(
         acceptingOnly: Boolean,
         referenceDate: LocalDate? = null,
         companyConditions: SupportProgramCompanyConditions? = null,
-    ): SearchExecution {
+    ): SearchExecution = timed("total") {
         val query = rawQuery?.trim().orEmpty()
         val searchReferenceDate = referenceDate ?: companyConditions?.let { LocalDate.now(clock) }
-        val presentPrograms = (if (query.isBlank()) {
-            supportProgramRepository.findPublishedPresent()
-        } else {
-            supportProgramRepository.findSearchablePresent()
-        }).let { programs ->
-            searchReferenceDate?.let { date -> programs.map { it.withStatusAt(date) } } ?: programs
-        }
-        if (query.isNotBlank() && presentPrograms.isEmpty()) {
-            val statuses = supportProgramRepository.findSyncStatuses()
-            // 게시된 공고/미복구 기존 공고가 있는데 모든 색인이 불가하면 '검색 결과 없음'이 아닙니다.
-            // 초기 빈 DB나 검색 가능한 제공처의 정상 0건 스냅샷은 기존 빈 결과를 유지합니다.
-            if (statuses.none { it.indexReady } &&
-                statuses.any { it.publishedGeneration != null || it.publishedProgramCount > 0 }
-            ) {
-                throw AiServiceCallException.unavailable(null)
+        val presentPrograms = timed("database_fetch") {
+            val programs = if (query.isBlank()) {
+                supportProgramRepository.findPublishedPresent()
+            } else {
+                supportProgramRepository.findSearchablePresent()
             }
+            if (query.isNotBlank() && programs.isEmpty()) {
+                val statuses = supportProgramRepository.findSyncStatuses()
+                // 게시된 공고/미복구 기존 공고가 있는데 모든 색인이 불가하면 '검색 결과 없음'이 아닙니다.
+                // 초기 빈 DB나 검색 가능한 제공처의 정상 0건 스냅샷은 기존 빈 결과를 유지합니다.
+                if (statuses.none { it.indexReady } &&
+                    statuses.any { it.publishedGeneration != null || it.publishedProgramCount > 0 }
+                ) {
+                    throw AiServiceCallException.unavailable(null)
+                }
+            }
+            programs
         }
-        val eligiblePrograms = presentPrograms
-            .asSequence()
-            .filter { !acceptingOnly || it.program.status == SupportProgramStatus.OPEN }
-            .toList()
+
+        val eligiblePrograms = timed("eligibility_prepare") {
+            presentPrograms.asSequence()
+                .map { program -> searchReferenceDate?.let { program.withStatusAt(it) } ?: program }
+                .filter { !acceptingOnly || it.program.status == SupportProgramStatus.OPEN }
+                .toList()
+        }
 
         val candidates = when {
             eligiblePrograms.isEmpty() || query.isBlank() -> emptyList()
-            else -> retrievalFacade.retrieve(
-                buildRetrievalQuery(query, companyConditions),
-                eligiblePrograms,
-            )
+            else -> timed("retrieval") {
+                retrievalFacade.retrieve(
+                    buildRetrievalQuery(query, companyConditions),
+                    eligiblePrograms,
+                )
+            }
         }
 
         val programs = when {
@@ -110,16 +117,18 @@ class SupportProgramSearchService(
                 )
                 .take(SupportProgramRankingFacade.MAX_RESULTS)
                 .map { it.program.copy(matchedReasons = emptyList(), recommendationScore = null, eligibilityReview = null) }
-            else -> rankingFacade.rank(
-                query,
-                candidates,
-                SupportProgramRankingFacade.MAX_RESULTS,
-                companyConditions,
-                searchReferenceDate.takeIf { companyConditions != null },
-            )
+            else -> timed("ranking") {
+                rankingFacade.rank(
+                    query,
+                    candidates,
+                    SupportProgramRankingFacade.MAX_RESULTS,
+                    companyConditions,
+                    searchReferenceDate.takeIf { companyConditions != null },
+                )
+            }
         }
 
-        return SearchExecution(
+        SearchExecution(
             query = query,
             result = SupportProgramSearchResult(
                 query = query,
@@ -161,6 +170,23 @@ class SupportProgramSearchService(
                 ),
             ),
         )
+
+    private inline fun <T> timed(stage: String, action: () -> T): T {
+        val started = System.nanoTime()
+        var completed = false
+        try {
+            return action().also { completed = true }
+        } finally {
+            logger.info(
+                "support_program_search stage={} outcome={} duration_ms={}",
+                stage, if (completed) "success" else "failure", (System.nanoTime() - started) / 1_000_000.0,
+            )
+        }
+    }
+
+    private companion object {
+        val logger = LoggerFactory.getLogger(SupportProgramSearchService::class.java)
+    }
 
     private data class SearchExecution(
         val query: String,

@@ -337,3 +337,63 @@ async def test_scripted_trade_region_explanation_and_assent_flow_carries_small_c
     assert len(model.calls) == len(messages)
     assert all(len(call.input) == 1 for call in model.calls)
     model.assert_complete()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_interpretation_logs_stage_duration_without_conversation_content(request_data, output_data, caplog, failure):
+    import logging
+
+    text = "private invalid output" if failure else json.dumps(output_data, ensure_ascii=False)
+    model = ScriptedModel([[assistant_message(text)]])
+    agent = SupportProgramConversationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
+    with caplog.at_level(logging.INFO, logger="app.support_program_conversation.agent"):
+        if failure:
+            with pytest.raises(SupportProgramConversationError):
+                await agent.interpret(SupportProgramConversationRequest.model_validate(request_data))
+        else:
+            await agent.interpret(SupportProgramConversationRequest.model_validate(request_data))
+    messages = [record.getMessage() for record in caplog.records if record.name == "app.support_program_conversation.agent"]
+    assert len(messages) == 1
+    assert f"outcome={'failed' if failure else 'completed'}" in messages[0]
+    for metric in ("model_ms=", "validation_ms=", "elapsed_ms="):
+        assert metric in messages[0]
+    for private in (request_data["message"], request_data["context"]["query"], "private invalid output", "2024-01-01"):
+        assert private not in messages[0]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("with_usage", [True, False])
+async def test_actual_sdk_usage_is_logged_and_missing_usage_stays_unknown(request_data, output_data, caplog, with_usage):
+    import logging
+
+    def handler(request):
+        body = responses_body(output_data)
+        if with_usage:
+            body["usage"] = {
+                "input_tokens": 800, "output_tokens": 120, "total_tokens": 920,
+                "input_tokens_details": {"cached_tokens": 600},
+                "output_tokens_details": {"reasoning_tokens": 20},
+            }
+        return httpx2.Response(200, json=body)
+
+    client = AsyncOpenAI(api_key="secret-test-key", max_retries=0,
+                         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
+    agent = SupportProgramConversationAgent(
+        model=OpenAIResponsesModel(model="test-model", openai_client=client),
+        model_timeout_seconds=3, run_timeout_seconds=4,
+    )
+    try:
+        with caplog.at_level(logging.INFO, logger="app.support_program_conversation.agent"):
+            await agent.interpret(SupportProgramConversationRequest.model_validate(request_data))
+    finally:
+        await client.close()
+    messages = [record.getMessage() for record in caplog.records if record.name == "app.support_program_conversation.agent"]
+    assert len(messages) == 1 and "outcome=completed" in messages[0]
+    if with_usage:
+        for metric in ("usage_reported=True", "input_tokens=800", "output_tokens=120", "cached_input_tokens=600", "reasoning_tokens=20"):
+            assert metric in messages[0]
+    else:
+        assert "usage_reported=False" in messages[0]
+        assert "input_tokens=None" in messages[0] and "output_tokens=None" in messages[0]
+    assert "secret-test-key" not in caplog.text
