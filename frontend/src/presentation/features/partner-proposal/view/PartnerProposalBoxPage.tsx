@@ -8,6 +8,7 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { HelpTip } from '../../../shared/workspace/HelpTip'
 import { PartnerManagementHeader } from '../../../shared/partner-recruitment/PartnerManagementHeader'
 import {
   proposalActionConfirmations,
@@ -34,7 +35,7 @@ export function PartnerProposalBoxPage() {
     boxes,
     phase,
     proposals,
-    pendingCount,
+    receivedPendingCount,
     reload,
     confirmation,
     requestAction,
@@ -70,9 +71,16 @@ export function PartnerProposalBoxPage() {
               onClick={() => selectBox(item.key)}
             >
               {item.label}
-              {item.key === 'received' && pendingCount > 0 ? ` · 대기 ${pendingCount}` : ''}
+              {item.key === 'received' && receivedPendingCount > 0 ? ` · 대기 ${receivedPendingCount}` : ''}
             </button>
           ))}
+          {/* 제안 원칙은 카드로 늘 펼쳐 두지 않고 탭 옆 ? 도움말로 봅니다. */}
+          <HelpTip label="제안 원칙 도움말" title="제안 원칙">
+            <p className="m-0">
+              제안은 모집글 하나에 한 번만 보낼 수 있고 7일 안에 응답이 없으면 만료됩니다. 담당자 이메일은 수락된 뒤에만 서로에게
+              공개되며, 거절·만료·철회된 제안은 같은 모집글에 다시 보낼 수 없습니다.
+            </p>
+          </HelpTip>
         </div>
 
         {notice ? <p className={workspacePageStyles.emptyNote} role="alert">{notice}</p> : null}
@@ -192,13 +200,6 @@ export function PartnerProposalBoxPage() {
           </div>
         )}
 
-        <section className={workspacePageStyles.card} aria-label="제안 원칙">
-          <p className={workspacePageStyles.sectionEyebrow}>제안 원칙</p>
-          <p className={workspacePageStyles.emptyNote}>
-            제안은 모집글 하나에 한 번만 보낼 수 있고 7일 안에 응답이 없으면 만료됩니다. 담당자 이메일은 수락된 뒤에만 서로에게
-            공개되며, 거절·만료·철회된 제안은 같은 모집글에 다시 보낼 수 없습니다.
-          </p>
-        </section>
       </div>
     </>
   )

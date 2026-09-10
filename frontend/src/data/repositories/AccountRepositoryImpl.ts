@@ -100,14 +100,15 @@ export class AccountRepositoryImpl implements AccountRepository {
     }
   }
 
-  /** 422(현재 비밀번호 불일치)·429는 화면이 안내하는 업무 결과이고, 그 외 실패는 예외로 둡니다. */
-  async changePassword(currentPassword: string, newPassword: string, signal?: AbortSignal): Promise<ChangePasswordResult> {
+  /** 429는 화면이 안내하는 업무 결과이고, 그 외 실패는 예외로 둡니다. */
+  async changePassword(newPassword: string, signal?: AbortSignal): Promise<ChangePasswordResult> {
     try {
-      await changePasswordApi(currentPassword, newPassword, signal)
+      await changePasswordApi(newPassword, signal)
       return { outcome: 'changed' }
     } catch (error) {
-      const outcome = toPasswordFailure(error)
-      if (outcome !== null) return outcome
+      if (error instanceof AccountApiError && error.status === 429) {
+        return { outcome: 'rate-limited', retryAfterSeconds: error.retryAfterSeconds }
+      }
       throw error
     }
   }

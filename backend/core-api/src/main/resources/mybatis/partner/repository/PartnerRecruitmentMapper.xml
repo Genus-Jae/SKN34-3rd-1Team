@@ -153,6 +153,30 @@
         )
     </insert>
 
+    <update id="updateRecruitment" parameterType="ai.govbiz.core.partner.repository.mapper.PartnerRecruitmentDbRow">
+        UPDATE partner_recruitment
+        SET title = #{title},
+            body = #{body},
+            own_role = #{ownRole},
+            seeking_role = #{seekingRole},
+            seeking_count = #{seekingCount},
+            region = #{region},
+            minimum_company_age_years = #{minimumCompanyAgeYears},
+            capabilities = #{capabilitiesJson},
+            recruitment_deadline = #{recruitmentDeadline},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND closed_at IS NULL
+    </update>
+
+    <update id="closeRecruitment">
+        UPDATE partner_recruitment
+        SET closed_at = #{closedAt},
+            updated_at = #{closedAt}
+        WHERE id = #{id}
+          AND closed_at IS NULL
+    </update>
+
     <select id="findRecruitmentById" resultMap="partnerRecruitmentDbRow">
         SELECT
             <include refid="recruitmentColumns" />

@@ -2,6 +2,9 @@ package ai.govbiz.core.partner.service.exception
 
 import java.time.LocalDate
 
+/** 작성자가 아닌 회원이 모집글을 수정·마감하려 할 때 발생합니다. */
+class RecruitmentActionForbiddenException : RuntimeException()
+
 /** 목록 조회의 지역 조건이 20자를 넘을 때 발생합니다. 지역은 여러 개라 파라미터 검증 대신 컨트롤러가 직접 확인합니다. */
 class RecruitmentRegionFilterInvalidException : RuntimeException()
 

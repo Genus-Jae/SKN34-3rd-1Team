@@ -6,6 +6,8 @@ function classes(...groups: string[]) {
 // 카드·태그·버튼은 shared/workspace의 공용 스타일을 쓰고 여기서는 프로필 고유 배치만 다룹니다.
 export const companyProfileStyles = {
   summaryTop: 'flex items-center gap-4',
+  // 카드 제목 옆에 ? 도움말을 붙이는 줄입니다.
+  titleRow: 'flex items-center gap-2',
   summaryIdentity: 'flex items-center gap-4',
   summaryAvatar:
     'grid size-[3.25rem] shrink-0 place-items-center rounded-[0.9rem] bg-brand-accent text-[1.2rem] font-black text-app-ink',
@@ -91,7 +93,8 @@ export const companyProfileStyles = {
   formError: 'm-0 text-[0.78rem] font-bold text-[#9a3947]',
   formHint: 'text-[0.72rem] text-sample-muted',
   formActions: 'flex flex-wrap justify-end gap-2',
-  checklist: 'flex flex-col gap-[0.45rem] text-[0.8rem]',
+  // 완성도 막대 아래 한 줄로 흐르는 체크리스트입니다. 좁으면 줄을 바꿉니다.
+  checklist: 'flex flex-wrap gap-x-5 gap-y-[0.45rem] pt-1 text-[0.8rem]',
   checklistItem: 'relative flex items-center gap-[0.55rem]',
   doneMark: 'grid size-[1.125rem] shrink-0 place-items-center rounded-full bg-brand-accent text-app-ink',
   todoMark: 'size-[1.125rem] shrink-0 rounded-full border border-sample-border bg-white',

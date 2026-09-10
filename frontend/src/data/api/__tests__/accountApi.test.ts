@@ -107,14 +107,14 @@ describe('account profile apis', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(changePasswordApi('password1', 'new-password-2')).resolves.toBeUndefined()
+    await expect(changePasswordApi('new-password-2')).resolves.toBeUndefined()
     await expect(getAccountDeletionPreviewApi()).resolves.toEqual(preview)
     await expect(deleteAccountApi('password1')).resolves.toBeUndefined()
 
     const calls = fetchMock.mock.calls as [string, RequestInit][]
     expect(new URL(calls[0]![0]).pathname).toBe('/api/v1/me/password')
     expect(calls[0]![1].method).toBe('PUT')
-    expect(JSON.parse(String(calls[0]![1].body))).toEqual({ currentPassword: 'password1', newPassword: 'new-password-2' })
+    expect(JSON.parse(String(calls[0]![1].body))).toEqual({ newPassword: 'new-password-2' })
     expect(new URL(calls[1]![0]).pathname).toBe('/api/v1/me/deletion-preview')
     expect(calls[1]![1].cache).toBe('no-store')
     expect(new URL(calls[2]![0]).pathname).toBe('/api/v1/me')
@@ -123,9 +123,9 @@ describe('account profile apis', () => {
     expect(JSON.parse(String(calls[2]![1].body))).toEqual({ password: 'password1' })
   })
 
-  it('maps a wrong current password and rate limits to outcomes and clears the hint only after deletion', async () => {
+  it('maps rate limits and a wrong deletion password to outcomes and clears the hint only after deletion', async () => {
     vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(problemResponse(422, 'CURRENT_PASSWORD_MISMATCH'))
+      .mockResolvedValueOnce(problemResponse(401, 'AUTHENTICATION_REQUIRED'))
       .mockResolvedValueOnce(problemResponse(429, 'LOGIN_RATE_LIMITED', { retryAfterSeconds: 30 }))
       .mockResolvedValueOnce(problemResponse(422, 'CURRENT_PASSWORD_MISMATCH'))
       .mockResolvedValueOnce(problemResponse(500, null))
@@ -133,8 +133,9 @@ describe('account profile apis', () => {
     const storage = createMemorySessionHintStorage(true)
     const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
 
-    await expect(repository.changePassword('wrong', 'new-password-2')).resolves.toEqual({ outcome: 'current-password-mismatch' })
-    await expect(repository.changePassword('wrong', 'new-password-2')).resolves.toEqual({ outcome: 'rate-limited', retryAfterSeconds: 30 })
+    // 비밀번호 변경은 현재 비밀번호를 받지 않으므로 401 같은 실패는 결과가 아니라 예외입니다.
+    await expect(repository.changePassword('new-password-2')).rejects.toMatchObject({ status: 401 })
+    await expect(repository.changePassword('new-password-2')).resolves.toEqual({ outcome: 'rate-limited', retryAfterSeconds: 30 })
     await expect(repository.deleteAccount('wrong')).resolves.toEqual({ outcome: 'current-password-mismatch' })
     await expect(repository.deleteAccount('password1')).rejects.toBeInstanceOf(AccountApiError)
     expect(storage.hasSession()).toBe(true)

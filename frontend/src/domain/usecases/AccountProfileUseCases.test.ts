@@ -7,10 +7,9 @@ describe('account profile use cases', () => {
     const changePassword = vi.fn().mockResolvedValue({ outcome: 'changed' })
     const useCase = new ChangePasswordUseCase({ changePassword })
 
-    expect(() => useCase.execute('current-1', 'short')).toThrow(RangeError)
-    expect(() => useCase.execute('same-password', 'same-password')).toThrow(RangeError)
-    await expect(useCase.execute('current-1', 'new-password-2')).resolves.toEqual({ outcome: 'changed' })
-    expect(changePassword).toHaveBeenCalledWith('current-1', 'new-password-2', undefined)
+    expect(() => useCase.execute('short')).toThrow(RangeError)
+    await expect(useCase.execute('new-password-2')).resolves.toEqual({ outcome: 'changed' })
+    expect(changePassword).toHaveBeenCalledWith('new-password-2', undefined)
   })
 
   it('reads the deletion preview and refuses an empty password for deletion', async () => {

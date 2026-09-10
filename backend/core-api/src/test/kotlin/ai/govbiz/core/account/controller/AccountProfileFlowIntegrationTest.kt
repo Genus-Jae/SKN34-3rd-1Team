@@ -55,28 +55,34 @@ class AccountProfileFlowIntegrationTest {
     }
 
     @Test
-    fun changesThePasswordKeepsOnlyTheCurrentSessionAndRejectsAWrongCurrentPassword() {
+    fun changesThePasswordWithTheSessionAloneAndKeepsOnlyTheCurrentSession() {
         val phone = signUp("manager@company.co.kr", "password1")
         val laptop = logIn("manager@company.co.kr", "password1")
 
+        // 현재 비밀번호는 받지 않고 세션만으로 본인을 확인합니다. 새 비밀번호 규칙과 세션·Origin 검사는 그대로입니다.
         mockMvc.perform(
             put("/api/v1/me/password").cookie(laptop).origin()
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"currentPassword":"wrong-password","newPassword":"new-password-2"}"""),
-        )
-            .andExpect(status().isUnprocessableContent())
-            .andExpect(jsonPath("$.code").value("CURRENT_PASSWORD_MISMATCH"))
-        mockMvc.perform(
-            put("/api/v1/me/password").cookie(laptop).origin()
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"currentPassword":"password1","newPassword":"short"}"""),
+                .content("""{"newPassword":"short"}"""),
         )
             .andExpect(status().isBadRequest())
+        mockMvc.perform(
+            put("/api/v1/me/password").origin()
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"newPassword":"new-password-2"}"""),
+        )
+            .andExpect(status().isUnauthorized())
+        mockMvc.perform(
+            put("/api/v1/me/password").cookie(laptop)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"newPassword":"new-password-2"}"""),
+        )
+            .andExpect(status().isForbidden())
 
         mockMvc.perform(
             put("/api/v1/me/password").cookie(laptop).origin()
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"currentPassword":"password1","newPassword":"new-password-2"}"""),
+                .content("""{"newPassword":"new-password-2"}"""),
         )
             .andExpect(status().isNoContent())
 

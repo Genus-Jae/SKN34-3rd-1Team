@@ -55,7 +55,8 @@ export function usePartnerProposalBoxViewModel(
     ? received.proposals
     : (sent.page?.proposals ?? []).map((proposal) => sentOverrides[proposal.id] ?? proposal)
   const phase = box === 'received' ? received.phase : sent.phase
-  const pendingCount = box === 'received' ? received.pendingCount : (sent.page?.pendingCount ?? 0)
+  // 받은 제안 탭의 대기 배지는 어느 탭을 보고 있든 받은 제안함의 대기 건수입니다. 보낸 제안함의 대기 건수(내가 보낸 뒤 응답을 기다리는 수)와 섞지 않습니다.
+  const receivedPendingCount = received.pendingCount
 
   function reloadActiveBox() {
     if (box === 'received') received.reload()
@@ -112,7 +113,7 @@ export function usePartnerProposalBoxViewModel(
     ],
     phase,
     proposals,
-    pendingCount,
+    receivedPendingCount,
     reload: reloadActiveBox,
     confirmation,
     /** 카드의 수락·거절·철회 버튼은 바로 보내지 않고 확인 단계를 엽니다. */

@@ -1,11 +1,16 @@
+import type { ReactNode } from 'react'
+
 import { workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
 import type { useCompanyPartnerProfileViewModel } from '../viewmodel/useCompanyPartnerProfileViewModel'
 import { companyProfileChoiceClassName, companyProfileStyles } from './CompanyProfilePage.styles'
 
 type PartnerProfileViewModel = ReturnType<typeof useCompanyPartnerProfileViewModel>
 
-/** 협업·파트너 설정 카드입니다. 기업을 등록한 뒤에만 편집할 수 있고, 저장한 값은 모집글 상세와 기업 프로필 보기에 나갑니다. */
-export function CompanyPartnerProfileSection({ vm }: { vm: PartnerProfileViewModel }) {
+/**
+ * 협업·파트너 설정 카드입니다. 기업을 등록한 뒤에만 편집할 수 있고, 저장한 값은 모집글 상세와 기업 프로필 보기에 나갑니다.
+ * [titleHelp]는 제목 옆에 붙는 공개 범위 `?` 도움말입니다.
+ */
+export function CompanyPartnerProfileSection({ vm, titleHelp }: { vm: PartnerProfileViewModel; titleHelp?: ReactNode }) {
   const errorId = (field: string) => (vm.error?.field === field ? `partner-profile-${field}-error` : undefined)
   const errorOf = (field: string) =>
     vm.error?.field === field ? <p id={`partner-profile-${field}-error`} className={companyProfileStyles.formError} role="alert">{vm.error.message}</p> : null
@@ -14,10 +19,10 @@ export function CompanyPartnerProfileSection({ vm }: { vm: PartnerProfileViewMod
     <section className={workspacePageStyles.card} aria-label="협업·파트너 설정">
       <div className={workspacePageStyles.cardHeader}>
         <div>
-          <h2 className={workspacePageStyles.cardTitle}>협업·파트너 설정</h2>
-          <p className={workspacePageStyles.cardDescription}>
-            모집글 상세와 기업 프로필 보기에서 다른 기업에게 보입니다.
-          </p>
+          <div className={companyProfileStyles.titleRow}>
+            <h2 className={workspacePageStyles.cardTitle}>협업·파트너 설정</h2>
+            {titleHelp}
+          </div>
         </div>
         {vm.isSet ? <span className={workspaceTagClassName('ok')}>저장됨</span> : <span className={workspaceTagClassName('muted')}>미설정</span>}
       </div>
@@ -43,7 +48,6 @@ export function CompanyPartnerProfileSection({ vm }: { vm: PartnerProfileViewMod
                 </button>
               ))}
             </div>
-            <span className={companyProfileStyles.formHint}>모집글의 "찾는 역할"과 같은 구분입니다. 하나 이상 고릅니다.</span>
             {errorOf('roles')}
           </div>
 
@@ -62,7 +66,6 @@ export function CompanyPartnerProfileSection({ vm }: { vm: PartnerProfileViewMod
                 </button>
               ))}
             </div>
-            <span className={companyProfileStyles.formHint}>지원사업 검색의 분야 목록을 그대로 씁니다.</span>
             {errorOf('interestAreas')}
           </div>
 
@@ -102,7 +105,6 @@ export function CompanyPartnerProfileSection({ vm }: { vm: PartnerProfileViewMod
                 onBlur={vm.addCapability}
               />
             </div>
-            <span className={companyProfileStyles.formHint}>모집글 작성의 역량 칩과 같은 형식입니다. 수치와 실적은 스스로 적은 값이며 GovBiz가 검증하지 않습니다.</span>
             {errorOf('capabilities')}
           </div>
 

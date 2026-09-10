@@ -5,6 +5,7 @@ import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.partner.controller.dto.CreatePartnerRecruitmentRequest
 import ai.govbiz.core.partner.controller.dto.PartnerRecruitmentListResponse
 import ai.govbiz.core.partner.controller.dto.PartnerRecruitmentResponse
+import ai.govbiz.core.partner.controller.dto.UpdatePartnerRecruitmentRequest
 import ai.govbiz.core.partner.domain.PartnerRecruitmentInput
 import ai.govbiz.core.partner.domain.PartnerRecruitmentQuery
 import ai.govbiz.core.partner.domain.PartnerRecruitmentSort
@@ -20,12 +21,13 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-/** 파트너 모집글입니다. 읽기는 누구나, 작성은 기업을 등록한 회원만 할 수 있습니다. [Account]는 세션 쿠키로 채워집니다. */
+/** 파트너 모집글입니다. 읽기는 누구나, 작성은 기업을 등록한 회원만, 수정·마감은 작성자만 할 수 있습니다. [Account]는 세션 쿠키로 채워집니다. */
 @RestController
 @RequestMapping("/api/v1/partners/recruitments")
 class PartnerRecruitmentController(
@@ -73,6 +75,20 @@ class PartnerRecruitmentController(
         )
         return PartnerRecruitmentListResponse.from(recruitmentService.findPage(query), account?.id)
     }
+
+    /** 작성자만 모집 중인 글을 고칩니다. 묶인 공고는 바꿀 수 없어 요청에 공고 식별자가 없습니다. */
+    @PutMapping("/{id}")
+    fun update(
+        account: Account,
+        @PathVariable id: Long,
+        @RequestBody @Valid request: UpdatePartnerRecruitmentRequest,
+    ): PartnerRecruitmentResponse =
+        PartnerRecruitmentResponse.from(recruitmentService.update(account, id, request.toInput()), account.id)
+
+    /** 작성자가 모집을 수동으로 마감합니다. 대기 중인 제안은 만료로 계산됩니다. */
+    @PostMapping("/{id}/close")
+    fun close(account: Account, @PathVariable id: Long): PartnerRecruitmentResponse =
+        PartnerRecruitmentResponse.from(recruitmentService.close(account, id), account.id)
 
     /** 비로그인도 읽을 수 있으므로 [Account]는 선택입니다. 쿠키가 있으면 내 글 여부와 내 제안을 함께 돌려줍니다. */
     @GetMapping("/{id}")

@@ -8,10 +8,8 @@ import { HelpTip } from '../../../shared/workspace/HelpTip'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { appPaths } from '../../../shared/routes/appPaths'
 import { usePartnerRecruitmentCreateViewModel } from '../viewmodel/usePartnerRecruitmentCreateViewModel'
-import {
-  partnerRecruitmentStyles,
-  partnerRoleChoiceClassName,
-} from './PartnerRecruitment.styles'
+import { partnerRecruitmentStyles } from './PartnerRecruitment.styles'
+import { PartnerRecruitmentFormFields } from './PartnerRecruitmentFormFields'
 
 /**
  * 모집글 작성 화면입니다. 모집글은 공식 공고 하나에 반드시 묶이고,
@@ -19,37 +17,9 @@ import {
  */
 export function PartnerRecruitmentCreatePage() {
   const {
-    ownRoles,
-    seekingRoles,
-    ownRole,
-    seekingRole,
-    selectOwnRole,
-    selectSeekingRole,
-    seekingCountRange,
-    seekingCount,
-    updateSeekingCount,
-    regionOptions,
-    seekingRegion,
-    updateSeekingRegion,
-    companyAgeYearsRange,
-    minimumCompanyAgeYears,
-    updateMinimumCompanyAgeYears,
-    recruitmentDeadline,
-    maximumRecruitmentDeadline,
-    minimumRecruitmentDeadline,
-    updateRecruitmentDeadline,
-    capabilities,
-    capabilityDraft,
-    updateCapabilityDraft,
-    addCapabilityOnEnter,
-    removeCapability,
-    title,
-    titleMaxLength,
-    updateTitle,
-    body,
-    bodyMaxLength,
-    updateBody,
+    form,
     error,
+    maximumRecruitmentDeadline,
     isSubmitting,
     submit,
     canCreate,
@@ -62,7 +32,6 @@ export function PartnerRecruitmentCreatePage() {
     selectedProgram,
     selectProgram,
     clearProgram,
-    writingTips,
   } = usePartnerRecruitmentCreateViewModel()
 
   if (!canCreate || ownCompany === null) {
@@ -84,14 +53,11 @@ export function PartnerRecruitmentCreatePage() {
     )
   }
 
-  const describedBy = (field: NonNullable<typeof error>['field']) => (error?.field === field ? 'recruitment-error' : undefined)
-
   return (
     <>
       <WorkspacePageHeader parent={{ to: appPaths.partners, label: '파트너 관리' }} title="모집글 작성" />
 
       <div className={workspacePageStyles.content}>
-        <p className={workspacePageStyles.emptyNote}>공고 하나를 골라 모집글을 등록합니다. 같은 공고에는 모집글을 하나만 쓸 수 있습니다.</p>
         <div className={workspacePageStyles.column}>
           <form className={partnerRecruitmentStyles.form} onSubmit={(event) => void submit(event)} aria-label="모집글 작성" noValidate>
             <section className={partnerRecruitmentStyles.formSection}>
@@ -117,9 +83,6 @@ export function PartnerRecruitmentCreatePage() {
                       제안은 기업을 등록한 회원끼리 주고받습니다.
                     </p>
                   </HelpTip>
-                  <span className={partnerRecruitmentStyles.formSectionHint}>
-                    모집글은 접수 중인 공식 공고 하나에 반드시 묶입니다.
-                  </span>
                 </div>
               </div>
 
@@ -153,7 +116,7 @@ export function PartnerRecruitmentCreatePage() {
                     name="programKeyword"
                     placeholder="공고명이나 기관명을 두 글자 이상 입력하세요"
                     aria-invalid={error?.field === 'program'}
-                    aria-describedby={describedBy('program')}
+                    aria-describedby={error?.field === 'program' ? 'recruitment-error' : undefined}
                     value={programKeyword}
                     onChange={(event) => updateProgramKeyword(event.target.value)}
                   />
@@ -194,241 +157,14 @@ export function PartnerRecruitmentCreatePage() {
 
             <span className={partnerRecruitmentStyles.formDivider} aria-hidden="true" />
 
-            <section className={partnerRecruitmentStyles.formSection}>
-              <div className={partnerRecruitmentStyles.formSectionTitleGroup}>
-                <span className={partnerRecruitmentStyles.formStepBadge} aria-hidden="true">2</span>
-                <h2 className={partnerRecruitmentStyles.formSectionTitle}>역할과 조건</h2>
-              </div>
-
-              <div className={partnerRecruitmentStyles.fieldRow}>
-                <div className={partnerRecruitmentStyles.field}>
-                  <span id="own-role-label">우리 기업의 역할</span>
-                  <div className={partnerRecruitmentStyles.roleChoices} role="group" aria-labelledby="own-role-label">
-                    {ownRoles.map((role) => (
-                      <button
-                        className={partnerRoleChoiceClassName(ownRole === role.value)}
-                        key={role.value}
-                        type="button"
-                        aria-pressed={ownRole === role.value}
-                        onClick={() => selectOwnRole(role.value)}
-                      >
-                        {role.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className={partnerRecruitmentStyles.field}>
-                  <span id="seeking-role-label">찾는 역할</span>
-                  <div
-                    className={partnerRecruitmentStyles.roleChoices}
-                    role="group"
-                    aria-labelledby="seeking-role-label"
-                  >
-                    {seekingRoles.map((role) => (
-                      <button
-                        className={partnerRoleChoiceClassName(seekingRole === role.value)}
-                        key={role.value}
-                        type="button"
-                        aria-pressed={seekingRole === role.value}
-                        onClick={() => selectSeekingRole(role.value)}
-                      >
-                        {role.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className={partnerRecruitmentStyles.fieldRow}>
-                <div className={partnerRecruitmentStyles.field}>
-                  <label htmlFor="seeking-count">찾는 기업 수</label>
-                  <span className={partnerRecruitmentStyles.unitField}>
-                    <input
-                      className={partnerRecruitmentStyles.fieldControl}
-                      id="seeking-count"
-                      type="number"
-                      name="seekingCount"
-                      inputMode="numeric"
-                      min={seekingCountRange.min}
-                      max={seekingCountRange.max}
-                      step={1}
-                      aria-invalid={error?.field === 'seekingCount'}
-                      aria-describedby={describedBy('seekingCount')}
-                      value={Number.isNaN(seekingCount) ? '' : seekingCount}
-                      onChange={(event) => updateSeekingCount(event.target.value)}
-                    />
-                    <span className={partnerRecruitmentStyles.unitLabel} aria-hidden="true">곳</span>
-                  </span>
-                  <span className={partnerRecruitmentStyles.fieldHint}>함께할 기업 수를 {seekingCountRange.min}~{seekingCountRange.max} 사이로 적습니다.</span>
-                </div>
-
-                <div className={partnerRecruitmentStyles.field}>
-                  <label htmlFor="seeking-region">희망 지역</label>
-                  <select
-                    className={partnerRecruitmentStyles.fieldControl}
-                    id="seeking-region"
-                    name="seekingRegion"
-                    value={seekingRegion}
-                    onChange={(event) => updateSeekingRegion(event.target.value)}
-                  >
-                    {regionOptions.map((region) => (
-                      <option key={region} value={region}>{region}</option>
-                    ))}
-                  </select>
-                  {selectedProgram ? (
-                    <span className={partnerRecruitmentStyles.fieldHint}>
-                      공고 지원대상 원문: {selectedProgram.targetDescription}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className={partnerRecruitmentStyles.field}>
-                <label htmlFor="capability-input">필요 역량</label>
-                <div className={partnerRecruitmentStyles.capabilityBox}>
-                  {capabilities.map((capability) => (
-                    <span className={partnerRecruitmentStyles.capabilityChip} key={capability}>
-                      {capability}
-                      <button
-                        className={partnerRecruitmentStyles.capabilityRemove}
-                        type="button"
-                        aria-label={`${capability} 삭제`}
-                        onClick={() => removeCapability(capability)}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    className={partnerRecruitmentStyles.capabilityInput}
-                    id="capability-input"
-                    type="text"
-                    placeholder="역량 입력 후 Enter"
-                    aria-describedby={describedBy('capabilities')}
-                    value={capabilityDraft}
-                    onChange={(event) => updateCapabilityDraft(event.target.value)}
-                    onKeyDown={addCapabilityOnEnter}
-                  />
-                </div>
-              </div>
-
-              <div className={partnerRecruitmentStyles.fieldRow}>
-                <div className={partnerRecruitmentStyles.field}>
-                  <label htmlFor="recruitment-deadline">모집 마감일</label>
-                  <input
-                    className={partnerRecruitmentStyles.fieldControl}
-                    id="recruitment-deadline"
-                    type="date"
-                    name="recruitmentDeadline"
-                    min={minimumRecruitmentDeadline}
-                    max={maximumRecruitmentDeadline ?? undefined}
-                    required
-                    aria-invalid={error?.field === 'recruitmentDeadline'}
-                    aria-describedby={describedBy('recruitmentDeadline')}
-                    value={recruitmentDeadline}
-                    onChange={(event) => updateRecruitmentDeadline(event.target.value)}
-                  />
-                  <span className={partnerRecruitmentStyles.fieldHint}>
-                    {maximumRecruitmentDeadline === null
-                      ? '오늘 이후 날짜를 고르세요. 공고가 먼저 마감되면 모집도 자동 종료됩니다.'
-                      : `공고 접수 마감 전날인 ${maximumRecruitmentDeadline}까지 고를 수 있으며, 공고가 먼저 마감되면 모집도 자동 종료됩니다.`}
-                  </span>
-                </div>
-
-                <div className={partnerRecruitmentStyles.field}>
-                  <label htmlFor="company-age">
-                    <span className={partnerRecruitmentStyles.fieldLabelRow}>
-                      희망 업력 <span className={partnerRecruitmentStyles.optionalMark}>선택</span>
-                    </span>
-                  </label>
-                  <span className={partnerRecruitmentStyles.unitField}>
-                    <input
-                      className={partnerRecruitmentStyles.fieldControl}
-                      id="company-age"
-                      type="number"
-                      name="minimumCompanyAgeYears"
-                      inputMode="numeric"
-                      min={companyAgeYearsRange.min}
-                      max={companyAgeYearsRange.max}
-                      step={1}
-                      placeholder="무관"
-                      aria-invalid={error?.field === 'minimumCompanyAgeYears'}
-                      aria-describedby={describedBy('minimumCompanyAgeYears')}
-                      value={minimumCompanyAgeYears ?? ''}
-                      onChange={(event) => updateMinimumCompanyAgeYears(event.target.value)}
-                    />
-                    <span className={partnerRecruitmentStyles.unitLabel} aria-hidden="true">년 이상</span>
-                  </span>
-                  <span className={partnerRecruitmentStyles.fieldHint}>비워 두면 업력 무관으로 표시합니다.</span>
-                </div>
-              </div>
-            </section>
-
-            <span className={partnerRecruitmentStyles.formDivider} aria-hidden="true" />
-
-            <section className={partnerRecruitmentStyles.formSection}>
-              <div className={partnerRecruitmentStyles.formSectionHeader}>
-                <div className={partnerRecruitmentStyles.formSectionTitleGroup}>
-                  <span className={partnerRecruitmentStyles.formStepBadge} aria-hidden="true">3</span>
-                  <h2 className={partnerRecruitmentStyles.formSectionTitle}>소개</h2>
-                  <HelpTip label="작성 팁 도움말" title="작성 팁">
-                    <ul className={partnerRecruitmentStyles.plainList}>
-                      {writingTips.map((tip) => <li key={tip}>{tip}</li>)}
-                    </ul>
-                  </HelpTip>
-                </div>
-              </div>
-
-              <div className={partnerRecruitmentStyles.field}>
-                <label htmlFor="recruitment-title">제목</label>
-                <input
-                  className={partnerRecruitmentStyles.fieldControl}
-                  id="recruitment-title"
-                  type="text"
-                  name="title"
-                  maxLength={titleMaxLength}
-                  required
-                  aria-invalid={error?.field === 'title'}
-                  aria-describedby={describedBy('title')}
-                  placeholder="어떤 과제에 어떤 파트너를 찾는지 한 줄로 적어 주세요."
-                  value={title}
-                  onChange={(event) => updateTitle(event.target.value)}
-                />
-                <span className={partnerRecruitmentStyles.proposalCounter}>
-                  {title.length} / {titleMaxLength}
-                </span>
-              </div>
-
-              <div className={partnerRecruitmentStyles.field}>
-                <label htmlFor="recruitment-body">본문</label>
-                <textarea
-                  className={`${partnerRecruitmentStyles.fieldControl} ${partnerRecruitmentStyles.fieldTextarea}`}
-                  id="recruitment-body"
-                  name="body"
-                  maxLength={bodyMaxLength}
-                  required
-                  aria-invalid={error?.field === 'body'}
-                  aria-describedby={describedBy('body')}
-                  placeholder="우리 기업 소개, 맡을 역할, 상대에게 바라는 역량과 일정을 적어 주세요."
-                  value={body}
-                  onChange={(event) => updateBody(event.target.value)}
-                />
-                <span className={partnerRecruitmentStyles.proposalCounter}>
-                  {body.length} / {bodyMaxLength}
-                </span>
-                <span className={partnerRecruitmentStyles.fieldHint}>
-                  연락처, 이메일, 금액 확약은 본문에 적지 마세요. 담당자 정보는 제안 수락 후 자동으로
-                  공개됩니다.
-                </span>
-              </div>
-            </section>
+            <PartnerRecruitmentFormFields
+              form={form}
+              maximumRecruitmentDeadline={maximumRecruitmentDeadline}
+              programTargetDescription={selectedProgram?.targetDescription ?? null}
+            />
 
             {error ? <p id="recruitment-error" className={workspacePageStyles.emptyNote} role="alert">{error.message}</p> : null}
             <div className={partnerRecruitmentStyles.formActions}>
-              <p className={partnerRecruitmentStyles.formActionsNote}>
-                등록하면 목록과 상세에 바로 공개됩니다. 수정·마감은 준비 중이니 내용을 한 번 더 확인해 주세요.
-              </p>
               <div className={partnerRecruitmentStyles.formActionButtons}>
                 <Link className={partnerRecruitmentStyles.formCancelButton} to={appPaths.partners}>
                   취소
@@ -439,7 +175,6 @@ export function PartnerRecruitmentCreatePage() {
               </div>
             </div>
           </form>
-
         </div>
       </div>
     </>

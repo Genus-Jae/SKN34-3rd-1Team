@@ -21,8 +21,10 @@ import type {
 } from '../../domain/usecases/CompanyUseCases'
 import type {
   BrowsePartnerRecruitmentsUseCase,
+  ClosePartnerRecruitmentUseCase,
   CreatePartnerRecruitmentUseCase,
   GetPartnerRecruitmentDetailUseCase,
+  UpdatePartnerRecruitmentUseCase,
 } from '../../domain/usecases/PartnerRecruitmentUseCases'
 import type {
   BrowsePartnerProposalsUseCase,
@@ -69,6 +71,8 @@ export type AppCradle = {
   companyRepository: CompanyRepository
   createPartnerRecruitmentUseCase: CreatePartnerRecruitmentUseCase
   getPartnerRecruitmentDetailUseCase: GetPartnerRecruitmentDetailUseCase
+  updatePartnerRecruitmentUseCase: UpdatePartnerRecruitmentUseCase
+  closePartnerRecruitmentUseCase: ClosePartnerRecruitmentUseCase
   getMyCompanyUseCase: GetMyCompanyUseCase
   lookupBusinessUseCase: LookupBusinessUseCase
   registerCompanyUseCase: RegisterCompanyUseCase
