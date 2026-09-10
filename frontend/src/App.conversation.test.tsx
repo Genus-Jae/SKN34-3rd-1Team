@@ -572,18 +572,28 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.fetch).toHaveBeenCalledTimes(4)
   })
 
-  it('해석 실패는 다시 해석만 제공하고 검색 실패 재시도와 혼동하지 않는다', async () => {
+  it.each(['/', '/app/chat'])('%s의 해석 실패는 대화 말풍선에서만 다시 해석을 제공한다', async (path) => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response('', { status: 503 }))
       .mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
     vi.stubGlobal('fetch', fetchMock)
-    renderConversationApp()
+    const { store } = renderConversationApp(path)
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(input, { target: { value: '서울 SW' } })
     fireEvent.submit(input.closest('form')!)
-    await screen.findByRole('button', { name: '다시 해석' })
+    const retry = await screen.findByRole('button', { name: '다시 해석' })
+    const failure = screen.getByRole('alert')
+    const bubble = failure.closest('article')!
+    expect(bubble).not.toBeNull()
+    expect(screen.getByRole('region', { name: '대화 내역' }).contains(bubble)).toBe(true)
+    expect(bubble.contains(retry)).toBe(true)
+    expect(input.closest('form')!.contains(failure)).toBe(false)
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ role: 'assistant', failure: 'interpretation' })
     expect(screen.queryByRole('button', { name: '다시 검색' })).toBeNull()
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: '다시 해석' })))
+    await act(async () => fireEvent.click(retry))
     expect(screen.getByRole('button', { name: '이 조건으로 검색' })).toBeTruthy()
+    expect(bubble.isConnected).toBe(true)
+    expect(within(bubble).queryByRole('button', { name: '다시 해석' })).toBeNull()
+    expect(within(bubble).queryByRole('alert')).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls.every(([url]) => String(url).endsWith('/conversation/interpret'))).toBe(true)
   })
@@ -598,7 +608,12 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     await submitMessage('서울 SW 사업화')
     expect(fetchMock).toHaveBeenCalledOnce()
     await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
-    expect(screen.getByRole('alert').textContent).toContain('서버의 지원사업 검색 시간이 초과되었습니다')
+    const failure = screen.getByRole('alert')
+    const bubble = failure.closest('article')!
+    expect(failure.textContent).toContain('서버의 지원사업 검색 시간이 초과되었습니다')
+    expect(bubble).not.toBeNull()
+    expect(within(bubble).getByRole('button', { name: '다시 검색' })).toBeTruthy()
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ role: 'assistant', failure: 'search' })
     expect(screen.queryByRole('button', { name: '다시 해석' })).toBeNull()
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(store.getState().chat.searchOptions.companyConditions).toEqual(seoulConversationContext.companyConditions)
@@ -608,10 +623,43 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(String(fetchMock.mock.calls[2][0])).toContain('/support-programs/search')
     expect(fetchMock.mock.calls[2][1].body).toEqual(fetchMock.mock.calls[1][1].body)
     expect(store.getState().chat.searchError).toBeNull()
+    expect(bubble.isConnected).toBe(true)
+    expect(within(bubble).queryByRole('button', { name: '다시 검색' })).toBeNull()
     expect(store.getState().chat.messages.at(-1)).toMatchObject({
       searchQuery: seoulConversationContext.query,
       searchOptions: { acceptingOnly: true, companyConditions: seoulConversationContext.companyConditions },
     })
+  })
+
+  it('연속 검색 실패는 각각 기록하되 최신 실패에서만 재시도하고 성공 뒤에도 기록을 유지한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(json({ query: seoulConversationContext.query, programs: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { store } = renderConversationApp()
+    await submitMessage('서울 SW 사업화')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    const first = screen.getByRole('alert').closest('article')!
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: '작성 중인 다음 질문' } })
+    expect(first.isConnected).toBe(true)
+    await act(async () => fireEvent.click(within(first).getByRole('button', { name: '다시 검색' })))
+    const second = screen.getByRole('alert').closest('article')!
+    expect(second).not.toBe(first)
+    expect(within(first).queryByRole('button')).toBeNull()
+    expect(screen.getAllByRole('button', { name: '다시 검색' })).toHaveLength(1)
+    expect(store.getState().chat.messages.filter((message) => message.failure === 'search')).toHaveLength(2)
+    expect(input.value).toBe('작성 중인 다음 질문')
+    await act(async () => fireEvent.click(within(second).getByRole('button', { name: '다시 검색' })))
+    expect(first.isConnected).toBe(true)
+    expect(second.isConnected).toBe(true)
+    expect(screen.queryByRole('button', { name: '다시 검색' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(store.getState().chat.messages.filter((message) => message.failure === 'search')).toHaveLength(2)
+    expect(fetchMock.mock.calls[2][1].body).toBe(fetchMock.mock.calls[1][1].body)
+    expect(fetchMock.mock.calls[3][1].body).toBe(fetchMock.mock.calls[1][1].body)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 
   it.each([{ code: 'UNKNOWN_TIMEOUT' }, { title: null }])('알 수 없거나 잘못된 검색 504는 일반 오류로 표시한다: %o', async (changes) => {

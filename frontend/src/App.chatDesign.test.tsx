@@ -83,6 +83,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
       expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
     }
     expect(screen.getByRole('alert').textContent).toContain('500')
+    expect(screen.getByRole('alert').closest('article')).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -138,6 +139,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     fireEvent.submit(form)
 
     const retryButton = await screen.findByRole('button', { name: '다시 해석' })
+    expect(screen.getByRole('alert').closest('article')?.contains(retryButton)).toBe(true)
     expectDockedChat(input, form)
     expectNoLoadingCards()
     expect(input.disabled).toBe(false)

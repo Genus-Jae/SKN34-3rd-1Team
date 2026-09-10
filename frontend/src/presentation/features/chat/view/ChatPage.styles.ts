@@ -53,6 +53,9 @@ export const chatPageStyles = {
     'whitespace-pre-wrap px-[1.1rem] py-4 leading-[1.65] shadow-[0_10px_30px_rgb(32_33_36_/_5%)]',
   userMessageBubble: 'rounded-[1rem_1rem_0.25rem_1rem] bg-brand-primary text-white',
   assistantMessageBubble: 'rounded-[1rem_1rem_1rem_0.25rem] bg-white text-app-ink',
+  failureMessageBubble: 'ring-1 ring-inset ring-[#efd9d3]',
+  messageActions: 'mt-3 flex flex-wrap items-center gap-2',
+  messageRetryButton: 'min-h-10 cursor-pointer rounded-full border border-brand-primary bg-white px-4 py-2 text-xs font-semibold text-brand-primary hover:bg-brand-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
   suggestedQuestions: 'mt-[0.85rem] flex flex-wrap gap-2',
   suggestedQuestionButton: classes(
     'cursor-pointer rounded-full border bg-white px-[0.78rem] py-[0.6rem] text-left text-[0.78rem]',
@@ -119,8 +122,6 @@ export const chatPageStyles = {
   ),
   readinessRetryButton:
     'shrink-0 cursor-pointer rounded-[0.45rem] border border-[#dcaab2] bg-white px-2 py-[0.3rem] text-[0.72rem] font-bold text-[#8f3340] disabled:cursor-wait disabled:opacity-50',
-  searchRetryButton:
-    'shrink-0 cursor-pointer rounded-[0.45rem] border border-[#dcaab2] bg-white px-2 py-[0.3rem] text-[0.72rem] font-bold text-[#8f3340]',
   composerInput: classes(
     'block w-full resize-none border-0 bg-transparent px-7 pt-6 pb-3 text-app-ink placeholder:text-sample-muted outline-0',
     'leading-[1.7] max-chat:px-5 max-chat:pt-5',

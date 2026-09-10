@@ -44,6 +44,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     readiness,
     refetchReadiness,
     searchError,
+    inputError,
     searchOptions,
     searchStatusAnnouncement,
     suggestions,
@@ -139,31 +140,9 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
       </div>
   )
 
-  const composerErrors = (
-    <>
-          {interpretationError ? (
-            <div className={chatPageStyles.searchError} role="alert">
-              <span>{interpretationError}</span>
-              {canRetryInterpretation ? <button type="button" className={chatPageStyles.searchRetryButton}
-                onClick={handleRetryInterpretation}>다시 해석</button> : null}
-            </div>
-          ) : null}
-          {searchError ? (
-            <div className={chatPageStyles.searchError} role="alert">
-              <span>{searchError}</span>
-              {canRetrySearch ? (
-                <button
-                  type="button"
-                  className={chatPageStyles.searchRetryButton}
-                  onClick={handleRetrySearch}
-                >
-                  다시 검색
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-    </>
-  )
+  const composerErrors = inputError ? (
+    <div className={chatPageStyles.searchError} role="alert">{inputError}</div>
+  ) : null
 
   const suggestionChips = (
     <div className={chatPageStyles.suggestions} aria-label="예시 질문">
@@ -204,6 +183,13 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
         // 공개 첫 화면은 소개 영역이 환영 안내를 대신합니다. 대화 상태 자체는 유지합니다.
         if (layout === 'landing' && index === 0) return null
         const isUser = message.role === 'user'
+        const isLatest = index === messages.length - 1
+        const isCurrentFailure = isLatest && !isBusy && (
+          (message.failure === 'search' && searchError === message.text)
+          || (message.failure === 'interpretation' && interpretationError === message.text)
+        )
+        const retrySearch = isLatest && !isBusy && message.failure === 'search' && canRetrySearch
+        const retryInterpretation = isLatest && !isBusy && message.failure === 'interpretation' && canRetryInterpretation
 
         return (
           <article
@@ -216,8 +202,18 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
               </span>
             ) : null}
             <div className={chatPageStyles.messageContent}>
-              <div className={chatMessageBubbleClassName(isUser)}>
-                {message.text}
+              <div className={`${chatMessageBubbleClassName(isUser)} ${message.failure ? chatPageStyles.failureMessageBubble : ''}`}>
+                {message.failure ? (
+                  <p className="m-0" role={isCurrentFailure ? 'alert' : undefined}>{message.text}</p>
+                ) : message.text}
+                {retrySearch || retryInterpretation ? (
+                  <div className={chatPageStyles.messageActions}>
+                    <button type="button" className={chatPageStyles.messageRetryButton}
+                      onClick={retrySearch ? handleRetrySearch : handleRetryInterpretation}>
+                      {retrySearch ? '다시 검색' : '다시 해석'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               {message.searchOptions && isUser ? (
                 <div>

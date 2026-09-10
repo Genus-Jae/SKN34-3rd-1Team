@@ -16,6 +16,7 @@ export type SupportProgramChatMessage = {
   id: string
   role: 'assistant' | 'user'
   text: string
+  failure?: 'search' | 'interpretation'
   programs?: SupportProgram[]
   searchOptions?: ChatSearchOptions
   searchQuery?: string
@@ -113,6 +114,8 @@ const chatSlice = createSlice({
       if (state.interpretation.status !== 'pending' || state.interpretation.requestId !== action.payload.requestId) return
       state.interpretation.status = 'failed'
       state.interpretation.error = action.payload.message
+      state.messages.push({ id: `${action.payload.requestId}-failure`, role: 'assistant',
+        text: action.payload.message, failure: 'interpretation' })
       if (!state.draft.trim()) state.draft = state.interpretation.request?.message ?? ''
     },
     interpretationCancelled(state, action: PayloadAction<string>) {
@@ -156,6 +159,8 @@ const chatSlice = createSlice({
       }
       state.searchError = action.payload.message ?? '지원사업을 검색하지 못했습니다. 잠시 후 다시 시도해 주세요.'
       state.searchStatus = 'failed'
+      state.messages.push({ id: `${action.payload.requestId}-failure`, role: 'assistant',
+        text: state.searchError, failure: 'search' })
     },
     searchTimedOut(state, action: PayloadAction<{ query: string; requestId: string }>) {
       if (state.activeRequestId !== action.payload.requestId) return
@@ -166,6 +171,8 @@ const chatSlice = createSlice({
       }
       state.searchError = '검색 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.'
       state.searchStatus = 'failed'
+      state.messages.push({ id: `${action.payload.requestId}-failure`, role: 'assistant',
+        text: state.searchError, failure: 'search' })
     },
     searchValidationFailed(state, action: PayloadAction<{ queryLength: number }>) {
       if (state.searchStatus === 'pending') return
