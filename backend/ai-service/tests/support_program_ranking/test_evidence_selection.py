@@ -318,7 +318,7 @@ async def test_runtime_guard_rejects_out_of_range_evidence_after_nested_schema_v
     agent, model = agent_with_outputs()
 
     async def return_corrupted_output(dynamic_agent, *_args, **_kwargs):
-        output = dynamic_agent.output_type.model_validate(valid)
+        output = dynamic_agent.output_type.output_type.model_validate(valid)
         selected = getattr(output.rankings, value.id)
         corrupted_target = selected.target_assessment.model_copy(update={"evidence": [2]})
         corrupted_selection = selected.model_copy(update={"target_assessment": corrupted_target})

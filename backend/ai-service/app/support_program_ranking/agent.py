@@ -8,6 +8,7 @@ from unicodedata import category
 
 from agents import (
     Agent,
+    AgentOutputSchema,
     MaxTurnsExceeded,
     Model,
     ModelBehaviorError,
@@ -78,20 +79,33 @@ def _assessment_selection_type(option_count: int) -> type[SupportProgramAssessme
     """기존 점수·자격 검증을 유지하고 LLM 내부 evidence만 후보별 번호로 제한한다."""
     indexes = list[Annotated[int, Field(strict=True, ge=0, le=max(0, option_count - 1))]]
     evidence = (indexes, Field(max_length=1 if option_count else 0))
-    fields = {"evidence": evidence}
-    if not option_count:
-        fields["eligibility"] = (Literal[SupportProgramEligibility.UNKNOWN], ...)
+    fields = {"evidence": evidence, "eligibility": (Literal[SupportProgramEligibility.UNKNOWN], ...)}
     target = create_model(f"TargetSelectionFor{option_count}Options", __base__=TargetEligibilityAssessment, **fields)
     region = create_model(f"RegionSelectionFor{option_count}Options", __base__=RegionEligibilityAssessment, **fields)
     if option_count:
+        # 서버 validator에서만 거절하던 MATCH의 빈 근거를 모델 출력 스키마에서도 막는다.
+        match_fields = {
+            "eligibility": (Literal[SupportProgramEligibility.MATCH], ...),
+            "evidence": (indexes, Field(min_length=1, max_length=1)),
+        }
+        matched_target = create_model(
+            f"MatchedTargetSelectionFor{option_count}Options", __base__=TargetEligibilityAssessment, **match_fields,
+        )
+        matched_region = create_model(
+            f"MatchedRegionSelectionFor{option_count}Options", __base__=RegionEligibilityAssessment, **match_fields,
+        )
         incompatible = create_model(
             f"IncompatibleSelectionFor{option_count}Options", __base__=IncompatibleEligibilityAssessment,
             evidence=(indexes, Field(min_length=1, max_length=1)),
         )
-        target = target | incompatible
-        region = region | incompatible
+        target = target | matched_target | incompatible
+        region = region | matched_region | incompatible
     return create_model(
         f"SupportProgramSelectionFor{option_count}Options", __base__=SupportProgramAssessment,
+        recommendation_reasons=(
+            list[Annotated[str, Field(min_length=1, max_length=120)]],
+            Field(alias="recommendationReasons", min_length=1, max_length=3),
+        ),
         target_assessment=(target, Field(alias="targetAssessment")),
         region_assessment=(region, Field(
             alias="regionAssessment",
@@ -114,6 +128,47 @@ def _assessment_selection_type(option_count: int) -> type[SupportProgramAssessme
             ),
         )),
     )
+
+
+class _RankingOutputSchema(AgentOutputSchema):
+    """SDK의 민감 정보 제거를 유지하며 랭킹 출력 검증 실패를 고정된 진단 값으로 분류한다."""
+
+    def __init__(self, output_type: type) -> None:
+        super().__init__(output_type)
+        self.failure_code: AgentFailureCode | None = None
+
+    def validate_json(self, json_str: str):
+        try:
+            return super().validate_json(json_str)
+        except ModelBehaviorError:
+            # SDK가 원래 ValidationError cause를 제거하므로 실패한 경우에만 재검증한다.
+            # 기존 SDK 예외를 그대로 전달하며 원문·검증 메시지·전체 loc는 기록하지 않는다.
+            try:
+                self.output_type.model_validate_json(json_str, strict=True)
+            except ValidationError as error:
+                errors = error.errors(include_input=False, include_context=False, include_url=False)
+                allowed_types = {
+                    "json_invalid", "missing", "extra_forbidden", "literal_error", "int_type",
+                    "greater_than_equal", "less_than_equal", "too_short", "too_long",
+                    "string_too_short", "string_too_long", "string_type", "list_type",
+                    "dict_type", "model_type", "value_error",
+                }
+                allowed_fields = {
+                    "rankings", "semanticRelevance", "targetAssessment", "regionAssessment",
+                    "eligibility", "evidence", "explanation", "supportTypeFit", "recommendationReasons",
+                }
+                types = {item["type"] if item["type"] in allowed_types else "other" for item in errors}
+                fields = {part for item in errors for part in item["loc"]
+                          if isinstance(part, str) and part in allowed_fields}
+                self.failure_code = (
+                    AgentFailureCode.MODEL_OUTPUT_INVALID_JSON if "json_invalid" in types
+                    else AgentFailureCode.MODEL_OUTPUT_SCHEMA_MISMATCH
+                )
+                logger.warning(
+                    "support_program_ranking_output_invalid reason_code=%s validation_types=%s validation_fields=%s",
+                    self.failure_code.value, ",".join(sorted(types)), ",".join(sorted(fields)) or "none",
+                )
+            raise
 
 
 class SupportProgramRecommendationAgent:
@@ -180,7 +235,8 @@ class SupportProgramRecommendationAgent:
         instructions = self._agent.instructions
         if request.company_conditions is not None:
             instructions = f"{instructions}\n\n{SUPPORT_PROGRAM_COMPANY_CONDITIONS_INSTRUCTIONS}"
-        agent = self._agent.clone(output_type=output_type, instructions=instructions)
+        output_schema = _RankingOutputSchema(output_type)
+        agent = self._agent.clone(output_type=output_schema, instructions=instructions)
         payload = request.model_dump(mode="json", by_alias=True)
         for candidate in payload["candidates"]:
             candidate["evidenceOptions"] = [
@@ -214,7 +270,8 @@ class SupportProgramRecommendationAgent:
                 candidate_count, round((perf_counter() - prepared) * 1000),
             )
             raise AgentExecutionError(
-                "Support program recommendation agent did not produce a usable result"
+                "Support program recommendation agent did not produce a usable result",
+                reason_code=output_schema.failure_code or AgentFailureCode.EXECUTION_FAILED,
             ) from error
         except asyncio.CancelledError:
             logger.info(

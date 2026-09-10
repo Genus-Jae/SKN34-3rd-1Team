@@ -338,6 +338,10 @@ Agent가 전체 `summary`·`targetDescription`을 그대로 전달하면서 두 
 `[{index: 0, field: "SUMMARY", quote: "..."}, ...]`로 추가합니다. 모델의 assessment.evidence는 `[0]`처럼
 번호 배열이며 최대 1개입니다. 후보별 동적 스키마가 `0..선택지 수-1`의 정수만 허용하고 Agent가 다시
 범위를 검증한 뒤 해당 후보의 원래 field/quote를 복원합니다. 이 원문 복원 방식은 v5에서도 유지합니다.
+출력 스키마도 MATCH·UNKNOWN·INCOMPATIBLE을 각각 나눠 MATCH·INCOMPATIBLE의 근거 번호 1개를
+필수로 하고 UNKNOWN만 0~1개를 허용합니다. 추천 이유의 각 항목에도 1~120자 제한을 선언하여
+생성 형식은 통과했지만 서버 검증에서 거부되는 간극을 줄입니다. 원문 인용·자격 검증은 그대로 유지합니다.
+사용하는 중첩 `anyOf`와 배열 길이 제약은 [OpenAI Structured Outputs 문서](https://developers.openai.com/api/docs/guides/structured-outputs)를 따릅니다.
 원본 식별자를 분해하지 않으며 서로 다른 후보의 같은 번호는 각자의 원문에만 대응합니다.
 
 조각은 Unicode code point 기준 최대 240자이며 긴 연속 구간 안에서 최소 60자 겹침으로 끝까지 만듭니다. 가능한 경우
@@ -480,6 +484,10 @@ OpenAI 거부·기타 SDK 오류·structured output 오류
 → AgentExecutionError
 → 상세정보 없는 내부 HTTP 503
 
+의미 검색의 전체 실행·임베딩·Qdrant 전송 timeout
+→ SupportProgramIndexError(INDEX_TIMEOUT)
+→ 내부 HTTP 504
+
 상세 근거 청크 누락·Qdrant/임베딩 오류·payload 불일치
 → SupportProgramEvidenceError(EVIDENCE_NOT_READY 또는 EVIDENCE_UNAVAILABLE)
 → 상세정보 없는 내부 HTTP 503
@@ -499,12 +507,19 @@ OpenAI 거부·기타 SDK 오류·structured output 오류
 SDK가 제공한 입력·출력·캐시 입력·추론 토큰 수도 기록합니다. 사용량을 받지 못한 실패의 토큰 수를 추정하지 않으며,
 질문·회사 정보·원문·응답 본문·캐시 키는 기록하지 않습니다. lifespan이 기존 app/root handler를 재사용하거나 stderr
 handler 하나를 추가하므로 기본 Uvicorn에서도 출력되며, OpenAI·HTTP 라이브러리 로그 수준은 바꾸지 않습니다.
-조건 해석도 시간 초과는 내부 504, 그 외 실패는 503으로 구분합니다. 상세 근거 답변의 오류 정책은 유지합니다.
+조건 해석도 시간 초과는 내부 504, 그 외 실패는 503으로 구분합니다. 의미 검색은 확인된 시간초과만
+`INDEX_TIMEOUT` 504로 반환하며 미준비·연결 오류 등은 기존 503을 유지합니다. 실패·취소 로그에는
+`stage`(readiness/embedding/vector_search), 고정 코드와 경과 시간을 남깁니다. 상세 근거 답변과
+색인 저장·prune의 오류 정책은 유지합니다.
 `reason_code`는 후보 집합 불일치 `CANDIDATE_SET_MISMATCH`, 절단 본문의 확정 판정
 `TRUNCATED_SOURCE_KNOWN_ELIGIBILITY`, 확정 판정 근거 누락 `MISSING_KNOWN_EVIDENCE`, 지정 본문
 인용 불일치 `EXACT_QUOTE_MISMATCH`, 예상 밖 Agent 출력 타입 `UNEXPECTED_OUTPUT_TYPE`을 구분합니다.
 번호 복원 단계의 범위·출력 검증 오류는 `INVALID_EVIDENCE_SELECTION`입니다.
-그 밖의 실행 실패는 `EXECUTION_FAILED`이며 timeout 여부는 기존 `failure_kind`로 구분합니다.
+SDK의 JSON 출력 검증 실패는 `MODEL_OUTPUT_INVALID_JSON`, 스키마·서버 검증 실패는
+`MODEL_OUTPUT_SCHEMA_MISMATCH`로 구분하고 허용 목록의 검증 유형·필드명만 기록합니다. 후보 ID,
+입력값, 임의 필드명이나 Pydantic 원문 오류는 기록하지 않습니다. 완성되지 않은 모델 응답처럼 출력
+검증 이전에 발생한 그 밖의 실행 실패는 `EXECUTION_FAILED`이며 timeout 여부는 기존 `failure_kind`로
+구분합니다. 이 로그만으로 이전 `ModelBehaviorError`의 세부 원인을 소급 확정할 수는 없습니다.
 이 진단 코드는 HTTP 응답에 노출하지 않으며, 검증 기준이나 부적합 후보 처리 방식을 바꾸지 않습니다.
 
 ## 설정

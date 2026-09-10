@@ -107,3 +107,19 @@ def test_internal_query_accepts_company_condition_context_without_network(client
     )
     assert response.status_code == 200
     assert response.json() == {"query": query, "matches": []}
+
+
+@pytest.mark.parametrize("path,method,http_status,payload", [
+    ("/search", "search", 504, {"query": "서울 AI", "eligibleDocuments": [], "limit": 20}),
+    ("/batch", "index_batch", 503, {"documents": [valid_document()]}),
+    ("/prune", "prune", 503, {"sourceCode": "BIZINFO", "documents": []}),
+])
+def test_only_search_exposes_the_timeout_as_504(client, monkeypatch, path, method, http_status, payload):
+    monkeypatch.setattr(
+        client.app.state.container.support_program_index_service, method,
+        AsyncMock(side_effect=SupportProgramIndexError("INDEX_TIMEOUT")),
+    )
+    request = client.put if path == "/batch" else client.post
+    response = request("/internal/v1/support-program-index" + path, json=payload)
+    assert response.status_code == http_status
+    assert response.json() == {"detail": {"code": "INDEX_TIMEOUT"}}

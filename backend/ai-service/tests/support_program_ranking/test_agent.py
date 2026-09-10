@@ -553,7 +553,7 @@ async def test_turns_invalid_structured_output_into_boundary_error() -> None:
         await agent.rank(ranking_request())
 
     assert isinstance(captured.value.__cause__, ModelBehaviorError)
-    assert captured.value.reason_code is AgentFailureCode.EXECUTION_FAILED
+    assert captured.value.reason_code is AgentFailureCode.MODEL_OUTPUT_INVALID_JSON
 
 
 @pytest.mark.anyio
@@ -797,11 +797,14 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
     assert assessment_schema["additionalProperties"] is False
     for dimension in ("targetAssessment", "regionAssessment"):
         branches = assessment_schema["properties"][dimension]["anyOf"]
-        assert len(branches) == 2
+        assert len(branches) == 3
         branch_schemas = [schema["$defs"][branch["$ref"].split("/")[-1]] for branch in branches]
-        compatible, incompatible = branch_schemas
-        assert compatible["properties"]["eligibility"]["enum"] == ["MATCH", "UNKNOWN"]
+        unknown, matched, incompatible = branch_schemas
+        assert unknown["properties"]["eligibility"]["const"] == "UNKNOWN"
+        assert matched["properties"]["eligibility"]["const"] == "MATCH"
         assert incompatible["properties"]["eligibility"]["const"] == "INCOMPATIBLE"
+        assert unknown["properties"]["evidence"].get("minItems", 0) == 0
+        assert matched["properties"]["evidence"]["minItems"] == 1
         for branch in branch_schemas:
             assert branch["required"] == ["eligibility", "evidence", "explanation"]
             assert "score" not in branch["properties"]
@@ -812,6 +815,9 @@ async def test_openai_request_uses_non_stored_strict_structured_output(candidate
             }
             assert branch["properties"]["explanation"]["maxLength"] == 160
         assert incompatible["properties"]["evidence"]["minItems"] == 1
+    assert assessment_schema["properties"]["recommendationReasons"]["items"] == {
+        "type": "string", "minLength": 1, "maxLength": 120,
+    }
     assert "SupportProgramEligibilityEvidence" not in schema["$defs"]
     payload = json.loads(request_body["input"][0]["content"])
     for candidate in payload["candidates"]:
@@ -934,3 +940,124 @@ async def test_failed_ranking_logs_duration_without_raw_model_output(caplog):
     messages = "\n".join(record.getMessage() for record in caplog.records if record.name == "app.support_program_ranking.agent")
     assert "support_program_ranking_model_failed outcome=failed candidate_count=1 model_ms=" in messages
     assert "private malformed output" not in messages
+
+
+@pytest.mark.parametrize("dimension", ["targetAssessment", "regionAssessment"])
+@pytest.mark.parametrize("eligibility,evidence,accepted", [
+    ("MATCH", [], False), ("MATCH", [0], True),
+    ("INCOMPATIBLE", [], False), ("INCOMPATIBLE", [0], True),
+    ("UNKNOWN", [], True), ("UNKNOWN", [0], True),
+])
+def test_model_json_schema_enforces_known_eligibility_evidence_before_runtime_validation(dimension, eligibility, evidence, accepted):
+    from agents import AgentOutputSchema
+    from jsonschema import Draft202012Validator
+    from app.support_program_ranking.agent import _assessment_selection_type
+
+    selection = llm_output()["rankings"]["BIZINFO:program-1"]
+    selection[dimension].update(eligibility=eligibility, evidence=evidence)
+    output_type = _assessment_selection_type(2)
+    schema = AgentOutputSchema(output_type).json_schema()
+    assert Draft202012Validator(schema).is_valid(selection) is accepted
+    if accepted:
+        output_type.model_validate_json(json.dumps(selection), strict=True)
+    else:
+        with pytest.raises(ValidationError):
+            output_type.model_validate_json(json.dumps(selection), strict=True)
+
+
+@pytest.mark.parametrize("reason,accepted", [("한", True), ("한" * 120, True), ("한" * 121, False), ("", False)])
+def test_model_json_schema_bounds_each_recommendation_reason(reason, accepted):
+    from agents import AgentOutputSchema
+    from jsonschema import Draft202012Validator
+    from app.support_program_ranking.agent import _assessment_selection_type
+
+    selection = llm_output()["rankings"]["BIZINFO:program-1"]
+    selection["recommendationReasons"] = [reason]
+    output_type = _assessment_selection_type(2)
+    assert Draft202012Validator(AgentOutputSchema(output_type).json_schema()).is_valid(selection) is accepted
+    if accepted:
+        output_type.model_validate_json(json.dumps(selection), strict=True)
+    else:
+        with pytest.raises(ValidationError):
+            output_type.model_validate_json(json.dumps(selection), strict=True)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure,expected_code,expected_type,expected_field", [
+    ("json", AgentFailureCode.MODEL_OUTPUT_INVALID_JSON, "json_invalid", "none"),
+    ("missing", AgentFailureCode.MODEL_OUTPUT_SCHEMA_MISMATCH, "missing", "semanticRelevance"),
+    ("empty_match", AgentFailureCode.MODEL_OUTPUT_SCHEMA_MISMATCH, "too_short", "evidence"),
+    ("long_reason", AgentFailureCode.MODEL_OUTPUT_SCHEMA_MISMATCH, "string_too_long", "recommendationReasons"),
+    ("extra", AgentFailureCode.MODEL_OUTPUT_SCHEMA_MISMATCH, "extra_forbidden", "rankings"),
+    ("control", AgentFailureCode.MODEL_OUTPUT_SCHEMA_MISMATCH, "value_error", "explanation"),
+])
+async def test_validation_diagnostics_keep_only_allowlisted_types_and_fields(caplog, failure, expected_code, expected_type, expected_field):
+    import logging
+
+    private_id = "BIZINFO:PRIVATE-CANDIDATE-ID"
+    selection = llm_output()["rankings"]["BIZINFO:program-1"]
+    if failure == "missing":
+        del selection["semanticRelevance"]
+    elif failure == "empty_match":
+        selection["targetAssessment"]["evidence"] = []
+    elif failure == "long_reason":
+        selection["recommendationReasons"] = ["private-reason-" * 10]
+    elif failure == "extra":
+        selection["private-extra-key"] = "private-extra-value"
+    elif failure == "control":
+        selection["targetAssessment"]["explanation"] = "private-explanation\nprivate-tail"
+    output = "private malformed JSON" if failure == "json" else json.dumps({"rankings": {private_id: selection}})
+    model = ScriptedModel([[assistant_message(output)]])
+    agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
+    request = ranking_request().model_copy(update={
+        "original_query": "private-query",
+        "candidates": [ranking_request().candidates[0].model_copy(update={"id": private_id})],
+    })
+    with caplog.at_level(logging.INFO, logger="app.support_program_ranking.agent"):
+        with pytest.raises(AgentExecutionError) as captured:
+            await agent.rank(request)
+    assert captured.value.reason_code is expected_code
+    assert isinstance(captured.value.__cause__, ModelBehaviorError)
+    assert captured.value.__cause__.__cause__ is None
+    assert captured.value.__cause__.__context__ is None
+    assert len(model.calls) == 1
+    diagnostics = [record.getMessage() for record in caplog.records
+                   if record.name == "app.support_program_ranking.agent" and record.getMessage().startswith("support_program_ranking_output_invalid")]
+    assert len(diagnostics) == 1
+    assert f"reason_code={expected_code.value}" in diagnostics[0]
+    assert expected_type in diagnostics[0] and expected_field in diagnostics[0]
+    for private in (private_id, "private-query", "private-reason-", "private-extra-key", "private-extra-value",
+                    "private malformed JSON", "private-explanation", "private-tail"):
+        assert private not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_concurrent_rankings_keep_validation_diagnostics_per_request():
+    from agents.testing import ModelStep
+
+    both_entered = asyncio.Event()
+    entered = 0
+
+    async def respond(call):
+        nonlocal entered
+        entered += 1
+        if entered == 2:
+            both_entered.set()
+        await both_entered.wait()
+        query = json.loads(call.input[0]["content"])["originalQuery"]
+        output = "{" if query == "first" else '{"rankings":{}}'
+        return [assistant_message(output)]
+
+    model = ScriptedModel([ModelStep.respond(respond), ModelStep.respond(respond)])
+    agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
+    results = await asyncio.gather(
+        agent.rank(ranking_request().model_copy(update={"original_query": "first"})),
+        agent.rank(ranking_request().model_copy(update={"original_query": "second"})),
+        return_exceptions=True,
+    )
+    assert [result.reason_code for result in results] == [
+        AgentFailureCode.MODEL_OUTPUT_INVALID_JSON, AgentFailureCode.MODEL_OUTPUT_SCHEMA_MISMATCH,
+    ]
+    assert all(isinstance(result.__cause__, ModelBehaviorError) for result in results)
+    assert agent._agent.output_type is None
+    assert len(model.calls) == 2
