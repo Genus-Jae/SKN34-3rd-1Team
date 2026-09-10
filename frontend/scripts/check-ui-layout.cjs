@@ -19,7 +19,7 @@ const detailPath = `/support-programs/detail?${detailQuery}`
 // 모집글 목록·상세도 긴 제목·역량으로 레이아웃을 검증합니다.
 const longRecruitment = { ...partnerRecruitmentDetail, title: `모집검증-${'R'.repeat(80)}`, capabilities: Array.from({ length: 10 }, (_, index) => `역량${index}-${'S'.repeat(28)}`) }
 const questionPath = `/support-programs/detail/question?${detailQuery}`
-const paths = ['/', '/pricing', '/app/chat', '/app/pricing', '/login', '/signup', '/partners', '/app/partners', '/app/partners/new',
+const paths = ['/', '/pricing', '/app/chat', '/app/pricing', '/login', '/signup', '/forgot-password', '/reset-password', '/partners', '/app/partners', '/app/partners/new',
   '/partners/detail?recruitmentId=101', '/app/partners/detail?recruitmentId=101', '/app/proposals', '/app/profile',
   '/app/admin/members', detailPath, questionPath, '/examples/sample-item/hook', '/examples/sample-item/redux']
 // `/app` 경로는 회원 세션이 있어야 열립니다. 앱이 세션 힌트를 보고 부르는 /auth/me 응답을 경로별로 심습니다.

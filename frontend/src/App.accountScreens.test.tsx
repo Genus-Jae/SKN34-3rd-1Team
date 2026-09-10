@@ -13,7 +13,9 @@ import { partnerRecruitmentDetail, partnerRecruitmentPage } from './data/fixture
 import { supportPrograms } from './data/fixtures/supportPrograms'
 import type { Account } from './domain/entities/Account'
 import { accountSecurityMessages } from './presentation/features/company-profile/viewmodel/useAccountSecurityViewModel'
+import { forgotPasswordMessages } from './presentation/features/auth/viewmodel/useForgotPasswordViewModel'
 import { loginMessages } from './presentation/features/auth/viewmodel/useLoginViewModel'
+import { resetPasswordMessages } from './presentation/features/auth/viewmodel/useResetPasswordViewModel'
 import { signupMessages } from './presentation/features/auth/viewmodel/useSignupViewModel'
 import { sessionRestored } from './presentation/shared/auth/state/authSlice'
 
@@ -44,7 +46,7 @@ describe('계정 화면', () => {
     renderApp('/signup')
 
     const form = screen.getByRole('form', { name: '회원가입' })
-    expect(within(form).getByRole('heading', { name: '기업 계정 만들기' })).toBeTruthy()
+    expect(within(form).getByRole('heading', { name: '회원가입' })).toBeTruthy()
     expect(within(form).getByLabelText('이메일')).toBeTruthy()
     expect(within(form).getByLabelText('비밀번호')).toBeTruthy()
     expect(within(form).getByLabelText('비밀번호 확인')).toBeTruthy()
@@ -56,18 +58,100 @@ describe('계정 화면', () => {
   it('로그인과 회원가입 화면은 서로를 오간다', () => {
     renderApp('/login')
 
-    fireEvent.click(screen.getByRole('link', { name: '기업 계정 만들기' }))
-    expect(screen.getByRole('heading', { name: '기업 계정 만들기' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('link', { name: '회원가입' }))
+    expect(screen.getByRole('form', { name: '회원가입' })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('link', { name: '로그인' }))
-    expect(screen.getByRole('heading', { name: '다시 오셨군요' })).toBeTruthy()
+    expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy()
   })
 
-  it('아직 화면이 없는 비밀번호 재설정은 링크로 만들지 않는다', () => {
+  it('로그인·회원가입 화면은 소개 패널 없이 로고 아래 카드 하나만 두고 비밀번호 찾기로 이어진다', () => {
     renderApp('/login')
 
-    expect(screen.queryByRole('link', { name: /비밀번호 재설정/ })).toBeNull()
-    expect(screen.getByText('비밀번호 재설정 · 준비 중')).toBeTruthy()
+    expect(screen.queryByRole('complementary', { name: 'GovBiz 계정 소개' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'GovBiz 홈으로' }).getAttribute('href')).toBe('/')
+    expect(screen.queryByText('비밀번호 재설정 · 준비 중')).toBeNull()
+
+    fireEvent.click(screen.getByRole('link', { name: '비밀번호 찾기' }))
+    expect(screen.getByRole('form', { name: '비밀번호 찾기' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '비밀번호를 잊으셨나요?' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('link', { name: '로그인으로 돌아가기' }))
+    expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy()
+  })
+
+  it('비밀번호 찾기는 이메일 형식을 먼저 확인하고 요청 뒤에는 가입 여부와 무관한 안내만 보여 준다', async () => {
+    const execute = vi.spyOn(appContainer.resolve('requestPasswordResetUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'requested' })
+    renderApp('/forgot-password')
+
+    const form = screen.getByRole('form', { name: '비밀번호 찾기' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'manager' } })
+    fireEvent.submit(form)
+    expect(screen.getByRole('alert').textContent).toBe(forgotPasswordMessages.emailRequired)
+    expect(execute).not.toHaveBeenCalled()
+
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'Manager@Company.co.kr' } })
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe(forgotPasswordMessages.sent))
+    expect(execute).toHaveBeenCalledWith('Manager@Company.co.kr')
+    expect(within(form).queryByLabelText('이메일')).toBeNull()
+    expect(within(form).queryByRole('button', { name: '재설정 링크 보내기' })).toBeNull()
+  })
+
+  it('비밀번호 찾기는 메일 불가·시도 제한을 구분해 안내한다', async () => {
+    vi.spyOn(appContainer.resolve('requestPasswordResetUseCase'), 'execute')
+      .mockResolvedValueOnce({ outcome: 'mail-unavailable' })
+      .mockResolvedValueOnce({ outcome: 'rate-limited', retryAfterSeconds: 40 })
+    renderApp('/forgot-password')
+
+    const form = screen.getByRole('form', { name: '비밀번호 찾기' })
+    fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'manager@company.co.kr' } })
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(forgotPasswordMessages.mailUnavailable))
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(forgotPasswordMessages.rateLimited(40)))
+  })
+
+  it('비밀번호 재설정은 주소의 토큰으로 새 비밀번호를 저장하고 로그인으로 안내한다', async () => {
+    const execute = vi.spyOn(appContainer.resolve('resetPasswordUseCase'), 'execute').mockResolvedValue({ outcome: 'reset' })
+    const token = 'b'.repeat(43)
+    renderApp(`/reset-password#token=${token}`)
+
+    const form = screen.getByRole('form', { name: '비밀번호 재설정' })
+    fireEvent.change(within(form).getByLabelText('새 비밀번호'), { target: { value: 'short' } })
+    fireEvent.submit(form)
+    expect(screen.getByRole('alert').textContent).toBe(resetPasswordMessages.passwordLength)
+
+    fireEvent.change(within(form).getByLabelText('새 비밀번호'), { target: { value: 'new-password-2' } })
+    fireEvent.change(within(form).getByLabelText('새 비밀번호 확인'), { target: { value: 'new-password-3' } })
+    fireEvent.submit(form)
+    expect(screen.getByRole('alert').textContent).toBe(resetPasswordMessages.passwordMismatch)
+    expect(execute).not.toHaveBeenCalled()
+
+    fireEvent.change(within(form).getByLabelText('새 비밀번호 확인'), { target: { value: 'new-password-2' } })
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe(resetPasswordMessages.done))
+    expect(execute).toHaveBeenCalledWith({ token, newPassword: 'new-password-2' })
+    expect(within(form).queryByLabelText('새 비밀번호')).toBeNull()
+    expect(screen.getByRole('link', { name: '로그인하러 가기' }).getAttribute('href')).toBe('/login')
+  })
+
+  it('비밀번호 재설정은 토큰이 없거나 거절되면 입력 대신 다시 요청하도록 안내한다', async () => {
+    vi.spyOn(appContainer.resolve('resetPasswordUseCase'), 'execute').mockResolvedValue({ outcome: 'token-invalid' })
+    renderApp('/reset-password')
+    expect(screen.getByRole('alert').textContent).toBe(resetPasswordMessages.missingToken)
+    expect(screen.queryByLabelText('새 비밀번호')).toBeNull()
+    expect(screen.getByRole('link', { name: '재설정 링크 다시 요청' }).getAttribute('href')).toBe('/forgot-password')
+    cleanup()
+
+    renderApp(`/reset-password#token=${'c'.repeat(43)}`)
+    const form = screen.getByRole('form', { name: '비밀번호 재설정' })
+    fireEvent.change(within(form).getByLabelText('새 비밀번호'), { target: { value: 'new-password-2' } })
+    fireEvent.change(within(form).getByLabelText('새 비밀번호 확인'), { target: { value: 'new-password-2' } })
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(resetPasswordMessages.tokenInvalid))
+    expect(within(form).queryByLabelText('새 비밀번호')).toBeNull()
   })
 
   it('회원가입 입력이 비어 있으면 서버에 보내지 않고 이메일부터 안내한다', () => {
@@ -144,12 +228,13 @@ describe('계정 화면', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('약관 안내와 모바일에서도 보이는 공개 검색 링크를 제공하고 새 비밀번호 자동완성을 쓴다', () => {
+  it('약관 안내와 로고로 돌아가는 홈 링크만 두고 새 비밀번호 자동완성을 쓴다', () => {
     renderApp('/signup')
     const form = screen.getByRole('form')
     expect(within(form).getByText(/이용약관과 개인정보 처리방침에 동의한 것으로/)).toBeTruthy()
     expect(within(form).queryByText(/데모/)).toBeNull()
-    expect(within(form).getByRole('link', { name: /없이 지원사업 검색/ }).getAttribute('href')).toBe('/')
+    expect(within(form).queryByRole('link', { name: /없이 지원사업 검색/ })).toBeNull()
+    expect(within(form).getByRole('link', { name: 'GovBiz 홈으로' }).getAttribute('href')).toBe('/')
     expect(within(form).getByLabelText('비밀번호').getAttribute('autocomplete')).toBe('new-password')
   })
 
@@ -1144,7 +1229,7 @@ function renderApp(initialEntry: string, account: Account | null = defaultAccoun
 }
 
 function defaultAccountFor(initialEntry: string): Account | null {
-  if (initialEntry.startsWith('/login') || initialEntry.startsWith('/signup')) return null
+  if (['/login', '/signup', '/forgot-password', '/reset-password'].some((path) => initialEntry.startsWith(path))) return null
   if (initialEntry.startsWith('/app/admin')) return adminAccount
   // 파트너 모집 화면은 기업을 등록한 회원 기준으로 확인하고, 미등록 회원은 각 테스트가 따로 넘깁니다.
   return initialEntry.startsWith('/app/partners') || initialEntry.startsWith('/app/proposals') ? companyAccount : memberAccount

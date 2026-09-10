@@ -11,7 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 
 /** 회원 비밀번호 해시, 로그인 시도 제한, 세션·개발 로그인 설정을 제공합니다. Spring Security filter chain은 사용하지 않습니다. */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AccountSessionProperties::class, AccountDevLoginProperties::class)
+@EnableConfigurationProperties(AccountSessionProperties::class, AccountDevLoginProperties::class, AccountPasswordResetProperties::class)
 class AccountAuthConfig {
 
     @Bean

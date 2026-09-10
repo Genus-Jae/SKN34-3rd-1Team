@@ -10,6 +10,8 @@ import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredExceptio
 import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyProfileInvalidException
 import ai.govbiz.core.account.service.exception.CurrentPasswordMismatchException
+import ai.govbiz.core.account.service.exception.PasswordResetMailUnavailableException
+import ai.govbiz.core.account.service.exception.PasswordResetTokenInvalidException
 import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
@@ -555,6 +557,32 @@ class ApiExceptionHandler {
                 "Current Password Mismatch",
                 "The current password is incorrect.",
                 "CURRENT_PASSWORD_MISMATCH",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(PasswordResetTokenInvalidException::class)
+    fun handlePasswordResetTokenInvalidException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:password-reset-token-invalid"),
+                "Password Reset Token Invalid",
+                "The password reset link is invalid, expired, or already used.",
+                "PASSWORD_RESET_TOKEN_INVALID",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(PasswordResetMailUnavailableException::class)
+    fun handlePasswordResetMailUnavailableException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                URI.create("urn:govbiz:problem:password-reset-mail-unavailable"),
+                "Password Reset Mail Unavailable",
+                "The password reset email cannot be sent right now.",
+                "PASSWORD_RESET_MAIL_UNAVAILABLE",
             ),
             request,
         )

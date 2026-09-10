@@ -40,6 +40,8 @@ import { LogOutUseCase } from '../../domain/usecases/LogOutUseCase'
 import { PrepareSampleItemUseCase } from '../../domain/usecases/PrepareSampleItemUseCase'
 import { RestoreSupportProgramSearchUseCase } from '../../domain/usecases/RestoreSupportProgramSearchUseCase'
 import { SearchSupportProgramsUseCase } from '../../domain/usecases/SearchSupportProgramsUseCase'
+import { RequestPasswordResetUseCase } from '../../domain/usecases/RequestPasswordResetUseCase'
+import { ResetPasswordUseCase } from '../../domain/usecases/ResetPasswordUseCase'
 import { SignUpUseCase } from '../../domain/usecases/SignUpUseCase'
 import { InterpretSupportProgramConversationUseCase } from '../../domain/usecases/InterpretSupportProgramConversationUseCase'
 import type { AppContainer, AppCradle } from './types'
@@ -115,6 +117,12 @@ export function registerUseCases(container: AppContainer) {
       createSearchSupportProgramsUseCase,
     ).singleton(),
     signUpUseCase: asFunction(createSignUpUseCase).singleton(),
+    requestPasswordResetUseCase: asFunction(
+      ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new RequestPasswordResetUseCase(accountRepository),
+    ).singleton(),
+    resetPasswordUseCase: asFunction(
+      ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new ResetPasswordUseCase(accountRepository),
+    ).singleton(),
     changePasswordUseCase: asFunction(
       ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new ChangePasswordUseCase(accountRepository),
     ).singleton(),

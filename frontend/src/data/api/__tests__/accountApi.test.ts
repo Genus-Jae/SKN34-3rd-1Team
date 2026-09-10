@@ -11,6 +11,8 @@ import {
   getCurrentAccountApi,
   logInApi,
   logOutApi,
+  requestPasswordResetApi,
+  resetPasswordApi,
   signUpApi,
 } from '../accountApi'
 
@@ -272,3 +274,32 @@ function problemResponse(status: number, code: string | null, extra: Record<stri
     headers: { 'Content-Type': 'application/problem+json' },
   })
 }
+
+describe('password reset apis', () => {
+  it('posts the reset request and the confirmation without a session and accepts empty 204 responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(requestPasswordResetApi('manager@company.co.kr')).resolves.toBeUndefined()
+    await expect(resetPasswordApi('a'.repeat(43), 'new-password-2')).resolves.toBeUndefined()
+
+    const calls = fetchMock.mock.calls as [string, RequestInit][]
+    expect(new URL(calls[0]![0]).pathname).toBe('/api/v1/auth/password-reset')
+    expect(calls[0]![1].method).toBe('POST')
+    expect(JSON.parse(String(calls[0]![1].body))).toEqual({ email: 'manager@company.co.kr' })
+    expect(new URL(calls[1]![0]).pathname).toBe('/api/v1/auth/password-reset/confirm')
+    expect(JSON.parse(String(calls[1]![1].body))).toEqual({ token: 'a'.repeat(43), newPassword: 'new-password-2' })
+  })
+
+  it('maps the unavailable mail server and the rejected token to results in the repository', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(problemResponse(503, 'PASSWORD_RESET_MAIL_UNAVAILABLE'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(problemResponse(422, 'PASSWORD_RESET_TOKEN_INVALID')))
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: createMemorySessionHintStorage() })
+
+    await expect(repository.requestPasswordReset('manager@company.co.kr')).resolves.toEqual({ outcome: 'mail-unavailable' })
+    await expect(repository.requestPasswordReset('manager@company.co.kr')).resolves.toEqual({ outcome: 'requested' })
+    await expect(repository.resetPassword('a'.repeat(43), 'new-password-2')).resolves.toEqual({ outcome: 'token-invalid' })
+  })
+})

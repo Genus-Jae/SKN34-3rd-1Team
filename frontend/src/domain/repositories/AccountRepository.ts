@@ -38,6 +38,18 @@ export type DeleteAccountResult =
   | { outcome: 'current-password-mismatch' }
   | { outcome: 'rate-limited'; retryAfterSeconds: number | null }
 
+/** 재설정 링크 요청은 가입 여부와 관계없이 `requested`입니다. 메일을 보낼 수 없는 서버 상태만 따로 안내합니다. */
+export type RequestPasswordResetResult =
+  | { outcome: 'requested' }
+  | { outcome: 'mail-unavailable' }
+  | { outcome: 'rate-limited'; retryAfterSeconds: number | null }
+
+/** 없거나 만료·사용된 토큰은 화면이 다시 요청하도록 안내하는 업무 결과입니다. */
+export type ResetPasswordResult =
+  | { outcome: 'reset' }
+  | { outcome: 'token-invalid' }
+  | { outcome: 'rate-limited'; retryAfterSeconds: number | null }
+
 /** 계정 기능이 Data Layer의 HTTP·저장소 세부사항과 분리되도록 하는 Domain 포트입니다. */
 export interface AccountRepository {
   signUp(command: AccountSignUp, signal?: AbortSignal): Promise<SignUpResult>
@@ -53,4 +65,8 @@ export interface AccountRepository {
   getDeletionPreview(signal?: AbortSignal): Promise<AccountDeletionPreview>
   /** 현재 비밀번호를 확인하고 계정을 삭제합니다. 성공하면 세션 힌트를 지웁니다. */
   deleteAccount(password: string, signal?: AbortSignal): Promise<DeleteAccountResult>
+  /** 가입 이메일로 비밀번호 재설정 링크를 요청합니다. 로그인 없이 부릅니다. */
+  requestPasswordReset(email: string, signal?: AbortSignal): Promise<RequestPasswordResetResult>
+  /** 메일 링크의 토큰으로 새 비밀번호를 저장합니다. 성공하면 서버가 모든 세션을 끝냅니다. */
+  resetPassword(token: string, newPassword: string, signal?: AbortSignal): Promise<ResetPasswordResult>
 }

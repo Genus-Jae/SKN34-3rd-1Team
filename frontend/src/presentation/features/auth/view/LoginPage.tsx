@@ -1,10 +1,13 @@
 import { Link } from 'react-router'
 
 import { useLoginViewModel } from '../viewmodel/useLoginViewModel'
-import { AuthBrandPanel } from './AuthBrandPanel'
+import { AuthLogo } from './AuthLogo'
 import { authPageStyles } from './AuthPage.styles'
 
-/** 로그인 화면입니다. 공용 헤더의 로그인 버튼이 이 화면으로 옵니다. */
+/**
+ * 로그인 화면입니다. 공용 헤더의 로그인 버튼이 이 화면으로 옵니다. 테두리 없는 가운데 열에 로고, 구분선, 입력, 버튼,
+ * 회원가입·비밀번호 찾기 링크 순으로만 놓고 안내 문구는 두지 않습니다.
+ */
 export function LoginPage() {
   const {
     signupPath,
@@ -21,21 +24,20 @@ export function LoginPage() {
 
   return (
     <main className={authPageStyles.page}>
-      <AuthBrandPanel />
-
       <section className={authPageStyles.formPanel}>
         <form className={authPageStyles.card} onSubmit={submit} aria-label="로그인" noValidate>
-          <div className={authPageStyles.cardHeader}>
-            <p className={authPageStyles.cardEyebrow}>로그인</p>
-            <h1 className={authPageStyles.cardTitle}>다시 오셨군요</h1>
-            <p className={authPageStyles.cardDescription}>
-              담당자 이메일로 로그인하면 저장한 공고와 모집 현황을 이어서 볼 수 있습니다.
-            </p>
+          <AuthLogo />
+          <h1 className="sr-only">로그인</h1>
+
+          <div className={authPageStyles.divider}>
+            <span className={authPageStyles.dividerLine} aria-hidden="true" />
+            <span className={authPageStyles.dividerText}>이메일로 로그인하기</span>
+            <span className={authPageStyles.dividerLine} aria-hidden="true" />
           </div>
 
           <div className={authPageStyles.fields}>
             <label className={authPageStyles.field}>
-              <span>이메일</span>
+              <span className={authPageStyles.fieldName}>이메일</span>
               <input
                 className={authPageStyles.fieldControl}
                 type="email"
@@ -44,14 +46,14 @@ export function LoginPage() {
                 required
                 aria-invalid={error?.field === 'email'}
                 aria-describedby={error ? 'login-error' : undefined}
-                placeholder="manager@company.co.kr"
+                placeholder="이메일을 입력해 주세요."
                 value={email}
                 onChange={(event) => updateEmail(event.target.value)}
               />
             </label>
 
             <label className={authPageStyles.field}>
-              <span>비밀번호</span>
+              <span className={authPageStyles.fieldName}>비밀번호</span>
               <input
                 className={authPageStyles.fieldControl}
                 type="password"
@@ -60,7 +62,7 @@ export function LoginPage() {
                 required
                 aria-invalid={error?.field === 'password'}
                 aria-describedby={error ? 'login-error' : undefined}
-                placeholder="비밀번호 입력"
+                placeholder="비밀번호를 입력해 주세요."
                 value={password}
                 onChange={(event) => updatePassword(event.target.value)}
               />
@@ -77,10 +79,6 @@ export function LoginPage() {
                 />
                 로그인 상태 유지
               </label>
-              {/* 비밀번호 재설정 화면은 아직 없으므로 링크로 만들지 않습니다. */}
-              <span className={authPageStyles.helperPending} aria-disabled="true">
-                비밀번호 재설정 · 준비 중
-              </span>
             </div>
           </div>
 
@@ -89,18 +87,10 @@ export function LoginPage() {
             {isSubmitting ? '로그인 중…' : '로그인'}
           </button>
 
-          <div className={authPageStyles.divider}>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-            <span className={authPageStyles.dividerText}>아직 계정이 없나요?</span>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-          </div>
-
-          <Link className={authPageStyles.secondaryButton} to={signupPath}>
-            기업 계정 만들기
-          </Link>
-
-          <p className={authPageStyles.cardFooter}>
-            <Link className={authPageStyles.helperLink} to="/">로그인 없이 지원사업 검색</Link>
+          <p className={authPageStyles.linksRow}>
+            <Link className={authPageStyles.footerLink} to={signupPath}>회원가입</Link>
+            <span className={authPageStyles.linkSeparator} aria-hidden="true" />
+            <Link className={authPageStyles.footerLink} to="/forgot-password">비밀번호 찾기</Link>
           </p>
         </form>
       </section>

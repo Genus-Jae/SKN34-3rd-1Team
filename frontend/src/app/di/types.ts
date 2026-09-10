@@ -41,6 +41,8 @@ import type { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSu
 import type { GetSupportProgramSearchReadinessUseCase } from '../../domain/usecases/GetSupportProgramSearchReadinessUseCase'
 import type { LogInUseCase } from '../../domain/usecases/LogInUseCase'
 import type { LogOutUseCase } from '../../domain/usecases/LogOutUseCase'
+import type { RequestPasswordResetUseCase } from '../../domain/usecases/RequestPasswordResetUseCase'
+import type { ResetPasswordUseCase } from '../../domain/usecases/ResetPasswordUseCase'
 import type { SignUpUseCase } from '../../domain/usecases/SignUpUseCase'
 import type { PrepareSampleItemUseCase } from '../../domain/usecases/PrepareSampleItemUseCase'
 import type { RestoreSupportProgramSearchUseCase } from '../../domain/usecases/RestoreSupportProgramSearchUseCase'
@@ -88,6 +90,8 @@ export type AppCradle = {
   restoreSupportProgramSearchUseCase: RestoreSupportProgramSearchUseCase
   sessionHintStorage: SessionHintStorage
   signUpUseCase: SignUpUseCase
+  requestPasswordResetUseCase: RequestPasswordResetUseCase
+  resetPasswordUseCase: ResetPasswordUseCase
   changePasswordUseCase: ChangePasswordUseCase
   getAccountDeletionPreviewUseCase: GetAccountDeletionPreviewUseCase
   deleteAccountUseCase: DeleteAccountUseCase
