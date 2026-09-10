@@ -6,6 +6,7 @@ import { useRestoreSupportProgramSearch } from './presentation/features/chat/hoo
 import { selectAuthStatus } from './presentation/shared/auth/state/authSlice'
 import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
 import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
+import { SavedProgramsPage } from './presentation/features/saved-programs/view/SavedProgramsPage'
 import { DailyReportEmailPage } from './presentation/features/daily-report/view/DailyReportEmailPage'
 import { useReviewSessionIsolation } from './presentation/features/combination-review/viewmodel/useReviewSessionIsolation'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
@@ -96,6 +97,7 @@ function App() {
       <Route element={<RequireAuth />}>
         <Route element={<WorkspaceLayout />}>
           <Route path={appPaths.reports} element={<DailyReportPage />} />
+          <Route path={appPaths.savedPrograms} element={<SavedProgramsPage />} />
           <Route path={appPaths.combinationReviews} element={<CombinationReviewListPage />} />
           <Route path={appPaths.combinationReviewNew} element={<CombinationReviewEditorPage create />} />
           <Route path={appPaths.combinationReviewDetail} element={<CombinationReviewEditorPage />} />

@@ -133,8 +133,11 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 없는 `recruitmentId`는 다른 모집글로 대체하지 않고 "찾을 수 없습니다"로 보여 줍니다.
 공개 파트너 모집 화면은 `presentation/features/public-partner-recruitment`에 따로 두어 매칭·제안 폼 없이 읽기만 제공하고,
 두 파트너 feature가 함께 쓰는 조회 훅과 표시 helper는 `presentation/shared/partner-recruitment`에 둡니다.
-아직 화면이 없는 관심 공고함은 사이드바에서
-링크가 아니라 "준비 중" 표시로 둡니다. 새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
+관심 공고함(`/app/saved-programs`)은 회원용 캘린더 시안이며, 사이드바에 "시안"으로 표시합니다.
+현재는 예시 데이터의 월간 일정·연도/월 이동·달력 내부 스크롤만 제공합니다.
+실제 관심 등록·조회 API, 필터 개편, 상세 이동과 진행 관리는 아직 연결하지 않았습니다.
+구현 범위는 [캘린더 작업 기록](../docs/saved-programs-calendar.md)을 참고합니다.
+새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
 
 사이드바와 각 화면의 머리말은 화면에 고정하고 본문 칸만 스크롤합니다. 작업 채팅의 입력창은 화면 아래에
 붙어 있고 대화만 그 위에서 스크롤됩니다. 한 칸으로 접히는 좁은 화면에서는 고정을 풀어 문서 전체가 스크롤됩니다.
