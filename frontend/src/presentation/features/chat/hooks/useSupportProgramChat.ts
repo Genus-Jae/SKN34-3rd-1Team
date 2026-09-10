@@ -72,6 +72,7 @@ export function useSupportProgramChat(
   const canRetrySearch = useAppSelector(selectCanRetryChatSearch)
   const searchError = useAppSelector(selectChatSearchError)
   const searchOptions = useAppSelector((state) => state.chat.searchOptions)
+  const searchRequestId = useAppSelector((state) => state.chat.activeRequestId)
   const interpretation = useAppSelector((state) => state.chat.interpretation)
   const pendingClarification = useAppSelector((state) => state.chat.pendingClarification)
   const conversationQuery = useAppSelector((state) => state.chat.conversationQuery)
@@ -83,6 +84,22 @@ export function useSupportProgramChat(
       supportPurpose: searchOptions.companyConditions?.supportPurpose ?? null },
   }
   const isInterpreting = interpretation.status === 'pending'
+
+  useEffect(() => {
+    // 로그아웃 등으로 Redux의 요청이 초기화되면 화면이 유지되어도 이전 요청을 취소합니다.
+    const search = activeSearchRequest.current
+    if (search && search.requestId !== searchRequestId) {
+      activeSearchRequest.current = null
+      clearTimeout(search.timeoutId)
+      search.controller.abort()
+    }
+    const interpreting = activeInterpretationRequest.current
+    if (interpreting && interpreting.requestId !== interpretation.requestId) {
+      activeInterpretationRequest.current = null
+      clearTimeout(interpreting.timeoutId)
+      interpreting.controller.abort()
+    }
+  }, [searchRequestId, interpretation.requestId])
 
   useEffect(() => () => {
     const interpreting = activeInterpretationRequest.current

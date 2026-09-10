@@ -6,8 +6,9 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
-import { sessionRestored } from './presentation/shared/auth/state/authSlice'
+import { sessionRestored, signedIn } from './presentation/shared/auth/state/authSlice'
 import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from './data/fixtures/supportProgramConversation'
 import type { SupportProgramInterpretation } from './domain/entities/SupportProgramConversation'
 
@@ -27,6 +28,36 @@ beforeEach(() => { readiness.canSearch = true })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
+  it.each([false, true])('로그아웃 후 다른 계정으로 로그인해도 이전 대화·조건·초안이 남지 않는다 (로그아웃 API 실패: %s)', async (logoutFails) => {
+    const logout = vi.spyOn(appContainer.resolve('logOutUseCase'), 'execute')
+    if (logoutFails) logout.mockRejectedValue(new Error('logout unavailable'))
+    else logout.mockResolvedValue(undefined)
+    mockConversationNetwork([readyConversationProposal(seoulConversationContext)])
+    const { store } = renderConversationApp('/app/chat')
+    const privateMessage = '서울 SW 사업화 지원을 찾는 이전 계정의 대화'
+    await submitMessage(privateMessage)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    expect(store.getState().chat.messages).toHaveLength(3)
+    expect(screen.getByText(privateMessage)).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: '지원사업 검색어' }), { target: { value: '아직 보내지 않은 개인 초안' } })
+
+    fireEvent.click(within(screen.getByRole('complementary', { name: '작업 사이드바' })).getByRole('button', { name: '로그아웃' }))
+
+    await waitFor(() => expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy())
+    expect(logout).toHaveBeenCalledOnce()
+    expect(store.getState().chat).toMatchObject({
+      draft: '', confirmedSearch: null, conversationQuery: null, pendingClarification: null,
+      interpretation: { status: 'idle' }, searchOptions: { acceptingOnly: true },
+    })
+    expect(store.getState().chat.messages).toHaveLength(1)
+    act(() => store.dispatch(signedIn({ email: 'other@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null })))
+    const input = await screen.findByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
+    expect(input.value).toBe('')
+    expect(screen.queryByText(privateMessage)).toBeNull()
+    expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
+    expect(store.getState().chat.messages).toHaveLength(1)
+  })
+
   it.each(['/', '/app/chat'])('%s에서 새 검색은 초안 입력만으로 나타나지 않고 대화가 시작되면 입력창 아래 안내 옆에 표시된다', async (path) => {
     const network = mockConversationNetwork([readyConversationProposal(seoulConversationContext)])
     renderConversationApp(path)

@@ -4,6 +4,7 @@ import type { RootState } from '../../../../app/store'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCompanyConditions, SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
 import type { SupportProgramConversationContext, SupportProgramInterpretation, SupportProgramInterpretRequest, SupportProgramPendingClarification } from '../../../../domain/entities/SupportProgramConversation'
+import { sessionRestored, signedIn, signedOut } from '../../../shared/auth/state/authSlice'
 import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
 
 export type ChatSearchOptions = {
@@ -32,6 +33,7 @@ type ChatInterpretation = {
 }
 
 type ChatState = {
+  accountEmail: string | null
   activeRequestId: string | null
   draft: string
   messages: SupportProgramChatMessage[]
@@ -54,8 +56,8 @@ const chatSlice = createSlice({
   initialState,
   reducers: {
     conversationReset: {
-      reducer(_state, action: PayloadAction<{ welcomeMessage: SupportProgramChatMessage }>) {
-        return createInitialState(action.payload.welcomeMessage)
+      reducer(state, action: PayloadAction<{ welcomeMessage: SupportProgramChatMessage }>) {
+        return { ...createInitialState(action.payload.welcomeMessage), accountEmail: state.accountEmail }
       },
       prepare() {
         return { payload: { welcomeMessage: createWelcomeMessage() } }
@@ -212,6 +214,15 @@ const chatSlice = createSlice({
       },
     },
   },
+  extraReducers: (builder) => {
+    // 같은 계정의 프로필 갱신은 보존하고, 로그아웃·계정 변경에는 대화와 요청 ID를 함께 비웁니다.
+    builder
+      .addCase(signedOut, () => initialState)
+      .addCase(signedIn, (state, action) => state.accountEmail === action.payload.email
+        ? state : { ...initialState, accountEmail: action.payload.email })
+      .addCase(sessionRestored, (state, action) => state.accountEmail === (action.payload?.email ?? null)
+        ? state : { ...initialState, accountEmail: action.payload?.email ?? null })
+  },
 })
 
 export const {
@@ -249,6 +260,7 @@ export default chatSlice.reducer
 
 function createInitialState(welcomeMessage = createWelcomeMessage()): ChatState {
   return {
+    accountEmail: null,
     activeRequestId: null,
     draft: '',
     messages: [welcomeMessage],
