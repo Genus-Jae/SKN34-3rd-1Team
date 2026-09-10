@@ -7,13 +7,14 @@ enum class PartnerRecruitmentSort {
 }
 
 /**
- * 목록을 좁히는 조건입니다. 지역을 고르면 전국 모집글도 함께 보이고, 전국을 고르면 전국 모집글만 보입니다.
+ * 목록을 좁히는 조건입니다. 역할·지역은 여러 개를 함께 고를 수 있고 비어 있으면 전체입니다.
+ * 지역을 고르면 그 지역들의 모집글과 전국 모집글이 함께 보이고, 전국만 고르면 전국 모집글만 보입니다.
  * 내 글 조회는 마감된 글도 포함하고, 그 외에는 모집 중인 글만 돌려줍니다.
  */
 data class PartnerRecruitmentQuery(
     val keyword: String,
-    val seekingRole: PartnerRole?,
-    val region: String,
+    val seekingRoles: Set<PartnerRole>,
+    val regions: Set<String>,
     val mineAccountId: Long?,
     val sort: PartnerRecruitmentSort,
     val page: Int,
@@ -23,8 +24,8 @@ data class PartnerRecruitmentQuery(
         require(keyword == keyword.trim() && keyword.length <= MAX_KEYWORD_LENGTH) {
             "keyword must be a trimmed text of at most $MAX_KEYWORD_LENGTH characters"
         }
-        require(region == region.trim() && region.length <= PartnerRecruitmentInput.MAX_REGION_LENGTH) {
-            "region must be a trimmed text of at most ${PartnerRecruitmentInput.MAX_REGION_LENGTH} characters"
+        require(regions.all { it.isNotEmpty() && it == it.trim() && it.length <= PartnerRecruitmentInput.MAX_REGION_LENGTH }) {
+            "regions must be trimmed, non-empty texts of at most ${PartnerRecruitmentInput.MAX_REGION_LENGTH} characters"
         }
         require(page >= 1) { "page must be positive" }
         require(pageSize in 1..MAX_PAGE_SIZE) { "pageSize must be 1~$MAX_PAGE_SIZE" }

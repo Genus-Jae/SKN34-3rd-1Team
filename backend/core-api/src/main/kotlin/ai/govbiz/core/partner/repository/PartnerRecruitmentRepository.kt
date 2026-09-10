@@ -69,13 +69,13 @@ class PartnerRecruitmentRepository(
     fun findSlice(query: PartnerRecruitmentQuery): PartnerRecruitmentSlice {
         val today = LocalDate.now(clock)
         val keywordPattern = query.keyword.ifEmpty { null }?.let { "%${escapeLikePattern(it)}%" }
-        val seekingRole = query.seekingRole?.name
-        val region = query.region.ifEmpty { null }
+        val seekingRoles = query.seekingRoles.map { it.name }.ifEmpty { null }
+        // 지역을 고르면 전국 모집글도 함께 보여야 하므로 IN 목록에 전국을 더합니다. 전국만 골랐다면 전국만 남습니다.
+        val regions = query.regions.ifEmpty { null }?.let { (it + PartnerRecruitmentQuery.NATIONWIDE_REGION).toList() }
         val rows = recruitmentMapper.findRecruitments(
             keywordPattern = keywordPattern,
-            seekingRole = seekingRole,
-            region = region,
-            nationwideRegion = PartnerRecruitmentQuery.NATIONWIDE_REGION,
+            seekingRoles = seekingRoles,
+            regions = regions,
             mineAccountId = query.mineAccountId,
             today = today,
             sortByRecent = query.sort == PartnerRecruitmentSort.RECENT,
@@ -84,9 +84,8 @@ class PartnerRecruitmentRepository(
         )
         val total = recruitmentMapper.countRecruitments(
             keywordPattern = keywordPattern,
-            seekingRole = seekingRole,
-            region = region,
-            nationwideRegion = PartnerRecruitmentQuery.NATIONWIDE_REGION,
+            seekingRoles = seekingRoles,
+            regions = regions,
             mineAccountId = query.mineAccountId,
             today = today,
         )

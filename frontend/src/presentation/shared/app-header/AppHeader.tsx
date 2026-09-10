@@ -1,4 +1,5 @@
-import { Link, useLocation } from 'react-router'
+import { flushSync } from 'react-dom'
+import { Link, useLocation, useNavigate } from 'react-router'
 
 import { useAuthSession } from '../auth/hooks/useAuthSession'
 import { appPaths, publicPaths } from '../routes/appPaths'
@@ -73,6 +74,16 @@ export function AppHeader() {
  */
 function AccountMenu({ isMarketingPage }: { isMarketingPage: boolean }) {
   const { account, status, logOut, logInAsDeveloper, isDevLoggingIn, devLogInError } = useAuthSession()
+  const navigate = useNavigate()
+
+  /** 로그아웃하면 공개 메인 화면으로 돌아갑니다. */
+  function signOutToLanding() {
+    // 로그아웃 상태를 먼저 동기로 그려 보호 라우트의 로그인 이동을 끝낸 뒤, 마지막 이동을 메인으로 잡습니다.
+    flushSync(() => {
+      void logOut()
+    })
+    navigate(publicPaths.landing, { replace: true })
+  }
 
   if (status === 'unknown') return null
 
@@ -83,7 +94,7 @@ function AccountMenu({ isMarketingPage }: { isMarketingPage: boolean }) {
           작업 화면
         </Link>
         <span className={appHeaderStyles.accountEmail} title={account.email}>{account.email}</span>
-        <button className={appHeaderStyles.logoutButton} type="button" onClick={() => void logOut()}>
+        <button className={appHeaderStyles.logoutButton} type="button" onClick={signOutToLanding}>
           로그아웃
         </button>
       </div>

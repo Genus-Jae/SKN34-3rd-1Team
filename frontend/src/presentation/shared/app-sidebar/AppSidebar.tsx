@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react'
-import { Link, useLocation } from 'react-router'
+import { flushSync } from 'react-dom'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
 
 import type { Account } from '../../../domain/entities/Account'
 import { useAuthSession } from '../auth/hooks/useAuthSession'
 import { usePendingReceivedProposalCount } from '../partner-proposal/useReceivedProposals'
-import { appPaths } from '../routes/appPaths'
+import { appPaths, publicPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 
-type MenuIcon = 'search' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing'
+type MenuIcon = 'search' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more'
 
 /** 사이드바 메뉴 한 줄입니다. `to`가 없으면 아직 화면이 없는 메뉴이므로 링크로 만들지 않습니다. */
 type MenuItem = {
@@ -34,22 +36,11 @@ const menuGroups: MenuGroup[] = [
       { label: '기업 맞춤 리포트', icon: 'inbox', to: appPaths.reports, matches: (pathname) => pathname === appPaths.reports },
       { label: '관심 공고함', icon: 'bookmark', badge: '준비 중' },
       {
-        label: '파트너 모집',
+        label: '파트너 관리',
         icon: 'users',
         to: appPaths.partners,
-        matches: (pathname) => pathname.startsWith(appPaths.partners),
-      },
-      {
-        label: '제안함',
-        icon: 'inbox',
-        to: appPaths.proposals,
-        matches: (pathname) => pathname.startsWith(appPaths.proposals),
-      },
-      {
-        label: '내 프로필',
-        icon: 'building',
-        to: appPaths.profile,
-        matches: (pathname) => pathname.startsWith(appPaths.profile),
+        // 모집글과 제안함은 한 메뉴 아래 탭으로 오갑니다.
+        matches: (pathname) => pathname.startsWith(appPaths.partners) || pathname.startsWith(appPaths.proposals),
       },
       { label: '요금제', icon: 'pricing', to: appPaths.pricing, matches: (pathname) => pathname === appPaths.pricing },
     ],
@@ -103,6 +94,20 @@ const iconPaths: Record<MenuIcon, ReactNode> = {
     </>
   ),
   shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+  logout: (
+    <>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5M21 12H9" />
+    </>
+  ),
+  // 세로 점 세 개(⋮): 누르면 더 많은 항목이 열린다는 뜻으로 널리 쓰이는 모양입니다.
+  more: (
+    <>
+      <circle cx="12" cy="5" r="1.1" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.1" fill="currentColor" />
+      <circle cx="12" cy="19" r="1.1" fill="currentColor" />
+    </>
+  ),
 }
 
 function MenuIconGraphic({ name }: { name: MenuIcon }) {
@@ -138,11 +143,45 @@ function tierLabel(account: Account): string {
 export function AppSidebar() {
   const { pathname } = useLocation()
   const { account, logOut } = useAuthSession()
+  const navigate = useNavigate()
   const pendingProposalCount = usePendingReceivedProposalCount()
+  // 계정 카드를 누르면 내 프로필·로그아웃이 열립니다. 화면을 옮기거나 Esc·바깥 클릭이면 닫힙니다.
+  const accountMenuId = useId()
+  const accountRef = useRef<HTMLDivElement>(null)
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
 
-  /** 제안함은 받은 제안 대기 건수를 배지로 보여 줍니다. 나머지 메뉴는 고정 문구를 씁니다. */
+  useEffect(() => {
+    setIsAccountMenuOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!isAccountMenuOpen) return
+    function closeOnOutside(event: MouseEvent) {
+      if (accountRef.current && !accountRef.current.contains(event.target as Node)) setIsAccountMenuOpen(false)
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setIsAccountMenuOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [isAccountMenuOpen])
+
+  /** 로그아웃하면 공개 메인 화면으로 돌아갑니다. */
+  function signOutToLanding() {
+    // 로그아웃 상태를 먼저 동기로 그려 보호 라우트의 로그인 이동을 끝낸 뒤, 마지막 이동을 메인으로 잡습니다.
+    flushSync(() => {
+      void logOut()
+    })
+    navigate(publicPaths.landing, { replace: true })
+  }
+
+  /** 파트너 관리는 받은 제안 대기 건수를 배지로 보여 줍니다. 나머지 메뉴는 고정 문구를 씁니다. */
   function badgeFor(item: MenuItem): string | undefined {
-    if (item.to === appPaths.proposals) return pendingProposalCount === null ? undefined : String(pendingProposalCount)
+    if (item.to === appPaths.partners) return pendingProposalCount === null || pendingProposalCount === 0 ? undefined : String(pendingProposalCount)
     return item.badge
   }
 
@@ -191,21 +230,43 @@ export function AppSidebar() {
         ))}
 
       {account ? (
-        <div className={appSidebarStyles.account}>
-          <div className={appSidebarStyles.accountCard}>
+        <div className={appSidebarStyles.account} ref={accountRef}>
+          {isAccountMenuOpen ? (
+            <div className={appSidebarStyles.accountMenu} id={accountMenuId} aria-label="계정 메뉴">
+              <Link
+                className={sidebarMenuItemClassName(pathname.startsWith(appPaths.profile) ? 'active' : 'inactive')}
+                to={appPaths.profile}
+                aria-current={pathname.startsWith(appPaths.profile) ? 'page' : undefined}
+              >
+                <MenuIconGraphic name="building" />
+                <span>내 프로필</span>
+              </Link>
+              <button className={appSidebarStyles.accountMenuButton} type="button" onClick={signOutToLanding}>
+                <MenuIconGraphic name="logout" />
+                <span>로그아웃</span>
+              </button>
+            </div>
+          ) : null}
+          <button
+            className={appSidebarStyles.accountCard}
+            type="button"
+            aria-label={`계정 메뉴 · ${account.email}`}
+            aria-expanded={isAccountMenuOpen}
+            aria-controls={isAccountMenuOpen ? accountMenuId : undefined}
+            onClick={() => setIsAccountMenuOpen((open) => !open)}
+          >
             <span className={appSidebarStyles.accountAvatar} aria-hidden="true">
               {account.email.slice(0, 1).toUpperCase()}
             </span>
-            <span className="min-w-0">
+            <span className="min-w-0 text-left">
               <strong className={appSidebarStyles.accountName} title={account.email}>{account.email}</strong>
               <span className={appSidebarStyles.accountCompany}>{tierLabel(account)}</span>
             </span>
-          </div>
-          <div className={appSidebarStyles.accountActions}>
-            <button className={appSidebarStyles.logoutButton} type="button" onClick={() => void logOut()}>
-              로그아웃
-            </button>
-          </div>
+            {/* ⋮ 아이콘으로 이 카드가 계정 메뉴(내 프로필·로그아웃)를 여는 버튼임을 알립니다. */}
+            <span className={appSidebarStyles.accountMenuIcon} aria-hidden="true">
+              <MenuIconGraphic name="more" />
+            </span>
+          </button>
         </div>
       ) : null}
     </aside>

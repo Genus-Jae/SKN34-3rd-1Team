@@ -60,13 +60,13 @@ export function useAuthSession(
   const [isDevLoggingIn, setIsDevLoggingIn] = useState(false)
   const [devLogInError, setDevLogInError] = useState<string | null>(null)
 
+  /** 화면은 먼저 로그아웃 상태로 바꾸고 서버 세션 삭제는 뒤따릅니다. 부르는 쪽이 같은 틱에 메인으로 이동합니다. */
   async function logOut() {
+    dispatchToStore(signedOut())
     try {
       await logOutUseCase.execute()
     } catch {
-      // 서버 세션 삭제에 실패해도 브라우저 힌트는 이미 지워졌으므로 화면은 로그아웃 상태가 됩니다.
-    } finally {
-      dispatchToStore(signedOut())
+      // 서버 세션 삭제에 실패해도 브라우저 힌트는 이미 지워졌으므로 화면은 로그아웃 상태로 남습니다
     }
   }
 

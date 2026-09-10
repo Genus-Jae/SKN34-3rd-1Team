@@ -5,11 +5,15 @@ function classes(...groups: string[]) {
 /** 모달 틀 스타일입니다. 폼 안 입력·버튼은 부르는 쪽이 작업 화면 공용 스타일로 그립니다. */
 export const workspaceModalStyles = {
   overlay: 'fixed inset-0 z-50 flex items-center justify-center bg-[rgb(32_33_36_/_48%)] p-4',
+  overlayBlur: 'backdrop-blur-[6px]',
   dialog: classes(
-    'flex w-full max-w-[27.5rem] flex-col gap-4 rounded-[1.1rem] bg-white p-6 text-app-ink shadow-[0_24px_60px_rgb(0_0_0_/_28%)]',
+    'flex w-full max-w-[27.5rem] flex-col gap-4 rounded-[1.1rem] p-6 text-app-ink shadow-[0_24px_60px_rgb(0_0_0_/_28%)]',
     'focus:outline-0',
   ),
-  dialogDanger: 'border-t-4 border-[#9a3947]',
+  // 바탕색은 톤이 정합니다. 기본·위험은 흰색, 안내(accent)는 옅은 초록 카드입니다.
+  dialogDefault: 'bg-white',
+  dialogDanger: 'border-t-4 border-[#9a3947] bg-white',
+  dialogAccent: 'border border-[#b4ddc7] bg-[#e4f2e9]',
   header: 'flex items-start justify-between gap-3',
   title: 'm-0 text-[1.05rem] font-extrabold',
   description: 'mt-1 mb-0 text-[0.82rem] leading-[1.5] text-sample-muted',

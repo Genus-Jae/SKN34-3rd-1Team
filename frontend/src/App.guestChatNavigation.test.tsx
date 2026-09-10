@@ -90,8 +90,8 @@ describe('비로그인 대화의 화면 이동 수명', () => {
     const previous = store.getState().chat
     renderApp(store, '/app/chat')
     await act(async () => fireEvent.click(within(screen.getByRole('complementary', { name: '작업 사이드바' }))
-      .getByRole('link', { name: '파트너 모집' })))
-    expect(screen.getByRole('heading', { name: '함께 신청할 기업 찾기' })).toBeTruthy()
+      .getByRole('link', { name: /파트너 관리/ })))
+    expect(screen.getByRole('heading', { name: '파트너 관리' })).toBeTruthy()
     expect(store.getState().chat).toEqual(previous)
     fireEvent.click(within(screen.getByRole('complementary', { name: '작업 사이드바' }))
       .getByRole('link', { name: '지원사업 검색' }))

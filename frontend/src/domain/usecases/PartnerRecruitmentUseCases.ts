@@ -21,7 +21,8 @@ export class BrowsePartnerRecruitmentsUseCase {
 
   execute(query: PartnerRecruitmentQuery, signal?: AbortSignal) {
     const page = Number.isInteger(query.page) && query.page >= 1 ? query.page : 1
-    return this.repository.browse({ ...query, keyword: query.keyword.trim(), region: query.region.trim(), page }, signal)
+    const regions = query.regions.map((region) => region.trim()).filter((region) => region !== '')
+    return this.repository.browse({ ...query, keyword: query.keyword.trim(), regions, page }, signal)
   }
 }
 

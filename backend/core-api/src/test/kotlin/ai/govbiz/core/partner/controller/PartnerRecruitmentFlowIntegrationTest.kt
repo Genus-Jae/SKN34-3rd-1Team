@@ -201,6 +201,13 @@ class PartnerRecruitmentFlowIntegrationTest {
             .andExpect(jsonPath("$.recruitments[1].region").value("서울"))
         mockMvc.perform(get("/api/v1/partners/recruitments").param("region", "전국"))
             .andExpect(jsonPath("$.total").value(1))
+        // 역할·지역은 같은 이름의 파라미터를 여러 번 보내 함께 고릅니다. 지역을 고르면 전국 모집글도 함께 나옵니다.
+        mockMvc.perform(get("/api/v1/partners/recruitments").param("region", "서울").param("region", "부산"))
+            .andExpect(jsonPath("$.total").value(3))
+        mockMvc.perform(get("/api/v1/partners/recruitments").param("seekingRole", "PARTICIPANT").param("seekingRole", "LEAD"))
+            .andExpect(jsonPath("$.total").value(3))
+        mockMvc.perform(get("/api/v1/partners/recruitments").param("region", "가".repeat(21)))
+            .andExpect(status().isBadRequest())
         mockMvc.perform(get("/api/v1/partners/recruitments").param("page", "2").param("pageSize", "2"))
             .andExpect(jsonPath("$.total").value(3))
             .andExpect(jsonPath("$.totalPages").value(2))

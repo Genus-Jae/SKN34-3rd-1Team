@@ -18,6 +18,9 @@ export const regionNamesNationwideFirst: readonly RegionName[] = [
   ...regionNames.filter((region) => region !== nationwideRegion),
 ]
 
+/** 파트너 모집 목록 필터처럼 "전체"가 전국까지 뜻하는 화면은 전국을 선택지에서 뺍니다. */
+export const regionNamesWithoutNationwide: readonly RegionName[] = regionNames.filter((region) => region !== nationwideRegion)
+
 const regionNameByFullName: Record<string, RegionName> = {
   서울특별시: '서울',
   부산광역시: '부산',

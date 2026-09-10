@@ -8,6 +8,7 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { PartnerManagementHeader } from '../../../shared/partner-recruitment/PartnerManagementHeader'
 import {
   proposalActionConfirmations,
   proposalActionLabels,
@@ -48,14 +49,7 @@ export function PartnerProposalBoxPage() {
 
   return (
     <>
-      <header className={workspacePageStyles.header}>
-        <div className={workspacePageStyles.headerTitleGroup}>
-          <h1 className={workspacePageStyles.title}>제안함</h1>
-        </div>
-        <div className={workspacePageStyles.headerActions}>
-          <Link className={workspacePageStyles.secondaryButton} to={partnersPath}>파트너 모집 목록</Link>
-        </div>
-      </header>
+      <PartnerManagementHeader active="proposals" />
 
       <div className={workspacePageStyles.content}>
         {hasCompany ? null : (

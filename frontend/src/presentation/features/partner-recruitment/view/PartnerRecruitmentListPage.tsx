@@ -6,7 +6,9 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { PartnerManagementHeader } from '../../../shared/partner-recruitment/PartnerManagementHeader'
 import { FilterChoices } from '../../../shared/workspace/FilterChoices'
+import { FilterMultiChoices } from '../../../shared/workspace/FilterMultiChoices'
 import {
   companyInitial,
   companySummaryLine,
@@ -63,20 +65,11 @@ function RecruitmentCard({ recruitment }: { recruitment: PartnerRecruitmentSumma
           <span className={partnerRecruitmentStyles.authorName}>{recruitment.company.companyName}</span>
           <span className={partnerRecruitmentStyles.authorSummary}>{companySummaryLine(recruitment.company)}</span>
         </span>
-        {recruitment.isMine ? null : (
-          <span
-            className={`ml-auto ${workspaceTagClassName(
-              recruitment.company.isEmailVerified ? 'ok' : 'muted',
-            )}`}
-          >
-            {recruitment.company.isEmailVerified ? '이메일 인증' : '인증 전'}
-          </span>
-        )}
       </div>
 
       <div className={partnerRecruitmentStyles.tagRow}>
         {recruitmentConditionTags(recruitment).map((tag) => (
-          <span className={workspaceTagClassName('muted')} key={tag}>
+          <span className={workspaceTagClassName('muted')} key={tag} title={tag}>
             {tag}
           </span>
         ))}
@@ -107,194 +100,134 @@ function RecruitmentCard({ recruitment }: { recruitment: PartnerRecruitmentSumma
 export function PartnerRecruitmentListPage() {
   const {
     hasCompany,
-    createPath,
-    createLabel,
     phase,
     recruitments,
     totalPages,
     retry,
     query,
+    draft,
     roleOptions,
     regionOptions,
     sortOptions,
     updateKeyword,
-    selectSeekingRole,
-    selectRegion,
+    toggleSeekingRole,
+    clearSeekingRoles,
+    toggleRegion,
+    clearRegions,
+    submitSearch,
     toggleMineOnly,
     selectSort,
     goToPage,
     hasActiveNarrowing,
     clearNarrowing,
     resultSummary,
-    profileSummary,
-    recommendedRecruitments,
-    upcomingFeatures,
   } = usePartnerRecruitmentListViewModel()
 
   return (
     <>
-      <header className={partnerRecruitmentStyles.listHeader}>
-        <div className={partnerRecruitmentStyles.listTitleGroup}>
-          <p className={partnerRecruitmentStyles.listBadge}>파트너 모집</p>
-          <h1 className={partnerRecruitmentStyles.listTitle}>함께 신청할 기업 찾기</h1>
-          <p className={partnerRecruitmentStyles.listDescription}>
-            공고와 기업의 역량을 한눈에 살펴보세요.
-          </p>
-        </div>
-        <div className={workspacePageStyles.headerActions}>
-          <Link className={hasCompany ? workspacePageStyles.primaryButton : workspacePageStyles.secondaryButton} to={createPath}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            {createLabel}
-          </Link>
-        </div>
-      </header>
+      <PartnerManagementHeader active="recruitments" />
 
       <div className={workspacePageStyles.content}>
         <p className={workspacePageStyles.emptyNote}>
           모집글은 기업 회원이 직접 올린 글입니다. 참여 제안은 상세에서 보내고 제안함에서 처리하며, 추천은 준비 중입니다.
           {hasCompany ? null : ' 모집글 작성은 프로필에서 기업을 등록한 뒤 열립니다.'}
         </p>
-        <div className={workspacePageStyles.columns}>
-          <div className={workspacePageStyles.column}>
-            <section className={partnerRecruitmentStyles.filterPanel} aria-label="모집글 검색과 필터">
-              <label className={partnerRecruitmentStyles.search}>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
+        <div className={workspacePageStyles.column}>
+          {/* 검색어·역할·지역은 조회를 눌러야 적용됩니다. 내 글만·정렬은 바로 적용됩니다. */}
+          <form
+            className={partnerRecruitmentStyles.filterPanel}
+            aria-label="모집글 검색과 필터"
+            onSubmit={(event) => {
+              event.preventDefault()
+              submitSearch()
+            }}
+          >
+            <div className={partnerRecruitmentStyles.searchRow}>
+            <label className={partnerRecruitmentStyles.search}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+              <span className="sr-only">모집글 검색</span>
+              <input
+                className={partnerRecruitmentStyles.searchInput}
+                type="search"
+                name="keyword"
+                placeholder="공고명, 기관, 기업명 검색"
+                value={draft.keyword}
+                onChange={(event) => updateKeyword(event.target.value)}
+              />
+            </label>
+            <button className={workspacePageStyles.primaryButton} type="submit">조회</button>
+            </div>
+
+            <FilterMultiChoices label="찾는 역할" name="partner-role" options={roleOptions} selected={draft.seekingRoles} onToggle={toggleSeekingRole} onClearAll={clearSeekingRoles} />
+            <FilterMultiChoices label="지역" name="partner-region" options={regionOptions} selected={draft.regions} onToggle={toggleRegion} onClearAll={clearRegions} />
+            <FilterChoices label="정렬" name="partner-sort" options={sortOptions} selected={query.sort} onSelect={selectSort} includeAll={false} />
+
+            <div className={partnerRecruitmentStyles.filterFooter}>
+              <span className={partnerRecruitmentStyles.tagRow}>
+                <button
+                  className={workspaceChipClassName(query.mineOnly)}
+                  type="button"
+                  aria-pressed={query.mineOnly}
+                  onClick={toggleMineOnly}
                 >
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="M21 21l-4.35-4.35" />
-                </svg>
-                <span className="sr-only">모집글 검색</span>
-                <input
-                  className={partnerRecruitmentStyles.searchInput}
-                  type="search"
-                  name="keyword"
-                  placeholder="공고명, 기관, 기업명 검색"
-                  value={query.keyword}
-                  onChange={(event) => updateKeyword(event.target.value)}
-                />
-              </label>
-
-              <FilterChoices label="찾는 역할" name="partner-role" options={roleOptions} selected={query.seekingRole} onSelect={selectSeekingRole} />
-              <FilterChoices label="지역" name="partner-region" options={regionOptions} selected={query.region} onSelect={selectRegion} />
-              <FilterChoices label="정렬" name="partner-sort" options={sortOptions} selected={query.sort} onSelect={selectSort} includeAll={false} />
-
-              <div className={partnerRecruitmentStyles.filterFooter}>
-                <span className={partnerRecruitmentStyles.tagRow}>
-                  <button
-                    className={workspaceChipClassName(query.mineOnly)}
-                    type="button"
-                    aria-pressed={query.mineOnly}
-                    onClick={toggleMineOnly}
-                  >
-                    내가 쓴 모집글만
-                  </button>
-                  {hasActiveNarrowing ? (
-                    <button className={workspacePageStyles.quietLink} type="button" onClick={clearNarrowing}>검색·필터 초기화</button>
-                  ) : null}
-                </span>
-                <span className={partnerRecruitmentStyles.resultCount} aria-live="polite">{resultSummary}</span>
-              </div>
-            </section>
-
-            {phase === 'failed' ? (
-              <section className={workspacePageStyles.card} aria-label="모집글 불러오기 실패">
-                <p className={workspacePageStyles.emptyNote}>모집글을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
-                <button className={workspacePageStyles.quietLink} type="button" onClick={retry}>다시 시도</button>
-              </section>
-            ) : phase === 'loading' && recruitments.length === 0 ? (
-              <section className={workspacePageStyles.card} aria-label="모집글 불러오는 중">
-                <p className={workspacePageStyles.emptyNote}>모집글을 불러오는 중입니다.</p>
-              </section>
-            ) : recruitments.length === 0 ? (
-              <section className={workspacePageStyles.card} aria-label="검색 결과 없음">
-                <p className={workspacePageStyles.emptyNote}>
-                  {hasActiveNarrowing ? '조건에 맞는 모집글이 없습니다. 검색어나 필터를 바꾸거나 초기화해 보세요.' : '아직 모집 중인 글이 없습니다. 첫 모집글을 올려 보세요.'}
-                </p>
-              </section>
-            ) : (
-              <>
-                <div className={partnerRecruitmentStyles.cardGrid}>
-                  {recruitments.map((recruitment) => (
-                    <RecruitmentCard key={recruitment.id} recruitment={recruitment} />
-                  ))}
-                </div>
-                {totalPages > 1 ? (
-                  <nav className={partnerRecruitmentStyles.pagination} aria-label="모집글 페이지">
-                    <button className={workspacePageStyles.secondaryButton} type="button" disabled={query.page <= 1} onClick={() => goToPage(query.page - 1)}>
-                      이전
-                    </button>
-                    <span className={partnerRecruitmentStyles.resultCount}>{query.page} / {totalPages}</span>
-                    <button className={workspacePageStyles.secondaryButton} type="button" disabled={query.page >= totalPages} onClick={() => goToPage(query.page + 1)}>
-                      다음
-                    </button>
-                  </nav>
+                  내가 쓴 모집글만
+                </button>
+                {hasActiveNarrowing ? (
+                  <button className={workspacePageStyles.quietLink} type="button" onClick={clearNarrowing}>검색·필터 초기화</button>
                 ) : null}
-              </>
-            )}
-          </div>
+              </span>
+              <span className={partnerRecruitmentStyles.resultCount} aria-live="polite">{resultSummary}</span>
+            </div>
+          </form>
 
-          <aside className={workspacePageStyles.column} aria-label="모집 요약">
-            <section className={workspacePageStyles.card}>
-              <p className={workspacePageStyles.sectionEyebrow}>내 프로필로 추천된 모집 · 예시</p>
-              <p className={workspacePageStyles.emptyNote}>{profileSummary}</p>
-              {hasCompany ? null : (
-                <Link className={workspacePageStyles.quietLink} to={appPaths.profile}>프로필에서 기업 등록</Link>
-              )}
-              <div className={partnerRecruitmentStyles.sideList}>
-                {recommendedRecruitments.map((item) => (
-                  <div className={partnerRecruitmentStyles.sideItem} key={item.title}>
-                    <span className={partnerRecruitmentStyles.sideItemTitle}>{item.title}</span>
-                    <span className={partnerRecruitmentStyles.tagRow}>
-                      {item.reasons.map((reason) => (
-                        <span
-                          className={workspaceTagClassName(reason.isMatched ? 'ok' : 'warn')}
-                          key={reason.label}
-                        >
-                          {reason.label}
-                        </span>
-                      ))}
-                    </span>
-                  </div>
-                ))}
-              </div>
+          {phase === 'failed' ? (
+            <section className={workspacePageStyles.card} aria-label="모집글 불러오기 실패">
+              <p className={workspacePageStyles.emptyNote}>모집글을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
+              <button className={workspacePageStyles.quietLink} type="button" onClick={retry}>다시 시도</button>
             </section>
-
-            <section className={workspacePageStyles.card} aria-label="준비 중 기능">
-              <p className={workspacePageStyles.sectionEyebrow}>준비 중 기능</p>
-              <ul className={partnerRecruitmentStyles.plainList}>
-                {upcomingFeatures.map((feature) => <li key={feature}>{feature}</li>)}
-              </ul>
+          ) : phase === 'loading' && recruitments.length === 0 ? (
+            <section className={workspacePageStyles.card} aria-label="모집글 불러오는 중">
+              <p className={workspacePageStyles.emptyNote}>모집글을 불러오는 중입니다.</p>
             </section>
-
-            <section className={partnerRecruitmentStyles.noticeCard}>
-              <p className={workspacePageStyles.sectionEyebrow}>모집 원칙</p>
-              <p className={partnerRecruitmentStyles.noticeText}>
-                모든 모집글은 공식 공고 하나에 묶입니다. 공고가 마감되면 모집도 자동 종료됩니다.
-                컨소시엄 자격은 GovBiz가 보증하지 않으며 공고 원문과 기관에서 확인하세요.
+          ) : recruitments.length === 0 ? (
+            <section className={workspacePageStyles.card} aria-label="검색 결과 없음">
+              <p className={workspacePageStyles.emptyNote}>
+                {hasActiveNarrowing ? '조건에 맞는 모집글이 없습니다. 검색어나 필터를 바꾸거나 초기화해 보세요.' : '아직 모집 중인 글이 없습니다. 첫 모집글을 올려 보세요.'}
               </p>
             </section>
-          </aside>
+          ) : (
+            <>
+              <div className={partnerRecruitmentStyles.cardGrid}>
+                {recruitments.map((recruitment) => (
+                  <RecruitmentCard key={recruitment.id} recruitment={recruitment} />
+                ))}
+              </div>
+              {totalPages > 1 ? (
+                <nav className={partnerRecruitmentStyles.pagination} aria-label="모집글 페이지">
+                  <button className={workspacePageStyles.secondaryButton} type="button" disabled={query.page <= 1} onClick={() => goToPage(query.page - 1)}>
+                    이전
+                  </button>
+                  <span className={partnerRecruitmentStyles.resultCount}>{query.page} / {totalPages}</span>
+                  <button className={workspacePageStyles.secondaryButton} type="button" disabled={query.page >= totalPages} onClick={() => goToPage(query.page + 1)}>
+                    다음
+                  </button>
+                </nav>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     </>

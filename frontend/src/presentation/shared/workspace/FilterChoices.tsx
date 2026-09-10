@@ -1,4 +1,4 @@
-import type { FilterChoiceOption } from './filterChoiceOptions'
+import { filterChoiceChipClassName, type FilterChoiceOption } from './filterChoiceOptions'
 
 /**
  * 지원사업 검색과 파트너 모집 목록이 함께 쓰는 한 줄 라디오 필터입니다.
@@ -25,7 +25,7 @@ export function FilterChoices({ label, name, options, selected, onSelect, includ
         {allChoices.map((choice) => <label key={choice.value} className="relative min-w-0 max-w-full cursor-pointer">
           <input type="radio" name={name} value={choice.value} aria-label={choice.value ? choice.label : `전체 ${label}`}
             checked={selected === choice.value} onChange={() => onSelect(choice.value)} className="peer sr-only" />
-          <span className="flex min-h-9 items-center justify-center rounded-lg border border-sample-border bg-white px-2.5 text-xs leading-relaxed text-sample-muted transition-colors [overflow-wrap:anywhere] hover:border-brand-primary hover:text-brand-primary peer-checked:border-brand-primary peer-checked:bg-brand-primary peer-checked:font-bold peer-checked:text-white peer-checked:hover:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-primary motion-reduce:transition-none">{choice.label}</span>
+          <span className={filterChoiceChipClassName}>{choice.label}</span>
         </label>)}
       </div>
     </div>

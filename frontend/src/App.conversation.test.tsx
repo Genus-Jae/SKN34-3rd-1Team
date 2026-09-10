@@ -42,9 +42,12 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(screen.getByText(privateMessage)).toBeTruthy()
     fireEvent.change(screen.getByRole('textbox', { name: '지원사업 검색어' }), { target: { value: '아직 보내지 않은 개인 초안' } })
 
-    fireEvent.click(within(screen.getByRole('complementary', { name: '작업 사이드바' })).getByRole('button', { name: '로그아웃' }))
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    fireEvent.click(within(sidebar).getByRole('button', { name: /계정 메뉴/ }))
+    fireEvent.click(within(sidebar).getByRole('button', { name: '로그아웃' }))
 
-    await waitFor(() => expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy())
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull())
+    expect(screen.queryByRole('form', { name: '로그인' })).toBeNull()
     expect(logout).toHaveBeenCalledOnce()
     expect(store.getState().chat).toMatchObject({
       draft: '', confirmedSearch: null, conversationQuery: null, pendingClarification: null,

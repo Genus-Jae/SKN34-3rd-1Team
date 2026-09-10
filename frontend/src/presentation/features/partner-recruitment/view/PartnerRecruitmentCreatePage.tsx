@@ -4,6 +4,8 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { HelpTip } from '../../../shared/workspace/HelpTip'
+import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { appPaths } from '../../../shared/routes/appPaths'
 import { usePartnerRecruitmentCreateViewModel } from '../viewmodel/usePartnerRecruitmentCreateViewModel'
 import {
@@ -66,12 +68,7 @@ export function PartnerRecruitmentCreatePage() {
   if (!canCreate || ownCompany === null) {
     return (
       <>
-        <header className={workspacePageStyles.header}>
-          <div className={workspacePageStyles.headerTitleGroup}>
-            <Link className={workspacePageStyles.headerBackLink} to={appPaths.partners}>파트너 모집 목록</Link>
-            <h1 className={workspacePageStyles.title}>모집글 작성</h1>
-          </div>
-        </header>
+        <WorkspacePageHeader parent={{ to: appPaths.partners, label: '파트너 관리' }} title="모집글 작성" />
         <div className={workspacePageStyles.content}>
           <section className={workspacePageStyles.card} aria-label="기업 등록 필요">
             <h2 className={workspacePageStyles.cardTitle}>기업을 등록한 뒤 모집글을 쓸 수 있습니다</h2>
@@ -91,37 +88,35 @@ export function PartnerRecruitmentCreatePage() {
 
   return (
     <>
-      <header className={workspacePageStyles.header}>
-        <div className={workspacePageStyles.headerTitleGroup}>
-          <Link className={workspacePageStyles.headerBackLink} to={appPaths.partners}>
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            파트너 모집 목록
-          </Link>
-          <h1 className={workspacePageStyles.title}>모집글 작성</h1>
-        </div>
-      </header>
+      <WorkspacePageHeader parent={{ to: appPaths.partners, label: '파트너 관리' }} title="모집글 작성" />
 
       <div className={workspacePageStyles.content}>
         <p className={workspacePageStyles.emptyNote}>공고 하나를 골라 모집글을 등록합니다. 같은 공고에는 모집글을 하나만 쓸 수 있습니다.</p>
-        <div className={workspacePageStyles.columns}>
+        <div className={workspacePageStyles.column}>
           <form className={partnerRecruitmentStyles.form} onSubmit={(event) => void submit(event)} aria-label="모집글 작성" noValidate>
             <section className={partnerRecruitmentStyles.formSection}>
               <div className={partnerRecruitmentStyles.formSectionHeader}>
                 <div className={partnerRecruitmentStyles.formSectionTitleGroup}>
                   <span className={partnerRecruitmentStyles.formStepBadge} aria-hidden="true">1</span>
                   <h2 className={partnerRecruitmentStyles.formSectionTitle}>연결할 공고</h2>
+                  <HelpTip label="모집글에 표시되는 우리 기업 도움말" title="모집글에 표시되는 우리 기업">
+                    <div className={partnerRecruitmentStyles.authorRow}>
+                      <span className={`${partnerRecruitmentStyles.authorAvatar} ${partnerRecruitmentStyles.authorAvatarMine}`}>
+                        {ownCompany.initial}
+                      </span>
+                      <span className="min-w-0">
+                        <span className={partnerRecruitmentStyles.authorName}>{ownCompany.name}</span>
+                        <span className={partnerRecruitmentStyles.authorSummary}>사업자등록번호 조회로 확인한 등록 기업</span>
+                      </span>
+                    </div>
+                    <div className={partnerRecruitmentStyles.tagRow}>
+                      <span className={workspaceTagClassName('ok')}>사업자 확인</span>
+                    </div>
+                    <p className="m-0">
+                      프로필의 소재지·업종·설립연도가 함께 보입니다. 담당자 이메일은 제안을 수락한 뒤에만 상대에게 공개되고, 참여
+                      제안은 기업을 등록한 회원끼리 주고받습니다.
+                    </p>
+                  </HelpTip>
                   <span className={partnerRecruitmentStyles.formSectionHint}>
                     모집글은 접수 중인 공식 공고 하나에 반드시 묶입니다.
                   </span>
@@ -377,6 +372,11 @@ export function PartnerRecruitmentCreatePage() {
                 <div className={partnerRecruitmentStyles.formSectionTitleGroup}>
                   <span className={partnerRecruitmentStyles.formStepBadge} aria-hidden="true">3</span>
                   <h2 className={partnerRecruitmentStyles.formSectionTitle}>소개</h2>
+                  <HelpTip label="작성 팁 도움말" title="작성 팁">
+                    <ul className={partnerRecruitmentStyles.plainList}>
+                      {writingTips.map((tip) => <li key={tip}>{tip}</li>)}
+                    </ul>
+                  </HelpTip>
                 </div>
               </div>
 
@@ -440,63 +440,6 @@ export function PartnerRecruitmentCreatePage() {
             </div>
           </form>
 
-          <aside className={workspacePageStyles.column} aria-label="작성 참고">
-            <section className={workspacePageStyles.card}>
-              <p className={workspacePageStyles.sectionEyebrow}>모집글에 표시되는 우리 기업</p>
-              <div className={partnerRecruitmentStyles.authorRow}>
-                <span
-                  className={`${partnerRecruitmentStyles.authorAvatar} ${partnerRecruitmentStyles.authorAvatarMine}`}
-                >
-                  {ownCompany.initial}
-                </span>
-                <span className="min-w-0">
-                  <span className={partnerRecruitmentStyles.authorName}>{ownCompany.name}</span>
-                  <span className={partnerRecruitmentStyles.authorSummary}>사업자등록번호 조회로 확인한 등록 기업</span>
-                </span>
-              </div>
-              <div className={partnerRecruitmentStyles.tagRow}>
-                <span className={workspaceTagClassName('ok')}>사업자 확인</span>
-                <span className={workspaceTagClassName(ownCompany.isEmailVerified ? 'ok' : 'muted')}>
-                  {ownCompany.isEmailVerified ? '이메일 인증' : '이메일 인증 전'}
-                </span>
-              </div>
-              <p className={workspacePageStyles.emptyNote}>
-                프로필의 소재지·업종·설립연도가 함께 보입니다. 담당자 이메일은 제안을 수락한 뒤에만 상대에게 공개되고,
-                참여 제안은 기업을 등록한 회원끼리 주고받습니다.
-              </p>
-            </section>
-
-            <section className={workspacePageStyles.card}>
-              <p className={workspacePageStyles.sectionEyebrow}>공고 원문 확인</p>
-              {selectedProgram ? (
-                <>
-                  <p className={partnerRecruitmentStyles.requirementRow}>
-                    <span className={workspaceTagClassName('ok')}>원문</span>
-                    {selectedProgram.targetDescription}
-                  </p>
-                  <a className={workspacePageStyles.quietLink} href={selectedProgram.sourceUrl} rel="noreferrer" target="_blank">
-                    공식 원문 보기
-                  </a>
-                </>
-              ) : (
-                <p className={workspacePageStyles.emptyNote}>공고를 고르면 지원대상 원문과 공식 원문 링크가 여기에 보입니다.</p>
-              )}
-              <p className={partnerRecruitmentStyles.disclaimer}>
-                공고 원문에서 발췌한 문장만 표시합니다. 컨소시엄 요건은 원문과 기관에서 직접 확인하세요.
-              </p>
-            </section>
-
-            <section className={partnerRecruitmentStyles.noticeCard}>
-              <p className={workspacePageStyles.sectionEyebrow}>작성 팁</p>
-              <div className="flex flex-col gap-[0.35rem]">
-                {writingTips.map((tip) => (
-                  <span className={partnerRecruitmentStyles.noticeText} key={tip}>
-                    · {tip}
-                  </span>
-                ))}
-              </div>
-            </section>
-          </aside>
         </div>
       </div>
     </>
