@@ -9,7 +9,7 @@ from app.support_program_conversation.models import (
 
 
 class SupportProgramConversationService:
-    """변경 근거와 초안 병합 결과를 검증하고 확인 전 패치만 반환한다."""
+    """변경 근거와 초안 병합 또는 조건을 바꾸지 않는 설명 응답을 검증한다."""
 
     def __init__(self, agent: SupportProgramConversationAgent) -> None:
         self._agent = agent
@@ -34,7 +34,11 @@ class SupportProgramConversationService:
     def _merge_context(
         self, request: SupportProgramConversationRequest, output: SupportProgramConversationOutput,
     ) -> ConversationContext:
-        base = request.pending_clarification.draft_context if request.pending_clarification else request.context
+        base = (
+            request.pending_clarification.draft_context if request.pending_clarification
+            else request.pending_proposal if request.pending_proposal is not None
+            else request.context
+        )
         values = base.model_dump(by_alias=True)
         condition_fields = {
             "REGION": "region", "INDUSTRY": "industry",

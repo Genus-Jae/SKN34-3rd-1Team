@@ -5,6 +5,7 @@ import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.AiServiceFailure
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationCompanyConditionsRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationContextRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationLastSearchRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramPendingClarificationRequest
 import org.junit.jupiter.api.AfterEach
@@ -45,12 +46,13 @@ class AiSupportProgramConversationClientTest {
             .andExpect(content().json("""{
               "schemaVersion":"$VERSION","referenceDate":"2026-09-07","message":"부산으로 변경",
               "context":{"query":null,"acceptingOnly":true,"companyConditions":{"region":null,"industry":null,"establishedOn":null,"supportPurpose":null}},
-              "pendingClarification":null
+              "pendingClarification":null,"pendingProposal":null,"lastSearch":null
             }""", JsonCompareMode.STRICT))
             .andRespond(withSuccess(VALID_RESPONSE, MediaType.APPLICATION_JSON))
         val payload = client.interpret(request)
         assertEquals("READY", payload.status)
         assertNull(payload.clarificationQuestion)
+        assertNull(payload.answer)
         assertEquals("부산", payload.updates!!.single()!!.value)
     }
 
@@ -60,11 +62,35 @@ class AiSupportProgramConversationClientTest {
         server.expect(requestTo(URL)).andExpect(content().json("""{
           "schemaVersion":"$VERSION","referenceDate":"2026-09-07","message":"부산으로 변경",
           "context":{"query":null,"acceptingOnly":true,"companyConditions":{"region":null,"industry":null,"establishedOn":null,"supportPurpose":null}},
-          "pendingClarification":{"question":"정확한 설립일은?","draftContext":{"query":"시제품 지원","acceptingOnly":false,"companyConditions":{"region":"부산","industry":null,"establishedOn":"2024-02-29","supportPurpose":null}}}
+          "pendingClarification":{"question":"정확한 설립일은?","draftContext":{"query":"시제품 지원","acceptingOnly":false,"companyConditions":{"region":"부산","industry":null,"establishedOn":"2024-02-29","supportPurpose":null}}},
+          "pendingProposal":null,"lastSearch":null
         }""", JsonCompareMode.STRICT)).andRespond(withSuccess("""{"schemaVersion":"$VERSION","status":"CLARIFICATION_REQUIRED","updates":[],"clarificationQuestion":"어떤 지원을 원하시나요?"}""", MediaType.APPLICATION_JSON))
         val payload = client.interpret(request.copy(pendingClarification = AiSupportProgramPendingClarificationRequest("정확한 설립일은?", draft)))
         assertEquals("CLARIFICATION_REQUIRED", payload.status)
         assertEquals(emptyList<Any>(), payload.updates)
+    }
+
+    @Test
+    fun sendsPendingProposalAndCompletedSearchSummaryAndDecodesAnswered() {
+        val proposal = context.copy(query = "무역 지원", companyConditions = context.companyConditions.copy(region = "대구"))
+        val lastSearch = AiSupportProgramConversationLastSearchRequest(context.copy(query = "AI 창업 지원"), 0)
+        server.expect(requestTo(URL)).andExpect(method(HttpMethod.POST))
+            .andExpect(jsonPath("$.message").value("왜 못찾아?"))
+            .andExpect(jsonPath("$.pendingProposal.query").value("무역 지원"))
+            .andExpect(jsonPath("$.pendingProposal.companyConditions.region").value("대구"))
+            .andExpect(jsonPath("$.lastSearch.context.query").value("AI 창업 지원"))
+            .andExpect(jsonPath("$.lastSearch.resultCount").value(0))
+            .andRespond(withSuccess("""{"schemaVersion":"$VERSION","status":"ANSWERED","updates":[],"clarificationQuestion":null,"answer":"직전 검색 결과는 0건입니다."}""", MediaType.APPLICATION_JSON))
+        val payload = client.interpret(request.copy(message = "왜 못찾아?", pendingProposal = proposal, lastSearch = lastSearch))
+        assertEquals("ANSWERED", payload.status)
+        assertEquals("직전 검색 결과는 0건입니다.", payload.answer)
+        assertEquals(emptyList<Any>(), payload.updates)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["true", "1", "1.5", "[]", "{}"])
+    fun rejectsNonStringAnswersInsteadOfCoercingThem(value: String) {
+        expectInvalidJson("""{"schemaVersion":"$VERSION","status":"ANSWERED","updates":[],"clarificationQuestion":null,"answer":$value}""")
     }
 
     @ParameterizedTest

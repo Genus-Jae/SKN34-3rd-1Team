@@ -18,6 +18,8 @@ def request_data():
             "companyConditions": {"region": "서울", "industry": "SW", "establishedOn": "2024-01-01", "supportPurpose": "사업화"},
         },
         "pendingClarification": None,
+        "pendingProposal": None,
+        "lastSearch": None,
         "referenceDate": "2026-09-07",
     }
 
@@ -28,4 +30,5 @@ def output_data():
         "status": "READY",
         "updates": [{"field": "REGION", "operation": "SET", "value": "부산", "evidence": "부산"}],
         "clarificationQuestion": None,
+        "answer": None,
     }

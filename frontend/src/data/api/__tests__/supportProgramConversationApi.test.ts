@@ -25,6 +25,25 @@ describe('공개 조건 해석 HTTP 경계', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
+  it('미확정 제안과 0건 검색 요약을 전송하고 설명 답변을 표시할 도메인 값으로 변환한다', async () => {
+    const request = { ...command, message: '왜 못찾아?', pendingProposal: seoulConversationContext,
+      lastSearch: { context: seoulConversationContext, resultCount: 0 } }
+    const answer = { status: 'ANSWERED', proposedContext: seoulConversationContext,
+      clarificationQuestion: null, changedFields: [], answer: '현재 검색 조건에 맞는 공고가 0건입니다.' }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(answer)))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(new SupportProgramRepositoryImpl().interpretConversation(request)).resolves.toEqual(answer)
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual(request)
+  })
+
+  it('추가 질문과 준비된 제안의 초안을 동시에 전송하지 않는다', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(interpretSupportProgramConversationApi({ ...command, pendingProposal: seoulConversationContext,
+      pendingClarification: { question: '지역은?', draftContext: emptyConversationContext } })).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('잘못된 READY와 장애를 정보 부족이나 검색 성공으로 바꾸지 않는다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       ...readyConversationProposal(emptyConversationContext),

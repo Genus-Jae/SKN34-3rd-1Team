@@ -19,7 +19,7 @@ from app.support_program_conversation.prompt import SUPPORT_PROGRAM_CONVERSATION
 
 
 class SupportProgramConversationAgent:
-    """한 번의 structured LLM 호출로 현재 메시지의 조건 변경만 선택한다."""
+    """한 번의 structured LLM 호출로 조건 변경을 제안하거나 검색 대화에 답한다."""
 
     def __init__(self, *, model: Model, model_timeout_seconds: float, run_timeout_seconds: float) -> None:
         self._run_timeout_seconds = run_timeout_seconds

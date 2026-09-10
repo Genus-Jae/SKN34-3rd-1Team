@@ -214,12 +214,16 @@ async def test_actual_openai_sdk_strict_schema_and_no_persisted_conversation(req
     text_format = wire["text"]["format"]
     assert text_format["strict"] is True and text_format["type"] == "json_schema"
     schema = text_format["schema"]
-    assert schema["required"] == ["status", "updates", "clarificationQuestion"]
+    assert schema["required"] == ["status", "updates", "clarificationQuestion", "answer"]
     assert schema["additionalProperties"] is False
     update_schema = schema["$defs"]["ConversationUpdate"]
     assert update_schema["additionalProperties"] is False
     assert update_schema["required"] == ["field", "operation", "value", "evidence"]
     assert schema["properties"]["updates"]["maxItems"] == 6
+    assert schema["properties"]["status"]["enum"] == ["READY", "CLARIFICATION_REQUIRED", "ANSWERED"]
+    answer_schema = schema["properties"]["answer"]["anyOf"]
+    assert {item["type"] for item in answer_schema} == {"string", "null"}
+    assert next(item for item in answer_schema if item["type"] == "string")["maxLength"] == 1000
     assert {item["type"] for item in update_schema["properties"]["value"]["anyOf"]} == {"string", "null"}
 
 
@@ -265,3 +269,71 @@ async def test_concurrent_requests_do_not_share_context_or_history(request_data,
     inputs = [json.loads(call.input[0]["content"]) for call in model.calls]
     assert [item["context"]["query"] for item in inputs] == ["사업화 지원", "수출 지원"]
     assert all(len(call.input) == 1 for call in model.calls)
+
+
+def test_prompt_distinguishes_followups_assent_and_grounded_search_explanations():
+    # 프롬프트 계약 회귀이며 실제 OpenAI의 한국어 해석 성공률 측정은 아니다.
+    instructions = SUPPORT_PROGRAM_CONVERSATION_INSTRUCTIONS
+    for clause in (
+        "pendingProposal", "lastSearch", "resultCount", 'evidence는 현재 message의 "설정해"',
+        "같은 질문을 반복하지", "REGION만 변경", '"무역 관련 찾아봐"',
+        "설립일 SET에는 아래의 현재 메시지 완전 날짜 규칙",
+        "ANSWERED는 query가 없어도 가능", "updates는 빈 배열",
+        "현재 조건은 자동 완화하지", "정확한 원인을 단정할 수 없다고",
+        "미확정 제안을 실제 검색 조건으로 말하지", "실행이 완료되었다고 주장하지",
+    ):
+        assert clause in instructions
+
+
+@pytest.mark.anyio
+async def test_scripted_trade_region_explanation_and_assent_flow_carries_small_context(request_data):
+    # 아래 응답은 고정한 모델 스텁이다. 전송·병합·상태 계약만 검증하며 의미 해석 품질 평가는 아니다.
+    def ready(*updates):
+        return {"status": "READY", "updates": list(updates), "clarificationQuestion": None, "answer": None}
+
+    def change(field, value, evidence):
+        return {"field": field, "operation": "SET", "value": value, "evidence": evidence}
+
+    outputs = [
+        ready(change("QUERY", "AI 창업지원", "AI 창업지원"), change("REGION", "서울", "서울")),
+        ready(change("QUERY", "무역 지원", "무역 관련")),
+        ready(),
+        ready(change("REGION", "대구", "대구")),
+        {"status": "ANSWERED", "updates": [], "clarificationQuestion": None,
+         "answer": "직전 대구 소재지 조건의 무역 지원 검색에서 반환된 결과는 0건입니다. "
+                   "정확한 원인은 요약만으로 단정할 수 없어요. 원하시면 지역 조건을 넓혀 보세요."},
+        ready(),
+        ready(),
+    ]
+    messages = ["서울 AI 창업지원 사업 찾아줘", "무역 관련 찾아봐", "서울", "대구", "왜 못 찾아?", "대구", "설정해"]
+    request_data["context"]["query"] = None
+    request_data["context"]["companyConditions"] = dict.fromkeys(request_data["context"]["companyConditions"])
+    model = ScriptedModel([[assistant_message(json.dumps(output, ensure_ascii=False))] for output in outputs])
+    service = SupportProgramConversationService(SupportProgramConversationAgent(
+        model=model, model_timeout_seconds=1, run_timeout_seconds=2,
+    ))
+    for index, message in enumerate(messages):
+        request_data["message"] = message
+        request = SupportProgramConversationRequest.model_validate(request_data)
+        response = await service.interpret(request)
+        merged = service._merge_context(request, response)
+        assert response.clarification_question is None
+        assert json.loads(model.calls[index].input[0]["content"]) == request_data
+        if index >= 1:
+            assert merged.query == "무역 지원"
+        if index >= 3:
+            assert merged.company_conditions.region == "대구"
+        if index == 3:
+            # 이 단계의 검색 완료를 입력 요약으로 재현한다. 이 테스트가 실제 검색을 수행하지는 않는다.
+            request_data["context"] = merged.model_dump(by_alias=True)
+            request_data["pendingProposal"] = None
+            request_data["lastSearch"] = {"context": merged.model_dump(by_alias=True), "resultCount": 0}
+        elif response.status == "READY":
+            request_data["pendingProposal"] = merged.model_dump(by_alias=True)
+        else:
+            assert response.status == "ANSWERED" and response.updates == []
+            assert request_data["pendingProposal"] is None
+            assert "0건" in response.answer
+    assert len(model.calls) == len(messages)
+    assert all(len(call.input) == 1 for call in model.calls)
+    model.assert_complete()

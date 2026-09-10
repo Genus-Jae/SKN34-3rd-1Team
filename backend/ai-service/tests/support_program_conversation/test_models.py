@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from app.support_program_conversation.models import (
-    ConversationUpdate, SupportProgramConversationOutput, SupportProgramConversationRequest,
+    SCHEMA_VERSION, ConversationUpdate, SupportProgramConversationOutput, SupportProgramConversationRequest,
+    SupportProgramConversationResponse,
 )
 
 
@@ -26,8 +27,12 @@ def test_nullable_fields_and_omitted_pending_are_valid(request_data):
     request_data["context"]["query"] = None
     request_data["context"]["companyConditions"] = dict.fromkeys(request_data["context"]["companyConditions"])
     del request_data["pendingClarification"]
+    del request_data["pendingProposal"]
+    del request_data["lastSearch"]
     parsed = SupportProgramConversationRequest.model_validate(request_data)
     assert parsed.pending_clarification is None
+    assert parsed.pending_proposal is None
+    assert parsed.last_search is None
     assert parsed.context.query is None
 
 
@@ -155,3 +160,85 @@ def test_query_utf16_cap(request_data, field):
     target[field] += "a"
     with pytest.raises(ValidationError):
         SupportProgramConversationRequest.model_validate(request_data)
+
+@pytest.mark.parametrize("count", [-1, 0.5, 1.0, True, False, "0", None])
+def test_last_search_result_count_must_be_a_nonnegative_strict_integer(request_data, count):
+    request_data["lastSearch"] = {"context": deepcopy(request_data["context"]), "resultCount": count}
+    with pytest.raises(ValidationError):
+        SupportProgramConversationRequest.model_validate(request_data)
+
+
+@pytest.mark.parametrize("count", [0, 1, 100])
+def test_last_search_preserves_completed_context_and_result_count(request_data, count):
+    completed = deepcopy(request_data["context"])
+    completed["companyConditions"]["region"] = "대구"
+    request_data["lastSearch"] = {"context": completed, "resultCount": count}
+    parsed = SupportProgramConversationRequest.model_validate(request_data)
+    assert parsed.last_search.result_count == count
+    assert parsed.last_search.context.company_conditions.region == "대구"
+    assert parsed.context.company_conditions.region == "서울"
+
+
+@pytest.mark.parametrize("target", ["pendingProposal", "lastSearch"])
+@pytest.mark.parametrize("date_value", ["1899-12-31", "2026-09-08", "2023-02-29"])
+def test_new_contexts_validate_calendar_and_reference_date(request_data, target, date_value):
+    context = deepcopy(request_data["context"])
+    context["companyConditions"]["establishedOn"] = date_value
+    request_data[target] = context if target == "pendingProposal" else {"context": context, "resultCount": 0}
+    with pytest.raises(ValidationError):
+        SupportProgramConversationRequest.model_validate(request_data)
+
+
+def test_pending_proposal_and_clarification_cannot_coexist(request_data):
+    request_data["pendingProposal"] = deepcopy(request_data["context"])
+    request_data["pendingClarification"] = {
+        "question": "대구로 설정할까요?", "draftContext": deepcopy(request_data["context"]),
+    }
+    with pytest.raises(ValidationError):
+        SupportProgramConversationRequest.model_validate(request_data)
+
+
+@pytest.mark.parametrize("mutation", [
+    {"resultCount": 0}, {"context": {}},
+    {"context": None, "resultCount": 0},
+    {"context": {}, "resultCount": 0, "programs": []},
+])
+def test_last_search_requires_only_complete_context_and_count(request_data, mutation):
+    request_data["lastSearch"] = mutation
+    with pytest.raises(ValidationError):
+        SupportProgramConversationRequest.model_validate(request_data)
+
+
+@pytest.mark.parametrize("model", [SupportProgramConversationOutput, SupportProgramConversationResponse])
+@pytest.mark.parametrize("answer", ["조회된 결과는 0건입니다.\n조건을 변경할 수 있어요.\r\t", "😀" * 500])
+def test_answered_accepts_bounded_text_and_layout_without_updates(model, answer):
+    values = {"status": "ANSWERED", "updates": [], "clarificationQuestion": None, "answer": answer}
+    if model is SupportProgramConversationResponse:
+        values["schemaVersion"] = SCHEMA_VERSION
+    parsed = model.model_validate(values)
+    assert parsed.answer == answer
+
+
+@pytest.mark.parametrize("model", [SupportProgramConversationOutput, SupportProgramConversationResponse])
+@pytest.mark.parametrize("mutation", [
+    {"answer": None}, {"answer": ""}, {"answer": " \t\r\n"}, {"answer": "😀" * 500 + "a"},
+    {"answer": "답\x00"}, {"answer": "답\u200b"}, {"answer": "답\ud800"}, {"answer": "답\ue000"},
+    {"updates": [{"field": "REGION", "operation": "SET", "value": "대구", "evidence": "대구"}]},
+    {"clarificationQuestion": "어디로 찾을까요?"},
+    {"status": "READY"}, {"status": "CLARIFICATION_REQUIRED", "clarificationQuestion": "어디로 찾을까요?"},
+])
+def test_answer_contract_rejects_missing_invalid_or_condition_changing_answers(model, mutation):
+    values = {"status": "ANSWERED", "updates": [], "clarificationQuestion": None, "answer": "확인된 결과는 0건입니다."}
+    values.update(mutation)
+    if model is SupportProgramConversationResponse:
+        values["schemaVersion"] = SCHEMA_VERSION
+    with pytest.raises(ValidationError):
+        model.model_validate(values)
+
+
+@pytest.mark.parametrize("model", [SupportProgramConversationOutput, SupportProgramConversationResponse])
+def test_legacy_ready_response_defaults_answer_to_null(model, output_data):
+    del output_data["answer"]
+    if model is SupportProgramConversationResponse:
+        output_data["schemaVersion"] = SCHEMA_VERSION
+    assert model.model_validate(output_data).answer is None

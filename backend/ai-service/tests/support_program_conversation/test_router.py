@@ -86,3 +86,42 @@ def test_deadline_returns_safe_504_and_sanitized_timing_without_retry(request_da
     assert re.fullmatch(rf"support_program_conversation_failed failure_kind=timeout error_type={cause} elapsed_ms=\d+", record.getMessage())
     assert record.exc_info is None
     assert request_data["message"] not in record.getMessage()
+
+
+def test_http_answered_keeps_completed_search_distinct_from_pending_proposal(request_data):
+    request_data["message"] = "왜 못 찾아?"
+    request_data["pendingProposal"] = {
+        **request_data["context"],
+        "companyConditions": {**request_data["context"]["companyConditions"], "region": "서울"},
+    }
+    request_data["lastSearch"] = {"context": {
+        **request_data["context"],
+        "companyConditions": {**request_data["context"]["companyConditions"], "region": "대구"},
+    }, "resultCount": 0}
+    output = {
+        "status": "ANSWERED", "updates": [], "clarificationQuestion": None,
+        "answer": "직전 대구 조건으로 반환된 결과는 0건입니다. 정확한 원인은 요약만으로 알 수 없어요.",
+    }
+    model = ScriptedModel([[assistant_message(json.dumps(output, ensure_ascii=False))]])
+    agent = SupportProgramConversationAgent(model=model, model_timeout_seconds=1, run_timeout_seconds=2)
+    with TestClient(create_app(settings=SETTINGS, support_program_conversation_agent=agent)) as client:
+        response = client.post(PATH, json=request_data)
+    assert response.status_code == 200
+    assert response.json() == {"schemaVersion": SCHEMA_VERSION, **output}
+    assert json.loads(model.first_call.input[0]["content"]) == request_data
+    assert len(model.calls) == 1
+
+
+@pytest.mark.parametrize("mutation", [
+    {"lastSearch": {"context": {}, "resultCount": 0}},
+    {"lastSearch": {"context": None, "resultCount": True}},
+    {"pendingProposal": {}},
+])
+def test_invalid_new_context_never_calls_model(request_data, mutation):
+    request_data.update(mutation)
+    model = ScriptedModel([])
+    agent = SupportProgramConversationAgent(model=model, model_timeout_seconds=1, run_timeout_seconds=2)
+    with TestClient(create_app(settings=SETTINGS, support_program_conversation_agent=agent)) as client:
+        response = client.post(PATH, json=request_data)
+    assert response.status_code == 422
+    assert not model.calls

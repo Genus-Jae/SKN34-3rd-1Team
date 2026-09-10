@@ -8,7 +8,8 @@
 
 ## 사용자 흐름과 범위
 
-새 메시지를 현재 검색 의도·조건과 함께 해석하고 변경안을 보여준다. 사용자가 `이 조건으로 검색`을 눌러야
+새 메시지를 확정 검색 의도·조건, 직전 미확정 제안 또는 질문, 최근 완료 검색 요약과 함께 해석한다.
+조건 변경에는 변경안을, 검색 결과에 대한 질문에는 설명을 보여준다. 사용자가 `이 조건으로 검색`을 눌러야
 적용 조건을 바꾸고 기존 POST 검색을 실행한다. 기존 GET/POST 단문 검색은 그대로 유지한다.
 명확하지 않은 요건은 질문하고 검색하지 않는다. 단문 검색으로 몰래 우회하는 장애 fallback은 없다.
 
@@ -26,8 +27,11 @@
 - `부산으로 변경`은 현재 소재지만 바꾸며 기존 서울이 검색 의도에 남지 않도록 한다.
 - `설립 2년`만으로 정확한 설립일을 계산하지 않는다. 필요하면 정확한 날짜를 묻는다.
 - `지역 조건 해제`는 지역 해제안을, `마감된 공고도 포함해 전체로 검색`은 접수 상태 변경안을 확인한다.
-- READY 제안은 확인/취소할 수 있고, 확인 전 검색 입력 변경은 제안을 폐기한다.
+- READY 제안은 확인/취소할 수 있다. 입력을 바꾸면 이전 카드는 숨기되 제안의 조건은 pendingProposal로
+  보관하여 `대구로`, `설정해` 같은 후속 발화가 이어받는다. 확인 전에는 확정 조건을 바꾸지 않는다.
 - 확인 질문에 답할 때는 미확정 초안과 마지막 질문 하나를 사용한다. 초안은 적용 조건과 구분한다.
+- `왜 못찾아?` 같은 결과 설명은 ANSWERED로 대화에 표시하고 검색·조건 변경을 실행하지 않는다.
+  최근 검색 요약이 없으면 결과를 확인할 정보가 없다고 안내하며, 0건의 원인을 추측하지 않는다.
 - 새 대화·새로고침은 초기화한다. 로그인·DB·localStorage·모델 대화 세션 저장을 추가하지 않는다.
 
 ## 공개 해석 API
@@ -44,14 +48,22 @@
       "region": "서울", "industry": "SW", "establishedOn": null, "supportPurpose": "사업화"
     }
   },
-  "pendingClarification": null
+  "pendingClarification": null,
+  "pendingProposal": null,
+  "lastSearch": null
 }
 ```
 
 context의 `query`는 작은 검색 의도다. 과거 사용자 발화나 공고 본문을 이어붙이지 않는다.
 현재 적용된 구조화 조건과 중복되는 지역·업종·설립일은 가급적 query에 두지 않는다.
 context와 내부 companyConditions 객체 및 모든 내부 필드는 필수이며 미입력 값은 null이다.
-초기 query는 null, acceptingOnly는 true다. pendingClarification은 생략/null 또는 다음 객체다.
+초기 query는 null, acceptingOnly는 true다. pendingProposal과 lastSearch는 생략/null을 허용한다.
+pendingProposal은 확인 전 READY 제안의 ConversationContext이며 pendingClarification과 동시에 보낼 수 없다.
+lastSearch는 `{ "context": <실제로 검색한 조건>, "resultCount": 0 }` 형태의 최근 성공 검색 요약이다.
+resultCount는 0 이상의 JSON 정수이며 boolean·소수·문자열은 거부한다. 전체 공고 본문이나 제외 사유는 포함하지 않는다.
+새 검색을 시작하면 이전 요약을 지우고 성공한 결과만 저장한다. 실패·취소를 0건으로 기록하지 않는다.
+
+pendingClarification은 생략/null 또는 다음 객체다.
 
 ```json
 {
@@ -82,12 +94,16 @@ context와 내부 companyConditions 객체 및 모든 내부 필드는 필수이
     }
   },
   "clarificationQuestion": null,
+  "answer": null,
   "changedFields": ["REGION"]
 }
 ```
 
-- status는 READY 또는 CLARIFICATION_REQUIRED. READY는 비어 있지 않은 query가 필수이고 질문은 null이다.
+- status는 READY, CLARIFICATION_REQUIRED 또는 ANSWERED다. READY는 비어 있지 않은 query가 필수이고 질문은 null이다.
 - CLARIFICATION_REQUIRED는 질문이 필수다. proposedContext는 미확정 초안일 뿐 검색에 사용하지 않는다.
+- ANSWERED는 비어 있지 않은 answer가 필수이고 clarificationQuestion은 null이다. 변경 updates는 허용하지 않으며
+  확정 조건과 보관 중인 제안·질문을 바꾸지 않는다. READY/CLARIFICATION_REQUIRED에서는 answer가 null이어야 한다.
+  answer는 UTF-16 1,000자 이내이며 LF/CR/tab 외 제어·형식 문자는 거부한다. 기존 응답의 answer 생략은 null로 처리한다.
 - changedFields는 Core가 요청의 확정 context와 최종 proposedContext를 비교하여 계산한다.
   순서는 QUERY, REGION, INDUSTRY, ESTABLISHED_ON, SUPPORT_PURPOSE, ACCEPTING_ONLY다.
 - 해석 요청도 기존 검색·원문 질문과 같은 주소별/전역/동시 요청 제한을 공유한다.
@@ -97,7 +113,7 @@ context와 내부 companyConditions 객체 및 모든 내부 필드는 필수이
 
 `POST /internal/v1/support-program-conversation/interpret`
 
-공개 요청과 같은 message/context/pendingClarification에 Core가 정한 서울 날짜 referenceDate와
+공개 요청과 같은 message/context/pendingClarification/pendingProposal/lastSearch에 Core가 정한 서울 날짜 referenceDate와
 `schemaVersion: "govbiz-support-program-conversation-v1"`을 추가한다.
 
 AI는 전체 상태를 재작성하지 않고 변경 목록만 반환한다.
@@ -116,8 +132,10 @@ AI는 전체 상태를 재작성하지 않고 변경 목록만 반환한다.
 - updates 최대 6개, 동일 field 중복 금지. 위 changedFields와 같은 6개 field만 허용한다.
 - SET은 비어 있지 않은 value, CLEAR는 null이다. ACCEPTING_ONLY의 SET은 문자열 true/false만 허용한다.
   CLEAR는 문자열 필드를 null로, ACCEPTING_ONLY를 기본 true로 되돌린다. KEEP은 목록에 넣지 않는다.
-- 각 변경의 evidence는 현재 message의 정확한 연속 부분 문자열이며 필수다. 이전 상태·질문은 새 변경 근거가 아니다.
-- pendingClarification이 있으면 draftContext, 없으면 context를 기준으로 변경 목록을 병합한다.
+- 각 변경의 evidence는 현재 message의 정확한 연속 부분 문자열이며 필수다. 짧은 동의의 대상이 직전 제안·질문에서
+  하나로 분명하면 그 맥락으로 뜻을 해석하고 `설정해` 같은 현재 발화를 근거로 인용할 수 있다.
+  대상이 불명확하면 추측하지 않는다. 설립일 SET에는 아래의 완전한 날짜 인용 규칙을 그대로 적용한다.
+- pendingClarification이 있으면 draftContext, 아니면 pendingProposal, 둘 다 없으면 context를 기준으로 변경 목록을 병합한다.
   목록에 없는 필드는 코드로 그대로 유지한다. AI와 Core는 변경 목록·병합 후 상태·READY query를 검증한다.
 - ESTABLISHED_ON SET은 evidence 자체가 완전한 날짜여야 한다. YYYY-MM-DD 또는 YYYY년 M월 D일
   (년·월 뒤 공백 허용)만 인용하고 ISO 날짜로 정규화한 값이 value와 같아야 한다. 날짜 앞뒤의 다른 문구는
@@ -126,8 +144,17 @@ AI는 전체 상태를 재작성하지 않고 변경 목록만 반환한다.
   형식이 맞아도 의미 정확도를 보증하지 않으므로 모든 READY 결과는 사용자가 확인한다.
   [OpenAI Docs](https://developers.openai.com/api/docs/guides/structured-outputs#handling-mistakes)의 구조화 출력에도
   내용 오류가 남을 수 있다는 한계를 반영한다. 스키마 통과를 자연어 해석 정확도로 보고하지 않는다.
+- ANSWERED는 조건 변경 없이 현재 제공된 정보로 설명한다. lastSearch는 사용자 화면에서 전달된 요약이며 DB에서
+  원인을 검증한 자료가 아니다. `모든 공고가 마감됨`, `대구에 해당 사업이 없음` 같은 원인을 만들어내지 않는다.
+  결과가 없다는 질문만으로 접수 상태·지역·분야를 자동 완화하지 않는다.
 - 단일 구체 Agent/Service, 기존 모델·store=false·tracing 비활성·모델/실행 timeout을 유지한다.
-  역할은 조건 변경 해석이며 기존 공고 랭킹 Agent와 구분된다. graph/handoff/provider/새 의존성은 추가하지 않는다.
+  역할은 검색 후속 대화의 조건 제안·설명이며 기존 공고 랭킹 Agent와 구분된다. graph/handoff/provider/새 의존성은 추가하지 않는다.
+
+### 배포와 검증 범위
+
+추가 요청 필드와 answer는 생략 호환을 유지하고 내부 schemaVersion은 v1을 유지한다. 새 ANSWERED 응답과
+미확정 제안·검색 요약을 사용하려면 Frontend·Core API·AI Service를 함께 반영해야 한다.
+자동 테스트는 계약·상태 전달·고정 모델 응답을 검증한다. 실제 자연어 해석 품질은 별도 실모델 평가로 확인해야 한다.
 
 ## 검증·문자·실패 규칙
 

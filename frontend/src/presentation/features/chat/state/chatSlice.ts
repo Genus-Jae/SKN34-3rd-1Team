@@ -3,7 +3,7 @@ import { createSelector, createSlice, nanoid, type PayloadAction } from '@reduxj
 import type { RootState } from '../../../../app/store'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCompanyConditions, SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
-import type { SupportProgramConversationContext, SupportProgramInterpretation, SupportProgramInterpretRequest, SupportProgramPendingClarification } from '../../../../domain/entities/SupportProgramConversation'
+import type { SupportProgramConversationContext, SupportProgramInterpretation, SupportProgramInterpretRequest, SupportProgramLastSearch, SupportProgramPendingClarification } from '../../../../domain/entities/SupportProgramConversation'
 import { sessionRestored, signedIn, signedOut } from '../../../shared/auth/state/authSlice'
 import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
 
@@ -35,6 +35,9 @@ type ChatInterpretation = {
 type ChatState = {
   accountEmail: string | null
   activeRequestId: string | null
+  activeSearchContext: SupportProgramConversationContext | null
+  lastSearch: SupportProgramLastSearch | null
+  pendingProposal: SupportProgramConversationContext | null
   draft: string
   messages: SupportProgramChatMessage[]
   searchError: string | null
@@ -88,14 +91,23 @@ const chatSlice = createSlice({
     },
     interpretationSucceeded(state, action: PayloadAction<{ requestId: string; result: SupportProgramInterpretation }>) {
       if (state.interpretation.status !== 'pending' || state.interpretation.requestId !== action.payload.requestId) return
+      if (action.payload.result.status === 'ANSWERED') {
+        state.messages.push({ id: `${action.payload.requestId}-answer`, role: 'assistant', text: action.payload.result.answer! })
+        state.interpretation = { status: 'idle' }
+        return
+      }
       state.interpretation.status = action.payload.result.status === 'READY' ? 'ready' : 'clarification'
       state.interpretation.result = action.payload.result
       if (action.payload.result.status === 'CLARIFICATION_REQUIRED') {
+        state.pendingProposal = null
         state.pendingClarification = {
           question: action.payload.result.clarificationQuestion!,
           draftContext: action.payload.result.proposedContext,
         }
-      } else state.pendingClarification = null
+      } else {
+        state.pendingClarification = null
+        state.pendingProposal = action.payload.result.proposedContext
+      }
     },
     interpretationFailed(state, action: PayloadAction<{ requestId: string; message: string }>) {
       if (state.interpretation.status !== 'pending' || state.interpretation.requestId !== action.payload.requestId) return
@@ -103,10 +115,16 @@ const chatSlice = createSlice({
       state.interpretation.error = action.payload.message
       if (!state.draft.trim()) state.draft = state.interpretation.request?.message ?? ''
     },
+    interpretationCancelled(state, action: PayloadAction<string>) {
+      if (state.interpretation.status !== 'pending' || state.interpretation.requestId !== action.payload) return
+      if (!state.draft.trim()) state.draft = state.interpretation.request?.message ?? ''
+      state.interpretation = { status: 'idle' }
+    },
     interpretationDismissed(state) {
       if (!state.draft.trim()) state.draft = state.interpretation.request?.message ?? ''
       state.interpretation = { status: 'idle' }
       state.pendingClarification = null
+      state.pendingProposal = null
     },
     proposalConfirmed(state, action: PayloadAction<string>) {
       const proposal = state.interpretation
@@ -116,11 +134,13 @@ const chatSlice = createSlice({
       state.searchOptions = conversationContextToSearchOptions(context)
       state.confirmedSearch = { query: state.conversationQuery, ...copySearchOptions(state.searchOptions) }
       state.pendingClarification = null
+      state.pendingProposal = null
       state.interpretation = { status: 'idle' }
     },
     searchCancelled(state, action: PayloadAction<{ query: string; requestId: string }>) {
       if (state.activeRequestId !== action.payload.requestId) return
       state.activeRequestId = null
+      state.activeSearchContext = null
       if (state.draft.trim().length === 0) {
         state.draft = action.payload.query
       }
@@ -130,6 +150,7 @@ const chatSlice = createSlice({
     searchFailed(state, action: PayloadAction<{ query: string; requestId: string; message?: string }>) {
       if (state.activeRequestId !== action.payload.requestId) return
       state.activeRequestId = null
+      state.activeSearchContext = null
       if (state.draft.trim().length === 0) {
         state.draft = action.payload.query
       }
@@ -139,6 +160,7 @@ const chatSlice = createSlice({
     searchTimedOut(state, action: PayloadAction<{ query: string; requestId: string }>) {
       if (state.activeRequestId !== action.payload.requestId) return
       state.activeRequestId = null
+      state.activeSearchContext = null
       if (state.draft.trim().length === 0) {
         state.draft = action.payload.query
       }
@@ -157,12 +179,14 @@ const chatSlice = createSlice({
       ) {
         if (state.searchStatus === 'pending') return
         state.activeRequestId = action.payload.requestId
+        state.lastSearch = null
         // 재시도는 실패한 검색만 다시 보내며, 작성 중인 다른 초안은 보존합니다.
         if (state.searchStatus !== 'failed' || state.draft.trim() === action.payload.query) {
           state.draft = ''
         }
         const existingMessage = state.messages.find((message) => message.id === action.payload.messageId)
         const snapshot = copySearchOptions(action.payload.searchOptions ?? state.searchOptions)
+        state.activeSearchContext = searchOptionsToConversationContext(action.payload.query, snapshot)
         if (existingMessage) {
           existingMessage.searchOptions = snapshot
           existingMessage.searchQuery = action.payload.query
@@ -191,15 +215,18 @@ const chatSlice = createSlice({
           requestId: string
         }>,
       ) {
-        if (state.activeRequestId !== action.payload.requestId) return
+        if (state.activeRequestId !== action.payload.requestId || !state.activeSearchContext) return
+        const context = state.activeSearchContext
+        state.lastSearch = { context, resultCount: action.payload.programs.length }
         state.activeRequestId = null
+        state.activeSearchContext = null
         state.messages.push({
           id: action.payload.messageId,
           role: 'assistant',
-          text: createSearchResponseText(action.payload.programs, state.searchOptions.acceptingOnly),
+          text: createSearchResponseText(action.payload.programs, context.acceptingOnly),
           programs: action.payload.programs,
-          searchOptions: copySearchOptions(state.searchOptions),
-          searchQuery: state.conversationQuery ?? undefined,
+          searchOptions: conversationContextToSearchOptions(context),
+          searchQuery: context.query ?? undefined,
         })
         state.searchError = null
         state.searchStatus = 'idle'
@@ -232,6 +259,7 @@ export const {
   interpretationSucceeded,
   interpretationFailed,
   interpretationDismissed,
+  interpretationCancelled,
   proposalConfirmed,
   searchCancelled,
   searchFailed,
@@ -262,6 +290,9 @@ function createInitialState(welcomeMessage = createWelcomeMessage()): ChatState 
   return {
     accountEmail: null,
     activeRequestId: null,
+    activeSearchContext: null,
+    lastSearch: null,
+    pendingProposal: null,
     draft: '',
     messages: [welcomeMessage],
     searchError: null,
@@ -302,10 +333,14 @@ export function conversationContextToSearchOptions(context: SupportProgramConver
 }
 
 export function selectConversationContext(state: RootState): SupportProgramConversationContext {
-  const conditions = state.chat.searchOptions.companyConditions
+  return searchOptionsToConversationContext(state.chat.conversationQuery, state.chat.searchOptions)
+}
+
+function searchOptionsToConversationContext(query: string | null, options: ChatSearchOptions): SupportProgramConversationContext {
+  const conditions = options.companyConditions
   return {
-    query: state.chat.conversationQuery,
-    acceptingOnly: state.chat.searchOptions.acceptingOnly,
+    query,
+    acceptingOnly: options.acceptingOnly,
     companyConditions: { region: conditions?.region ?? null, industry: conditions?.industry ?? null,
       establishedOn: conditions?.establishedOn ?? null, supportPurpose: conditions?.supportPurpose ?? null },
   }

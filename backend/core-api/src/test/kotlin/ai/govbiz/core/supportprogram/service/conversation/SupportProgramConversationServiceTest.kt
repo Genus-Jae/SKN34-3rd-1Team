@@ -3,14 +3,15 @@ package ai.govbiz.core.supportprogram.service.conversation
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.AiServiceFailure
 import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramConversationClient
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationCompanyConditionsRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationContextRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationPayload
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationRequest
-import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationContextRequest
-import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationCompanyConditionsRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationUpdatePayload
 import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
 import ai.govbiz.core.supportprogram.domain.SupportProgramConversationContext
 import ai.govbiz.core.supportprogram.domain.SupportProgramConversationField
+import ai.govbiz.core.supportprogram.domain.SupportProgramConversationLastSearch
 import ai.govbiz.core.supportprogram.domain.SupportProgramConversationStatus
 import ai.govbiz.core.supportprogram.domain.SupportProgramPendingClarification
 import java.time.Clock
@@ -44,7 +45,8 @@ class SupportProgramConversationServiceTest {
         status: String? = "READY",
         question: String? = null,
         version: String? = SupportProgramConversationService.SCHEMA_VERSION,
-    ) = AiSupportProgramConversationPayload(version, status, updates, question)
+        answer: String? = null,
+    ) = AiSupportProgramConversationPayload(version, status, updates, question, answer)
 
     private fun update(field: String = "REGION", value: String? = "부산", evidence: String? = "부산", operation: String? = "SET") =
         AiSupportProgramConversationUpdatePayload(field, operation, value, evidence)
@@ -57,6 +59,89 @@ class SupportProgramConversationServiceTest {
         stub(payload)
         val error = assertThrows(AiServiceCallException::class.java) { service.interpret(message, initial, null) }
         assertEquals(AiServiceFailure.INVALID_RESPONSE, error.failure)
+    }
+
+    @Test
+    fun updatesPendingProposalWithoutRevertingItsTradeIntentOrApplyingLastSearchConditions() {
+        val proposal = context.copy(query = "무역 지원", companyConditions = context.companyConditions.copy(supportPurpose = "수출"))
+        val lastSearch = SupportProgramConversationLastSearch(context, 0)
+        stub(response(listOf(update(value = "대구", evidence = "대구"))))
+        val result = service.interpret("대구로 찾아봐", context, null, proposal, lastSearch)
+        assertEquals(proposal.copy(companyConditions = proposal.companyConditions.copy(region = "대구")), result.proposedContext)
+        assertEquals(listOf(SupportProgramConversationField.QUERY, SupportProgramConversationField.REGION, SupportProgramConversationField.SUPPORT_PURPOSE), result.changedFields)
+        assertEquals("무역 지원", sent!!.pendingProposal!!.query)
+        assertEquals("사업화 지원", sent!!.lastSearch!!.context.query)
+        assertEquals(0, sent!!.lastSearch!!.resultCount)
+        assertNull(sent!!.pendingClarification)
+    }
+
+    @Test
+    fun answersUsingLastSearchSummaryWithoutChangingConfirmedConditionsOrRequiringAQuery() {
+        val initial = context.copy(query = null)
+        val lastSearch = SupportProgramConversationLastSearch(context, 0)
+        val answer = "직전 검색 결과는 0건입니다.\n지역 조건을 바꾸어 볼 수 있습니다."
+        stub(response(status = "ANSWERED", answer = answer))
+        val result = service.interpret("왜 못찾아?", initial, null, lastSearch = lastSearch)
+        assertEquals(SupportProgramConversationStatus.ANSWERED, result.status)
+        assertEquals(initial, result.proposedContext)
+        assertEquals(emptyList<SupportProgramConversationField>(), result.changedFields)
+        assertEquals(answer, result.answer)
+        assertNull(result.clarificationQuestion)
+        assertEquals(context.query, sent!!.lastSearch!!.context.query)
+        assertEquals(0, sent!!.lastSearch!!.resultCount)
+        assertNull(sent!!.pendingProposal)
+    }
+
+    @Test
+    fun answeredKeepsThePendingDraftAndComparesItAgainstConfirmedConditions() {
+        val draft = context.copy(query = "무역 지원", companyConditions = context.companyConditions.copy(region = "대구"))
+        for (clarifying in listOf(true, false)) {
+            stub(response(status = "ANSWERED", answer = "현재 검토 중인 검색 의도는 무역 지원이고 지역은 대구입니다."))
+            val result = service.interpret(
+                "어떤 조건이야?", context,
+                if (clarifying) SupportProgramPendingClarification("설립일을 알려 주세요.", draft) else null,
+                if (clarifying) null else draft,
+            )
+            assertEquals(draft, result.proposedContext)
+            assertEquals(listOf(SupportProgramConversationField.QUERY, SupportProgramConversationField.REGION), result.changedFields)
+        }
+    }
+
+    @Test
+    fun shortConfirmationMaySetTheQuestionRegionWithEvidenceFromTheCurrentMessage() {
+        val pending = SupportProgramPendingClarification("대구를 현재 소재지로 설정할까요?", context)
+        stub(response(listOf(update(value = "대구", evidence = "설정해"))))
+        val result = service.interpret("설정해", context, pending)
+        assertEquals("대구", result.proposedContext.companyConditions.region)
+        assertEquals(context.query, result.proposedContext.query)
+        assertEquals(listOf(SupportProgramConversationField.REGION), result.changedFields)
+    }
+
+    @Test
+    fun rejectsTwoPendingStatesBeforeCallingTheAi() {
+        assertThrows(IllegalArgumentException::class.java) {
+            service.interpret("대구", context, SupportProgramPendingClarification("어느 지역인가요?", context), context)
+        }
+        Mockito.verifyNoInteractions(client)
+    }
+
+    @Test
+    fun rejectsAnswerTextOutsideAnsweredStatusAndAnsweredConditionUpdatesOrQuestions() {
+        rejects(response(answer = "설명"))
+        rejects(response(status = "CLARIFICATION_REQUIRED", question = "어느 지역인가요?", answer = "설명"))
+        rejects(response(listOf(update()), status = "ANSWERED", answer = "설명"))
+        rejects(response(status = "ANSWERED", question = "어느 지역인가요?", answer = "설명"))
+    }
+
+    @Test
+    fun validatesAnsweredTextInUtf16WhilePreservingAllowedLayout() {
+        for (answer in listOf(null, "", " ", "\u00a0", "가".repeat(1001), "😀".repeat(501), "답\u0000", "답\u200b")) {
+            rejects(response(status = "ANSWERED", answer = answer))
+        }
+        for (answer in listOf("가".repeat(1000), "😀".repeat(500), "첫 줄\n다음 줄\r\t설명")) {
+            stub(response(status = "ANSWERED", answer = answer))
+            assertEquals(answer, service.interpret("왜 못찾아?", context, null).answer)
+        }
     }
 
     @Test

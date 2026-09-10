@@ -12,7 +12,13 @@ data class SupportProgramPendingClarification(
     val draftContext: SupportProgramConversationContext,
 )
 
-enum class SupportProgramConversationStatus { READY, CLARIFICATION_REQUIRED }
+/** 직전 완료 검색의 참고 정보이며 적용 조건이나 실행 명령이 아닙니다. */
+data class SupportProgramConversationLastSearch(
+    val context: SupportProgramConversationContext,
+    val resultCount: Int,
+)
+
+enum class SupportProgramConversationStatus { READY, CLARIFICATION_REQUIRED, ANSWERED }
 
 enum class SupportProgramConversationField {
     QUERY, REGION, INDUSTRY, ESTABLISHED_ON, SUPPORT_PURPOSE, ACCEPTING_ONLY,

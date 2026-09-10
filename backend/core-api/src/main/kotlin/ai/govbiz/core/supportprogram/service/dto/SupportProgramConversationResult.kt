@@ -9,4 +9,5 @@ data class SupportProgramConversationResult(
     val proposedContext: SupportProgramConversationContext,
     val clarificationQuestion: String?,
     val changedFields: List<SupportProgramConversationField>,
+    val answer: String? = null,
 )
