@@ -6,8 +6,10 @@ from math import isfinite
 from time import monotonic
 from uuid import NAMESPACE_URL, uuid5
 
-from openai import AsyncOpenAI
+from httpx import TimeoutException as HttpxTimeoutException
+from openai import APITimeoutError, AsyncOpenAI
 from qdrant_client import AsyncQdrantClient, models
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 from app.support_program_embedding import prepare_embedding_inputs
 from app.support_program_index.models import (
@@ -136,6 +138,9 @@ class SupportProgramIndexService:
         if not request.eligible_documents:
             return SupportProgramIndexSearchResponse(query=request.query, matches=[])
         started_at = monotonic()
+        stage = "readiness"
+        outcome = "failed"
+        failure_code = "INDEX_UNAVAILABLE"
         try:
             async with asyncio.timeout(25):
                 if not await self.qdrant_client.collection_exists(self.collection_name):
@@ -144,8 +149,10 @@ class SupportProgramIndexService:
                 point_ids = list(identities)
                 await self._require_all_indexed(point_ids)
                 ready_at = monotonic()
+                stage = "embedding"
                 vector, cache_state = await self._embed_query(request.query)
                 embedded_at = monotonic()
+                stage = "vector_search"
                 response = await self.qdrant_client.query_points(
                     collection_name=self.collection_name,
                     query=vector,
@@ -170,6 +177,7 @@ class SupportProgramIndexService:
                 matches.sort(key=lambda match: (-match.score, match.id))
                 result = SupportProgramIndexSearchResponse(query=request.query, matches=matches)
                 finished_at = monotonic()
+                outcome = "completed"
                 logger.info(
                     "support_program_index_search_completed readiness_ms=%d embedding_ms=%d vector_search_ms=%d elapsed_ms=%d cache_state=%s",
                     int((ready_at - started_at) * 1000),
@@ -179,10 +187,29 @@ class SupportProgramIndexService:
                     cache_state,
                 )
                 return result
-        except SupportProgramIndexError:
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            failure_code = "INDEX_CANCELLED"
             raise
+        except SupportProgramIndexError as error:
+            failure_code = error.code if error.code in {"INDEX_NOT_READY", "INDEX_TIMEOUT"} else "INDEX_UNAVAILABLE"
+            raise
+        except (TimeoutError, APITimeoutError, HttpxTimeoutException) as error:
+            failure_code = "INDEX_TIMEOUT"
+            raise SupportProgramIndexError(failure_code) from error
+        except ResponseHandlingException as error:
+            # Qdrant REST SDK는 httpx 전송 예외를 source에 보관합니다. 검증·연결 실패를 시간초과로 오인하지 않습니다.
+            if isinstance(error.source, (TimeoutError, HttpxTimeoutException)):
+                failure_code = "INDEX_TIMEOUT"
+            raise SupportProgramIndexError(failure_code) from error
         except Exception as error:
             raise SupportProgramIndexError() from error
+        finally:
+            if outcome != "completed":
+                logger.info(
+                    "support_program_index_search_failed outcome=%s stage=%s code=%s elapsed_ms=%d",
+                    outcome, stage, failure_code, int((monotonic() - started_at) * 1000),
+                )
 
     async def _require_all_indexed(self, point_ids: list[str]) -> None:
         count = await self.qdrant_client.count(

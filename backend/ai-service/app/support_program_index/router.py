@@ -50,4 +50,7 @@ async def search_index(
     try:
         return await service.search(payload)
     except SupportProgramIndexError as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"code": error.code}) from error
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT if error.code == "INDEX_TIMEOUT" else status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": error.code},
+        ) from error
