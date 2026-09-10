@@ -1,4 +1,5 @@
 import { CombinationReviewRepositoryImpl } from '../../data/repositories/CombinationReviewRepositoryImpl'
+import { ApplicationPreparationRepositoryImpl } from '../../data/repositories/ApplicationPreparationRepositoryImpl'
 import { DailyReportRepositoryImpl } from '../../data/repositories/DailyReportRepositoryImpl'
 import { asClass } from 'awilix/browser'
 
@@ -13,6 +14,7 @@ import type { AppContainer } from './types'
 /** Data Layer의 Repository 구현체와 앱 수명주기를 등록합니다. */
 export function registerRepositories(container: AppContainer) {
   container.register({
+    applicationPreparationRepository: asClass(ApplicationPreparationRepositoryImpl).singleton(),
     dailyReportRepository: asClass(DailyReportRepositoryImpl).singleton(),
     combinationReviewRepository: asClass(CombinationReviewRepositoryImpl).singleton(),
     accountRepository: asClass(AccountRepositoryImpl).singleton(),

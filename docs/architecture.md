@@ -9,6 +9,14 @@
 
 ## 서비스 경계
 
+신청 문서 작성 도우미의 기본 흐름은 `기존 세션 Account 해석 → ApplicationPreparationController →
+ApplicationPreparationService → ApplicationPreparationRepository → ApplicationPreparationMapper → Mapper XML → MySQL`로
+신청 준비 건을 생성·조회합니다. `ApplicationFormService`는 원격 파일을 runtime에 다시 수집하지 않고 classpath의 고정
+manifest 한 건에서 공고·양식 버전·지원 분야·공식 문항을 읽습니다. 양식 목록과 준비 목록·상세 조회만으로 DB 쓰기나
+AI 호출을 실행하지 않으며, 생성은 사용자의 명시적 POST에서만 수행합니다. 타인 준비 건과 없는 건은 같은 404입니다.
+Frontend는 `/app/application-preparations`의 목록, `/new`의 양식·지원 분야 확인, `/:preparationId`의 공식 문항
+상세를 연결합니다. 문항 입력·AI 질문·초안 생성은 후속 사용자 기능입니다.
+
 중복 지원 검토의 현재 입력은 `기존 세션 Account 해석 → CombinationReviewController → CombinationReviewService
 → CombinationReviewRepository → CombinationReviewMapper → Mapper XML → MySQL`로 생성·조회·수정·삭제합니다.
 목록은 소유자·생성 ID 커서로 조회하고, 수정은 소유자·입력 버전 조건으로 원자적으로 교체합니다. 삭제도 소유자 조건으로 수행하며
@@ -426,6 +434,11 @@ MySQL의 `support_program`은 `(source_code, source_program_id)` 고유키로 �
 원문 질문을 제공하지 않습니다. 이 테이블은 정기 목록 동기화에서 채우지 않고 명시적 원문 질문의 수집·검증이
 성공했을 때 UPSERT합니다.
 
+`application_preparation`은 신청 문서 작성 도우미의 계정별 작업 ID, 고정 양식 버전, 선택 지원 분야와 입력 revision을
+저장합니다. 공식 양식 원문이나 문항을 이 테이블에 복제하지 않고 배포된 manifest 버전으로 결합합니다. 첫 manifest는
+기업마당 공식 HWPX의 파일 크기·SHA-256과 문항 위치를 기록하며 `institutionReviewed=false`를 공개 응답에도 유지합니다.
+현재 공고 카탈로그 행에 FK를 걸지 않아 접수 종료 후 카탈로그에서 빠진 공고의 저장 작업도 다시 읽습니다.
+
 `support_program_sync_status`는 제공처별 스냅샷의 공개 세대·지문·공고 수를 기록합니다.
 V4 적용 전부터 있던 공고는 과거 공개 세대를 복원하지 않습니다. 대신 해당 제공처의 현재 공개 공고가 1건 이상인 경우에
 한해, 전체 복구 색인이 성공한 뒤 그때 읽은 지문·공고 수를 sentinel 세대 `0`으로 조건부 채택할 수 있습니다.
@@ -503,7 +516,7 @@ Awilix의 `app/di`에서 Repository·UseCase·외부 함수를 구성하고 `app
 `data/api`의 함수가 요청 URL·Fetch·Zod 응답 검증을 담당합니다.
 
 화면 기능은 `presentation/features/chat`의 채팅 검색, `presentation/features/support-program-detail`의
-상세 조회·원문 근거 질문, 그리고 `auth`(로그인·회원가입)·`pricing`·`partner-recruitment`·`company-profile`·`admin`의
+상세 조회·원문 근거 질문, `application-preparation`의 신청 준비 생성·목록·상세, 그리고 `auth`(로그인·회원가입)·`pricing`·`partner-recruitment`·`company-profile`·`admin`의
 계정 관련 화면으로 나눕니다. 각 feature가 전용 View·스타일·ViewModel·테스트를 소유하고,
 서로의 화면 구현을 import하지 않습니다. 검색 카드와 상세 화면은 기존 상세 URL·복합 식별자로 연결합니다.
 검색과 근거 질문이 함께 쓰는 안전한 오류 문구는 `presentation/shared/support-program`에 둡니다.

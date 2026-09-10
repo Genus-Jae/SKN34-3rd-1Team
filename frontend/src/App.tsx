@@ -5,6 +5,7 @@ import { conversationReset } from './presentation/features/chat/state/chatSlice'
 import { useRestoreSupportProgramSearch } from './presentation/features/chat/hooks/useRestoreSupportProgramSearch'
 import { selectAuthStatus } from './presentation/shared/auth/state/authSlice'
 import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
+import { ApplicationPreparationEditorPage, ApplicationPreparationListPage } from './presentation/features/application-preparation/view/ApplicationPreparationPages'
 import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
 import { DailyReportEmailPage } from './presentation/features/daily-report/view/DailyReportEmailPage'
 import { useReviewSessionIsolation } from './presentation/features/combination-review/viewmodel/useReviewSessionIsolation'
@@ -96,6 +97,9 @@ function App() {
       <Route element={<RequireAuth />}>
         <Route element={<WorkspaceLayout />}>
           <Route path={appPaths.reports} element={<DailyReportPage />} />
+          <Route path={appPaths.applicationPreparations} element={<ApplicationPreparationListPage />} />
+          <Route path={appPaths.applicationPreparationNew} element={<ApplicationPreparationEditorPage create />} />
+          <Route path={appPaths.applicationPreparationDetail} element={<ApplicationPreparationEditorPage />} />
           <Route path={appPaths.combinationReviews} element={<CombinationReviewListPage />} />
           <Route path={appPaths.combinationReviewNew} element={<CombinationReviewEditorPage create />} />
           <Route path={appPaths.combinationReviewDetail} element={<CombinationReviewEditorPage />} />
