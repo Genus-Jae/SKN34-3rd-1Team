@@ -1,6 +1,9 @@
 import asyncio
+import logging
+from collections import OrderedDict
 from hashlib import sha256
 from math import isfinite
+from time import monotonic
 from uuid import NAMESPACE_URL, uuid5
 
 from openai import AsyncOpenAI
@@ -16,6 +19,12 @@ from app.support_program_evidence.models import (
     SupportProgramEvidenceSearchRequest,
     SupportProgramEvidenceSearchResponse,
 )
+
+
+logger = logging.getLogger(__name__)
+_QUERY_EMBEDDING_CACHE_MAX_SIZE = 256
+_CHUNK_EMBEDDING_CACHE_MAX_SIZE = 128
+_EMBEDDING_CACHE_TTL_SECONDS = 300
 
 
 class SupportProgramEvidenceService:
@@ -40,11 +49,18 @@ class SupportProgramEvidenceService:
         ).hexdigest()[:16]
         self.collection_name = f"govbiz_support_program_evidence_v1_{configuration_hash}"
         self._write_lock = asyncio.Lock()
+        # 모델·차원·전처리가 고정된 인스턴스에서만 재사용한다. 키는 원문 대신 해시다.
+        self._query_embedding_cache: OrderedDict[str, tuple[float, tuple[float, ...]]] = OrderedDict()
+        self._query_embedding_locks: dict[str, tuple[asyncio.Lock, int]] = {}
+        self._chunk_embedding_cache: OrderedDict[str, tuple[float, tuple[float, ...]]] = OrderedDict()
 
     async def index_chunks(
         self,
         request: SupportProgramEvidenceBatchRequest,
     ) -> SupportProgramEvidenceBatchResponse:
+        started_at = monotonic()
+        stage = "readiness"
+        outcome = "failed"
         try:
             async with asyncio.timeout(25), self._write_lock:
                 await self._ensure_collection()
@@ -67,8 +83,13 @@ class SupportProgramEvidenceService:
                     for point_id, chunk in identities.items()
                     if point_id not in existing_ids
                 ]
+                ready_at = monotonic()
+                cache_hits = 0
                 if missing:
-                    vectors = await self._embed([chunk.text for chunk in missing])
+                    stage = "embedding"
+                    vectors, cache_hits = await self._embed_chunks([chunk.text for chunk in missing])
+                    embedded_at = monotonic()
+                    stage = "upsert"
                     points = [
                         models.PointStruct(
                             id=_point_id(chunk),
@@ -89,16 +110,36 @@ class SupportProgramEvidenceService:
                     )
                     if result.status != models.UpdateStatus.COMPLETED:
                         raise SupportProgramEvidenceError()
+                else:
+                    embedded_at = ready_at
+                finished_at = monotonic()
+                outcome = "completed"
+                logger.info(
+                    "support_program_evidence_index_completed chunk_count=%d missing_count=%d "
+                    "embedding_cache_hits=%d readiness_ms=%d embedding_ms=%d upsert_ms=%d elapsed_ms=%d",
+                    len(request.chunks), len(missing), cache_hits,
+                    round((ready_at - started_at) * 1000), round((embedded_at - ready_at) * 1000),
+                    round((finished_at - embedded_at) * 1000), round((finished_at - started_at) * 1000),
+                )
                 return SupportProgramEvidenceBatchResponse(indexedCount=len(request.chunks))
         except SupportProgramEvidenceError:
             raise
         except Exception as error:
             raise SupportProgramEvidenceError() from error
+        finally:
+            if outcome != "completed":
+                logger.info(
+                    "support_program_evidence_index_failed stage=%s elapsed_ms=%d",
+                    stage, round((monotonic() - started_at) * 1000),
+                )
 
     async def search(
         self,
         request: SupportProgramEvidenceSearchRequest,
     ) -> SupportProgramEvidenceSearchResponse:
+        started_at = monotonic()
+        stage = "readiness"
+        outcome = "failed"
         try:
             async with asyncio.timeout(25):
                 if not await self.qdrant_client.collection_exists(self.collection_name):
@@ -120,7 +161,11 @@ class SupportProgramEvidenceService:
                     if identity is None or not _payload_matches(point.payload, identity):
                         # 같은 ID·해시를 다른 documentId로 위장한 요청은 임베딩 전 차단한다.
                         raise SupportProgramEvidenceError()
-                vector = (await self._embed([request.question]))[0]
+                ready_at = monotonic()
+                stage = "embedding"
+                vector, cache_state = await self._embed_query(request.question)
+                embedded_at = monotonic()
+                stage = "vector_search"
                 response = await self.qdrant_client.query_points(
                     collection_name=self.collection_name,
                     query=vector,
@@ -162,14 +207,89 @@ class SupportProgramEvidenceService:
                         match.id,
                     )
                 )
-                return SupportProgramEvidenceSearchResponse(
-                    question=request.question,
-                    matches=matches,
+                result = SupportProgramEvidenceSearchResponse(question=request.question, matches=matches)
+                finished_at = monotonic()
+                outcome = "completed"
+                logger.info(
+                    "support_program_evidence_search_completed chunk_count=%d readiness_ms=%d embedding_ms=%d "
+                    "vector_search_ms=%d elapsed_ms=%d cache_state=%s",
+                    len(point_ids), round((ready_at - started_at) * 1000),
+                    round((embedded_at - ready_at) * 1000), round((finished_at - embedded_at) * 1000),
+                    round((finished_at - started_at) * 1000), cache_state,
                 )
+                return result
         except SupportProgramEvidenceError:
             raise
         except Exception as error:
             raise SupportProgramEvidenceError() from error
+        finally:
+            if outcome != "completed":
+                logger.info(
+                    "support_program_evidence_search_failed stage=%s elapsed_ms=%d",
+                    stage, round((monotonic() - started_at) * 1000),
+                )
+
+    async def _embed_query(self, query: str) -> tuple[list[float], str]:
+        key = sha256(query.encode("utf-8")).hexdigest()
+        lock, users = self._query_embedding_locks.get(key, (asyncio.Lock(), 0))
+        self._query_embedding_locks[key] = (lock, users + 1)
+        waited = lock.locked()
+        try:
+            # 다른 질문은 병렬 처리한다. 소유 요청 취소 시 다음 요청이 다시 임베딩한다.
+            async with lock:
+                cached = self._query_embedding_cache.get(key)
+                if cached is not None:
+                    expires_at, vector = cached
+                    if expires_at > monotonic():
+                        self._query_embedding_cache.move_to_end(key)
+                        return list(vector), "coalesced" if waited else "hit"
+                    del self._query_embedding_cache[key]
+                vector = (await self._embed([query]))[0]
+                now = monotonic()
+                for cached_key, (expires_at, _) in list(self._query_embedding_cache.items()):
+                    if expires_at <= now:
+                        del self._query_embedding_cache[cached_key]
+                self._query_embedding_cache[key] = (
+                    now + _EMBEDDING_CACHE_TTL_SECONDS, tuple(vector),
+                )
+                while len(self._query_embedding_cache) > _QUERY_EMBEDDING_CACHE_MAX_SIZE:
+                    self._query_embedding_cache.popitem(last=False)
+                return list(vector), "miss"
+        finally:
+            _, users = self._query_embedding_locks[key]
+            if users == 1:
+                del self._query_embedding_locks[key]
+            else:
+                self._query_embedding_locks[key] = (lock, users - 1)
+
+    async def _embed_chunks(self, texts: list[str]) -> tuple[list[list[float]], int]:
+        # index_chunks의 쓰기 잠금 안에서만 호출한다. 청크 ID가 바뀌어도 같은 내용은 재사용한다.
+        # 문서 ID·순서는 캐시 대상이 아니며 매번 Qdrant 검증과 별도 point 저장을 거친다.
+        keys = [sha256(text.encode("utf-8")).hexdigest() for text in texts]
+        now = monotonic()
+        for key, (expires_at, _) in list(self._chunk_embedding_cache.items()):
+            if expires_at <= now:
+                del self._chunk_embedding_cache[key]
+        vectors: dict[str, tuple[float, ...]] = {}
+        missing: dict[str, str] = {}
+        for key, text in zip(keys, texts, strict=True):
+            cached = self._chunk_embedding_cache.get(key)
+            if cached is None:
+                missing[key] = text
+            else:
+                self._chunk_embedding_cache.move_to_end(key)
+                vectors[key] = cached[1]
+        cache_hits = sum(key in vectors for key in keys)
+        if missing:
+            embedded = await self._embed(list(missing.values()))
+            expires_at = monotonic() + _EMBEDDING_CACHE_TTL_SECONDS
+            # 전체 배치의 벡터 검증이 끝난 뒤에만 캐시한다. 원문은 캐시에 보관하지 않는다.
+            for key, vector in zip(missing, embedded, strict=True):
+                vectors[key] = tuple(vector)
+                self._chunk_embedding_cache[key] = (expires_at, vectors[key])
+            while len(self._chunk_embedding_cache) > _CHUNK_EMBEDDING_CACHE_MAX_SIZE:
+                self._chunk_embedding_cache.popitem(last=False)
+        return [list(vectors[key]) for key in keys], cache_hits
 
     async def _ensure_collection(self) -> None:
         if not await self.qdrant_client.collection_exists(self.collection_name):

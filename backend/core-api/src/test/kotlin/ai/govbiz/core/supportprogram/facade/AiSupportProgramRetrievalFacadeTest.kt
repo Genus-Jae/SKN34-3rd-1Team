@@ -8,14 +8,23 @@ import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramIndexSearchPa
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramIndexSearchRequest
 import ai.govbiz.core.supportprogram.client.ai.mapper.SupportProgramIndexDocumentMapper
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
+import ai.govbiz.core.supportprogram.domain.SupportProgramStartupDetails
+import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.helper.SupportProgramTestHelper.catalogProgram
 import java.text.Normalizer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotSame
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
+import org.mockito.Mockito.any
+import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.verify
@@ -242,6 +251,158 @@ class AiSupportProgramRetrievalFacadeTest {
         assertEquals(AiServiceFailure.UNAVAILABLE, exception.failure)
         verifyNoInteractions(client)
     }
+
+    @Test
+    fun reusesPreparedReferencesForEqualCatalogValuesButStillChecksTheIndexForEveryQuery() {
+        val captured = recordSemanticRequests()
+        val facade = AiSupportProgramRetrievalFacade(client)
+        val candidates = programs.take(3)
+
+        assertEquals(candidates, facade.retrieve("no-match-one", candidates))
+        assertEquals(candidates, facade.retrieve("no-match-two", candidates.map { it.copy(program = it.program.copy()) }))
+
+        assertEquals(listOf("no-match-one", "no-match-two"), captured.map { it.query })
+        assertSame(captured.first().eligibleDocuments, captured.last().eligibleDocuments)
+        assertThrows(UnsupportedOperationException::class.java) {
+            (captured.last().eligibleDocuments as MutableList).clear()
+        }
+    }
+
+    @Test
+    fun refreshesChangedTextClassificationStatusSortAndPublicMetadataWithoutServingStalePrograms() {
+        val captured = recordSemanticRequests()
+        val facade = AiSupportProgramRetrievalFacade(client)
+        val initial = catalogProgram("one").let {
+            it.copy(program = it.program.copy(sourceCode = "KSTARTUP"))
+        }
+        val variants = listOf(
+            initial,
+            initial.copy(program = initial.program.copy(title = "변경 제목")),
+            initial.copy(program = initial.program.copy(organization = "변경 기관")),
+            initial.copy(program = initial.program.copy(summary = "변경 내용")),
+            initial.copy(program = initial.program.copy(targetDescription = "변경 대상")),
+            initial.copy(program = initial.program.copy(categories = listOf("다른 분야"))),
+            initial.copy(program = initial.program.copy(regions = listOf("대구"))),
+            initial.copy(program = initial.program.copy(applicationPeriod = "변경 신청 기간")),
+            initial.copy(startupDetails = SupportProgramStartupDetails(listOf("예비창업"), listOf("개인"), listOf("청년"))),
+            initial.copy(program = initial.program.copy(status = SupportProgramStatus.CLOSED)),
+            initial.copy(sortTimestamp = "2026-09-20"),
+            initial.copy(program = initial.program.copy(sourceUrl = "https://changed.example/one")),
+            initial.copy(program = initial.program.copy(matchedReasons = listOf("변경 안내"))),
+        )
+
+        for (candidate in variants) {
+            assertEquals(listOf(candidate), facade.retrieve("unmatched", listOf(candidate)))
+            assertEquals(
+                listOf(SupportProgramIndexDocumentMapper.fromCatalog(candidate).reference()),
+                captured.last().eligibleDocuments,
+            )
+        }
+        captured.zipWithNext().forEach { (before, after) ->
+            assertNotSame(before.eligibleDocuments, after.eligibleDocuments)
+        }
+    }
+
+    @Test
+    fun isolatesMutableCallerCollectionsAndDetectsInPlaceChanges() {
+        val captured = recordSemanticRequests()
+        val facade = AiSupportProgramRetrievalFacade(client)
+        val regions = mutableListOf("서울")
+        val categories = mutableListOf("AI")
+        val stages = mutableListOf("예비창업")
+        val candidate = catalogProgram("one").let {
+            it.copy(
+                program = it.program.copy(sourceCode = "KSTARTUP", regions = regions, categories = categories),
+                startupDetails = SupportProgramStartupDetails(stages, emptyList(), emptyList()),
+            )
+        }
+        val callerList = mutableListOf(candidate)
+        val first = facade.retrieve("unmatched", callerList)
+        regions[0] = "대구"
+        categories.add("무역")
+        stages[0] = "창업 3년"
+        val second = facade.retrieve("unmatched", callerList)
+        callerList.clear()
+
+        assertEquals(listOf("서울"), first.single().program.regions)
+        assertEquals(listOf("AI"), first.single().program.categories)
+        assertEquals(listOf("예비창업"), first.single().startupDetails!!.startupStages)
+        assertEquals(listOf("대구"), second.single().program.regions)
+        assertEquals(listOf("AI", "무역"), second.single().program.categories)
+        assertEquals(listOf("창업 3년"), second.single().startupDetails!!.startupStages)
+        assertNotSame(captured.first().eligibleDocuments, captured.last().eligibleDocuments)
+        assertThrows(UnsupportedOperationException::class.java) {
+            (second.single().program.regions as MutableList).clear()
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            (second.single().startupDetails!!.startupStages as MutableList).clear()
+        }
+    }
+
+    @Test
+    fun keepsOnlyOneCatalogSnapshotAndDoesNotRetainOversizedSourceText() {
+        val captured = recordSemanticRequests()
+        val facade = AiSupportProgramRetrievalFacade(client)
+        val first = listOf(catalogProgram("one"))
+        val second = listOf(catalogProgram("two"))
+        facade.retrieve("unmatched", first)
+        facade.retrieve("unmatched", second)
+        facade.retrieve("unmatched", first)
+        assertNotSame(captured[0].eligibleDocuments, captured[2].eligibleDocuments)
+
+        // 검색용 문서가 12,000자로 잘려도 캐시 원문 크기 상한은 전체 원문에 적용됩니다.
+        val oversized = listOf(catalogProgram("large", summary = "가".repeat(2_000_001)))
+        assertEquals(oversized, facade.retrieve("unmatched", oversized))
+        assertEquals(oversized, facade.retrieve("unmatched", oversized))
+        assertNotSame(captured[3].eligibleDocuments, captured[4].eligibleDocuments)
+    }
+
+    @Test
+    fun searchesIndependentSnapshotsConcurrentlyWithoutHoldingALockAcrossTheClientCall() {
+        val firstInsideClient = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        doAnswer { invocation ->
+            val request = invocation.getArgument<AiSupportProgramIndexSearchRequest>(0)
+            if (request.query == "first") {
+                firstInsideClient.countDown()
+                check(releaseFirst.await(10, TimeUnit.SECONDS))
+            }
+            semanticResponse(request)
+        }.`when`(client).search(any(AiSupportProgramIndexSearchRequest::class.java) ?: request)
+        val facade = AiSupportProgramRetrievalFacade(client)
+        val first = listOf(catalogProgram("one", summary = "첫 번째 버전"))
+        val second = listOf(catalogProgram("one", summary = "변경된 버전"))
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val pendingFirst = executor.submit<List<CatalogSupportProgram>> { facade.retrieve("first", first) }
+            assertTrue(firstInsideClient.await(5, TimeUnit.SECONDS))
+            val completedSecond = executor.submit<List<CatalogSupportProgram>> { facade.retrieve("second", second) }
+            assertEquals(second, completedSecond.get(5, TimeUnit.SECONDS))
+            releaseFirst.countDown()
+            assertEquals(first, pendingFirst.get(5, TimeUnit.SECONDS))
+            assertEquals(second, facade.retrieve("second", second))
+        } finally {
+            releaseFirst.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    private fun recordSemanticRequests(): MutableList<AiSupportProgramIndexSearchRequest> {
+        val captured = mutableListOf<AiSupportProgramIndexSearchRequest>()
+        doAnswer { invocation ->
+            val request = invocation.getArgument<AiSupportProgramIndexSearchRequest>(0)
+            captured += request
+            semanticResponse(request)
+        }.`when`(client).search(any(AiSupportProgramIndexSearchRequest::class.java) ?: request)
+        return captured
+    }
+
+    private fun semanticResponse(request: AiSupportProgramIndexSearchRequest) = AiSupportProgramIndexSearchPayload(
+        request.query,
+        request.eligibleDocuments.take(20).mapIndexed { index, document ->
+            AiSupportProgramIndexMatchPayload(document.id, document.contentHash, 1.0 - index * 0.01)
+        },
+    )
 
     private fun match(index: Int, score: Double) = AiSupportProgramIndexMatchPayload(
         documents[index].id, documents[index].contentHash, score,

@@ -197,6 +197,10 @@ class SupportProgramRecommendationAgent:
                     run_config=self._run_config,
                 )
         except (ModelTimeoutError, APITimeoutError, TimeoutError) as error:
+            logger.info(
+                "support_program_ranking_model_failed outcome=timeout candidate_count=%d model_ms=%d",
+                candidate_count, round((perf_counter() - prepared) * 1000),
+            )
             raise AgentTimeoutError("Support program recommendation agent timed out") from error
         except (
             MaxTurnsExceeded,
@@ -205,11 +209,33 @@ class SupportProgramRecommendationAgent:
             OpenAIError,
             ValidationError,
         ) as error:
+            logger.info(
+                "support_program_ranking_model_failed outcome=failed candidate_count=%d model_ms=%d",
+                candidate_count, round((perf_counter() - prepared) * 1000),
+            )
             raise AgentExecutionError(
                 "Support program recommendation agent did not produce a usable result"
             ) from error
+        except asyncio.CancelledError:
+            logger.info(
+                "support_program_ranking_model_failed outcome=cancelled candidate_count=%d model_ms=%d",
+                candidate_count, round((perf_counter() - prepared) * 1000),
+            )
+            raise
 
         model_finished = perf_counter()
+        # SDK가 수집한 사용량만 기록한다. 사용량 없는 응답은 0 토큰으로 오인하지 않는다.
+        usage = getattr(getattr(result, "context_wrapper", None), "usage", None)
+        usage_reported = usage is not None and bool(usage.request_usage_entries)
+        logger.info(
+            "support_program_ranking_model_completed candidate_count=%d model_ms=%d usage_reported=%s "
+            "input_tokens=%s output_tokens=%s cached_input_tokens=%s reasoning_tokens=%s",
+            candidate_count, round((model_finished - prepared) * 1000), usage_reported,
+            usage.input_tokens if usage_reported else None,
+            usage.output_tokens if usage_reported else None,
+            usage.input_tokens_details.cached_tokens if usage_reported else None,
+            usage.output_tokens_details.reasoning_tokens if usage_reported else None,
+        )
         output = result.final_output
         if not isinstance(output, output_type):
             raise AgentExecutionError(

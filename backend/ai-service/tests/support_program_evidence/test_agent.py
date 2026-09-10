@@ -367,3 +367,64 @@ async def test_keeps_refusal_as_an_error_without_retrying():
     finally:
         await client.close()
     assert len(requests) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_evidence_answer_logs_stage_duration_without_question_or_source_text(caplog, failure):
+    import logging
+
+    text = "private invalid output" if failure else valid_selection().model_dump_json(by_alias=True)
+    model = ScriptedModel([[assistant_message(text)]])
+    agent = SupportProgramEvidenceAnswerAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
+    request = answer_request()
+    with caplog.at_level(logging.INFO, logger="app.support_program_evidence.agent"):
+        if failure:
+            with pytest.raises(SupportProgramEvidenceError):
+                await agent.answer(request)
+        else:
+            await agent.answer(request)
+    messages = [record.getMessage() for record in caplog.records if record.name == "app.support_program_evidence.agent"]
+    assert len(messages) == 1
+    assert f"outcome={'failed' if failure else 'completed'}" in messages[0]
+    for metric in ("model_ms=", "validation_ms=", "elapsed_ms="):
+        assert metric in messages[0]
+    for private in (request.question, request.chunks[0].text, request.chunks[0].id, "private invalid output"):
+        assert private not in messages[0]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("with_usage", [True, False])
+async def test_actual_sdk_usage_is_logged_and_missing_usage_stays_unknown(caplog, with_usage):
+    import logging
+
+    def handler(request):
+        body = responses_body(valid_selection().model_dump_json(by_alias=True))
+        if with_usage:
+            body["usage"] = {
+                "input_tokens": 800, "output_tokens": 120, "total_tokens": 920,
+                "input_tokens_details": {"cached_tokens": 600},
+                "output_tokens_details": {"reasoning_tokens": 20},
+            }
+        return httpx2.Response(200, json=body)
+
+    client = AsyncOpenAI(api_key="secret-test-key", max_retries=0,
+                         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
+    agent = SupportProgramEvidenceAnswerAgent(
+        model=OpenAIResponsesModel(model="test-model", openai_client=client),
+        model_timeout_seconds=3, run_timeout_seconds=4,
+    )
+    try:
+        with caplog.at_level(logging.INFO, logger="app.support_program_evidence.agent"):
+            await agent.answer(answer_request())
+    finally:
+        await client.close()
+    messages = [record.getMessage() for record in caplog.records if record.name == "app.support_program_evidence.agent"]
+    assert len(messages) == 1 and "outcome=completed" in messages[0]
+    if with_usage:
+        for metric in ("usage_reported=True", "input_tokens=800", "output_tokens=120", "cached_input_tokens=600", "reasoning_tokens=20"):
+            assert metric in messages[0]
+    else:
+        assert "usage_reported=False" in messages[0]
+        assert "input_tokens=None" in messages[0] and "output_tokens=None" in messages[0]
+    assert "secret-test-key" not in caplog.text

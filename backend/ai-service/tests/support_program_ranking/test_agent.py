@@ -878,3 +878,59 @@ async def test_sdk_serializes_twenty_distinct_candidate_local_selection_schemas(
         else:
             assert compatible["properties"]["eligibility"]["const"] == "UNKNOWN"
             assert restored.target_assessment.evidence == restored.region_assessment.evidence == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("with_usage", [True, False])
+async def test_logs_actual_sdk_token_usage_without_request_or_evidence_text(caplog, with_usage):
+    import logging
+
+    def handler(request):
+        body = responses_body(llm_output_json())
+        if with_usage:
+            body["usage"] = {
+                "input_tokens": 1500, "output_tokens": 240, "total_tokens": 1740,
+                "input_tokens_details": {"cached_tokens": 1200},
+                "output_tokens_details": {"reasoning_tokens": 30},
+            }
+        return httpx2.Response(200, json=body)
+
+    client = AsyncOpenAI(api_key="secret-test-key", max_retries=0,
+                         http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
+    agent = SupportProgramRecommendationAgent(
+        model=OpenAIResponsesModel(model="test-model", openai_client=client),
+        model_timeout_seconds=3, run_timeout_seconds=4,
+    )
+    request = ranking_request()
+    try:
+        with caplog.at_level(logging.INFO, logger="app.support_program_ranking.agent"):
+            assert await agent.rank(request) == valid_output()
+    finally:
+        await client.close()
+    messages = [record.getMessage() for record in caplog.records if record.name == "app.support_program_ranking.agent"]
+    model_log = next(message for message in messages if message.startswith("support_program_ranking_model_completed"))
+    assert "candidate_count=1" in model_log and "model_ms=" in model_log
+    if with_usage:
+        for metric in ("usage_reported=True", "input_tokens=1500", "output_tokens=240", "cached_input_tokens=1200", "reasoning_tokens=30"):
+            assert metric in model_log
+    else:
+        assert "usage_reported=False" in model_log
+        assert "input_tokens=None" in model_log and "output_tokens=None" in model_log
+    assert "secret-test-key" not in caplog.text
+    assert request.original_query not in caplog.text
+    assert request.candidates[0].summary not in caplog.text
+    assert request.candidates[0].id not in model_log
+
+
+@pytest.mark.anyio
+async def test_failed_ranking_logs_duration_without_raw_model_output(caplog):
+    import logging
+
+    model = ScriptedModel([[assistant_message("private malformed output")]])
+    agent = SupportProgramRecommendationAgent(model=model, model_timeout_seconds=3, run_timeout_seconds=4)
+    with caplog.at_level(logging.INFO, logger="app.support_program_ranking.agent"):
+        with pytest.raises(AgentExecutionError):
+            await agent.rank(ranking_request())
+    messages = "\n".join(record.getMessage() for record in caplog.records if record.name == "app.support_program_ranking.agent")
+    assert "support_program_ranking_model_failed outcome=failed candidate_count=1 model_ms=" in messages
+    assert "private malformed output" not in messages
