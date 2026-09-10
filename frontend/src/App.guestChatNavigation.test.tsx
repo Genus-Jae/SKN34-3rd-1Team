@@ -7,6 +7,7 @@ import { MemoryRouter, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { completeSearchResult } from './data/fixtures/supportProgramSearchResult'
 import { appContainer } from './app/appContainer'
 import { createAppStore, type AppStore } from './app/store'
 import { partnerRecruitmentPage } from './data/fixtures/partnerRecruitments'
@@ -130,7 +131,7 @@ describe('비로그인 대화의 화면 이동 수명', () => {
     const returnedState = store.getState().chat
 
     await act(async () => {
-      complete(json(phase === 'search' ? { query: context.query, programs: [program] }
+      complete(json(phase === 'search' ? completeSearchResult({ query: context.query, programs: [program] })
         : readyConversationProposal(context)))
       await pending
     })
@@ -187,7 +188,7 @@ function seededConversationStore(authenticated = false) {
     acceptingOnly: context.acceptingOnly, companyConditions: store.getState().chat.searchOptions.companyConditions,
   }, interpreted.payload.messageId)
   store.dispatch(searched)
-  store.dispatch(searchSucceeded({ requestId: searched.payload.requestId, programs: [program] }))
+  store.dispatch(searchSucceeded(completeSearchResult({ requestId: searched.payload.requestId, programs: [program] })))
   store.dispatch(draftChanged(unsentDraft))
   return store
 }

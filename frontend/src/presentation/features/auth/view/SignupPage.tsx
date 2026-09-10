@@ -10,6 +10,7 @@ import { authPageStyles } from './AuthPage.styles'
  */
 export function SignupPage() {
   const {
+    loginPath,
     email,
     password,
     passwordConfirmation,
@@ -101,7 +102,7 @@ export function SignupPage() {
             <span className={authPageStyles.dividerLine} aria-hidden="true" />
           </div>
 
-          <Link className={authPageStyles.secondaryButton} to="/login">
+          <Link className={authPageStyles.secondaryButton} to={loginPath}>
             로그인
           </Link>
 

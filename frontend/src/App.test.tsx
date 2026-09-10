@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { completeSearchResult } from './data/fixtures/supportProgramSearchResult'
 import { appContainer } from './app/appContainer'
 import { createAppStore } from './app/store'
 import { conditionMatchedProgram, relocationReviewRequiredProgram, supportPrograms } from './data/fixtures/supportPrograms'
@@ -44,10 +45,11 @@ afterEach(() => {
 
 describe('App navigation', () => {
   it('초안을 수정해도 기존 검색 결과 카드의 상세 URL을 다시 만들지 않고 새 검색 결과는 표시한다', async () => {
+    const searchPrograms = supportPrograms.slice(0, 5)
     const nextProgram = { ...supportPrograms[0], id: 'next-result', title: '다음 검색의 공고' }
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ query: '서울 AI', programs: supportPrograms }))
-      .mockResolvedValueOnce(jsonResponse({ query: '다음 검색', programs: [nextProgram] }))
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({ query: '서울 AI', programs: searchPrograms })))
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({ query: '다음 검색', programs: [nextProgram] })))
     vi.stubGlobal('fetch', fetchMock)
     renderApp(createAppStore())
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
@@ -62,12 +64,12 @@ describe('App navigation', () => {
     }
     expect(detailUrlSerialization).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledOnce()
-    expect(screen.getAllByRole('link', { name: '상세 조건 보기' })).toHaveLength(supportPrograms.length)
+    expect(screen.getAllByRole('link', { name: '상세 조건 보기' })).toHaveLength(searchPrograms.length)
 
     fireEvent.change(input, { target: { value: '다음 검색' } })
     await submitConfirmedSearch(input)
     await screen.findByRole('heading', { name: nextProgram.title })
-    expect(screen.getAllByRole('link', { name: '상세 조건 보기' })).toHaveLength(supportPrograms.length + 1)
+    expect(screen.getAllByRole('link', { name: '상세 조건 보기' })).toHaveLength(searchPrograms.length + 1)
     expect(detailUrlSerialization).toHaveBeenCalledOnce()
     expect(fetchMock).toHaveBeenCalledTimes(2)
   // 파일의 첫 테스트라 모듈 변환·초기화 시간이 포함되므로 전체 실행 부하에서도 넉넉히 둡니다.
@@ -77,7 +79,7 @@ describe('App navigation', () => {
     const returnPath = path === '/' ? '/' : '/app/chat'
     const programs = [relocationReviewRequiredProgram, conditionMatchedProgram]
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ query: '서울 AI', programs }))
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({ query: '서울 AI', programs })))
       .mockImplementation(async () => jsonResponse(programs[0]))
     vi.stubGlobal('fetch', fetchMock)
     const store = createAppStore()
@@ -205,8 +207,8 @@ describe('App navigation', () => {
     const latest = { ...supportPrograms[3], recommendationScore: null }
     const programs = [relocationReviewRequiredProgram, conditionMatchedProgram, supportPrograms[1], latest]
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ query: '사업화', programs }))
-      .mockResolvedValueOnce(jsonResponse({ query: '사업화', programs: [] }))
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({ query: '사업화', programs })))
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({ query: '사업화', programs: [] })))
       .mockResolvedValueOnce(jsonResponse({ ...conditionMatchedProgram, eligibilityReview: null, recommendationScore: null, matchedReasons: [] }))
     vi.stubGlobal('fetch', fetchMock)
     const seoulContext = { ...emptyConversationContext, query: '사업화', companyConditions: {
@@ -282,7 +284,7 @@ describe('App navigation', () => {
         region: { status: 'UNKNOWN', explanation: '현재 소재지에 적용할 지역 조건의 근거가 없습니다.', evidence: [] },
       },
     }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ query: '사업화', programs: [program] })))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(completeSearchResult({ query: '사업화', programs: [program] }))))
     renderApp(createAppStore())
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(input, { target: { value: '사업화' } })
@@ -296,7 +298,7 @@ describe('App navigation', () => {
   })
 
   it('대화 제안 확인으로 기업 조건·접수 상태를 적용·수정·해제하고 새 대화에서 초기화한다', async () => {
-    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse({ query: '지원금', programs: [] }))
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse(completeSearchResult({ query: '지원금', programs: [] })))
     vi.stubGlobal('fetch', fetchMock)
     const seoulContext = { ...emptyConversationContext, query: '지원금', companyConditions: {
       region: '서울', industry: '소프트웨어 개발업', establishedOn: '2024-02-29', supportPurpose: '사업화',
@@ -492,10 +494,10 @@ describe('App navigation', () => {
   it('검색 결과의 상세 조건 보기는 URL 기반 API 조회 화면으로 연결한다', async () => {
     const detail = { ...supportPrograms[0], matchedReasons: [], recommendationScore: null }
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({
         query: '서울 AI',
         programs: [supportPrograms[0]],
-      }))
+      })))
       .mockResolvedValueOnce(jsonResponse(detail))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -822,7 +824,7 @@ describe('App navigation', () => {
   ])('검색 HTTP %s를 장애와 구별하여 안내하고 직접 다시 검색할 수 있다', async (status, message) => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(requestRejectedResponse(status))
-      .mockResolvedValueOnce(jsonResponse({ query: '서울 AI', programs: [supportPrograms[0]] }))
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({ query: '서울 AI', programs: [supportPrograms[0]] })))
     vi.stubGlobal('fetch', fetchMock)
     const store = createAppStore()
     renderApp(store)
@@ -859,7 +861,7 @@ describe('App navigation', () => {
     }
     // 아직 연동하지 않은 제공처는 HTTP allowlist에 추가하지 않고 Domain 경계에서 대역을 제공합니다.
     const repository = appContainer.resolve('supportProgramRepository')
-    vi.spyOn(repository, 'search').mockResolvedValue([bizInfoProgram, otherProgram])
+    vi.spyOn(repository, 'search').mockResolvedValue(completeSearchResult({ query: '동일 ID', programs: [bizInfoProgram, otherProgram] }))
     const getDetail = vi.spyOn(repository, 'getDetail')
       .mockResolvedValueOnce({
         ...bizInfoProgram,
@@ -910,10 +912,10 @@ describe('App navigation', () => {
   })
 
   it('한글 조합 중 Enter는 검색을 전송하지 않고 조합이 끝난 뒤 전송한다', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(completeSearchResult({
       query: '서울 AI',
       programs: [supportPrograms[0]],
-    }))
+    })))
     vi.stubGlobal('fetch', fetchMock)
 
     renderApp(createAppStore())
@@ -969,10 +971,10 @@ describe('App navigation', () => {
   it('검색 실패 시 검색어를 복구하고 다시 검색할 수 있다', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new Error('temporary network failure'))
-      .mockResolvedValueOnce(jsonResponse({
+      .mockResolvedValueOnce(jsonResponse(completeSearchResult({
         query: '서울 AI',
         programs: [supportPrograms[0]],
-      }))
+      })))
     vi.stubGlobal('fetch', fetchMock)
 
     renderApp(createAppStore())
@@ -1048,7 +1050,7 @@ describe('App navigation', () => {
     readinessHookMock.useSupportProgramSearchReadiness.mockReturnValue(createReadinessHook({
       data: undefined, canSearch: false, isError: true, refetch,
     }))
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ query: '창업', programs: [] }))
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(completeSearchResult({ query: '창업', programs: [] })))
     vi.stubGlobal('fetch', fetchMock)
     const store = createAppStore()
     const view = renderApp(store, path)
@@ -1115,10 +1117,10 @@ describe('App navigation', () => {
         },
       }),
     )
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(completeSearchResult({
       query: '서울 AI',
       programs: [supportPrograms[0]],
-    }))
+    })))
     vi.stubGlobal('fetch', fetchMock)
 
     renderApp(createAppStore())
@@ -1187,7 +1189,7 @@ describe('App navigation', () => {
         },
       }),
     )
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ query: '창업', programs: [supportPrograms[0]] }))
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(completeSearchResult({ query: '창업', programs: [supportPrograms[0]] })))
     vi.stubGlobal('fetch', fetchMock)
     renderApp(createAppStore())
 
@@ -1240,10 +1242,10 @@ describe('App navigation', () => {
   })
 
   it('검색 가능한 상태에서 빈 검색 결과는 공고 없음으로 안내한다', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(completeSearchResult({
       query: '존재하지 않는 조건',
       programs: [],
-    }))
+    })))
     vi.stubGlobal('fetch', fetchMock)
 
     renderApp(createAppStore())

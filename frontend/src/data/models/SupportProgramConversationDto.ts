@@ -15,7 +15,7 @@ const establishedOnSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((valu
     && value >= '1900-01-01' && value <= today
 }).nullable()
 
-const conversationContextDtoSchema = z.object({
+export const conversationContextDtoSchema = z.object({
   query: querySchema.nullable(),
   acceptingOnly: z.boolean(),
   companyConditions: z.object({

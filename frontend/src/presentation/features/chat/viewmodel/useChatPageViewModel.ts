@@ -47,7 +47,9 @@ export function useChatPageViewModel() {
         : chat.isSearching
     ? '지원사업 공고를 검색하고 있습니다.'
     : latestMessage?.role === 'assistant' && latestMessage.programs
-      ? `지원사업 검색 결과 ${latestMessage.programs.length}건: ${formatSupportProgramEligibilityCounts(latestMessage.programs)}을 표시했습니다.`
+      ? latestMessage.totalCount !== undefined && latestMessage.totalCount > latestMessage.programs.length
+        ? `지원사업 검색 결과 ${latestMessage.totalCount}건 중 ${latestMessage.programs.length}건을 표시했습니다. 표시된 공고: ${formatSupportProgramEligibilityCounts(latestMessage.programs)}. 추가 ${latestMessage.totalCount - latestMessage.programs.length}건은 회원가입 또는 로그인 후 확인할 수 있습니다.`
+        : `지원사업 검색 결과 ${latestMessage.programs.length}건: ${formatSupportProgramEligibilityCounts(latestMessage.programs)}을 표시했습니다.`
       : '', [chat.isInterpreting, chat.interpretation.status, chat.interpretation.result?.clarificationQuestion,
         chat.isSearching, latestMessage])
 

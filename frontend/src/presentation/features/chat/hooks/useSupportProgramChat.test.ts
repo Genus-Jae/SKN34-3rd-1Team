@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { completeSearchResult } from '../../../../data/fixtures/supportProgramSearchResult'
+
 import {
   createElement,
   type ComponentType,
@@ -31,10 +33,10 @@ afterEach(() => {
 
 describe('Redux chat flow', () => {
   it('stores the user message and injected search service result in the chat slice', async () => {
-    const execute = vi.fn().mockResolvedValue({
+    const execute = vi.fn().mockResolvedValue(completeSearchResult({
       query: '서울 AI',
       programs: [supportPrograms[0]],
-    })
+    }))
     const store = createAppStore()
     const { result } = renderChatHook(store, createSearchUseCase(execute))
 
@@ -65,7 +67,7 @@ describe('Redux chat flow', () => {
       firstSearch = result.current.submitMessage()
       duplicateSearch = result.current.submitMessage()
     })
-    pending.resolve({ query: '수출', programs: [supportPrograms[3]] })
+    pending.resolve(completeSearchResult({ query: '수출', programs: [supportPrograms[3]] }))
     await act(async () => Promise.all([firstSearch, duplicateSearch]))
 
     expect(execute).toHaveBeenCalledOnce()
@@ -91,7 +93,7 @@ describe('Redux chat flow', () => {
     act(() => result.current.startNewConversation())
 
     expect(requestSignal?.aborted).toBe(true)
-    pending.resolve({ query: '제조', programs: [supportPrograms[2]] })
+    pending.resolve(completeSearchResult({ query: '제조', programs: [supportPrograms[2]] }))
     await act(async () => search)
 
     const chat = store.getState().chat
@@ -122,7 +124,7 @@ describe('Redux chat flow', () => {
     expect(firstSignal?.aborted).toBe(false)
     expect(execute).toHaveBeenCalledOnce()
 
-    firstPending.resolve({ query: '서울', programs: [supportPrograms[0]] })
+    firstPending.resolve(completeSearchResult({ query: '서울', programs: [supportPrograms[0]] }))
     await act(async () => firstSearch)
 
     const chat = store.getState().chat
@@ -171,9 +173,9 @@ describe('Redux chat flow', () => {
   ] as const)('keeps the conversation and query for manual retry after %s', async (reason, seconds, message) => {
     vi.useFakeTimers()
     const execute = vi.fn()
-      .mockResolvedValueOnce({ query: '서울', programs: [supportPrograms[0]] })
+      .mockResolvedValueOnce(completeSearchResult({ query: '서울', programs: [supportPrograms[0]] }))
       .mockRejectedValueOnce(new SupportProgramRequestError(reason, seconds))
-      .mockResolvedValueOnce({ query: '수출', programs: [supportPrograms[3]] })
+      .mockResolvedValueOnce(completeSearchResult({ query: '수출', programs: [supportPrograms[3]] }))
     const store = createAppStore()
     const { result } = renderChatHook(store, createSearchUseCase(execute))
     act(() => result.current.updateDraft('서울'))
@@ -220,7 +222,7 @@ describe('Redux chat flow', () => {
     expect(store.getState().chat.draft).toBe('수출')
     expect(store.getState().chat.searchError).toBeNull()
 
-    pending.resolve({ query: '수출', programs: [supportPrograms[3]] })
+    pending.resolve(completeSearchResult({ query: '수출', programs: [supportPrograms[3]] }))
     await search
     expect(store.getState().chat.messages).toHaveLength(2)
   })
@@ -266,7 +268,7 @@ describe('Redux chat flow', () => {
     expect(chat.searchError).toBe('검색 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.')
     expect(result.current.canRetrySearch).toBe(true)
 
-    execute.mockResolvedValueOnce({ query: '창업', programs: [supportPrograms[0]] })
+    execute.mockResolvedValueOnce(completeSearchResult({ query: '창업', programs: [supportPrograms[0]] }))
     await act(async () => result.current.submitMessage())
     expect(execute).toHaveBeenCalledTimes(2)
     expect(execute.mock.calls[1][0]).toEqual({ query: '창업', acceptingOnly: true })
@@ -275,7 +277,7 @@ describe('Redux chat flow', () => {
     expect(store.getState().chat.searchError).toBeNull()
     expect(store.getState().chat.messages.at(-1)?.programs?.[0]?.id).toBe('fixture-seoul-ai-business')
 
-    pending.resolve({ query: '창업', programs: [supportPrograms[1]] })
+    pending.resolve(completeSearchResult({ query: '창업', programs: [supportPrograms[1]] }))
     await search
     expect(store.getState().chat.messages).toHaveLength(5)
     expect(store.getState().chat.messages.filter((message) => message.failure === 'search')).toHaveLength(1)
@@ -303,7 +305,7 @@ describe('Redux chat flow', () => {
     expect(requestSignal?.aborted).toBe(true)
     expect(store.getState().chat.searchStatus).toBe('idle')
 
-    pending.resolve({ query: '창업', programs: [supportPrograms[1]] })
+    pending.resolve(completeSearchResult({ query: '창업', programs: [supportPrograms[1]] }))
     await search
     expect(store.getState().chat.messages).toHaveLength(2)
   })

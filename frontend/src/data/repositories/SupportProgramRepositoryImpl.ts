@@ -4,6 +4,8 @@ import {
   getSupportProgramSearchReadinessApi,
   interpretSupportProgramConversationApi,
   searchSupportProgramsApi,
+  restoreSupportProgramSearchApi,
+  SupportProgramSearchRestoreApiError,
   SupportProgramEvidenceApiError,
   SupportProgramInterpretationApiError,
   SupportProgramRequestApiError,
@@ -16,6 +18,8 @@ import { toSupportProgramEvidenceAnswer } from '../models/SupportProgramEvidence
 import { toSupportProgramSearchReadiness } from '../models/SupportProgramSearchReadinessDto'
 import { toSupportProgramInterpretation } from '../models/SupportProgramConversationDto'
 import type { SupportProgramInterpretRequest } from '../../domain/entities/SupportProgramConversation'
+import type { SupportProgramSearchResult } from '../../domain/entities/SupportProgramSearchResult'
+import { SupportProgramSearchRestoreError } from '../../domain/errors/SupportProgramSearchRestoreError'
 import type { SupportProgram } from '../../domain/entities/SupportProgram'
 import { SupportProgramRequestError } from '../../domain/errors/SupportProgramRequestError'
 import { SupportProgramInterpretationError } from '../../domain/errors/SupportProgramInterpretationError'
@@ -48,13 +52,25 @@ export class SupportProgramRepositoryImpl implements SupportProgramRepository {
   async search(
     command: SupportProgramSearch,
     signal?: AbortSignal,
-  ): Promise<SupportProgram[]> {
+  ): Promise<SupportProgramSearchResult> {
     try {
       const response = await searchSupportProgramsApi(command, signal)
-      return response.programs.map(toSupportProgram)
+      return { ...response, programs: response.programs.map(toSupportProgram) }
     } catch (error) {
       if (error instanceof SupportProgramSearchTimeoutApiError) throw new SupportProgramSearchTimeoutError()
       throw toRequestError(error)
+    }
+  }
+
+  async restoreSearch(resultToken: string, signal?: AbortSignal) {
+    try {
+      const response = await restoreSupportProgramSearchApi(resultToken, signal)
+      return { ...response, programs: response.programs.map(toSupportProgram), context: {
+        ...response.context, companyConditions: { ...response.context.companyConditions },
+      } }
+    } catch (error) {
+      if (signal?.aborted) throw error
+      throw new SupportProgramSearchRestoreError(error instanceof SupportProgramSearchRestoreApiError ? error.reason : 'unavailable')
     }
   }
 

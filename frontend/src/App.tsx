@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { useAppDispatch, useAppSelector } from './app/hooks'
 import { conversationReset } from './presentation/features/chat/state/chatSlice'
+import { useRestoreSupportProgramSearch } from './presentation/features/chat/hooks/useRestoreSupportProgramSearch'
 import { selectAuthStatus } from './presentation/shared/auth/state/authSlice'
 import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
 import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
@@ -49,6 +50,7 @@ function PublicLayout() {
  */
 function App() {
   useRestoreAuthSession()
+  useRestoreSupportProgramSearch()
   useReviewSessionIsolation()
   const dispatchToStore = useAppDispatch()
   const authStatus = useAppSelector(selectAuthStatus)

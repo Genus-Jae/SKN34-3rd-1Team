@@ -7,6 +7,7 @@ import { authPageStyles } from './AuthPage.styles'
 /** 로그인 화면입니다. 공용 헤더의 로그인 버튼이 이 화면으로 옵니다. */
 export function LoginPage() {
   const {
+    signupPath,
     email,
     password,
     rememberMe,
@@ -94,7 +95,7 @@ export function LoginPage() {
             <span className={authPageStyles.dividerLine} aria-hidden="true" />
           </div>
 
-          <Link className={authPageStyles.secondaryButton} to="/signup">
+          <Link className={authPageStyles.secondaryButton} to={signupPath}>
             기업 계정 만들기
           </Link>
 

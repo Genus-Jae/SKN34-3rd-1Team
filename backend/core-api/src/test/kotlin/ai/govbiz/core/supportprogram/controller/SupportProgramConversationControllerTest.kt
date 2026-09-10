@@ -3,6 +3,8 @@ package ai.govbiz.core.supportprogram.controller
 import ai.govbiz.core._common.config.JsonDeserializationConfig
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.ApiExceptionHandler
+import ai.govbiz.core.account.service.AccountSessionService
+import ai.govbiz.core.account.web.AuthenticatedAccountArgumentResolver
 import ai.govbiz.core.supportprogram.controller.dto.SupportProgramConversationRequest
 import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
 import ai.govbiz.core.supportprogram.domain.SupportProgramConversationContext
@@ -15,6 +17,7 @@ import ai.govbiz.core.supportprogram.service.dto.SupportProgramConversationResul
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchResult
 import ai.govbiz.core.supportprogram.service.evidence.SupportProgramEvidenceService
 import ai.govbiz.core.supportprogram.service.readiness.SupportProgramSearchReadinessService
+import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchPreviewService
 import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchService
 import java.time.Clock
 import java.time.Instant
@@ -61,8 +64,9 @@ class SupportProgramConversationControllerTest {
         val admission = SupportProgramRequestAdmissionService(SupportProgramRequestAdmissionProperties(perClient, global, concurrent)) { 0L }
         return MockMvcBuilders.standaloneSetup(
             SupportProgramConversationController(service, admission),
-            SupportProgramController(search, readiness, detail, evidence, admission),
-        ).setControllerAdvice(ApiExceptionHandler()).setValidator(validator)
+            SupportProgramController(SupportProgramSearchPreviewService(search, Clock.systemUTC()), readiness, detail, evidence, admission),
+        ).setCustomArgumentResolvers(AuthenticatedAccountArgumentResolver { Mockito.mock(AccountSessionService::class.java) })
+            .setControllerAdvice(ApiExceptionHandler()).setValidator(validator)
             .setMessageConverters(JacksonJsonHttpMessageConverter(mapper)).build()
     }
 

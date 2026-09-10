@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import { completeSearchResult } from './data/fixtures/supportProgramSearchResult'
 import { createAppStore } from './app/store'
 import { readyConversationProposal, seoulConversationContext } from './data/fixtures/supportProgramConversation'
 import { sessionRestored } from './presentation/shared/auth/state/authSlice'
@@ -194,7 +195,7 @@ describe('참고 이미지 기반 채팅 디자인', () => {
     expectLoadingCard('search')
     expect(fetchMock).toHaveBeenCalledTimes(2)
     await act(async () => {
-      search.complete(new Response(JSON.stringify({ query: seoulConversationContext.query, programs: [] }), {
+      search.complete(new Response(JSON.stringify(completeSearchResult({ query: seoulConversationContext.query, programs: [] })), {
         headers: { 'Content-Type': 'application/json' },
       }))
       await search.promise

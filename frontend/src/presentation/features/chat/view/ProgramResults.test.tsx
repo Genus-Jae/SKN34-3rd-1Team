@@ -45,6 +45,30 @@ describe('ProgramResults', () => {
     }))
   })
 
+  it.each([3, 5])('전체 %s건 중 2건만 공개하고 나머지는 내용 없는 잠금 카드와 인증 링크로 표시한다', (totalCount) => {
+    const token = '4595df20-ea11-4b17-a37e-c82e1b5c9142'
+    render(<ProgramResults programs={supportPrograms.slice(0, 2)} totalCount={totalCount} resultToken={token} />, { wrapper: SearchRouter })
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+    expect(screen.getByRole('heading', { name: `검색 결과 · ${totalCount}건 중 2건 공개` })).toBeTruthy()
+    const locked = screen.getByRole('list', { name: '로그인 후 공개되는 지원사업' })
+    expect(within(locked).getAllByRole('listitem')).toHaveLength(totalCount - 2)
+    expect(within(locked).queryAllByRole('link')).toHaveLength(0)
+    for (const program of supportPrograms.slice(2)) expect(screen.queryByText(program.title)).toBeNull()
+    for (const [name, pathname] of [['회원가입하고 전체 보기', '/signup'], ['로그인하고 전체 보기', '/login']]) {
+      const url = new URL(screen.getByRole('link', { name }).getAttribute('href')!, 'http://localhost')
+      expect(url.pathname).toBe(pathname)
+      expect(url.searchParams.get('next')).toBe(`/app/chat?searchResult=${token}`)
+      expect(url.searchParams.size).toBe(1)
+    }
+  })
+
+  it.each([0, 1, 2, 5])('전체 공개 %s건에는 잠금 카드나 가입 유도를 표시하지 않는다', (totalCount) => {
+    render(<ProgramResults programs={supportPrograms.slice(0, totalCount)} totalCount={totalCount} resultToken={null} />, { wrapper: SearchRouter })
+    expect(screen.queryByRole('region', { name: '추가 검색 결과' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '회원가입하고 전체 보기' })).toBeNull()
+    expect(screen.getByRole('heading', { name: `검색 결과 · ${totalCount}건` })).toBeTruthy()
+  })
+
   it('검색 순서와 각 자격 표시를 유지하며 관련도 0점도 숨기지 않는다', () => {
     const programs = [
       { ...relocationReviewRequiredProgram, recommendationScore: null },

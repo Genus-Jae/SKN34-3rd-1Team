@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { completeSearchResult } from '../../../../data/fixtures/supportProgramSearchResult'
+
 import { createElement, type ComponentType, type PropsWithChildren } from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -33,8 +35,8 @@ describe('후속 발화의 미확정 조건과 검색 결과 맥락', () => {
       .mockResolvedValueOnce(explanation)
       .mockResolvedValueOnce(readyConversationProposal(daegu))
     const search = vi.fn<SearchSupportProgramsUseCase['execute']>()
-      .mockResolvedValueOnce({ query: trade.query, programs: [supportPrograms[0]] })
-      .mockResolvedValue({ query: daegu.query, programs: [] })
+      .mockResolvedValueOnce(completeSearchResult({ query: trade.query, programs: [supportPrograms[0]] }))
+      .mockResolvedValue(completeSearchResult({ query: daegu.query, programs: [] }))
     const chat = renderConversation(interpret, search)
     await chat.submit('무역관련 찾아봐')
     await act(async () => chat.result.current.confirmInterpretation())
@@ -130,7 +132,7 @@ describe('후속 발화의 미확정 조건과 검색 결과 맥락', () => {
     const pending = deferred<Awaited<ReturnType<SearchSupportProgramsUseCase['execute']>>>()
     const interpret = vi.fn<InterpretSupportProgramConversationUseCase['execute']>().mockResolvedValue(readyConversationProposal(daegu))
     const search = vi.fn<SearchSupportProgramsUseCase['execute']>()
-      .mockResolvedValueOnce({ query: daegu.query, programs: [] }).mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(completeSearchResult({ query: daegu.query, programs: [] })).mockReturnValueOnce(pending.promise)
     const chat = renderConversation(interpret, search)
     await chat.submit('대구 무역')
     await act(async () => chat.result.current.confirmInterpretation())
@@ -143,7 +145,7 @@ describe('후속 발화의 미확정 조건과 검색 결과 맥락', () => {
     else act(() => chat.result.current.cancelSearch())
     await chat.submit('왜 못찾아?')
     expect(interpret.mock.calls[2][0].lastSearch).toBeUndefined()
-    if (phase === 'cancelled') await act(async () => { pending.resolve({ query: daegu.query, programs: [] }); await request })
+    if (phase === 'cancelled') await act(async () => { pending.resolve(completeSearchResult({ query: daegu.query, programs: [] })); await request })
     expect(chat.store.getState().chat.lastSearch).toBeNull()
   })
 
@@ -172,7 +174,7 @@ describe('후속 발화의 미확정 조건과 검색 결과 맥락', () => {
 })
 
 function renderConversation(interpret: InterpretSupportProgramConversationUseCase['execute'],
-  search = vi.fn<SearchSupportProgramsUseCase['execute']>().mockResolvedValue({ query: trade.query, programs: [supportPrograms[0]] })) {
+  search = vi.fn<SearchSupportProgramsUseCase['execute']>().mockResolvedValue(completeSearchResult({ query: trade.query, programs: [supportPrograms[0]] }))) {
   const store = createAppStore()
   const StoreProvider = Provider as unknown as ComponentType<PropsWithChildren<{ store: typeof store }>>
   const hook = renderHook(() => useSupportProgramChat({ execute: search }, { execute: interpret }), {

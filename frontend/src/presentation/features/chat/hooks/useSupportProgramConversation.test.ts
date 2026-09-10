@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { completeSearchResult } from '../../../../data/fixtures/supportProgramSearchResult'
+
 import { createElement, type ComponentType, type PropsWithChildren } from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -62,7 +64,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     const newConversation = store.getState().chat
     expect(newConversation.interpretation.status).toBe('ready')
     await act(async () => {
-      if (phase === 'search') pendingSearch.resolve({ query: '사업화 지원', programs: [supportPrograms[0]] })
+      if (phase === 'search') pendingSearch.resolve(completeSearchResult({ query: '사업화 지원', programs: [supportPrograms[0]] }))
       else pendingInterpretation.resolve(clarification)
       await request
     })
@@ -74,7 +76,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     const pending = deferred<Awaited<ReturnType<SearchSupportProgramsUseCase['execute']>>>()
     const search = vi.fn<SearchSupportProgramsUseCase['execute']>()
       .mockReturnValueOnce(pending.promise)
-      .mockResolvedValue({ query: '사업화 지원', programs: [supportPrograms[0]] })
+      .mockResolvedValue(completeSearchResult({ query: '사업화 지원', programs: [supportPrograms[0]] }))
     const { result } = renderConversation(vi.fn().mockResolvedValue(readyConversationProposal(seoulConversationContext)), search)
     act(() => result.current.updateDraft('서울 SW 사업화'))
     await act(async () => result.current.submitMessage())
@@ -231,7 +233,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
   it('확인된 검색 실패의 재시도는 해석을 반복하지 않고 같은 확정 command·스냅샷을 사용한다', async () => {
     const context = { ...seoulConversationContext, acceptingOnly: false }
     const interpret = vi.fn().mockResolvedValue(readyConversationProposal(context))
-    const search = vi.fn().mockRejectedValueOnce(new Error('search failure')).mockResolvedValue({ query: context.query, programs: [supportPrograms[0]] })
+    const search = vi.fn().mockRejectedValueOnce(new Error('search failure')).mockResolvedValue(completeSearchResult({ query: context.query, programs: [supportPrograms[0]] }))
     const { result, store } = renderConversation(interpret, search)
     act(() => result.current.updateDraft('서울 SW 사업화 전체'))
     await act(async () => result.current.submitMessage())
@@ -400,14 +402,14 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(result.current.confirmedContext).toEqual(seoulConversationContext)
     expect(search.mock.calls[0][1]?.aborted).toBe(true)
 
-    pending.resolve({ query: '사업화 지원', programs: [supportPrograms[0]] })
+    pending.resolve(completeSearchResult({ query: '사업화 지원', programs: [supportPrograms[0]] }))
     await act(async () => request)
     expect(store.getState().chat.messages).toHaveLength(2)
     expect(store.getState().chat.searchStatus).toBe('idle')
   })
 })
 
-function renderConversation(interpret: InterpretSupportProgramConversationUseCase['execute'], search = vi.fn<SearchSupportProgramsUseCase['execute']>().mockResolvedValue({ query: '사업화 지원', programs: [supportPrograms[0]] })) {
+function renderConversation(interpret: InterpretSupportProgramConversationUseCase['execute'], search = vi.fn<SearchSupportProgramsUseCase['execute']>().mockResolvedValue(completeSearchResult({ query: '사업화 지원', programs: [supportPrograms[0]] }))) {
   const store = createAppStore()
   const StoreProvider = Provider as unknown as ComponentType<PropsWithChildren<{ store: typeof store }>>
   const hook = renderHook(() => useSupportProgramChat({ execute: search }, { execute: interpret }), {

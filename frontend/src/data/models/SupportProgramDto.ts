@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { conversationContextDtoSchema } from './SupportProgramConversationDto'
 
 import type { SupportProgram } from '../../domain/entities/SupportProgram'
 
@@ -99,8 +100,17 @@ export const supportProgramDtoSchema = z.object({
 
 export const supportProgramSearchResponseDtoSchema = z.object({
   query: z.string(),
-  programs: z.array(supportProgramDtoSchema),
+  programs: z.array(supportProgramDtoSchema).max(5),
+  totalCount: z.number().int().min(0).max(5),
+  resultToken: z.uuid().refine((value) => value === value.toLowerCase()).nullable(),
+  expiresAt: z.iso.datetime().nullable(),
 }).superRefine((response, context) => {
+  const locked = response.resultToken !== null
+  if (locked !== (response.expiresAt !== null)
+    || (locked ? response.programs.length !== 2 || response.totalCount <= 2
+      : response.totalCount !== response.programs.length)) {
+    context.addIssue({ code: 'custom', message: '공개 공고 수와 전체 추천 수, 결과 보관 정보가 일치해야 합니다.' })
+  }
   const identities = new Set<string>()
   response.programs.forEach((program, index) => {
     const identity = JSON.stringify([program.sourceCode, program.id])
@@ -110,6 +120,17 @@ export const supportProgramSearchResponseDtoSchema = z.object({
     identities.add(identity)
   })
 })
+
+export const restoredSupportProgramSearchResponseDtoSchema = supportProgramSearchResponseDtoSchema.safeExtend({
+  context: conversationContextDtoSchema,
+}).superRefine((response, context) => {
+  if (response.resultToken !== null || response.expiresAt !== null
+    || (response.context.query ?? '') !== response.query) {
+    context.addIssue({ code: 'custom', message: '복원 결과는 전체 공고와 동일한 검색 조건을 반환해야 합니다.' })
+  }
+})
+
+export type RestoredSupportProgramSearchResponseDto = z.infer<typeof restoredSupportProgramSearchResponseDtoSchema>
 
 export type SupportProgramDto = z.infer<typeof supportProgramDtoSchema>
 export type SupportProgramSearchResponseDto = z.infer<
