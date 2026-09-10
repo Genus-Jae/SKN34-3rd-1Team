@@ -17,7 +17,25 @@ describe('대화 해석 응답 계약', () => {
     expect(domain.changedFields).not.toBe(ready.changedFields)
   })
 
+  it('설명 답변과 이전 서버의 answer 누락을 검증하며 조건 제안과 구분한다', () => {
+    const answered = { ...ready, status: 'ANSWERED', answer: '대구 무역 검색 결과는 0건입니다.\n접수 상태를 바꿔 볼 수 있어요.' }
+    expect(supportProgramInterpretationDtoSchema.parse(answered)).toEqual(answered)
+    const { answer: _answer, ...legacy } = ready
+    expect(supportProgramInterpretationDtoSchema.parse(legacy).answer).toBeNull()
+    expect(supportProgramInterpretationDtoSchema.safeParse({ ...answered, answer: '😀'.repeat(500) }).success).toBe(true)
+    expect(supportProgramInterpretationDtoSchema.safeParse({ ...answered, answer: '답변\r\n조건\t확인' }).success).toBe(true)
+  })
+
   it.each([
+    { status: 'ANSWERED' },
+    { status: 'ANSWERED', answer: '' },
+    { status: 'ANSWERED', answer: ' \n ' },
+    { status: 'ANSWERED', answer: '😀'.repeat(501) },
+    { status: 'ANSWERED', answer: '답변\u200b' },
+    { status: 'ANSWERED', answer: '답변\u0000' },
+    { status: 'ANSWERED', answer: '답변', clarificationQuestion: '확인할까요?' },
+    { answer: 'READY에 답변 금지' },
+    { status: 'CLARIFICATION_REQUIRED', clarificationQuestion: '지역은?', answer: '답변 금지' },
     { status: 'UNKNOWN' },
     { proposedContext: { ...seoulConversationContext, query: null } },
     { proposedContext: { ...seoulConversationContext, query: '' } },

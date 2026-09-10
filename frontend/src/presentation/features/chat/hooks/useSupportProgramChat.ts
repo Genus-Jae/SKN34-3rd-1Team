@@ -18,6 +18,7 @@ import {
   interpretationSucceeded,
   interpretationFailed,
   interpretationDismissed,
+  interpretationCancelled,
   proposalConfirmed,
   selectConversationContext,
   maximumSupportProgramSearchQueryLength,
@@ -107,7 +108,7 @@ export function useSupportProgramChat(
     if (interpreting) {
       clearTimeout(interpreting.timeoutId)
       interpreting.controller.abort()
-      dispatchToStore(interpretationDismissed())
+      dispatchToStore(interpretationCancelled(interpreting.requestId))
     }
     const currentRequest = activeSearchRequest.current
     activeSearchRequest.current = null
@@ -159,8 +160,9 @@ export function useSupportProgramChat(
   }
 
   function cancelInterpretation() {
+    const current = activeInterpretationRequest.current
     stopInterpretationRequest()
-    dispatchToStore(interpretationDismissed())
+    dispatchToStore(current ? interpretationCancelled(current.requestId) : interpretationDismissed())
   }
 
   function selectSuggestion(suggestion: string) {
@@ -292,7 +294,11 @@ export function useSupportProgramChat(
         dispatchToStore(searchValidationFailed({ queryLength: message.length }))
         return Promise.resolve()
       }
-      return runInterpretation({ message, context: selectConversationContext(state), pendingClarification: state.chat.pendingClarification })
+      return runInterpretation({ message, context: selectConversationContext(state),
+        pendingClarification: state.chat.pendingClarification,
+        ...(!state.chat.pendingClarification && state.chat.pendingProposal ? { pendingProposal: state.chat.pendingProposal } : {}),
+        ...(state.chat.lastSearch ? { lastSearch: state.chat.lastSearch } : {}),
+      })
     })
   }
 

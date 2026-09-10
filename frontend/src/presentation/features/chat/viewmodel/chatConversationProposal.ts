@@ -42,6 +42,7 @@ export function createChatConversationProposal({
   if (isBusy) return null
 
   const result = interpretation.result
+  if (result?.status === 'ANSWERED') return null
   if (!result) {
     return pendingClarification ? { kind: 'clarification', question: pendingClarification.question } : null
   }

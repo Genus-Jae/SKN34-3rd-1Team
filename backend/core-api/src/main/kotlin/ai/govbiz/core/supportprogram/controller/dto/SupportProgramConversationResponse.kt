@@ -10,6 +10,7 @@ data class SupportProgramConversationResponse(
     val proposedContext: SupportProgramConversationContextResponse,
     val clarificationQuestion: String?,
     val changedFields: List<SupportProgramConversationField>,
+    val answer: String?,
 ) {
     companion object {
         fun from(result: SupportProgramConversationResult) = SupportProgramConversationResponse(
@@ -17,6 +18,7 @@ data class SupportProgramConversationResponse(
             SupportProgramConversationContextResponse.from(result.proposedContext),
             result.clarificationQuestion,
             java.util.List.copyOf(result.changedFields),
+            result.answer,
         )
     }
 }

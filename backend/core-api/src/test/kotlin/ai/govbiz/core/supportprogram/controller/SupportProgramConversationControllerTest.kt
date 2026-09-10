@@ -74,8 +74,13 @@ class SupportProgramConversationControllerTest {
         "companyConditions" to linkedMapOf<String, Any?>("region" to null, "industry" to null, "establishedOn" to null, "supportPurpose" to null),
     )
 
-    private fun body(context: Map<String, Any?> = contextJson(), message: Any? = "부산으로 변경", pending: Any? = null) =
-        mapper.writeValueAsString(mapOf("message" to message, "context" to context, "pendingClarification" to pending))
+    private fun body(
+        context: Map<String, Any?> = contextJson(), message: Any? = "부산으로 변경", pending: Any? = null,
+        proposal: Any? = null, lastSearch: Any? = null,
+    ) = mapper.writeValueAsString(mapOf(
+        "message" to message, "context" to context, "pendingClarification" to pending,
+        "pendingProposal" to proposal, "lastSearch" to lastSearch,
+    ))
 
     private fun stubClarification() {
         Mockito.`when`(service.interpret("부산으로 변경", emptyContext, null)).thenReturn(
@@ -84,11 +89,62 @@ class SupportProgramConversationControllerTest {
     }
 
     @Test
+    fun sendsUnconfirmedProposalAndZeroResultSummaryAndReturnsAnswerWithoutSearching() {
+        val proposal = contextJson().apply { put("query", "무역 지원") }
+        val json = body(message = "왜 못찾아?", proposal = proposal, lastSearch = mapOf("context" to contextJson(), "resultCount" to 0))
+        val dto = mapper.readValue(json, SupportProgramConversationRequest::class.java)
+        val expectedProposal = dto.pendingProposal!!.toDomain()
+        val expectedLastSearch = dto.lastSearch!!.toDomain()
+        val answer = "직전 검색 결과는 0건입니다.\n원인을 확정할 자료는 없습니다."
+        Mockito.`when`(service.interpret(dto.message, emptyContext, null, expectedProposal, expectedLastSearch)).thenReturn(
+            SupportProgramConversationResult(SupportProgramConversationStatus.ANSWERED, expectedProposal, null, emptyList(), answer),
+        )
+        val result = mvc().perform(request(json)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("ANSWERED"))
+            .andExpect(jsonPath("$.proposedContext.query").value("무역 지원"))
+            .andExpect(jsonPath("$.answer").value(answer)).andReturn().response.contentAsString
+        assertTrue(mapper.readTree(result).get("clarificationQuestion").isNull)
+        Mockito.verify(service).interpret(dto.message, emptyContext, null, expectedProposal, expectedLastSearch)
+        Mockito.verifyNoInteractions(search)
+    }
+
+    @Test
+    fun rejectsSimultaneousPendingQuestionAndProposalAndMalformedNestedContexts() {
+        val mvc = mvc()
+        mvc.perform(request(body(pending = mapOf("question" to "어느 지역인가요?", "draftContext" to contextJson()), proposal = contextJson())))
+            .andExpect(status().isBadRequest())
+        for (invalidContext in listOf(emptyMap<String, Any?>(), contextJson().apply { put("query", " ") }, contextJson().apply { put("acceptingOnly", null) })) {
+            mvc.perform(request(body(proposal = invalidContext))).andExpect(status().isBadRequest())
+            mvc.perform(request(body(lastSearch = mapOf("context" to invalidContext, "resultCount" to 0)))).andExpect(status().isBadRequest())
+        }
+        val invalidDate = contextJson()
+        @Suppress("UNCHECKED_CAST")
+        (invalidDate["companyConditions"] as MutableMap<String, Any?>)["establishedOn"] = "2025-02-29"
+        mvc.perform(request(body(proposal = invalidDate))).andExpect(status().isBadRequest())
+        mvc.perform(request(body(lastSearch = mapOf("context" to invalidDate, "resultCount" to 0)))).andExpect(status().isBadRequest())
+        Mockito.verifyNoInteractions(service, search)
+    }
+
+    @Test
+    fun requiresANonnegativeIntegerCountAndACompleteContextForLastSearch() {
+        val mvc = mvc()
+        for (value in listOf(null, -1, 1.5, 1.0, "0", true, 2147483648L)) {
+            mvc.perform(request(body(lastSearch = mapOf("context" to contextJson(), "resultCount" to value)))).andExpect(status().isBadRequest())
+        }
+        for (lastSearch in listOf(emptyMap<String, Any?>(), mapOf("context" to contextJson()), mapOf("resultCount" to 0), mapOf("context" to null, "resultCount" to 0))) {
+            mvc.perform(request(body(lastSearch = lastSearch))).andExpect(status().isBadRequest())
+        }
+        Mockito.verifyNoInteractions(service, search)
+    }
+
+    @Test
     fun explicitlyNullUnspecifiedFieldsAreAcceptedAndEveryResponseKeyIsPreserved() {
         stubClarification()
         val response = mvc().perform(request()).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("CLARIFICATION_REQUIRED"))
             .andExpect(jsonPath("$.changedFields").isEmpty()).andReturn().response.contentAsString
         val tree = mapper.readTree(response)
+        assertTrue(tree.has("answer"))
+        assertTrue(tree.get("answer").isNull)
         val proposed = tree.get("proposedContext")
         assertTrue(proposed.has("query"))
         assertTrue(proposed.get("query").isNull)

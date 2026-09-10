@@ -190,17 +190,23 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 `SupportProgramConversationController → SupportProgramConversationService → AiSupportProgramConversationClient`
 흐름으로 내부 `/internal/v1/support-program-conversation/interpret`를 한 번 호출합니다.
 대화 상태는 브라우저 메모리에만 두며 Core는 DB·검색·색인을 호출하거나 상태를 저장하지 않습니다.
-새 메시지와 전체 키를 갖춘 현재 context, 선택적인 마지막 질문·미확정 draftContext만 전달합니다.
+새 메시지와 전체 키를 갖춘 확정 context, 선택적인 마지막 질문·미확정 draftContext 또는 pendingProposal,
+최근 성공 검색 요약 lastSearch(context/resultCount)를 전달합니다. 두 미확정 상태는 동시에 받을 수 없습니다.
+resultCount는 0 이상의 정수이며 검색 실패·취소는 결과 0건으로 전달하지 않습니다.
 nullable 조건도 키 자체는 필수이며 미입력은 명시적 null입니다. boolean은 JSON boolean만 허용합니다.
 
 Core가 서울 기준일과 `govbiz-support-program-conversation-v1`을 보내고, 응답의 최대 6개 SET/CLEAR 변경에서
 중복 필드·현재 메시지의 정확한 근거 인용·실제 날짜·문자 및 길이 제한을 검증합니다. 새 계약은 UTF-16 기준으로
 message/query 500, region 50, industry/supportPurpose 100, 날짜 10, 질문/근거 160입니다. 상대 업력으로 설립일을
-생성할 수 없습니다. 미변경 필드는 유지하고, 직전 초안이 있으면 여기에 병합하되 changedFields는 확정 context와
+생성할 수 없습니다. 미변경 필드는 유지하고, 마지막 질문의 draftContext → pendingProposal → context 순서로
+병합 기준을 정하되 changedFields는 확정 context와
 비교해 계산합니다. 공개 DTO·내부 AI DTO·도메인·검증 결과는 각 경계의 타입으로 분리합니다.
 
 READY도 제안일 뿐이며 사용자가 확인한 뒤 기존 POST 검색을 별도로 호출합니다. 정보가 부족하면
-CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 잘못된 AI 응답은 명시적 502 오류이며 질문이나
+CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 결과 설명은 ANSWERED와 answer로 반환하며
+변경 updates는 없어야 합니다. answer는 UTF-16 1,000자 이내이고 LF/CR/tab 외 제어 문자를 허용하지 않습니다.
+다른 상태의 answer는 null이어야 하며 기존 응답의 생략은 null로 처리합니다. 설명은 검색·조건 적용을 실행하지 않습니다.
+추가 필드·ANSWERED를 사용하려면 세 서비스를 함께 반영합니다. 잘못된 AI 응답은 명시적 502 오류이며 질문이나
 단문 검색으로 우회하지 않습니다. 해석과 확인 검색은 공유 요청 제한에서 각각 한 건입니다.
 상세 계약과 상태 흐름은 [C02 안내](../../docs/conversation-condition-update.md)를 참고하세요.
 

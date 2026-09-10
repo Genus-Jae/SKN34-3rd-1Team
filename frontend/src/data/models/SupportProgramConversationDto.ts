@@ -27,10 +27,12 @@ const conversationContextDtoSchema = z.object({
 })
 
 export const supportProgramInterpretationDtoSchema = z.object({
-  status: z.enum(['READY', 'CLARIFICATION_REQUIRED']),
+  status: z.enum(['READY', 'CLARIFICATION_REQUIRED', 'ANSWERED']),
   proposedContext: conversationContextDtoSchema,
   clarificationQuestion: z.string().max(160)
     .refine((value) => value.trim().length > 0 && !/\p{C}/u.test(value)).nullable(),
+  answer: z.string().max(1000).refine((value) => value.trim().length > 0
+    && !/[^\P{C}\n\r\t]/u.test(value)).nullable().default(null),
   changedFields: z.array(z.enum(conversationChangedFields)).max(6),
 }).superRefine((value, context) => {
   if (value.status === 'READY' && (!value.proposedContext.query || value.clarificationQuestion !== null)) {
@@ -38,6 +40,12 @@ export const supportProgramInterpretationDtoSchema = z.object({
   }
   if (value.status === 'CLARIFICATION_REQUIRED' && value.clarificationQuestion === null) {
     context.addIssue({ code: 'custom', message: '정보가 부족하면 확인 질문이 필요합니다.' })
+  }
+  if (value.status === 'ANSWERED' && (value.answer === null || value.clarificationQuestion !== null)) {
+    context.addIssue({ code: 'custom', message: 'ANSWERED에는 답변이 필요하며 확인 질문은 없어야 합니다.' })
+  }
+  if (value.status !== 'ANSWERED' && value.answer !== null) {
+    context.addIssue({ code: 'custom', message: '조건 제안에는 답변을 함께 반환할 수 없습니다.' })
   }
   const orderedFields = conversationChangedFields.filter((field) => value.changedFields.includes(field))
   if (orderedFields.join(',') !== value.changedFields.join(',')) {

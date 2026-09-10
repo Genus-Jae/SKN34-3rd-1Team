@@ -46,7 +46,7 @@ describe('대화의 로그인 세션 경계', () => {
     expectClearedConversation(store, store.getState().auth.account?.email ?? null)
   })
 
-  it.each(['검색 실패', '추가 질문', '해석 실패'] as const)('로그아웃은 %s 상태와 재시도에 쓰는 이전 요청도 비운다', (phase) => {
+  it.each(['검색 실패', '추가 질문', '미확정 제안', '해석 실패'] as const)('로그아웃은 %s 상태와 재시도에 쓰는 이전 요청도 비운다', (phase) => {
     const store = createAppStore()
     store.dispatch(signedIn(account))
     completeSearch(store)
@@ -64,6 +64,10 @@ describe('대화의 로그인 세션 경계', () => {
           clarificationQuestion: '정확한 설립일을 알려주세요.', changedFields: [],
         } }))
         expect(store.getState().chat.pendingClarification).not.toBeNull()
+      } else if (phase === '미확정 제안') {
+        store.dispatch(interpretationSucceeded({ requestId: started.payload.requestId,
+          result: readyConversationProposal(seoulConversationContext) }))
+        expect(store.getState().chat.pendingProposal).not.toBeNull()
       } else {
         store.dispatch(interpretationFailed({ requestId: started.payload.requestId, message: '다시 해석해 주세요.' }))
         expect(store.getState().chat.interpretation.status).toBe('failed')
@@ -73,6 +77,22 @@ describe('대화의 로그인 세션 경계', () => {
     store.dispatch(signedOut())
 
     expectClearedConversation(store, null)
+  })
+
+  it('최근 검색 요약은 확정 화면 조건이 아니라 실제 요청의 검색어·조건을 기록한다', () => {
+    const store = createAppStore()
+    completeSearch(store)
+    const search = searchStarted('다른 무역 검색', { acceptingOnly: false, companyConditions: { region: '대구' } })
+    store.dispatch(search)
+    expect(store.getState().chat.lastSearch).toBeNull()
+    store.dispatch(searchSucceeded({ requestId: search.payload.requestId, programs: [] }))
+    expect(store.getState().chat.lastSearch).toEqual({ resultCount: 0, context: {
+      ...emptyConversationContext, query: '다른 무역 검색', acceptingOnly: false,
+      companyConditions: { ...emptyConversationContext.companyConditions, region: '대구' },
+    } })
+    expect(store.getState().chat.messages.at(-1)).toMatchObject({ searchQuery: '다른 무역 검색',
+      searchOptions: { acceptingOnly: false, companyConditions: { region: '대구' } } })
+    expect(selectConversationContext(store.getState())).toEqual(seoulConversationContext)
   })
 
   it('같은 계정의 기업정보 갱신과 세션 재확인은 대화를 유지하며 새 검색도 계정 소유를 유지한다', () => {

@@ -6,6 +6,8 @@ data class AiSupportProgramConversationRequest(
     val message: String,
     val context: AiSupportProgramConversationContextRequest,
     val pendingClarification: AiSupportProgramPendingClarificationRequest?,
+    val pendingProposal: AiSupportProgramConversationContextRequest? = null,
+    val lastSearch: AiSupportProgramConversationLastSearchRequest? = null,
 )
 
 data class AiSupportProgramConversationContextRequest(
@@ -24,4 +26,9 @@ data class AiSupportProgramConversationCompanyConditionsRequest(
 data class AiSupportProgramPendingClarificationRequest(
     val question: String,
     val draftContext: AiSupportProgramConversationContextRequest,
+)
+
+data class AiSupportProgramConversationLastSearchRequest(
+    val context: AiSupportProgramConversationContextRequest,
+    val resultCount: Int,
 )

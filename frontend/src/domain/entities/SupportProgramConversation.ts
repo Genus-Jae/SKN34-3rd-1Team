@@ -14,18 +14,26 @@ export type SupportProgramPendingClarification = {
   draftContext: SupportProgramConversationContext
 }
 
+export type SupportProgramLastSearch = {
+  context: SupportProgramConversationContext
+  resultCount: number
+}
+
 export type SupportProgramInterpretRequest = {
   message: string
   context: SupportProgramConversationContext
   pendingClarification?: SupportProgramPendingClarification | null
+  pendingProposal?: SupportProgramConversationContext | null
+  lastSearch?: SupportProgramLastSearch | null
 }
 
 export const conversationChangedFields = ['QUERY', 'REGION', 'INDUSTRY', 'ESTABLISHED_ON', 'SUPPORT_PURPOSE', 'ACCEPTING_ONLY'] as const
 export type SupportProgramConversationField = typeof conversationChangedFields[number]
 
 export type SupportProgramInterpretation = {
-  status: 'READY' | 'CLARIFICATION_REQUIRED'
+  status: 'READY' | 'CLARIFICATION_REQUIRED' | 'ANSWERED'
   proposedContext: SupportProgramConversationContext
   clarificationQuestion: string | null
+  answer?: string | null
   changedFields: SupportProgramConversationField[]
 }

@@ -83,26 +83,29 @@ Health 응답은 프로세스의 HTTP 응답 여부만 확인합니다. OpenAI �
 
 `POST /internal/v1/support-program-conversation/interpret`는
 `govbiz-support-program-conversation-v1` 계약을 사용합니다.
-입력은 `schemaVersion`, `message`, `context`, 선택적 `pendingClarification`, Core 서울 날짜 `referenceDate`입니다.
+입력은 `schemaVersion`, `message`, `context`, 선택적 `pendingClarification`/`pendingProposal`/`lastSearch`,
+Core 서울 날짜 `referenceDate`입니다. pendingClarification과 pendingProposal은 동시에 보낼 수 없습니다.
+lastSearch는 최근 성공 검색의 context와 0 이상의 엄격한 정수 resultCount이며 결과 설명에만 참고합니다.
 context의 query·acceptingOnly·companyConditions 및 네 조건 필드는 모두 필수이고 미입력은 null입니다.
-응답은 `schemaVersion`, `status`, `updates`, `clarificationQuestion`이며 전체 상태를 재작성하지 않습니다.
+응답은 `schemaVersion`, `status`, `updates`, `clarificationQuestion`, `answer`이며 전체 상태를 재작성하지 않습니다.
+ANSWERED는 비어 있지 않은 answer와 빈 updates, null 질문을 반환합니다. 다른 상태에서는 answer가 null입니다.
 정확한 공개/내부 예시는 [C02 계약](../../docs/conversation-condition-update.md)을 참고하세요.
 
 `HTTP API → SupportProgramConversationService → SupportProgramConversationAgent → OpenAI → Response`로
 한 번의 typed structured 호출만 실행합니다. 기존 client/model, store=false, tracing 비활성을 공유하며
 이 역할의 모델·HTTP 25초/전체 실행 30초 제한과 최대 출력 2,000 tokens를 유지합니다.
 세션·전체 대화 이력·영속성·추가 provider는 없습니다.
-모델은 상태·패치·질문만 출력하고 Service가 검증 후 계약 버전을 붙입니다. 검색/임베딩/랭킹은 호출하지 않습니다.
+모델은 상태·패치·질문 또는 결과 설명을 출력하고 Service가 검증 후 계약 버전을 붙입니다. 검색/임베딩/랭킹은 호출하지 않습니다.
 
 Service는 현재 message의 exact substring evidence, 중복 없는 0~6개 SET/CLEAR, 명시된 완전한 설립일을
 검증합니다. 날짜 evidence는 ISO 또는 `YYYY년 M월 D일` 날짜 자체만 인용하며 ISO로 정규화한 value와
-같아야 합니다. 상대 업력에서 날짜를 계산하지 않습니다. pendingClarification이 있으면 draftContext에서,
-없으면 context에서 패치를 병합하고 부재 필드는 그대로 보존합니다. READY는 병합 후 query가 필수입니다.
+같아야 합니다. 상대 업력에서 날짜를 계산하지 않습니다. pendingClarification의 draftContext → pendingProposal
+→ context 순서로 병합 기준을 정하고 부재 필드는 그대로 보존합니다. READY는 병합 후 query가 필수입니다.
 CLEAR는 문자열을 null, acceptingOnly를 true로 복원합니다. 모호한 값은 유지하고 확인 질문을 제안합니다.
 
 새 계약만 길이를 UTF-16 코드 단위로 검증합니다(message/query 500, region 50, industry/supportPurpose 100,
-날짜 10, question/evidence 160). null 외 텍스트는 원본을 보존하고 공백뿐인 값을 거부합니다.
-message/query는 LF/CR/tab을 허용하지만 그 외 Unicode C는 거부하며 조건·질문·인용은 모든 C를 거부합니다.
+날짜 10, question/evidence 160, answer 1,000). null 외 텍스트는 원본을 보존하고 공백뿐인 값을 거부합니다.
+message/query/answer는 LF/CR/tab을 허용하지만 그 외 Unicode C는 거부하며 조건·질문·인용은 모든 C를 거부합니다.
 boolean 강제 변환은 하지 않습니다. 날짜는 실제 달력 날짜이고 설립일은 1900-01-01~referenceDate입니다.
 내부 입력 오류는 기존 FastAPI 422, 모델 장애·잘못된 패치·허위 인용·잘못된 READY는 안전한 503입니다.
 모델·HTTP·전체 실행 시간 초과는 `SupportProgramConversationTimeoutError`로 구분해 내부 504로 반환합니다.
@@ -116,6 +119,10 @@ Core는 기존 계약대로 공개 `504 AI_SERVICE_TIMEOUT` 또는 `503 AI_SERVI
 보증하지 않으므로 모든 READY 결과에 확인이 필요합니다. 기존 query에서 옛 지역을 제거하고 구조 조건 중복을
 줄이는 것은 프롬프트 지시이며, ScriptedModel 회귀는 실제 한국어 모델의 의미 정확도 평가가 아닙니다.
 Compose OpenAI 대역도 정해진 C02 smoke 문구만 처리하고 미지원 문구는 오류를 반환합니다.
+`대구로`, `설정해` 같은 후속 발화는 직전 제안·질문의 명확한 대상을 이어 해석하고 불필요한 확인 반복을 피하도록
+지시합니다. `왜 못찾아?`에는 lastSearch의 확인 가능한 결과만 설명하며 공고 부재·마감 등 원인을 창작하거나
+조건을 자동 완화하지 않습니다. 요약이 없으면 결과를 모른다고 안내합니다. ANSWERED는 조건 적용·검색 완료를 뜻하지 않습니다.
+선택 필드 생략 호환과 내부 v1은 유지하지만 확장 계약은 Frontend·Core API·AI Service에 함께 반영해야 합니다.
 
 기존 검색이 `사업화 지원`일 때 `지원금 위주`는 `사업화 지원금`으로 지원 형태만 좁히며 핵심 활동을
 보존하도록 지시합니다. `사업화 말고 수출 지원으로 바꿔줘`는 명시적 활동 전환으로 처리하고,

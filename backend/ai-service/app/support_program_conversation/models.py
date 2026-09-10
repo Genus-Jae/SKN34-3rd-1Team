@@ -42,6 +42,9 @@ ConditionText = Annotated[str, Field(min_length=1, max_length=100), AfterValidat
 ShortText = Annotated[str, Field(min_length=1, max_length=160), AfterValidator(
     lambda value: validate_text(value, 160)
 )]
+AnswerText = Annotated[str, Field(min_length=1, max_length=1000), AfterValidator(
+    lambda value: validate_text(value, 1000, allow_layout=True)
+)]
 DateText = Annotated[str, Field(min_length=10, max_length=10), AfterValidator(validate_calendar_date)]
 UpdateField = Literal["QUERY", "REGION", "INDUSTRY", "ESTABLISHED_ON", "SUPPORT_PURPOSE", "ACCEPTING_ONLY"]
 
@@ -75,6 +78,13 @@ class PendingClarification(BaseModel):
     draft_context: ConversationContext = Field(alias="draftContext")
 
 
+class LastConversationSearch(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    context: ConversationContext
+    result_count: int = Field(alias="resultCount", strict=True, ge=0)
+
+
 class SupportProgramConversationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
@@ -82,13 +92,21 @@ class SupportProgramConversationRequest(BaseModel):
     message: QueryText
     context: ConversationContext
     pending_clarification: PendingClarification | None = Field(default=None, alias="pendingClarification")
+    pending_proposal: ConversationContext | None = Field(default=None, alias="pendingProposal")
+    last_search: LastConversationSearch | None = Field(default=None, alias="lastSearch")
     reference_date: DateText = Field(alias="referenceDate")
 
     @model_validator(mode="after")
     def validate_context_dates(self) -> Self:
+        if self.pending_clarification is not None and self.pending_proposal is not None:
+            raise ValueError("pendingClarification and pendingProposal are mutually exclusive")
         self.context.validate_reference_date(self.reference_date)
         if self.pending_clarification is not None:
             self.pending_clarification.draft_context.validate_reference_date(self.reference_date)
+        if self.pending_proposal is not None:
+            self.pending_proposal.validate_reference_date(self.reference_date)
+        if self.last_search is not None:
+            self.last_search.context.validate_reference_date(self.reference_date)
         return self
 
 
@@ -129,20 +147,26 @@ class ConversationUpdate(BaseModel):
 
 
 class SupportProgramConversationOutput(BaseModel):
-    """모델은 요청에서 명확한 변경만 선택하며 전체 상태를 재작성하지 않는다."""
+    """모델은 명확한 조건 변경을 제안하거나 제공된 검색 요약을 설명한다."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
-    status: Literal["READY", "CLARIFICATION_REQUIRED"]
+    status: Literal["READY", "CLARIFICATION_REQUIRED", "ANSWERED"]
     updates: list[ConversationUpdate] = Field(max_length=6)
     clarification_question: ShortText | None = Field(alias="clarificationQuestion")
+    answer: AnswerText | None = None
 
     @model_validator(mode="after")
     def validate_status_and_unique_fields(self) -> Self:
         if len({update.field for update in self.updates}) != len(self.updates):
             raise ValueError("each field can be updated only once")
-        if (self.status == "READY") != (self.clarification_question is None):
+        if (self.status == "CLARIFICATION_REQUIRED") != (self.clarification_question is not None):
             raise ValueError("only CLARIFICATION_REQUIRED requires a question")
+        if self.status == "ANSWERED":
+            if self.answer is None or self.updates:
+                raise ValueError("ANSWERED requires an answer and no updates")
+        elif self.answer is not None:
+            raise ValueError("only ANSWERED permits an answer")
         return self
 
 
@@ -150,6 +174,14 @@ class SupportProgramConversationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     schema_version: Literal[SCHEMA_VERSION] = Field(alias="schemaVersion")
-    status: Literal["READY", "CLARIFICATION_REQUIRED"]
+    status: Literal["READY", "CLARIFICATION_REQUIRED", "ANSWERED"]
     updates: list[ConversationUpdate] = Field(max_length=6)
     clarification_question: ShortText | None = Field(alias="clarificationQuestion")
+    answer: AnswerText | None = None
+
+    @model_validator(mode="after")
+    def validate_response_contract(self) -> Self:
+        SupportProgramConversationOutput.model_validate(
+            self.model_dump(by_alias=True, exclude={"schema_version"})
+        )
+        return self

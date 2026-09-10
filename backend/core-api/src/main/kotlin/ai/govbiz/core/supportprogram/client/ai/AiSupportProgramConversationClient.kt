@@ -10,7 +10,7 @@ import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 
-/** 대화 조건 변경 해석만 호출하며 검색·색인·공고 조회를 수행하지 않습니다. */
+/** 대화 조건 변경·맥락 설명을 호출하며 검색·색인·공고 조회를 수행하지 않습니다. */
 @Component
 class AiSupportProgramConversationClient(
     @param:Qualifier("aiServiceRestClient") private val restClient: RestClient,

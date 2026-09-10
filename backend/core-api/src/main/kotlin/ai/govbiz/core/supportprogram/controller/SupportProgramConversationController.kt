@@ -22,6 +22,14 @@ class SupportProgramConversationController(
         @RequestBody @Valid request: SupportProgramConversationRequest,
         httpRequest: HttpServletRequest,
     ): SupportProgramConversationResponse = admission.execute(httpRequest.remoteAddr) {
-        SupportProgramConversationResponse.from(service.interpret(request.message, request.context.toDomain(), request.pendingClarification?.toDomain()))
+        SupportProgramConversationResponse.from(
+            service.interpret(
+                request.message,
+                request.context.toDomain(),
+                request.pendingClarification?.toDomain(),
+                request.pendingProposal?.toDomain(),
+                request.lastSearch?.toDomain(),
+            ),
+        )
     }
 }

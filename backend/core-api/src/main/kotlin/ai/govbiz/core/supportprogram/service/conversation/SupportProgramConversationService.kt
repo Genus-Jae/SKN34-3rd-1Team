@@ -4,10 +4,12 @@ import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramConversationClient
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationCompanyConditionsRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationContextRequest
+import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationLastSearchRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramConversationRequest
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramPendingClarificationRequest
 import ai.govbiz.core.supportprogram.domain.SupportProgramConversationContext
 import ai.govbiz.core.supportprogram.domain.SupportProgramConversationField
+import ai.govbiz.core.supportprogram.domain.SupportProgramConversationLastSearch
 import ai.govbiz.core.supportprogram.domain.SupportProgramConversationStatus
 import ai.govbiz.core.supportprogram.domain.SupportProgramPendingClarification
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramConversationResult
@@ -17,7 +19,7 @@ import java.time.format.DateTimeParseException
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 
-/** 현재 발화의 검증된 변경만 초안에 병합하며 적용·검색·저장은 하지 않습니다. */
+/** 검증된 변경만 초안에 병합하거나 맥락 설명을 반환하며 적용·검색·저장은 하지 않습니다. */
 @Service
 class SupportProgramConversationService(
     private val client: AiSupportProgramConversationClient,
@@ -27,7 +29,10 @@ class SupportProgramConversationService(
         message: String,
         context: SupportProgramConversationContext,
         pendingClarification: SupportProgramPendingClarification?,
+        pendingProposal: SupportProgramConversationContext? = null,
+        lastSearch: SupportProgramConversationLastSearch? = null,
     ): SupportProgramConversationResult {
+        require(pendingClarification == null || pendingProposal == null) { "only one pending conversation state is allowed" }
         val referenceDate = LocalDate.now(clock)
         val payload = client.interpret(
             AiSupportProgramConversationRequest(
@@ -36,13 +41,15 @@ class SupportProgramConversationService(
                 message,
                 context.toRequest(),
                 pendingClarification?.let { AiSupportProgramPendingClarificationRequest(it.question, it.draftContext.toRequest()) },
+                pendingProposal?.toRequest(),
+                lastSearch?.let { AiSupportProgramConversationLastSearchRequest(it.context.toRequest(), it.resultCount) },
             ),
         )
         if (payload.schemaVersion != SCHEMA_VERSION) invalidResponse()
         val status = SupportProgramConversationStatus.entries.firstOrNull { it.name == payload.status } ?: invalidResponse()
         val updates = payload.updates?.takeIf { it.size <= 6 } ?: invalidResponse()
         val fields = HashSet<SupportProgramConversationField>()
-        var proposed = pendingClarification?.draftContext ?: context
+        var proposed = pendingClarification?.draftContext ?: pendingProposal ?: context
         for (update in updates) {
             if (update == null) invalidResponse()
             val field = SupportProgramConversationField.entries.firstOrNull { it.name == update.field } ?: invalidResponse()
@@ -65,12 +72,16 @@ class SupportProgramConversationService(
         if (!validContext(proposed, referenceDate)) invalidResponse()
         when (status) {
             SupportProgramConversationStatus.READY ->
-                if (proposed.query == null || payload.clarificationQuestion != null) invalidResponse()
+                if (proposed.query == null || payload.clarificationQuestion != null || payload.answer != null) invalidResponse()
             SupportProgramConversationStatus.CLARIFICATION_REQUIRED ->
-                if (payload.clarificationQuestion == null || !validText(payload.clarificationQuestion, 160)) invalidResponse()
+                if (payload.clarificationQuestion == null || !validText(payload.clarificationQuestion, 160) || payload.answer != null) invalidResponse()
+            SupportProgramConversationStatus.ANSWERED ->
+                if (updates.isNotEmpty() || payload.clarificationQuestion != null || payload.answer == null ||
+                    !validText(payload.answer, 1000, multiline = true)
+                ) invalidResponse()
         }
         val changedFields = SupportProgramConversationField.entries.filter { valueOf(context, it) != valueOf(proposed, it) }
-        return SupportProgramConversationResult(status, proposed, payload.clarificationQuestion, java.util.List.copyOf(changedFields))
+        return SupportProgramConversationResult(status, proposed, payload.clarificationQuestion, java.util.List.copyOf(changedFields), payload.answer)
     }
 
     private fun applyUpdate(

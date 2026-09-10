@@ -5,7 +5,7 @@ import pytest
 
 from app.support_program_conversation.errors import SupportProgramConversationError
 from app.support_program_conversation.models import (
-    SCHEMA_VERSION, SupportProgramConversationOutput, SupportProgramConversationRequest,
+    SCHEMA_VERSION, ConversationUpdate, SupportProgramConversationOutput, SupportProgramConversationRequest,
 )
 from app.support_program_conversation.service import SupportProgramConversationService
 
@@ -155,3 +155,113 @@ async def test_accepting_only_set_uses_strict_string_values(request_data, value)
     request = SupportProgramConversationRequest.model_validate(request_data)
     await service.interpret(request)
     assert service._merge_context(request, output).accepting_only is (value == "true")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("message", ["대구", "대구로 찾아봐"])
+async def test_region_followup_keeps_pending_trade_intent_and_other_conditions(request_data, message):
+    request_data["message"] = message
+    proposal = deepcopy(request_data["context"])
+    proposal["query"] = "무역 지원"
+    proposal["companyConditions"].update(region="서울", supportPurpose="무역")
+    request_data["pendingProposal"] = proposal
+    output = SupportProgramConversationOutput(status="READY", updates=[
+        {"field": "REGION", "operation": "SET", "value": "대구", "evidence": "대구"},
+    ], clarificationQuestion=None)
+    agent = AsyncMock()
+    agent.interpret.return_value = output
+    service = SupportProgramConversationService(agent)
+    request = SupportProgramConversationRequest.model_validate(request_data)
+
+    assert (await service.interpret(request)).status == "READY"
+    merged = service._merge_context(request, output)
+    assert merged.query == "무역 지원"
+    assert merged.company_conditions.region == "대구"
+    assert merged.company_conditions.support_purpose == "무역"
+    assert merged.company_conditions.industry == proposal["companyConditions"]["industry"]
+    assert merged.company_conditions.established_on == proposal["companyConditions"]["establishedOn"]
+    assert request.context.query == "사업화 지원"
+    assert request.pending_proposal.company_conditions.region == "서울"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("pending", ["proposal", "clarification"])
+async def test_explicit_assent_uses_pending_target_without_reasking(request_data, pending):
+    request_data["message"] = "설정해"
+    draft = deepcopy(request_data["context"])
+    draft["query"] = "무역 지원"
+    if pending == "proposal":
+        draft["companyConditions"]["region"] = "대구"
+        request_data["pendingProposal"] = draft
+        updates = []
+    else:
+        request_data["pendingClarification"] = {
+            "question": "대구를 현재 소재지로 설정할까요?", "draftContext": draft,
+        }
+        updates = [{"field": "REGION", "operation": "SET", "value": "대구", "evidence": "설정해"}]
+    output = SupportProgramConversationOutput(status="READY", updates=updates, clarificationQuestion=None)
+    agent = AsyncMock()
+    agent.interpret.return_value = output
+    service = SupportProgramConversationService(agent)
+    request = SupportProgramConversationRequest.model_validate(request_data)
+    response = await service.interpret(request)
+    assert response.status == "READY"
+    assert response.clarification_question is None
+    assert service._merge_context(request, output).company_conditions.region == "대구"
+    assert service._merge_context(request, output).query == "무역 지원"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("has_query", [False, True])
+@pytest.mark.parametrize("result_count", [None, 0, 3])
+async def test_answered_passes_explanation_without_requiring_or_changing_query(request_data, has_query, result_count):
+    request_data["message"] = "왜 못 찾아?"
+    if not has_query:
+        request_data["context"]["query"] = None
+    if result_count is not None:
+        request_data["lastSearch"] = {"context": deepcopy(request_data["context"]), "resultCount": result_count}
+    before = deepcopy(request_data)
+    output = SupportProgramConversationOutput(status="ANSWERED", updates=[], clarificationQuestion=None,
+        answer="현재 전달된 검색 요약만으로 정확한 원인을 단정할 수 없어요.")
+    agent = AsyncMock()
+    agent.interpret.return_value = output
+    service = SupportProgramConversationService(agent)
+    request = SupportProgramConversationRequest.model_validate(request_data)
+    response = await service.interpret(request)
+    assert response.answer == output.answer
+    assert response.status == "ANSWERED" and response.updates == []
+    assert service._merge_context(request, output) == request.context
+    assert request.model_dump(by_alias=True) == before
+
+
+@pytest.mark.anyio
+async def test_answered_does_not_apply_last_search_context_to_pending_proposal(request_data):
+    request_data["message"] = "몇 개 찾았어?"
+    request_data["lastSearch"] = {"context": deepcopy(request_data["context"]), "resultCount": 2}
+    request_data["pendingProposal"] = deepcopy(request_data["context"])
+    request_data["pendingProposal"]["companyConditions"]["region"] = "대구"
+    output = SupportProgramConversationOutput(status="ANSWERED", updates=[], clarificationQuestion=None,
+        answer="직전 서울 조건의 검색에서 반환된 결과는 2건입니다.")
+    agent = AsyncMock()
+    agent.interpret.return_value = output
+    service = SupportProgramConversationService(agent)
+    request = SupportProgramConversationRequest.model_validate(request_data)
+    response = await service.interpret(request)
+    assert response.updates == []
+    assert service._merge_context(request, output) == request.pending_proposal
+    assert request.last_search.context.company_conditions.region == "서울"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("answer,updates", [
+    (None, []),
+    ("조회한 결과는 0건입니다.", [{"field": "REGION", "operation": "SET", "value": "부산", "evidence": "부산"}]),
+])
+async def test_forged_answered_output_is_revalidated(request_data, answer, updates):
+    agent = AsyncMock()
+    agent.interpret.return_value = SupportProgramConversationOutput.model_construct(
+        status="ANSWERED", updates=[ConversationUpdate.model_validate(update) for update in updates],
+        clarification_question=None, answer=answer,
+    )
+    with pytest.raises(SupportProgramConversationError):
+        await SupportProgramConversationService(agent).interpret(SupportProgramConversationRequest.model_validate(request_data))

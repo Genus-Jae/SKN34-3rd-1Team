@@ -12,5 +12,5 @@ export const seoulConversationContext: SupportProgramConversationContext = {
 }
 
 export function readyConversationProposal(context: SupportProgramConversationContext): SupportProgramInterpretation {
-  return { status: 'READY', proposedContext: context, clarificationQuestion: null, changedFields: [] }
+  return { status: 'READY', proposedContext: context, clarificationQuestion: null, answer: null, changedFields: [] }
 }

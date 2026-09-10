@@ -407,6 +407,28 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.fetch).toHaveBeenCalledTimes(2)
   })
 
+  it('0건 이후 설명 답변을 대화로 표시하며 다음 지역 입력에도 무역 검색 맥락을 보낸다', async () => {
+    const context = { ...emptyConversationContext, query: '무역 지원사업',
+      companyConditions: { ...emptyConversationContext.companyConditions, region: '대구', supportPurpose: '무역' } }
+    const answer = '대구 무역 조건으로 찾은 공고는 0건입니다. 접수 상태를 넓혀 볼 수 있어요.'
+    const network = mockConversationNetwork([readyConversationProposal(context),
+      { status: 'ANSWERED', proposedContext: context, clarificationQuestion: null, changedFields: [], answer },
+      readyConversationProposal(context)])
+    const { store } = renderConversationApp()
+    await submitMessage('대구 무역 지원사업 찾아줘')
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '이 조건으로 검색' })))
+    await submitMessage('왜 못찾아?')
+    expect(screen.getByText(answer)).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '조건 변경 제안' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '조건 추가 확인' })).toBeNull()
+    expect(network.searchRequests).toHaveLength(1)
+    expect(store.getState().chat.confirmedSearch?.query).toBe('무역 지원사업')
+    await submitMessage('대구')
+    expect(network.interpretRequests[2]).toEqual({ message: '대구', context, pendingClarification: null,
+      lastSearch: { context, resultCount: 0 } })
+    expect(network.searchRequests).toHaveLength(1)
+  })
+
   it('서울 SW → 지원금 → 부산을 각각 확인한 뒤에만 검색하며 실제 body와 검색 스냅샷이 일치한다', async () => {
     const grants = { ...seoulConversationContext, query: '지원금', acceptingOnly: false,
       companyConditions: { ...seoulConversationContext.companyConditions, supportPurpose: '지원금' } }
@@ -432,8 +454,8 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     }
     expect(network.interpretRequests).toEqual([
       { message: '서울 SW 2024년 1월 1일 설립 사업화', context: emptyConversationContext, pendingClarification: null },
-      { message: '마감 공고도 포함해서 지원금 위주', context: seoulConversationContext, pendingClarification: null },
-      { message: '부산으로 변경', context: grants, pendingClarification: null },
+      { message: '마감 공고도 포함해서 지원금 위주', context: seoulConversationContext, pendingClarification: null, lastSearch: { context: seoulConversationContext, resultCount: 0 } },
+      { message: '부산으로 변경', context: grants, pendingClarification: null, lastSearch: { context: grants, resultCount: 0 } },
     ])
     expect(network.searchRequests[2]).toEqual({ query: '지원금', acceptingOnly: false,
       companyConditions: { region: '부산', industry: 'SW', establishedOn: '2024-01-01', supportPurpose: '지원금' } })
@@ -533,7 +555,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
 
     await submitMessage('기업 조건 모두 초기화하고 지원금 찾아줘')
     expect(network.interpretRequests[1]).toEqual({ message: '기업 조건 모두 초기화하고 지원금 찾아줘',
-      context: seoulConversationContext, pendingClarification: null })
+      context: seoulConversationContext, pendingClarification: null, lastSearch: { context: seoulConversationContext, resultCount: 0 } })
     expect(network.searchRequests).toHaveLength(1)
     expect(store.getState().chat.searchOptions.companyConditions).toEqual(seoulConversationContext.companyConditions)
     const proposal = screen.getByRole('region', { name: '조건 변경 제안' })

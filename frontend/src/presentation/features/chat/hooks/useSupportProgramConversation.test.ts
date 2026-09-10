@@ -106,8 +106,8 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
       expect(search).toHaveBeenCalledTimes(index + 1)
     }
     expect(interpret.mock.calls[0][0]).toEqual({ message: '서울 SW 2024년 1월 1일 설립 사업화', context: emptyConversationContext, pendingClarification: null })
-    expect(interpret.mock.calls[1][0]).toEqual({ message: '지원금 위주', context: seoulConversationContext, pendingClarification: null })
-    expect(interpret.mock.calls[2][0]).toEqual({ message: '부산으로 변경', context: grants, pendingClarification: null })
+    expect(interpret.mock.calls[1][0]).toEqual({ message: '지원금 위주', context: seoulConversationContext, pendingClarification: null, lastSearch: { context: seoulConversationContext, resultCount: 1 } })
+    expect(interpret.mock.calls[2][0]).toEqual({ message: '부산으로 변경', context: grants, pendingClarification: null, lastSearch: { context: grants, resultCount: 1 } })
     const expected = { query: '지원금', acceptingOnly: true, companyConditions: { region: '부산', industry: 'SW', establishedOn: '2024-01-01', supportPurpose: '지원금' } }
     expect(search).toHaveBeenLastCalledWith(expected, expect.any(AbortSignal))
     expect(store.getState().chat.messages.at(-1)).toMatchObject({ searchQuery: expected.query,
@@ -134,7 +134,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(search).toHaveBeenCalledOnce()
   })
 
-  it('날짜 답변의 READY를 새 입력으로 폐기하면 오래된 질문과 초안으로 새 발화를 해석하지 않는다', async () => {
+  it('날짜 답변이 READY가 되면 질문은 지우고 완성된 미확정 제안을 다음 입력에 전달한다', async () => {
     const interpret = vi.fn().mockResolvedValueOnce(clarification).mockResolvedValue(readyConversationProposal(seoulConversationContext))
     const { result, search } = renderConversation(interpret)
     act(() => result.current.updateDraft('설립 2년'))
@@ -147,7 +147,7 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     await act(async () => result.current.confirmInterpretation())
     expect(search).not.toHaveBeenCalled()
     await act(async () => result.current.submitMessage())
-    expect(interpret.mock.calls[2][0]).toEqual({ message: '수출 공고', context: emptyConversationContext, pendingClarification: null })
+    expect(interpret.mock.calls[2][0]).toEqual({ message: '수출 공고', context: emptyConversationContext, pendingClarification: null, pendingProposal: seoulConversationContext })
   })
 
   it.each([clarification, readyConversationProposal(seoulConversationContext)])('확인 전 취소는 적용 조건과 검색 호출에 영향을 주지 않는다 ($status)', async (proposal) => {

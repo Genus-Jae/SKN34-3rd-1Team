@@ -77,9 +77,12 @@ Answer Agent는 한 번의 typed structured output 호출만 사용하며 tool·
 
 `HTTP API → SupportProgramConversationService → SupportProgramConversationAgent → OpenAI → Response`
 
-현재 메시지·작은 context·선택적인 마지막 질문과 draftContext·Core 기준일만 입력합니다.
-단일 Runner(max_turns=1)는 최대 6개 SET/CLEAR 패치와 READY/CLARIFICATION_REQUIRED를 선택합니다.
+현재 메시지·확정 context·선택적인 마지막 질문과 draftContext 또는 pendingProposal·최근 성공 검색 요약
+lastSearch·Core 기준일을 입력합니다. 단일 Runner(max_turns=1)는 최대 6개 SET/CLEAR 패치와
+READY/CLARIFICATION_REQUIRED를 선택하거나 변경 없는 ANSWERED로 검색 결과를 설명합니다.
 Service는 현재 메시지 exact evidence·명시적 전체 날짜·패치 중복·병합 후 날짜 및 READY query를 검증합니다.
+ANSWERED는 빈 updates와 유효한 answer만 허용하며 검색·조건 적용을 실행하지 않습니다. 결과 수만으로
+공고 부재·마감 같은 원인을 창작하지 않으며, 실제 자연어 해석 품질은 고정 모델 테스트와 별도로 검토합니다.
 부재 필드는 코드로 보존하며 보류 중인 초안이 있으면 그 상태에서 이어갑니다. 모델이 전체 상태를 다시 쓰거나
 다른 Agent·임베딩·검색을 호출하지 않습니다. 사용자 확인 후 기존 검색 API를 별도로 호출하는 책임은 Web/Core에 있습니다.
 같은 client/model을 사용하고 store=false/tracing 비활성입니다. 조건 해석과 근거 답변의 모델·HTTP 제한은

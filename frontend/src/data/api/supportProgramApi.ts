@@ -30,6 +30,9 @@ const SUPPORT_PROGRAM_EVIDENCE_ANSWER_PATH = '/api/v1/support-programs/detail/an
 const SUPPORT_PROGRAM_INTERPRETATION_PATH = '/api/v1/support-programs/conversation/interpret'
 
 export async function interpretSupportProgramConversationApi(command: SupportProgramInterpretRequest, signal?: AbortSignal) {
+  if (command.pendingClarification && command.pendingProposal) {
+    throw new SupportProgramApiError('Only one pending conversation draft can be submitted.')
+  }
   const response = await fetch(`${getCoreApiBaseUrl()}${SUPPORT_PROGRAM_INTERPRETATION_PATH}`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
