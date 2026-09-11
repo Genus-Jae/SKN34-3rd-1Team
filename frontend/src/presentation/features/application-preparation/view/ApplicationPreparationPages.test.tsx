@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { appContainer } from '../../../../app/appContainer'
 import { createAppStore } from '../../../../app/store'
+import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
 import type { ApplicationForm, ApplicationPreparation, ApplicationPreparationPage } from '../../../../domain/entities/ApplicationPreparation'
 import { ApplicationPreparationError } from '../../../../domain/errors/ApplicationPreparationError'
 import { ApplicationPreparationUseCase } from '../../../../domain/usecases/ApplicationPreparationUseCase'
@@ -13,6 +14,8 @@ import { signedIn } from '../../../shared/auth/state/authSlice'
 import { ApplicationPreparationEditorPage, ApplicationPreparationListPage } from './ApplicationPreparationPages'
 
 const original = appContainer.resolve('applicationPreparationUseCase')
+const originalCatalog = appContainer.resolve('browseSupportProgramsUseCase')
+const browsePrograms = vi.fn()
 const firstForm: ApplicationForm = {
   formVersionId: 'verified-form-v1',
   sourceCode: 'BIZINFO',
@@ -92,12 +95,22 @@ beforeEach(() => {
       } : section),
     },
   })
-  appContainer.register({ applicationPreparationUseCase: asValue(new ApplicationPreparationUseCase(repository)) })
+  browsePrograms.mockResolvedValue({
+    programs: [structuredClone(supportPrograms[0])], total: 1, page: 1, pageSize: 10, totalPages: 1,
+    regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
+  })
+  appContainer.register({
+    applicationPreparationUseCase: asValue(new ApplicationPreparationUseCase(repository)),
+    browseSupportProgramsUseCase: asValue({ execute: browsePrograms }),
+  })
 })
 
 afterEach(() => {
   cleanup()
-  appContainer.register({ applicationPreparationUseCase: asValue(original) })
+  appContainer.register({
+    applicationPreparationUseCase: asValue(original),
+    browseSupportProgramsUseCase: asValue(originalCatalog),
+  })
 })
 
 function mount(path: string) {
@@ -196,6 +209,33 @@ describe('application preparation list', () => {
 })
 
 describe('application preparation creation and detail', () => {
+  it('searches the catalog and discovers documents only after the user selects a notice', async () => {
+    const program = { ...structuredClone(supportPrograms[0]), sourceCode: 'BIZINFO', id: 'PBLN_123' }
+    browsePrograms.mockResolvedValueOnce({
+      programs: [program], total: 1, page: 1, pageSize: 10, totalPages: 1,
+      regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
+    })
+    mount('/app/application-preparations/new')
+
+    fireEvent.change(screen.getByLabelText('공고명·기관명'), { target: { value: '혁신 바우처' } })
+    fireEvent.click(screen.getByRole('button', { name: '공고 검색' }))
+
+    const results = await screen.findByRole('list', { name: '신청 문서 공고 검색 결과' })
+    expect(browsePrograms).toHaveBeenCalledWith(expect.objectContaining({
+      keyword: '혁신 바우처', sourceCode: 'BIZINFO', status: 'ALL', page: 1, pageSize: 10,
+    }), expect.any(AbortSignal))
+    expect(repository.discover).not.toHaveBeenCalled()
+    fireEvent.click(within(results).getByRole('button', { name: '선택' }))
+
+    expect(screen.getByRole('heading', { name: '선택한 공고' })).toBeTruthy()
+    expect((screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID') as HTMLInputElement).value).toBe('PBLN_123')
+    expect(repository.discover).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+
+    expect(await screen.findByLabelText('작성할 공식 첨부')).toBeTruthy()
+    expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_123', expect.any(AbortSignal))
+  })
+
   it('explains when the selected notice has no discoverable application form', async () => {
     repository.discover.mockRejectedValueOnce(new ApplicationPreparationError(422, 'APPLICATION_FORM_NO_FORM'))
     mount('/app/application-preparations/new')

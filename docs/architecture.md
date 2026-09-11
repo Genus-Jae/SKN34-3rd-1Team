@@ -18,7 +18,7 @@ AiApplicationPreparationFacade → AI Service`로 분석합니다. 검증된 응
 문항 답변은 `ApplicationPreparationService → AiApplicationPreparationFacade → AiApplicationPreparationClient → AI Service`로
 DB transaction 밖에서 해석합니다. 요청 키와 당시 입력을 먼저 짧은 transaction으로 예약하고, 검증된 제안 또는 실패 상태를
 별도 transaction으로 저장합니다. 사용자가 제안을 확인한 PUT만 문항 사실을 전체 교체하고 입력 revision을 증가시킵니다.
-Frontend는 `/app/application-preparations`의 목록, `/new`의 공고 입력·첨부 분석·발견 양식 확인, `/:preparationId`의 공식 문항
+Frontend는 `/app/application-preparations`의 목록, `/new`의 기존 카탈로그 공고 검색·선택과 보조 URL·ID 입력·첨부 분석·발견 양식 확인, `/:preparationId`의 공식 문항
 상세와 질문·사실 확인을 연결합니다. AI 제안은 저장하지 않고 사용자가 선택·수정한 전체 문항 입력만 revision을 올려 저장합니다.
 초안 생성·직접 수정·사용자 확인은 후속 사용자 기능입니다.
 
