@@ -41,7 +41,7 @@ class AccountProfileController(
     fun previewDeletion(account: Account): AccountDeletionPreviewResponse =
         AccountDeletionPreviewResponse.from(profileService.previewDeletion(account))
 
-    /** 현재 비밀번호를 확인한 뒤 계정을 삭제 표시하고 세션 쿠키를 만료시킵니다. */
+    /** 현재 비밀번호를 확인한 뒤(비밀번호가 없는 소셜 가입 계정은 세션만으로) 계정을 삭제 표시하고 세션 쿠키를 만료시킵니다. */
     @DeleteMapping
     fun deleteAccount(
         account: Account,

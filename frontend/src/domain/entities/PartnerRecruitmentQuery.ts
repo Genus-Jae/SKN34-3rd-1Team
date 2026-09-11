@@ -11,6 +11,8 @@ export type PartnerRecruitmentQuery = {
   regions: string[]
   /** 내 글만 보기입니다. 마감된 내 글도 포함합니다. */
   mineOnly: boolean
+  /** 묶인 공고의 출처(`BIZINFO` 등)입니다. 빈 문자열이면 모든 출처입니다. */
+  sourceCode: string
   sort: PartnerRecruitmentSort
   page: number
 }
@@ -22,6 +24,7 @@ export const defaultPartnerRecruitmentQuery: PartnerRecruitmentQuery = {
   seekingRoles: [],
   regions: [],
   mineOnly: false,
+  sourceCode: '',
   sort: 'DEADLINE',
   page: 1,
 }
@@ -34,6 +37,7 @@ export const partnerRecruitmentSortLabels: Record<PartnerRecruitmentSort, string
 /** 검색어·필터 중 하나라도 기본값과 다르면 참입니다. 정렬과 페이지만 바뀐 것은 좁힌 것으로 보지 않습니다. */
 export function hasPartnerRecruitmentNarrowing(query: PartnerRecruitmentQuery): boolean {
   return query.keyword.trim() !== '' || query.seekingRoles.length > 0 || query.regions.length > 0 || query.mineOnly
+    || query.sourceCode !== ''
 }
 
 /** 한 페이지 결과입니다. 총 건수는 같은 조건의 전체 건수입니다. */

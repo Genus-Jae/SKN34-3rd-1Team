@@ -27,8 +27,8 @@ const input: PartnerRecruitmentInput = {
 describe('PartnerRecruitmentUseCases', () => {
   it('browse trims the keyword and regions and falls back to the first page', async () => {
     const browse = vi.fn().mockResolvedValue({ recruitments: [], total: 0, page: 1, pageSize: 20, totalPages: 0 })
-    await new BrowsePartnerRecruitmentsUseCase({ browse }).execute({ keyword: ' 스마트 ', seekingRoles: [], regions: [' 서울 ', ' '], mineOnly: false, sort: 'DEADLINE', page: 0 })
-    expect(browse).toHaveBeenCalledWith({ keyword: '스마트', seekingRoles: [], regions: ['서울'], mineOnly: false, sort: 'DEADLINE', page: 1 }, undefined)
+    await new BrowsePartnerRecruitmentsUseCase({ browse }).execute({ keyword: ' 스마트 ', seekingRoles: [], regions: [' 서울 ', ' '], mineOnly: false, sourceCode: '', sort: 'DEADLINE', page: 0 })
+    expect(browse).toHaveBeenCalledWith({ keyword: '스마트', seekingRoles: [], regions: ['서울'], mineOnly: false, sourceCode: '', sort: 'DEADLINE', page: 1 }, undefined)
   })
 
   it('detail rejects ids that cannot exist before calling the repository', async () => {

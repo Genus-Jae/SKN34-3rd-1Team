@@ -40,6 +40,7 @@ import type {
   GetAccountDeletionPreviewUseCase,
 } from '../../domain/usecases/AccountProfileUseCases'
 import type { DevLogInUseCase } from '../../domain/usecases/DevLogInUseCase'
+import type { CompleteOAuthSignInUseCase, StartOAuthSignInUseCase } from '../../domain/usecases/OAuthSignInUseCases'
 import type { GetCurrentAccountUseCase } from '../../domain/usecases/GetCurrentAccountUseCase'
 import type { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSupportProgramDetailUseCase'
 import type { GetSupportProgramSearchReadinessUseCase } from '../../domain/usecases/GetSupportProgramSearchReadinessUseCase'
@@ -82,6 +83,8 @@ export type AppCradle = {
   interpretSupportProgramConversationUseCase: InterpretSupportProgramConversationUseCase
   askSupportProgramEvidenceQuestionUseCase: AskSupportProgramEvidenceQuestionUseCase
   devLogInUseCase: DevLogInUseCase
+  startOAuthSignInUseCase: StartOAuthSignInUseCase
+  completeOAuthSignInUseCase: CompleteOAuthSignInUseCase
   fetchCoreApiHealth: FetchCoreApiHealth
   getCurrentAccountUseCase: GetCurrentAccountUseCase
   getSupportProgramDetailUseCase: GetSupportProgramDetailUseCase

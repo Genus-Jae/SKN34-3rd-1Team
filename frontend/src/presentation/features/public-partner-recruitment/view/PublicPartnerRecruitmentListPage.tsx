@@ -1,5 +1,5 @@
 import type { PartnerRecruitmentSummary } from '../../../../domain/entities/PartnerRecruitment'
-import { workspaceChipClassName, workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
+import { workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
 import {
   programDeadlineLabel,
   recruitmentConditionTags,
@@ -65,13 +65,16 @@ export function PublicPartnerRecruitmentListPage() {
     currentPage,
     goToPage,
     retry,
-    resultSummary,
+    resultTotal,
     keyword,
     updateKeyword,
     submitSearch,
     sort,
     sortOptions,
     selectSort,
+    sourceCode,
+    sourceOptions,
+    selectSource,
     loginPrompt,
     openLoginPrompt,
     closeLoginPrompt,
@@ -124,20 +127,34 @@ export function PublicPartnerRecruitmentListPage() {
           </label>
           <button className={workspacePageStyles.primaryButton} type="submit">조회</button>
         </form>
+        {/* 지원사업 찾기 필터 검색과 같은 "검색 결과 N건" 제목과 출처·정렬 선택입니다. 지역·분야 필터는 두지 않습니다. */}
         <div className={styles.toolbar}>
-          <span className={styles.resultCount} aria-live="polite">{resultSummary}</span>
-          <div className={styles.sortChoices} role="group" aria-label="정렬">
-            {sortOptions.map((option) => (
-              <button
-                className={workspaceChipClassName(sort === option.value)}
-                key={option.value}
-                type="button"
-                aria-pressed={sort === option.value}
-                onClick={() => selectSort(option.value)}
+          <h2 className={styles.resultCount} aria-live="polite">
+            {resultTotal === null
+              ? '검색 결과'
+              : <>검색 결과 <span className={styles.resultTotal}>{resultTotal.toLocaleString()}건</span></>}
+          </h2>
+          <div className={styles.listOptions}>
+            <label className={styles.optionLabel}>출처
+              <select
+                className={styles.optionSelect}
+                aria-label="출처"
+                value={sourceCode}
+                onChange={(event) => selectSource(event.target.value)}
               >
-                {option.label}
-              </button>
-            ))}
+                {sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className={styles.optionLabel}>정렬
+              <select
+                className={styles.optionSelect}
+                aria-label="정렬"
+                value={sort}
+                onChange={(event) => selectSort(event.target.value)}
+              >
+                {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
           </div>
         </div>
         {phase === 'failed' ? (

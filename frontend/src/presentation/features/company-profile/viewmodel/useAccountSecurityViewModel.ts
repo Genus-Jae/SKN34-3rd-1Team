@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { appContainer } from '../../../../app/appContainer'
-import { useAppDispatch } from '../../../../app/hooks'
+import { useAppDispatch, useAppSelector } from '../../../../app/hooks'
 import type { AccountDeletionPreview } from '../../../../domain/entities/AccountDeletionPreview'
 import type {
   ChangePasswordUseCase,
@@ -10,7 +10,7 @@ import type {
   GetAccountDeletionPreviewUseCase,
 } from '../../../../domain/usecases/AccountProfileUseCases'
 import { isValidSignUpPassword, signUpPasswordLength } from '../../../../domain/usecases/SignUpUseCase'
-import { signedOut } from '../../../shared/auth/state/authSlice'
+import { selectCurrentAccount, signedOut } from '../../../shared/auth/state/authSlice'
 import { publicPaths } from '../../../shared/routes/appPaths'
 
 export const accountSecurityMessages = {
@@ -51,6 +51,8 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
     deleteAccount: useCases.deleteAccount ?? appContainer.resolve('deleteAccountUseCase'),
   }
   const dispatchToStore = useAppDispatch()
+  // 소셜 로그인으로만 가입해 비밀번호가 없는 계정은 삭제할 때 비밀번호를 묻지 않습니다.
+  const requiresDeletePassword = useAppSelector(selectCurrentAccount)?.hasPassword ?? true
   const navigate = useNavigate()
   const isMounted = useRef(true)
   useEffect(() => {
@@ -154,14 +156,14 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
   async function submitDeletion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (isDeleting) return
-    if (deletePassword === '') {
+    if (requiresDeletePassword && deletePassword === '') {
       setDeleteError(accountSecurityMessages.deletePasswordRequired)
       return
     }
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      const result = await resolved.deleteAccount.execute(deletePassword)
+      const result = await resolved.deleteAccount.execute(requiresDeletePassword ? deletePassword : null)
       if (!isMounted.current) return
       if (result.outcome === 'current-password-mismatch') {
         setDeleteError(accountSecurityMessages.currentPasswordMismatch)
@@ -207,10 +209,12 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
       open: openDeleteModal,
       close: closeDeleteModal,
       preview: deletionPreview,
+      /** 거짓이면 비밀번호 칸을 그리지 않고 세션만으로 삭제합니다. */
+      requiresPassword: requiresDeletePassword,
       password: deletePassword,
       updatePassword: (value: string) => { setDeletePassword(value); setDeleteError(null) },
       error: deleteError,
-      canSubmit: deletePassword !== '' && !isDeleting,
+      canSubmit: (!requiresDeletePassword || deletePassword !== '') && !isDeleting,
       isSubmitting: isDeleting,
       submit: submitDeletion,
     },

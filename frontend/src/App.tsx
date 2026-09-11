@@ -14,6 +14,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
 import { ForgotPasswordPage } from './presentation/features/auth/view/ForgotPasswordPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
+import { OAuthCompletePage } from './presentation/features/auth/view/OAuthCompletePage'
 import { ResetPasswordPage } from './presentation/features/auth/view/ResetPasswordPage'
 import { SignupPage } from './presentation/features/auth/view/SignupPage'
 import { SupportProgramSearchPage } from './presentation/features/support-program-catalog/view/SupportProgramSearchPage'
@@ -88,6 +89,9 @@ function App() {
         <Route path="/examples/sample-item/hook" element={<SampleItemPage />} />
         <Route path="/examples/sample-item/redux" element={<ReduxSampleItemPage />} />
       </Route>
+
+      {/* 소셜 로그인 완료 화면은 세션을 막 받은 순간이라 로그인 여부로 가르지 않고 스스로 복귀 경로로 옮깁니다. */}
+      <Route path={publicPaths.oauthComplete} element={<OAuthCompletePage />} />
 
       <Route element={<GuestOnly />}>
         <Route path="/login" element={<LoginPage />} />

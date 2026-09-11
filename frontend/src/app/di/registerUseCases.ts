@@ -35,6 +35,7 @@ import {
   GetAccountDeletionPreviewUseCase,
 } from '../../domain/usecases/AccountProfileUseCases'
 import { DevLogInUseCase } from '../../domain/usecases/DevLogInUseCase'
+import { CompleteOAuthSignInUseCase, StartOAuthSignInUseCase } from '../../domain/usecases/OAuthSignInUseCases'
 import { GetCurrentAccountUseCase } from '../../domain/usecases/GetCurrentAccountUseCase'
 import { GetSupportProgramDetailUseCase } from '../../domain/usecases/GetSupportProgramDetailUseCase'
 import { GetSupportProgramSearchReadinessUseCase } from '../../domain/usecases/GetSupportProgramSearchReadinessUseCase'
@@ -71,6 +72,12 @@ export function registerUseCases(container: AppContainer) {
       createAskSupportProgramEvidenceQuestionUseCase,
     ).singleton(),
     devLogInUseCase: asFunction(createDevLogInUseCase).singleton(),
+    startOAuthSignInUseCase: asFunction(
+      ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new StartOAuthSignInUseCase(accountRepository),
+    ).singleton(),
+    completeOAuthSignInUseCase: asFunction(
+      ({ accountRepository }: Pick<AppCradle, 'accountRepository'>) => new CompleteOAuthSignInUseCase(accountRepository),
+    ).singleton(),
     browsePartnerProposalsUseCase: asFunction(
       ({ partnerProposalRepository }: Pick<AppCradle, 'partnerProposalRepository'>) => new BrowsePartnerProposalsUseCase(partnerProposalRepository),
     ).singleton(),

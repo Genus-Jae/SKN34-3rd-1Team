@@ -26,7 +26,7 @@ import {
 } from './chatSlice'
 
 const account: Account = {
-  email: 'first@example.test', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null,
+  email: 'first@example.test', role: 'USER', tier: 'MEMBER', emailVerified: true, hasPassword: true, company: null,
 }
 const otherAccount: Account = { ...account, email: 'second@example.test' }
 

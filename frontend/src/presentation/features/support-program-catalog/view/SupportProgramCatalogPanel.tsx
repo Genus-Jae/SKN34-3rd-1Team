@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
-import type { SupportProgramCatalogFilters } from '../../../../domain/entities/SupportProgramCatalog'
+import { catalogSourceCodes, catalogSourceLabels, type SupportProgramCatalogFilters } from '../../../../domain/entities/SupportProgramCatalog'
 import { isAppPath, supportProgramDetailPath } from '../../../shared/routes/appPaths'
 import { defaultCatalogFilters, readCatalogFilters, writeCatalogFilters } from '../../../shared/support-program/catalogSearchParams'
 import { FilterChoices } from '../../../shared/workspace/FilterChoices'
@@ -105,8 +105,7 @@ function CatalogFilters({ filters, regions, categories, startupStages, applicant
               setDraft({ ...draft, sourceCode, startupStage: '', applicantType: '', founderAge: '' })
               setShowStartupFilters(false)
             }}>
-            <option value="">전체 출처</option><option value="BIZINFO">기업마당</option><option value="KSTARTUP">K-Startup</option>
-            <option value="MSIT">과학기술정보통신부</option><option value="CNTRADE_NOTICE">충청남도 온라인수출지원시스템</option>
+            {catalogSourceCodes.map((code) => <option key={code} value={code}>{catalogSourceLabels[code]}</option>)}
           </select>
         </label>
         <label className="flex min-w-0 items-center gap-3 text-xs font-semibold text-sample-muted">접수 상태

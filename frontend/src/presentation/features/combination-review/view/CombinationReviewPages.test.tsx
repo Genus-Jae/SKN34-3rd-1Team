@@ -35,7 +35,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); appContainer.register({ comb
 function Isolation() { useReviewSessionIsolation(); return null }
 function mount(path = '/app/combination-reviews/12?step=analysis') {
   const store = createAppStore()
-  store.dispatch(signedIn({ email: 'a@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null }))
+  store.dispatch(signedIn({ email: 'a@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, hasPassword: true, company: null }))
   const rendered = render(<Provider store={store}><Isolation /><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/app/combination-reviews" element={<CombinationReviewListPage />} />
     <Route path="/app/combination-reviews/new" element={<CombinationReviewEditorPage create />} />
@@ -187,7 +187,7 @@ describe('review screens and execution safety', () => {
     const { store } = mount(); await screen.findByText('새 분석 실행')
     fireEvent.click(screen.getByText('새 분석 실행'))
     expect(Object.keys(sessionStorage).length).toBe(1)
-    act(() => { store.dispatch(signedIn({ email: 'b@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null })) })
+    act(() => { store.dispatch(signedIn({ email: 'b@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, hasPassword: true, company: null })) })
     await act(async () => finish(runFixture))
     expect(Object.keys(sessionStorage).length).toBe(0)
     expect(screen.queryByText('실행 #30 · 분석 완료')).toBeNull()

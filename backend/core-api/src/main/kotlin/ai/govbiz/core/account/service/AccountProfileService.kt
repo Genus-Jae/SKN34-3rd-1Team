@@ -4,6 +4,7 @@ import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.account.helper.SessionTokenHelper
 import ai.govbiz.core.account.repository.AccountRepository
 import ai.govbiz.core.account.repository.CompanyRepository
+import ai.govbiz.core.account.service.dto.AccountDeletedEvent
 import ai.govbiz.core.account.service.dto.AccountDeletionPreview
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.CurrentPasswordMismatchException
@@ -13,6 +14,7 @@ import ai.govbiz.core.partner.repository.PartnerRecruitmentRepository
 import java.time.Clock
 import java.time.LocalDateTime
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -28,6 +30,7 @@ class AccountProfileService(
     private val recruitmentRepository: PartnerRecruitmentRepository,
     private val proposalRepository: PartnerProposalRepository,
     private val passwordEncoder: PasswordEncoder,
+    private val eventPublisher: ApplicationEventPublisher,
     @param:Qualifier("seoulClock") private val clock: Clock,
 ) {
 
@@ -54,23 +57,29 @@ class AccountProfileService(
     }
 
     /**
-     * 계정을 삭제 표시하고 기업 행과 모든 세션을 지웁니다. 내 모집글은 마감돼 받은 제안이 만료로 보이고, 내가 보낸 대기 제안은
-     * 철회됩니다. 이메일은 익명화되므로 같은 이메일로 다시 가입하면 새 계정이 됩니다.
+     * 계정을 삭제 표시하고 기업 행·소셜 로그인 연결·모든 세션을 지웁니다. 내 모집글은 마감돼 받은 제안이 만료로 보이고, 내가 보낸
+     * 대기 제안은 철회됩니다. 이메일은 익명화되므로 같은 이메일로 다시 가입하면 새 계정이 됩니다. 공급자 쪽 연결 끊기는 외부
+     * 호출이라 이 transaction이 커밋된 뒤 [AccountOAuthService]가 [AccountDeletedEvent]를 받아 처리합니다.
      */
     @Transactional
-    fun deleteAccount(account: Account, currentPassword: String) {
-        verifyCurrentPassword(account, currentPassword)
+    fun deleteAccount(account: Account, currentPassword: String?) {
+        // 소셜 로그인으로만 가입해 비밀번호가 없는 계정은 확인할 비밀번호가 없어 세션만으로 본인을 확인합니다.
+        if (account.hasPassword) verifyCurrentPassword(account, currentPassword.orEmpty())
         val now = LocalDateTime.now(clock)
+        val oauthLinks = accountRepository.findOAuthLinks(account.id)
 
         proposalRepository.withdrawAllPendingByProposer(account.id, now)
         recruitmentRepository.closeAllByAccountId(account.id, now)
         companyRepository.deleteByAccountId(account.id)
+        accountRepository.deleteOAuthIdentities(account.id)
         accountRepository.deleteAllSessionsByAccountId(account.id)
         accountRepository.markDeleted(account.id, now)
+        if (oauthLinks.isNotEmpty()) eventPublisher.publishEvent(AccountDeletedEvent(account.id, oauthLinks))
     }
 
+    /** 세션을 확인한 뒤 비밀번호가 지워졌다면 해시가 없어 불일치로 봅니다. */
     private fun verifyCurrentPassword(account: Account, currentPassword: String) {
-        val credential = accountRepository.findCredentialByEmail(account.email) ?: throw AuthenticationRequiredException()
+        val credential = accountRepository.findCredentialByEmail(account.email) ?: throw CurrentPasswordMismatchException()
         if (!passwordEncoder.matches(currentPassword, credential.passwordHash)) throw CurrentPasswordMismatchException()
     }
 }

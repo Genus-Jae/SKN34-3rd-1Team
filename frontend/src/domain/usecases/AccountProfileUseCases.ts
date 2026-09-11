@@ -39,7 +39,8 @@ export class DeleteAccountUseCase {
     this.repository = repository
   }
 
-  execute(password: string, signal?: AbortSignal): Promise<DeleteAccountResult> {
+  /** 비밀번호가 없는 소셜 가입 계정은 `null`로 부릅니다. 비밀번호가 있는 계정은 빈 문자열을 보낼 수 없습니다. */
+  execute(password: string | null, signal?: AbortSignal): Promise<DeleteAccountResult> {
     if (password === '') throw new RangeError('password must not be empty')
     return this.repository.deleteAccount(password, signal)
   }

@@ -84,6 +84,12 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `ACCOUNT_PASSWORD_RESET_MAIL_ENABLED` | `false` | 비밀번호 재설정 메일 전송. 끄면 개발용 로그인이 켜진 Compose에서는 재설정 링크가 core-api 로그(WARN)에 찍히므로 `docker compose logs core-api`에서 복사해 열면 됨 |
 | `ACCOUNT_PASSWORD_RESET_FROM` | 빈 값 | 재설정 메일 발신 주소. 메일을 켜면 `SMTP_*`와 함께 필수 |
 | `ACCOUNT_PASSWORD_RESET_FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | 메일 링크가 여는 프런트 origin |
+| `ACCOUNT_OAUTH_CALLBACK_BASE_URL` | `http://127.0.0.1:5173` | 소셜 로그인 콜백 origin. Compose는 브라우저가 5173만 쓰고 Vite가 `/api`를 넘기므로 공급자 콘솔에 `http://127.0.0.1:5173/api/v1/auth/oauth/{kakao\|google}/callback`을 등록 |
+| `ACCOUNT_OAUTH_FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | 소셜 로그인 뒤 돌아갈 프런트 origin |
+| `ACCOUNT_OAUTH_GOOGLE_CLIENT_ID` / `ACCOUNT_OAUTH_GOOGLE_CLIENT_SECRET` | 빈 값 | Google 로그인 클라이언트. 비어 있으면 Google 버튼을 눌렀을 때 로그인 화면이 미설정 안내를 표시 |
+| `ACCOUNT_OAUTH_KAKAO_CLIENT_ID` / `ACCOUNT_OAUTH_KAKAO_CLIENT_SECRET` | 빈 값 | 카카오 REST API 키·Client Secret. 비어 있으면 카카오 버튼을 눌렀을 때 로그인 화면이 미설정 안내를 표시 |
+| `ACCOUNT_OAUTH_KAKAO_ADMIN_KEY` | 빈 값 | 탈퇴 때 카카오 연결 끊기용 어드민 키 |
+| `ACCOUNT_OAUTH_CONNECT_TIMEOUT` / `ACCOUNT_OAUTH_READ_TIMEOUT` | `2s` / `10s` | 공급자 호출 제한시간 |
 | `BIZNO_API_KEY` | 빈 값 | 기업 등록 시 사업자등록번호를 확인하는 Bizno API 키. 비어 있으면 프로필의 기업 조회·등록이 503 |
 | `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint |
 | `OPENAI_API_KEY` | 없음(필수) | AI Service만 사용하는 OpenAI 인증키 |

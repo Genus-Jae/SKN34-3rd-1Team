@@ -6,9 +6,13 @@ import ai.govbiz.core.account.domain.AccountRole
 import ai.govbiz.core.account.domain.CompanySummary
 import ai.govbiz.core.account.domain.NewAccount
 import ai.govbiz.core.account.domain.NewAccountSession
+import ai.govbiz.core.account.domain.OAuthLink
+import ai.govbiz.core.account.domain.OAuthProvider
 import ai.govbiz.core.account.domain.StoredAccountSession
 import ai.govbiz.core.account.repository.mapper.AccountDbRow
 import ai.govbiz.core.account.repository.mapper.AccountMapper
+import ai.govbiz.core.account.repository.mapper.AccountOAuthIdentityDbRow
+import ai.govbiz.core.account.repository.mapper.AccountOAuthIdentityMapper
 import ai.govbiz.core.account.repository.mapper.AccountSessionDbRow
 import java.time.Clock
 import java.time.LocalDateTime
@@ -16,10 +20,11 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 
-/** 계정·로그인 세션을 MySQL에 저장하고 읽습니다. 비밀번호 해시는 로그인 검증 조회에서만 내보냅니다. */
+/** 계정·로그인 세션·소셜 로그인 연결을 MySQL에 저장하고 읽습니다. 비밀번호 해시는 로그인 검증 조회에서만 내보냅니다. */
 @Repository
 class AccountRepository(
     private val accountMapper: AccountMapper,
+    private val oauthIdentityMapper: AccountOAuthIdentityMapper,
     @param:Qualifier("seoulClock") private val clock: Clock,
 ) {
 
@@ -54,10 +59,10 @@ class AccountRepository(
     fun findByEmail(email: String): Account? =
         accountMapper.findAccountByEmail(email)?.toAccount()
 
-    /** 로그인 검증을 위해 비밀번호 해시를 포함해 조회합니다. */
+    /** 로그인 검증을 위해 비밀번호 해시를 포함해 조회합니다. 소셜 로그인으로만 가입해 비밀번호가 없는 계정은 null입니다. */
     fun findCredentialByEmail(email: String): AccountCredential? =
         accountMapper.findAccountByEmail(email)?.let { row ->
-            AccountCredential(account = row.toAccount(), passwordHash = row.passwordHash)
+            row.passwordHash?.let { passwordHash -> AccountCredential(account = row.toAccount(), passwordHash = passwordHash) }
         }
 
     /** 비밀번호 변경입니다. 해시는 호출 전에 끝나 있어야 합니다. */
@@ -122,6 +127,41 @@ class AccountRepository(
     fun deleteSessionByTokenHash(tokenHash: String): Boolean =
         accountMapper.deleteSessionByTokenHash(tokenHash) == 1
 
+    /** 공급자 계정(`sub`)에 연결된, 삭제되지 않은 계정입니다. */
+    fun findByOAuthIdentity(provider: OAuthProvider, subject: String): Account? =
+        oauthIdentityMapper.findAccountIdBySubject(provider.name, subject)?.let(::findById)
+
+    /**
+     * 소셜 로그인으로 처음 온 사용자의 계정과 공급자 연결을 한 transaction으로 만듭니다. 이메일이나 공급자 계정이 이미 있으면
+     * DB UNIQUE 제약의 [org.springframework.dao.DuplicateKeyException]으로 둘 다 되돌리고, 변환은 호출한 Service가 합니다.
+     */
+    @Transactional
+    fun createAccountWithOAuthIdentity(newAccount: NewAccount, provider: OAuthProvider, subject: String): Account {
+        val account = createAccount(newAccount)
+        val identityRow = AccountOAuthIdentityDbRow(
+            accountId = account.id,
+            provider = provider.name,
+            subject = subject,
+            linkedAt = LocalDateTime.now(clock),
+        )
+        check(oauthIdentityMapper.insertIdentity(identityRow) == 1) { "oauth identity row was not created" }
+        return account
+    }
+
+    /** 계정에 연결된 공급자 계정들입니다. 탈퇴 때 공급자 연결 끊기에 씁니다. */
+    fun findOAuthLinks(accountId: Long): List<OAuthLink> =
+        oauthIdentityMapper.findIdentitiesByAccountId(accountId).map { row ->
+            OAuthLink(provider = OAuthProvider.valueOf(row.provider), subject = row.subject)
+        }
+
+    /**
+     * 계정의 소셜 로그인 연결을 지웁니다. 삭제 표시한 계정 행은 남아 FK CASCADE가 동작하지 않으므로, 같은 공급자 계정으로
+     * 다시 가입할 수 있게 탈퇴할 때 직접 지웁니다.
+     */
+    @Transactional
+    fun deleteOAuthIdentities(accountId: Long): Int =
+        oauthIdentityMapper.deleteIdentitiesByAccountId(accountId)
+
     private fun AccountDbRow.toAccount(): Account =
         Account(
             id = id,
@@ -137,5 +177,6 @@ class AccountRepository(
                     businessNumber = requireNotNull(companyBusinessNumber) { "company business number must not be null" },
                 )
             },
+            hasPassword = passwordHash != null,
         )
 }

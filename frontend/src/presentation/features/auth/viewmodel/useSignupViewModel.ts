@@ -6,6 +6,7 @@ import { useAppDispatch } from '../../../../app/hooks'
 import { isValidSignUpPassword, type SignUpUseCase, signUpPasswordLength } from '../../../../domain/usecases/SignUpUseCase'
 import { signedIn } from '../../../shared/auth/state/authSlice'
 import { loginPathFor, readReturnPath } from '../../../shared/auth/returnPath'
+import { useOAuthSignInOptions } from './useOAuthSignInOptions'
 
 type AccountSignUpUseCase = Pick<SignUpUseCase, 'execute'>
 
@@ -39,6 +40,8 @@ export function useSignupViewModel(
   const [error, setError] = useState<SignupError | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const isMounted = useRef(true)
+  // 가입 화면에는 로그인 상태 유지 선택이 없어 이메일 가입과 같은 브라우저 세션으로 시작합니다.
+  const oauthOptions = useOAuthSignInOptions({ returnPath: readReturnPath(location.search, ''), rememberMe: false })
 
   useEffect(() => {
     isMounted.current = true
@@ -94,6 +97,7 @@ export function useSignupViewModel(
 
   return {
     loginPath: loginPathFor(readReturnPath(location.search, '')),
+    oauthOptions,
     email,
     password,
     passwordConfirmation,

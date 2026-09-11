@@ -28,6 +28,7 @@ export async function browsePartnerRecruitmentsApi(
   // 역할·지역은 같은 이름을 여러 번 보내 함께 고릅니다. 비어 있으면 보내지 않습니다.
   for (const role of query.seekingRoles) params.append('seekingRole', role)
   for (const region of query.regions) params.append('region', region)
+  if (query.sourceCode !== '') params.set('sourceCode', query.sourceCode)
   const response = await fetch(`${getCoreApiBaseUrl()}${RECRUITMENTS_PATH}?${params}`, {
     headers: { Accept: 'application/json' },
     credentials: withSessionCookie,
