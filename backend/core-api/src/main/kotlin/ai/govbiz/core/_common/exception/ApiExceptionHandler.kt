@@ -16,6 +16,9 @@ import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
 import ai.govbiz.core.account.service.exception.InvalidCredentialsException
 import ai.govbiz.core.account.service.exception.LoginRateLimitedException
 import ai.govbiz.core.account.service.exception.SessionOriginRejectedException
+import ai.govbiz.core.applicationpreparation.controller.exception.InvalidApplicationPreparationInputException
+import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPreparationNotFoundException
+import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormNotSupportedException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewNotFoundException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRevisionConflictException
 import ai.govbiz.core.combinationreview.controller.exception.InvalidCombinationReviewInputException
@@ -23,6 +26,7 @@ import ai.govbiz.core.combinationreview.service.exception.CombinationReviewRunEx
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRunConflictException
 import ai.govbiz.core.combinationreview.service.exception.ReviewRunFailureCode
 import ai.govbiz.core.partner.service.exception.CompanyRequiredException
+import ai.govbiz.core.partner.service.exception.RecruitmentActionForbiddenException
 import ai.govbiz.core.partner.service.exception.RecruitmentRegionFilterInvalidException
 import ai.govbiz.core.partner.service.exception.ProposalActionForbiddenException
 import ai.govbiz.core.partner.service.exception.ProposalAlreadySentException
@@ -61,6 +65,44 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(ApplicationPreparationNotFoundException::class)
+    fun handleApplicationPreparationNotFound(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:application-preparation-not-found"),
+                "Application Preparation Not Found",
+                "The requested application preparation is not available.",
+                "APPLICATION_PREPARATION_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ApplicationFormNotSupportedException::class)
+    fun handleApplicationFormNotSupported(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:application-form-not-supported"),
+                "Application Form Not Supported",
+                "The selected support program, form version, or service field is not supported.",
+                "APPLICATION_FORM_NOT_SUPPORTED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(InvalidApplicationPreparationInputException::class)
+    fun handleInvalidApplicationPreparationInput(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        validationProblem(
+            HttpStatus.BAD_REQUEST,
+            URI.create("urn:govbiz:problem:request-validation-failed"),
+            "Request Validation Failed",
+            "The application preparation input is invalid.",
+            "REQUEST_VALIDATION_FAILED",
+            emptyList(),
+            request,
+        )
 
     @ExceptionHandler(SupportProgramSearchResultExpiredException::class)
     fun handleSearchResultExpired(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
@@ -475,7 +517,7 @@ class ApiExceptionHandler {
                 HttpStatus.UNPROCESSABLE_CONTENT,
                 URI.create("urn:govbiz:problem:recruitment-closed"),
                 "Recruitment Closed",
-                "The recruitment is no longer open for proposals.",
+                "The recruitment is no longer open.",
                 "RECRUITMENT_CLOSED",
             ),
             request,
@@ -503,6 +545,19 @@ class ApiExceptionHandler {
                 "Proposal Not Pending",
                 "The proposal is no longer pending.",
                 "PROPOSAL_NOT_PENDING",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(RecruitmentActionForbiddenException::class)
+    fun handleRecruitmentActionForbiddenException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.FORBIDDEN,
+                URI.create("urn:govbiz:problem:recruitment-action-forbidden"),
+                "Recruitment Action Forbidden",
+                "Only the recruitment owner can edit or close it.",
+                "RECRUITMENT_ACTION_FORBIDDEN",
             ),
             request,
         )

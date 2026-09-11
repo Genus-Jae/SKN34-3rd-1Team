@@ -7,6 +7,9 @@ export const APP_PREFIX = '/app'
 export const appPaths = {
   savedPrograms: `${APP_PREFIX}/saved-programs`,
   reports: `${APP_PREFIX}/reports`,
+  applicationPreparations: `${APP_PREFIX}/application-preparations`,
+  applicationPreparationNew: `${APP_PREFIX}/application-preparations/new`,
+  applicationPreparationDetail: `${APP_PREFIX}/application-preparations/:preparationId`,
   combinationReviews: `${APP_PREFIX}/combination-reviews`,
   combinationReviewNew: `${APP_PREFIX}/combination-reviews/new`,
   combinationReviewDetail: `${APP_PREFIX}/combination-reviews/:reviewId`,
@@ -15,6 +18,8 @@ export const appPaths = {
   partners: `${APP_PREFIX}/partners`,
   partnerDetail: `${APP_PREFIX}/partners/detail`,
   partnerNew: `${APP_PREFIX}/partners/new`,
+  partnerEdit: `${APP_PREFIX}/partners/edit`,
+  myPartners: `${APP_PREFIX}/partners/mine`,
   proposals: `${APP_PREFIX}/proposals`,
   profile: `${APP_PREFIX}/profile`,
   admin: `${APP_PREFIX}/admin`,

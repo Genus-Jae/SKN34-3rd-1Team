@@ -419,7 +419,11 @@ describe('기업 프로필 화면', () => {
     expect(screen.getByRole('region', { name: '협업·파트너 설정' })).toBeTruthy()
     expect(screen.queryByRole('region', { name: '우대·인증 자격' })).toBeNull()
     expect(screen.getByRole('region', { name: '계정과 알림' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: '공개 범위' })).toBeTruthy()
+    // 옆 칸의 안내 카드는 없고, 이 정보가 쓰이는 곳·공개 범위는 카드 제목 옆 ? 도움말로 들어갑니다.
+    expect(screen.queryByRole('complementary', { name: '프로필 안내' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '공개 범위' })).toBeNull()
+    expect(screen.getByRole('button', { name: '공개 범위 도움말' })).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '기업 등록' })).getByRole('button', { name: '이 정보가 쓰이는 곳 도움말' })).toBeTruthy()
     expect(screen.getByText('기업 미등록')).toBeTruthy()
   })
 
@@ -525,6 +529,11 @@ describe('기업 프로필 화면', () => {
 
     fireEvent.click(within(basics).getByRole('button', { name: '수정' }))
     const form = screen.getByRole('form', { name: '기업 기본정보 수정' })
+    // 조회 값(기업명·사업자등록번호·사업자 상태)은 입력란 없이 그대로 보입니다.
+    const readOnly = within(form).getByRole('group', { name: '조회 값' })
+    expect(within(readOnly).getByText(registeredCompany.companyName)).toBeTruthy()
+    expect(within(readOnly).getByText('사업자 확인')).toBeTruthy()
+    expect(within(form).queryByLabelText(/기업명|사업자등록번호/)).toBeNull()
     expect(within(form).queryByLabelText('사업자등록번호')).toBeNull()
     expect((within(form).getByLabelText('설립연도') as HTMLInputElement).value).toBe('2020')
     fireEvent.change(within(form).getByLabelText('소재지'), { target: { value: '부산광역시' } })
@@ -587,7 +596,7 @@ describe('기업 프로필 화면', () => {
     })
   })
 
-  it('완성도는 기업 정보·이메일 인증·협업 설정·홈페이지 네 항목으로 계산한다', async () => {
+  it('완성도는 기업 정보·이메일 인증·협업 설정 세 항목으로 계산하고 선택 항목인 홈페이지는 넣지 않는다', async () => {
     vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(registeredCompany)
     const getProfile = vi.spyOn(appContainer.resolve('getCompanyPartnerProfileUseCase'), 'execute')
       .mockResolvedValue({ isSet: false, roles: [], interestAreas: [], introduction: '', capabilities: [], updatedAt: null })
@@ -595,10 +604,14 @@ describe('기업 프로필 화면', () => {
     await screen.findByRole('region', { name: '기업 기본정보' })
     await waitFor(() => expect(getProfile).toHaveBeenCalled())
 
-    // 기업 등록·이메일 인증(회원 fixture)은 끝났고, 협업 설정과 홈페이지는 남았습니다.
+    // 기업 등록·이메일 인증(회원 fixture)은 끝났고 협업 설정만 남았습니다.
     const completion = screen.getByRole('progressbar', { name: '프로필 완성도' })
-    await waitFor(() => expect(completion.getAttribute('aria-valuenow')).toBe('50'))
-    expect(screen.getByText('협업·파트너 설정', { selector: 'span' })).toBeTruthy()
+    await waitFor(() => expect(completion.getAttribute('aria-valuenow')).toBe('67'))
+    // 체크리스트는 옆 칸이 아니라 완성도 막대 아래 요약 카드 안에 있습니다.
+    const summary = screen.getByRole('region', { name: '프로필 요약' })
+    expect(within(summary).getByText('협업·파트너 설정', { selector: 'span' })).toBeTruthy()
+    expect(within(summary).queryByText(/홈페이지/)).toBeNull()
+    expect(screen.queryByRole('region', { name: '완성도 체크리스트' })).toBeNull()
   })
 
   it('협업·파트너 설정은 기업이 있을 때만 편집되고 역할·관심 분야·소개·역량을 저장한다', async () => {
@@ -631,7 +644,7 @@ describe('기업 프로필 화면', () => {
     }))
     expect(await within(form).findByText('협업·파트너 설정을 저장했습니다.')).toBeTruthy()
     expect(within(settings).getByText('저장됨')).toBeTruthy()
-    expect(screen.getByRole('progressbar', { name: '프로필 완성도' }).getAttribute('aria-valuenow')).toBe('75')
+    expect(screen.getByRole('progressbar', { name: '프로필 완성도' }).getAttribute('aria-valuenow')).toBe('100')
   })
 
   it('기업이 없으면 협업·파트너 설정은 등록 안내만 보여 준다', async () => {
@@ -651,7 +664,10 @@ describe('기업 프로필 화면', () => {
     renderApp('/app/profile')
     await screen.findByRole('form', { name: '기업 등록' })
 
-    const publicity = screen.getByRole('region', { name: '공개 범위' })
+    // 공개 범위 표는 협업·파트너 설정 제목 옆 ? 도움말을 열어야 보입니다.
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    fireEvent.click(within(screen.getByRole('region', { name: '협업·파트너 설정' })).getByRole('button', { name: '공개 범위 도움말' }))
+    const publicity = screen.getByRole('tooltip')
     const managerRow = within(publicity).getByText('담당자 이메일').closest('tr')!
     const cells = within(managerRow).getAllByRole('cell')
 
@@ -668,9 +684,9 @@ describe('계정 보안 모달', () => {
     vi.spyOn(appContainer.resolve('getMyCompanyUseCase'), 'execute').mockResolvedValue(null)
   })
 
-  it('비밀번호 변경 모달은 세 칸이 맞을 때만 보내고 현재 비밀번호 불일치는 칸 아래에 안내한다', async () => {
+  it('비밀번호 변경 모달은 현재 비밀번호 없이 새 비밀번호·확인이 맞을 때만 보내고 규칙 충족과 일치를 바로 보여 준다', async () => {
     const change = vi.spyOn(appContainer.resolve('changePasswordUseCase'), 'execute')
-      .mockResolvedValueOnce({ outcome: 'current-password-mismatch' })
+      .mockResolvedValueOnce({ outcome: 'rate-limited', retryAfterSeconds: 30 })
       .mockResolvedValueOnce({ outcome: 'changed' })
     renderApp('/app/profile')
     const account = await screen.findByRole('region', { name: '계정과 알림' })
@@ -680,25 +696,31 @@ describe('계정 보안 모달', () => {
     opener.focus()
     fireEvent.click(opener)
     const dialog = screen.getByRole('dialog', { name: '비밀번호 변경' })
-    expect(document.activeElement).toBe(within(dialog).getByLabelText('현재 비밀번호'))
+    expect(dialog.textContent).toContain('일부 기기의 경우 계정에서 로그아웃될 수 있습니다.')
+    expect(within(dialog).queryByLabelText('현재 비밀번호')).toBeNull()
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('새 비밀번호'))
     const submit = within(dialog).getByRole('button', { name: '변경' }) as HTMLButtonElement
     expect(submit.disabled).toBe(true)
 
-    fireEvent.change(within(dialog).getByLabelText('현재 비밀번호'), { target: { value: 'password1' } })
+    // 규칙 한 줄은 8자를 넘기면 초록(ok)으로, 확인 칸은 입력하는 동안 일치·불일치를 바로 알립니다.
+    const rule = within(dialog).getByText(new RegExp(accountSecurityMessages.newPasswordLength))
+    expect(rule.getAttribute('data-state')).toBe('pending')
     fireEvent.change(within(dialog).getByLabelText('새 비밀번호'), { target: { value: 'new-password-2' } })
+    expect(within(dialog).getByText(new RegExp(accountSecurityMessages.newPasswordLength)).getAttribute('data-state')).toBe('ok')
     fireEvent.change(within(dialog).getByLabelText('새 비밀번호 확인'), { target: { value: 'new-password-3' } })
+    expect(within(dialog).getByText(new RegExp(accountSecurityMessages.confirmationMismatch)).getAttribute('data-state')).toBe('mismatch')
     expect(submit.disabled).toBe(true)
     fireEvent.submit(within(dialog).getByRole('form', { name: '비밀번호 변경' }))
     expect(within(dialog).getByRole('alert').textContent).toBe(accountSecurityMessages.confirmationMismatch)
     expect(change).not.toHaveBeenCalled()
 
     fireEvent.change(within(dialog).getByLabelText('새 비밀번호 확인'), { target: { value: 'new-password-2' } })
+    expect(within(dialog).getByText(new RegExp(accountSecurityMessages.confirmationMatch)).getAttribute('data-state')).toBe('match')
     expect(submit.disabled).toBe(false)
     fireEvent.click(submit)
-    await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toBe(accountSecurityMessages.currentPasswordMismatch))
-    expect(change).toHaveBeenCalledWith('password1', 'new-password-2')
+    await waitFor(() => expect(within(dialog).getByRole('alert').textContent).toBe(accountSecurityMessages.rateLimited(30)))
+    expect(change).toHaveBeenCalledWith('new-password-2')
 
-    fireEvent.change(within(dialog).getByLabelText('현재 비밀번호'), { target: { value: 'password1!' } })
     fireEvent.click(within(dialog).getByRole('button', { name: '변경' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '비밀번호 변경' })).toBeNull())
     expect(within(account).getByRole('status').textContent).toBe(accountSecurityMessages.passwordChanged)
@@ -788,9 +810,11 @@ describe('파트너 모집 화면', () => {
     expect(screen.getByText('참여기관 1곳')).toBeTruthy()
     const proposal = screen.getByRole('form', { name: '참여 제안' })
     expect(within(proposal).getByLabelText('제안 메시지')).toBeTruthy()
-    // 확인이 필요한 항목은 일치로 표시하지 않고, 매칭은 예시임을 밝힙니다.
-    expect(screen.getAllByText('확인 필요').length).toBeGreaterThan(0)
-    expect(screen.getByText(/예시 비교입니다/)).toBeTruthy()
+    // 예시 매칭 카드는 없고, 제안 상태 흐름은 참여 제안 제목 옆 ? 도움말로 봅니다.
+    expect(screen.queryByRole('region', { name: '우리 기업과의 매칭' })).toBeNull()
+    expect(screen.queryByText(/예시 비교입니다/)).toBeNull()
+    fireEvent.click(within(proposal).getByRole('button', { name: '제안 상태 흐름 도움말' }))
+    expect(screen.getByRole('tooltip').textContent).toContain('수락 · 연락처 공개')
     expect(within(proposal).queryByLabelText(/서류 상태도 공개/)).toBeNull()
   })
 
@@ -808,9 +832,9 @@ describe('파트너 모집 화면', () => {
 
     cleanup()
     renderApp('/app/partners/detail?recruitmentId=101', memberAccount)
-    const matching = await screen.findByRole('region', { name: '우리 기업과의 매칭' })
-    expect(within(matching).getByRole('link', { name: '프로필에서 기업 등록' })).toBeTruthy()
-    expect(within(matching).queryByText('확인 필요')).toBeNull()
+    const proposalForm = await screen.findByRole('form', { name: '참여 제안' })
+    expect(within(proposalForm).getByRole('link', { name: '프로필에서 기업 등록' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: '우리 기업과의 매칭' })).toBeNull()
   })
 
   it('검색어·찾는 역할·지역은 조회를 눌러야 조회 파라미터로 가고 내 글·정렬은 바로 적용되며 첫 페이지로 돌아간다', async () => {
@@ -829,11 +853,12 @@ describe('파트너 모집 화면', () => {
     expect(browse).not.toHaveBeenCalledWith(expect.objectContaining({ keyword: '스마트' }), expect.anything())
 
     fireEvent.click(within(panel).getByRole('button', { name: '조회' }))
-    fireEvent.click(within(panel).getByRole('button', { name: '내가 쓴 모집글만' }))
+    // 내 글만 보기는 칩이 아니라 "내 모집글" 탭이 맡습니다.
+    expect(within(panel).queryByRole('button', { name: '내가 쓴 모집글만' })).toBeNull()
     fireEvent.click(within(panel).getByRole('radio', { name: '최근 등록순' }))
 
     await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
-      { keyword: '스마트', seekingRoles: ['LEAD'], regions: ['서울', '부산'], mineOnly: true, sort: 'RECENT', page: 1 },
+      { keyword: '스마트', seekingRoles: ['LEAD'], regions: ['서울', '부산'], mineOnly: false, sort: 'RECENT', page: 1 },
       expect.any(AbortSignal),
     ))
     expect(screen.getByText('4건 · 최근 등록순')).toBeTruthy()
@@ -1115,8 +1140,104 @@ describe('파트너 모집 화면', () => {
     expect(within(received).getByText('응답 대기')).toBeTruthy()
     expect(within(received).getByText('그린푸드랩')).toBeTruthy()
     expect(within(received).getByRole('link', { name: '제안함에서 수락·거절' }).getAttribute('href')).toBe('/app/proposals')
+    expect(within(received).getByText('2건')).toBeTruthy()
+    // 내 글은 오른쪽 칸 없이 받은 제안이 본문 칸에 있고, 제안 폼은 없습니다.
     expect(screen.queryByRole('form', { name: '참여 제안' })).toBeNull()
-    expect(screen.getByText('2건')).toBeTruthy()
+    expect(screen.queryByRole('complementary', { name: '참여 제안' })).toBeNull()
+  })
+
+  it('내 모집글은 상세의 수정으로 폼을 채워 열고, 수정 저장하면 상세로 돌아온다', async () => {
+    vi.spyOn(appContainer.resolve('getPartnerRecruitmentDetailUseCase'), 'execute')
+      .mockResolvedValue({ ...partnerRecruitmentDetail, id: 104, isMine: true })
+    const update = vi.spyOn(appContainer.resolve('updatePartnerRecruitmentUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'updated', recruitment: { ...partnerRecruitmentDetail, id: 104, isMine: true, title: '수정한 제목' } })
+    renderApp('/app/partners/detail?recruitmentId=104')
+    fireEvent.click(await screen.findByRole('link', { name: '수정' }))
+
+    const form = await screen.findByRole('form', { name: '모집글 수정' })
+    await waitFor(() => expect((within(form).getByLabelText('제목') as HTMLInputElement).value).toBe(partnerRecruitmentDetail.title))
+    // 공고는 바꿀 수 없어 검색 대신 묶인 공고만 보입니다.
+    expect(within(form).queryByLabelText('공고 검색')).toBeNull()
+    expect(within(form).getByText(partnerRecruitmentDetail.program.title)).toBeTruthy()
+    expect(within(form).getByRole('button', { name: '라벨링 삭제' })).toBeTruthy()
+
+    fireEvent.change(within(form).getByLabelText('제목'), { target: { value: '수정한 제목' } })
+    fireEvent.click(within(form).getByRole('button', { name: '수정 저장' }))
+    await waitFor(() => expect(update).toHaveBeenCalledWith(104, {
+      title: '수정한 제목',
+      body: partnerRecruitmentDetail.body,
+      ownRole: 'LEAD',
+      seekingRole: 'PARTICIPANT',
+      seekingCount: 1,
+      region: '서울',
+      minimumCompanyAgeYears: null,
+      capabilities: ['데이터 구축', '라벨링'],
+      recruitmentDeadline: '2026-09-20',
+    }))
+    expect(await screen.findByRole('heading', { name: '모집글 상세' })).toBeTruthy()
+  })
+
+  it('내 모집글 탭은 내 글만 최근 등록순으로 읽어 마감된 글을 뒤로 보내고 카드에서 마감한다', async () => {
+    const mine = partnerRecruitmentPage.recruitments.find((item) => item.isMine)!
+    const closedMine = { ...mine, id: 105, title: '이미 마감된 내 글', status: 'CLOSED' as const, proposalCount: 3 }
+    const browse = vi.spyOn(appContainer.resolve('browsePartnerRecruitmentsUseCase'), 'execute')
+      .mockResolvedValue({ ...partnerRecruitmentPage, recruitments: [closedMine, mine], total: 2 })
+    const close = vi.spyOn(appContainer.resolve('closePartnerRecruitmentUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'closed', recruitment: { ...partnerRecruitmentDetail, id: mine.id, isMine: true, status: 'CLOSED' } })
+    renderApp('/app/partners')
+    fireEvent.click(within(screen.getByRole('navigation', { name: '파트너 관리 탭' })).getByRole('link', { name: '내 모집글' }))
+
+    await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
+      { keyword: '', seekingRoles: [], regions: [], mineOnly: true, sort: 'RECENT', page: 1 },
+      expect.any(AbortSignal),
+    ))
+    const cards = await screen.findAllByRole('article')
+    expect(cards).toHaveLength(2)
+    // 모집 중인 글이 앞, 마감된 글이 뒤입니다. 마감된 글에는 수정·마감이 없습니다.
+    expect(cards[0]!.getAttribute('aria-label')).toBe(mine.title)
+    expect(within(cards[1]!).getByText('모집 마감')).toBeTruthy()
+    expect(within(cards[1]!).queryByRole('button', { name: '마감' })).toBeNull()
+    expect(within(cards[1]!).getByText('받은 제안 3건')).toBeTruthy()
+    expect(within(cards[0]!).getByRole('link', { name: '수정' }).getAttribute('href')).toBe(`/app/partners/edit?recruitmentId=${mine.id}`)
+    expect(screen.queryByRole('searchbox', { name: '모집글 검색' })).toBeNull()
+
+    fireEvent.click(within(cards[0]!).getByRole('button', { name: '마감' }))
+    const dialog = screen.getByRole('dialog', { name: '모집을 마감할까요?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: '마감' }))
+    await waitFor(() => expect(close).toHaveBeenCalledWith(mine.id))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.queryByRole('button', { name: '마감' })).toBeNull()
+    expect(screen.getAllByText('모집 마감')).toHaveLength(2)
+  })
+
+  it('남의 글이나 마감된 내 글은 수정 화면 대신 안내를 보여 준다', async () => {
+    renderApp('/app/partners/detail?recruitmentId=101')
+    expect(await screen.findByRole('button', { name: '모집글 저장 · 준비 중' })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: '수정' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '마감' })).toBeNull()
+
+    cleanup()
+    renderApp('/app/partners/edit?recruitmentId=101')
+    expect(await screen.findByText('내가 쓴 모집글만 고칠 수 있습니다')).toBeTruthy()
+    expect(screen.queryByRole('form', { name: '모집글 수정' })).toBeNull()
+  })
+
+  it('내 모집글은 마감 확인을 거쳐 마감되고 수정·마감 버튼이 사라진다', async () => {
+    vi.spyOn(appContainer.resolve('getPartnerRecruitmentDetailUseCase'), 'execute')
+      .mockResolvedValue({ ...partnerRecruitmentDetail, id: 104, isMine: true })
+    const close = vi.spyOn(appContainer.resolve('closePartnerRecruitmentUseCase'), 'execute')
+      .mockResolvedValue({ outcome: 'closed', recruitment: { ...partnerRecruitmentDetail, id: 104, isMine: true, status: 'CLOSED' } })
+    renderApp('/app/partners/detail?recruitmentId=104')
+    fireEvent.click(await screen.findByRole('button', { name: '마감' }))
+    expect(close).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole('dialog', { name: '모집을 마감할까요?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: '마감' }))
+    await waitFor(() => expect(close).toHaveBeenCalledWith(104))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.queryByRole('button', { name: '마감' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '수정' })).toBeNull()
+    expect(screen.getAllByText('모집 마감').length).toBeGreaterThan(0)
   })
 
   it('아직 화면이 없는 기업 프로필 보기는 링크로 만들지 않는다', async () => {
@@ -1221,6 +1342,20 @@ describe('제안함 화면', () => {
     await waitFor(() => expect(respond).toHaveBeenCalledWith(303, 'withdraw'))
     expect((await screen.findByRole('alert')).textContent).toContain('이미 처리됐거나 만료된')
     await waitFor(() => expect(browse).toHaveBeenLastCalledWith('sent', expect.any(AbortSignal)))
+  })
+
+  it('보낸 제안 탭을 봐도 받은 제안 배지는 받은 제안함의 대기 건수만 보여 준다', async () => {
+    const browse = appContainer.resolve('browsePartnerProposalsUseCase').execute as ReturnType<typeof vi.fn>
+    // 받은 제안은 없고 내가 보낸 대기 제안만 하나 있는 상태입니다.
+    browse.mockImplementation(async (box) => (box === 'sent' ? sentProposalBox : { box: 'received', proposals: [], pendingCount: 0 }))
+    renderApp('/app/proposals', companyAccount)
+    await screen.findByText(/아직 받은 제안이 없습니다/)
+    expect(screen.getByRole('tab', { name: '받은 제안' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: '보낸 제안' }))
+    await screen.findByRole('tabpanel', { name: '보낸 제안' })
+    expect(screen.getByRole('tab', { name: '받은 제안' })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: /받은 제안 · 대기/ })).toBeNull()
   })
 
   it('기업을 등록하지 않은 회원은 제안함에서 등록 안내를 보고 조회하지 않는다', () => {

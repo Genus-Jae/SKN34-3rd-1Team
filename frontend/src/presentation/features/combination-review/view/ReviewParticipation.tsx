@@ -12,7 +12,7 @@ export function ReviewParticipation({ program, index, name, onChange, onRemove }
   program: ReviewProgram; index: number; name?: string; onChange?: (value: Participation) => void; onRemove?: () => void
 }) {
   return <fieldset className={s.card}>
-    <legend className="px-2 font-semibold">사업 {index + 1}{name ? ` · ${name}` : ''}</legend>
+    <legend className="px-2 font-semibold">사업 {index + 1} · {name ?? '공고 정보 확인 중'}</legend>
     <p className="break-all text-sm text-slate-600">{reviewProgramKey(program)}{program.subProgramId ? ` / 세부사업 ${program.subProgramId}` : ''}</p>
     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
       {fields.map(([key, label]) => {

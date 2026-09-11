@@ -25,14 +25,14 @@ class AccountProfileController(
     private val cookieHelper: SessionCookieHelper,
 ) {
 
-    /** 현재 비밀번호가 맞아야 바꾸며, 지금 쓰는 세션만 남기고 다른 기기의 세션은 끝냅니다. */
+    /** 로그인한 세션으로 본인을 확인하고 바꾸며, 지금 쓰는 세션만 남기고 다른 기기의 세션은 끝냅니다. */
     @PutMapping("/password")
     fun changePassword(
         account: Account,
         @RequestBody @Valid request: ChangePasswordRequest,
         httpRequest: HttpServletRequest,
     ): ResponseEntity<Void> {
-        profileService.changePassword(account, request.currentPassword, request.newPassword, SessionCookieHelper.read(httpRequest))
+        profileService.changePassword(account, request.newPassword, SessionCookieHelper.read(httpRequest))
         return ResponseEntity.noContent().build()
     }
 

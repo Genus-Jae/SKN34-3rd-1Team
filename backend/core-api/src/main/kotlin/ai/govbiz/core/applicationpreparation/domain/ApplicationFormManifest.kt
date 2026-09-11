@@ -1,0 +1,72 @@
+package ai.govbiz.core.applicationpreparation.domain
+
+import java.net.URI
+
+/** 공식 첨부의 고정 hash와 확인한 문항 위치를 담는 첫 지원 양식입니다. */
+data class ApplicationFormManifest(
+    val schemaVersion: Int,
+    val formVersionId: String,
+    val sourceCode: String,
+    val sourceProgramId: String,
+    val programTitle: String,
+    val formTitle: String,
+    val sourceUrl: String,
+    val attachmentFileName: String,
+    val attachmentBytes: Long,
+    val attachmentSha256: String,
+    val verificationStatus: String,
+    val institutionReviewed: Boolean,
+    val supportedServiceFields: List<ApplicationServiceField>,
+    val sections: List<ApplicationFormSectionDefinition>,
+) {
+    init {
+        require(schemaVersion == 1) { "unsupported application form manifest schema" }
+        require(FORM_VERSION_PATTERN.matches(formVersionId)) { "invalid formVersionId" }
+        require(SOURCE_CODE_PATTERN.matches(sourceCode)) { "invalid sourceCode" }
+        require(sourceProgramId.isSafeText(255)) { "invalid sourceProgramId" }
+        require(programTitle.isSafeText(300) && formTitle.isSafeText(300)) { "invalid application form titles" }
+        val uri = URI(sourceUrl)
+        require(uri.scheme == "https" && uri.host in setOf("bizinfo.go.kr", "www.bizinfo.go.kr")) {
+            "application form source must be an official BizInfo HTTPS URL"
+        }
+        require(attachmentFileName.isSafeText(500) && attachmentBytes > 0) { "invalid attachment identity" }
+        require(SHA256_PATTERN.matches(attachmentSha256)) { "invalid attachment hash" }
+        require(verificationStatus == "SOURCE_HASH_AND_LOCATORS_VERIFIED") { "unsupported verification status" }
+        require(!institutionReviewed) { "institution review must not be claimed by this manifest" }
+        require(supportedServiceFields.isNotEmpty() && supportedServiceFields.distinct().size == supportedServiceFields.size) {
+            "supported service fields must be unique"
+        }
+        require(sections.isNotEmpty() && sections.map { it.key }.distinct().size == sections.size) {
+            "application form sections must be unique"
+        }
+    }
+
+    fun supports(field: ApplicationServiceField): Boolean = field in supportedServiceFields
+
+    private companion object {
+        val FORM_VERSION_PATTERN = Regex("[a-z0-9][a-z0-9-]{0,159}")
+        val SOURCE_CODE_PATTERN = Regex("[A-Z][A-Z0-9_]{0,63}")
+        val SHA256_PATTERN = Regex("[0-9a-f]{64}")
+    }
+}
+
+data class ApplicationFormSectionDefinition(
+    val key: String,
+    val title: String,
+    val locator: String,
+    val description: String,
+) {
+    init {
+        require(SECTION_KEY_PATTERN.matches(key)) { "invalid application form section key" }
+        require(title.isSafeText(100) && locator.isSafeText(200) && description.isSafeText(1000)) {
+            "invalid application form section text"
+        }
+    }
+
+    private companion object {
+        val SECTION_KEY_PATTERN = Regex("[a-z][a-z0-9-]{0,63}")
+    }
+}
+
+private fun String.isSafeText(maxCodePoints: Int): Boolean =
+    isNotBlank() && this == trim() && codePointCount(0, length) <= maxCodePoints && !Regex("\\p{C}").containsMatchIn(this)

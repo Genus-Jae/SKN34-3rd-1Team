@@ -1,7 +1,7 @@
 {
   "contractVersion": "combination-review-v1",
   "model": "test-model",
-  "promptVersion": "sha256:ffc873f9ff110eb02d1a567ec6928683a6617e291b312080eb2c7004bb773be6",
+  "promptVersion": "sha256:f0e60686c3d79629d9523b65583a801f0780b83e00a3bbcde043ae895e601bcb",
   "summary": "계약 검증용 고정 응답",
   "pairs": [
     {
@@ -18,7 +18,7 @@
           "citations": [
             {
               "evidenceId": "E0",
-              "quote": "3개 유형에 중복 신청은 가능하나"
+              "quote": "3개 유형에 중복 신청은 가능하나 1개 유형만 수행 가능(동시수행 불가)합니다."
             }
           ]
         },
@@ -59,7 +59,7 @@
           "citations": [
             {
               "evidenceId": "E0",
-              "quote": "3개 유형에 중복 신청은 가능하나"
+              "quote": "3개 유형에 중복 신청은 가능하나 1개 유형만 수행 가능(동시수행 불가)합니다."
             }
           ]
         },

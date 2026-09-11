@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.combination_review.agent import CombinationReviewAgent
-from app.combination_review.models import AnalyzeRequest, AnalysisSelection, validate_selection
+from app.combination_review.models import AnalyzeRequest, AnalysisSelection, build_citation_options, validate_selection
 from app.combination_review.prompt import PROMPT_VERSION
 from app.combination_review.service import CombinationReviewError, CombinationReviewService
 from app.config import Settings
@@ -31,13 +31,20 @@ def response_data():
 
 
 def selection_data():
+    request = AnalyzeRequest.model_validate(request_data())
+    options = build_citation_options(request)
     data = response_data()
     for name in ["contractVersion", "model", "promptVersion"]:
         data.pop(name)
     for pair in data["pairs"]:
         for stage in pair["stages"]:
             for citation in stage["citations"]:
-                citation["evidenceIndex"] = int(citation.pop("evidenceId")[1:])
+                evidence_index = int(citation.pop("evidenceId")[1:])
+                quote = citation.pop("quote")
+                citation["citationOptionIndex"] = next(
+                    index for index, option in enumerate(options)
+                    if option.evidenceIndex == evidence_index and quote in option.quote
+                )
     return data
 
 
@@ -83,7 +90,6 @@ def test_invalid_inputs_are_rejected_before_agent(change):
     lambda d: d["pairs"][0]["stages"][0].update(requiresInstitutionConfirmation=True),
     lambda d: d["pairs"][0]["stages"][0].update(judgment="NEEDS_FACTS", questions=[]),
     lambda d: d["pairs"][0]["stages"].pop(),
-    lambda d: d["pairs"][0]["stages"][0].update(stage="FUNDING"),
 ])
 def test_invalid_judgments_fail_the_structured_contract(change):
     data = selection_data()
@@ -95,8 +101,8 @@ def test_invalid_judgments_fail_the_structured_contract(change):
 @pytest.mark.parametrize("change", [
     lambda d: d["pairs"].append(deepcopy(d["pairs"][0])),
     lambda d: d["pairs"][0].update(secondProgramIndex=2),
-    lambda d: d["pairs"][0]["stages"][0]["citations"][0].update(evidenceIndex=500),
-    lambda d: d["pairs"][0]["stages"][0]["citations"][0].update(quote="원문에 존재하지 않는 인용"),
+    lambda d: d["pairs"][0]["stages"][0].update(stage="FUNDING"),
+    lambda d: d["pairs"][0]["stages"][0]["citations"][0].update(citationOptionIndex=500),
 ])
 def test_invalid_pair_or_citation_is_technical_failure_without_fallback(change):
     data = selection_data()
@@ -108,19 +114,43 @@ def test_invalid_pair_or_citation_is_technical_failure_without_fallback(change):
     assert agent.analyze.call_count == 1
 
 
+def test_returns_the_prebuilt_exact_source_quote_selected_by_the_model():
+    request = request_data()
+    request["evidence"][0]["text"] = "3개\u3000유형에  중복\n신청은 가능하나 1개 유형만 수행 가능합니다."
+    data = selection_data()
+    for stage in data["pairs"][0]["stages"]:
+        for citation in stage["citations"]:
+            citation["citationOptionIndex"] = 0
+    agent = SimpleNamespace(analyze=AsyncMock(return_value=AnalysisSelection.model_validate(data)))
+
+    result = asyncio.run(CombinationReviewService(agent, "test-model").analyze(AnalyzeRequest.model_validate(request)))
+
+    assert all(
+        citation["quote"] == request["evidence"][0]["text"]
+        for stage in result["pairs"][0]["stages"]
+        for citation in stage["citations"]
+    )
+
+
 def test_three_programs_require_all_three_pairs_and_all_six_stages():
     request = request_data()
     program = deepcopy(request["programs"][0])
     program["sourceProgramId"] = "PBLN_3"
     request["programs"].append(program)
     request["evidence"].append({**request["evidence"][0], "id":"E2", "programIndex":2})
+    validated_request = AnalyzeRequest.model_validate(request)
+    options = build_citation_options(validated_request)
     data = selection_data()
     for first, second in [(0,2),(1,2)]:
-        data["pairs"].append({**deepcopy(data["pairs"][0]), "firstProgramIndex":first, "secondProgramIndex":second})
-    validate_selection(AnalyzeRequest.model_validate(request), AnalysisSelection.model_validate(data))
+        pair = {**deepcopy(data["pairs"][0]), "firstProgramIndex":first, "secondProgramIndex":second}
+        for stage in pair["stages"]:
+            for citation in stage["citations"]:
+                citation["citationOptionIndex"] = first
+        data["pairs"].append(pair)
+    validate_selection(validated_request, AnalysisSelection.model_validate(data), options)
     data["pairs"].pop()
     with pytest.raises(ValueError, match="missing or duplicate pair"):
-        validate_selection(AnalyzeRequest.model_validate(request), AnalysisSelection.model_validate(data))
+        validate_selection(validated_request, AnalysisSelection.model_validate(data), options)
 
 
 def test_too_large_context_rejected_without_model_call(monkeypatch):
@@ -178,6 +208,7 @@ def test_fastapi_timeout_response_and_safe_diagnostic_log(caplog):
     assert failure.status_code == 504
     assert failure.json() == {"detail": {"code": "COMBINATION_REVIEW_TIMEOUT"}}
     assert "failure_kind=timeout" in caplog.text
+    assert "failure_reason=upstream_or_schema" in caplog.text
     assert "error_type=TimeoutError" in caplog.text
     assert "program_count=2" in caplog.text
     assert "evidence_count=2" in caplog.text

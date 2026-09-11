@@ -10,6 +10,7 @@ import { useReviewScope } from './useReviewScope'
 export function useReviewEditorViewModel(id: number | null, account: string) {
   const useCase = appContainer.resolve('combinationReviewUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
+  const detailUseCase = appContainer.resolve('getSupportProgramDetailUseCase')
   const journal = appContainer.resolve('reviewRequestJournal')
   const navigate = useNavigate()
   const { perform, ...scope } = useReviewScope()
@@ -33,29 +34,43 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     void perform('load', async (signal) => {
       const saved = journal.read(account, id)
       const [detail, history] = await Promise.all([useCase.get(id, signal), useCase.runs(id, undefined, signal)])
-      return { saved, detail, history }
-    }, ({ saved, detail, history }) => { setReview(detail); setDraft({ title: detail.title, programs: detail.programs }); setRuns(history); setPending(saved); setJournalReady(true) })
-  }, [id, account, journal, useCase, perform])
+      const labels = Object.fromEntries(await Promise.all(detail.programs.map(async (program) => {
+        const key = reviewProgramKey(program)
+        try {
+          const found = await detailUseCase.execute(program, signal)
+          return [key, found ? `${found.title} · ${found.organization}` : '공고 정보를 찾을 수 없음']
+        } catch {
+          return [key, '공고 정보를 불러오지 못함']
+        }
+      })))
+      return { saved, detail, history, labels }
+    }, ({ saved, detail, history, labels }) => { setReview(detail); setDraft({ title: detail.title, programs: detail.programs }); setNames(labels); setRuns(history); setPending(saved); setJournalReady(true) })
+  }, [id, account, journal, useCase, detailUseCase, perform])
   useEffect(() => { load() }, [load])
   const search = (page = 1, term = keyword) => perform('catalog', (signal) => catalogUseCase.execute({ keyword: term, region: '', category: '', sourceCode: '', startupStage: '', applicantType: '', founderAge: '', status: 'ALL', sort: 'RECENT', page, pageSize: 10 }, signal), (result) => { setCatalog(result); setAppliedKeyword(term) })
   const add = (program: SupportProgram) => {
     const selected = { sourceCode: program.sourceCode, sourceProgramId: program.id, subProgramId: null, participation: unknownParticipation() }
     if (draft.programs.length >= 3 || draft.programs.some((p) => reviewProgramKey(p) === reviewProgramKey(selected))) return
-    setDraft({ ...draft, programs: [...draft.programs, selected] }); setNames({ ...names, [reviewProgramKey(selected)]: program.title })
+    setDraft({ ...draft, programs: [...draft.programs, selected] }); setNames({ ...names, [reviewProgramKey(selected)]: `${program.title} · ${program.organization}` })
   }
-  const save = () => {
+  const save = (afterSave?: () => void) => {
     let input: ReviewDraft
     try { input = validateReviewDraft(draft) } catch (e) { setError({ message: (e as Error).message }); return }
     if (id && review) {
       const saved = review
+      if (JSON.stringify(input) === JSON.stringify({ title: saved.title, programs: saved.programs })) {
+        setNotice('저장된 입력으로 공고 분석 단계로 이동했습니다.')
+        afterSave?.()
+        return
+      }
       void perform('save', (signal) => useCase.replace(id, saved.inputRevision, input, signal), () => {
         // PUT 204는 요청한 입력이 다음 버전으로 저장됐음을 뜻한다. 자동 GET으로 다른 편집을 섞지 않는다.
         setReview({ ...saved, ...input, inputRevision: saved.inputRevision + 1 })
-        setDraft(input); setLatest(null); setNotice('입력을 저장했습니다. 분석은 시작하지 않았습니다.')
+        setDraft(input); setLatest(null); setNotice('입력을 저장했습니다. 분석은 시작하지 않았습니다.'); afterSave?.()
       })
     } else {
       void perform('save', (signal) => useCase.create(input, signal), (value) => {
-        navigate(`${appPaths.combinationReviews}/${value.id}`, { replace: true })
+        navigate(`${appPaths.combinationReviews}/${value.id}?step=analysis`, { replace: true })
       })
     }
   }

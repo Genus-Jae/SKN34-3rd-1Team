@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { reviewProgramKey, reviewStages, type ReviewRun } from '../../../../domain/entities/CombinationReview'
 import { ReviewParticipation } from './ReviewParticipation'
 import { reviewStyles as s } from './CombinationReview.styles'
@@ -6,6 +7,7 @@ import { runLabels } from './reviewLabels'
 const stages = { APPLICATION: '신청', SELECTION: '선정', COMMITMENT: '확약', AGREEMENT: '협약', EXECUTION: '수행', FUNDING: '교부' }
 const judgments = { RESTRICTION_APPLIES: '제한 적용', PERMISSION_IN_SCOPE: '명시된 범위 내 허용', NEEDS_FACTS: '사용자 정보 부족', INSUFFICIENT_EVIDENCE: '공식 근거 부족', CONFLICTING_EVIDENCE: '규정 충돌' }
 export function ReviewRunResult({ run, currentRevision, download, downloading }: { run: ReviewRun; currentRevision: number; download: (index: number) => void; downloading: boolean }) {
+  const [openStage, setOpenStage] = useState<string | null>(null)
   return <section className="space-y-4" aria-label={`실행 ${run.id} 결과`}>
     <div className={s.card}>
       <h2 className="text-xl font-bold">실행 #{run.id} · {runLabels[run.status]}</h2>
@@ -28,21 +30,26 @@ export function ReviewRunResult({ run, currentRevision, download, downloading }:
         <p className={s.muted}>{reviewProgramKey(run.input.programs[pair.firstProgramIndex])} ↔ {reviewProgramKey(run.input.programs[pair.secondProgramIndex])}</p>
         {reviewStages.map((stageName) => {
           const stage = pair.stages.find((value) => value.stage === stageName)!
+          const stageKey = `${run.id}:${pair.firstProgramIndex}:${pair.secondProgramIndex}:${stageName}`
+          const isOpen = openStage === stageKey
+          const contentId = `review-stage-${stageKey}`
           return <article className={s.card} key={stageName}>
-            <h4 className="font-bold">{stages[stage.stage]} · {judgments[stage.judgment]}</h4>
-            {stage.requiresInstitutionConfirmation && <p className="mt-2 font-semibold text-amber-800">기관 확인 필요 · 기관 해석 미확인 사항은 판단 보류</p>}
-            <p className="mt-3 whitespace-pre-wrap text-sm"><strong>판단 범위:</strong> {stage.scope}</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm">{stage.explanation}</p>
-            {stage.questions.length > 0 && <div className="mt-3 text-sm"><strong>확인 질문</strong><ul className="list-disc space-y-1 pl-5">{stage.questions.map((q, i) => <li key={i}>{q}</li>)}</ul></div>}
-            {stage.citations.map((citation, i) => {
-              const block = run.evidence?.blocks.find((b) => b.id === citation.evidenceId)
-              const documentIndex = run.evidence?.documents.findIndex((d) => d.rawHash === block?.documentHash && d.programIndex === block?.programIndex) ?? -1
-              return <blockquote className="mt-4 border-l-4 border-emerald-700 bg-emerald-50 p-3 text-sm" key={i}>
-                <p className="whitespace-pre-wrap">{citation.quote}</p>
-                <p className="mt-2 break-all text-xs">{citation.evidenceId} · 사업 {(block?.programIndex ?? 0) + 1} · {block?.locator}</p>
-                {documentIndex >= 0 && <button type="button" className={`${s.button} mt-2`} disabled={downloading} onClick={() => download(documentIndex)}>인용 원본 다운로드</button>}
-              </blockquote>
-            })}
+            <h4><button type="button" className="flex w-full items-center justify-between gap-4 text-left font-bold focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label={`${stages[stage.stage]} · ${judgments[stage.judgment]} ${isOpen ? '접기' : '보기'}`} aria-expanded={isOpen} aria-controls={contentId} onClick={() => setOpenStage(isOpen ? null : stageKey)}><span>{stages[stage.stage]} · {judgments[stage.judgment]}</span><span className="shrink-0 text-sm text-emerald-800">{isOpen ? '접기' : '보기'}</span></button></h4>
+            {isOpen && <div id={contentId} className="mt-4 border-t border-slate-200 pt-4">
+              {stage.requiresInstitutionConfirmation && <p className="font-semibold text-amber-800">기관 확인 필요 · 기관 해석 미확인 사항은 판단 보류</p>}
+              <p className="mt-3 whitespace-pre-wrap text-sm"><strong>판단 범위:</strong> {stage.scope}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{stage.explanation}</p>
+              {stage.questions.length > 0 && <div className="mt-3 text-sm"><strong>확인 질문</strong><ul className="list-disc space-y-1 pl-5">{stage.questions.map((q, i) => <li key={i}>{q}</li>)}</ul></div>}
+              {stage.citations.map((citation, i) => {
+                const block = run.evidence?.blocks.find((b) => b.id === citation.evidenceId)
+                const documentIndex = run.evidence?.documents.findIndex((d) => d.rawHash === block?.documentHash && d.programIndex === block?.programIndex) ?? -1
+                return <blockquote className="mt-4 border-l-4 border-emerald-700 bg-emerald-50 p-3 text-sm" key={i}>
+                  <p className="whitespace-pre-wrap">{citation.quote}</p>
+                  <p className="mt-2 break-all text-xs">{citation.evidenceId} · 사업 {(block?.programIndex ?? 0) + 1} · {block?.locator}</p>
+                  {documentIndex >= 0 && <button type="button" className={`${s.button} mt-2`} disabled={downloading} onClick={() => download(documentIndex)}>인용 원본 다운로드</button>}
+                </blockquote>
+              })}
+            </div>}
           </article>
         })}
       </section>)}

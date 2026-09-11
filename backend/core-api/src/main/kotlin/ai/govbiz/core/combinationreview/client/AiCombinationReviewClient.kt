@@ -9,6 +9,7 @@ import ai.govbiz.core.combinationreview.client.exception.AiCombinationReviewClie
 import ai.govbiz.core.combinationreview.client.exception.AiCombinationReviewClientException.Reason
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.MediaType
+import org.springframework.http.client.ClientHttpResponse
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import tools.jackson.databind.ObjectMapper
@@ -26,15 +27,24 @@ class AiCombinationReviewClient(@param:Qualifier("aiCombinationReviewRestClient"
         client.post().uri("/internal/v1/combination-reviews/analyze").contentType(MediaType.APPLICATION_JSON)
             .body(request).retrieve()
             .onStatus({ it.value() == 422 }, { _, response ->
-                val bytes = response.body.readNBytes(8193)
-                val tooLarge = bytes.size <= 8192 && runCatching {
-                    json.readTree(bytes).path("detail").path("code").toString() == "\"CONTEXT_TOO_LARGE\""
-                }.getOrDefault(false)
+                val tooLarge = readErrorCode(response) == "CONTEXT_TOO_LARGE"
                 throw AiCombinationReviewClientException(if (tooLarge) Reason.CONTEXT_TOO_LARGE else Reason.INVALID_RESPONSE)
+            })
+            .onStatus({ it.value() == 503 }, { _, response ->
+                if (readErrorCode(response) == "COMBINATION_REVIEW_FAILED") {
+                    throw AiCombinationReviewClientException(Reason.INVALID_RESPONSE)
+                }
+                throw AiServiceCallException.unavailable(null)
             })
             .onStatus({ it.value() == 504 }, { _, _ -> throw AiServiceCallException.timeout(null) })
             .onStatus({ it.value() != 200 }, { _, _ -> throw AiServiceCallException.unavailable(null) })
             .body(AiCombinationReviewPayload::class.java)
             ?: throw AiCombinationReviewClientException(Reason.INVALID_RESPONSE)
+    }
+
+    private fun readErrorCode(response: ClientHttpResponse): String? {
+        val bytes = response.body.readNBytes(8193)
+        if (bytes.size > 8192) return null
+        return runCatching { json.readTree(bytes).path("detail").path("code").asString() }.getOrNull()
     }
 }

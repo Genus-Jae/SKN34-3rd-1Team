@@ -2,7 +2,6 @@ import { Link } from 'react-router'
 
 import type { PartnerRecruitmentSummary } from '../../../../domain/entities/PartnerRecruitment'
 import {
-  workspaceChipClassName,
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
@@ -99,7 +98,6 @@ function RecruitmentCard({ recruitment }: { recruitment: PartnerRecruitmentSumma
 /** 파트너 모집 목록입니다. 모집글은 모두 공식 공고 하나에 묶이며 공고가 마감되면 모집도 종료됩니다. */
 export function PartnerRecruitmentListPage() {
   const {
-    hasCompany,
     phase,
     recruitments,
     totalPages,
@@ -115,7 +113,6 @@ export function PartnerRecruitmentListPage() {
     toggleRegion,
     clearRegions,
     submitSearch,
-    toggleMineOnly,
     selectSort,
     goToPage,
     hasActiveNarrowing,
@@ -128,10 +125,6 @@ export function PartnerRecruitmentListPage() {
       <PartnerManagementHeader active="recruitments" />
 
       <div className={workspacePageStyles.content}>
-        <p className={workspacePageStyles.emptyNote}>
-          모집글은 기업 회원이 직접 올린 글입니다. 참여 제안은 상세에서 보내고 제안함에서 처리하며, 추천은 준비 중입니다.
-          {hasCompany ? null : ' 모집글 작성은 프로필에서 기업을 등록한 뒤 열립니다.'}
-        </p>
         <div className={workspacePageStyles.column}>
           {/* 검색어·역할·지역은 조회를 눌러야 적용됩니다. 내 글만·정렬은 바로 적용됩니다. */}
           <form
@@ -177,14 +170,6 @@ export function PartnerRecruitmentListPage() {
 
             <div className={partnerRecruitmentStyles.filterFooter}>
               <span className={partnerRecruitmentStyles.tagRow}>
-                <button
-                  className={workspaceChipClassName(query.mineOnly)}
-                  type="button"
-                  aria-pressed={query.mineOnly}
-                  onClick={toggleMineOnly}
-                >
-                  내가 쓴 모집글만
-                </button>
                 {hasActiveNarrowing ? (
                   <button className={workspacePageStyles.quietLink} type="button" onClick={clearNarrowing}>검색·필터 초기화</button>
                 ) : null}

@@ -13,6 +13,7 @@ export class CombinationReviewRepositoryImpl implements CombinationReviewReposit
     return review
   }
   create(draft: ReviewDraft, signal?: AbortSignal) { return request('', reviewSchema, 'POST', draft, signal) }
+  delete(id: number, signal?: AbortSignal) { return request<void>(`/${id}`, 'empty', 'DELETE', undefined, signal) }
   replace(id: number, expectedRevision: number, draft: ReviewDraft, signal?: AbortSignal) { return request<void>(`/${id}/inputs`, 'empty', 'PUT', { ...draft, expectedRevision }, signal) }
   runs(id: number, beforeId?: number, signal?: AbortSignal) { return request(`/${id}/runs${cursor(beforeId)}`, runPageSchema, 'GET', undefined, signal) }
   async run(id: number, runId: number, signal?: AbortSignal) {

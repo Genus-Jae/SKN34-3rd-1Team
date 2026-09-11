@@ -1,4 +1,4 @@
-import type { PartnerRecruitmentInput } from '../../domain/entities/PartnerRecruitment'
+import type { PartnerRecruitmentContentInput, PartnerRecruitmentInput } from '../../domain/entities/PartnerRecruitment'
 import { partnerRecruitmentPageSize, type PartnerRecruitmentQuery } from '../../domain/entities/PartnerRecruitmentQuery'
 import { AccountApiError } from './accountApi'
 import { getCoreApiBaseUrl } from './coreApiConfig'
@@ -61,6 +61,37 @@ export async function createPartnerRecruitmentApi(
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+    credentials: withSessionCookie,
+    signal,
+  })
+  await rejectFailedResponse(response)
+
+  return partnerRecruitmentDtoSchema.parse(await response.json())
+}
+
+/** 작성자의 수정입니다. 묶인 공고는 바꾸지 않으므로 내용만 보냅니다. */
+export async function updatePartnerRecruitmentApi(
+  id: number,
+  input: PartnerRecruitmentContentInput,
+  signal?: AbortSignal,
+): Promise<PartnerRecruitmentDto> {
+  const response = await fetch(`${getCoreApiBaseUrl()}${RECRUITMENTS_PATH}/${id}`, {
+    method: 'PUT',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    credentials: withSessionCookie,
+    signal,
+  })
+  await rejectFailedResponse(response)
+
+  return partnerRecruitmentDtoSchema.parse(await response.json())
+}
+
+/** 작성자의 수동 마감입니다. 본문 없이 보내고 마감된 모집글을 돌려받습니다. */
+export async function closePartnerRecruitmentApi(id: number, signal?: AbortSignal): Promise<PartnerRecruitmentDto> {
+  const response = await fetch(`${getCoreApiBaseUrl()}${RECRUITMENTS_PATH}/${id}/close`, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
     credentials: withSessionCookie,
     signal,
   })

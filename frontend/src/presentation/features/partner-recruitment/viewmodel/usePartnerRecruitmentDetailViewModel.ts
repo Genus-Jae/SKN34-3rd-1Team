@@ -7,8 +7,9 @@ import {
   proposalMessageMaxLength,
   type MyPartnerProposal,
 } from '../../../../domain/entities/PartnerProposal'
-import type { PartnerRecruitmentMatch } from '../../../../domain/entities/PartnerRecruitment'
+import type { PartnerRecruitment } from '../../../../domain/entities/PartnerRecruitment'
 import type { SendPartnerProposalUseCase } from '../../../../domain/usecases/PartnerProposalUseCases'
+import type { ClosePartnerRecruitmentUseCase } from '../../../../domain/usecases/PartnerRecruitmentUseCases'
 import { useAuthSession } from '../../../shared/auth/hooks/useAuthSession'
 import { useReceivedProposals } from '../../../shared/partner-proposal/useReceivedProposals'
 import { readRecruitmentId, usePartnerRecruitmentDetail } from '../../../shared/partner-recruitment/usePartnerRecruitmentBrowse'
@@ -26,12 +27,18 @@ export const proposalSendMessages = {
   failed: '제안을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
-/** 실제 비교 API가 생기기 전까지 보여 주는 예시 매칭입니다. */
-const exampleMatches: PartnerRecruitmentMatch[] = [
-  { label: '지역', isMatched: true },
-  { label: '역할', isMatched: true },
-  { label: '역량', isMatched: false },
-]
+export const recruitmentCloseMessages = {
+  notMine: '내가 쓴 모집글만 마감할 수 있습니다.',
+  alreadyClosed: '이미 마감된 모집글입니다.',
+  notFound: '모집글을 더 이상 찾을 수 없습니다.',
+  failed: '모집글을 마감하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+} as const
+
+type CloseState =
+  | { status: 'idle' }
+  | { status: 'confirming' }
+  | { status: 'closing' }
+  | { status: 'failed'; message: string }
 
 type ProposalSendState =
   | { status: 'idle' }
@@ -40,15 +47,20 @@ type ProposalSendState =
 
 /**
  * 모집글 상세와 참여 제안의 대표 ViewModel입니다. 모집 API에서 상세를 읽고, 제안 메시지·프로필 공유 선택과
- * 보내기 결과, 링크 복사 상태를 소유합니다. 내 모집글이면 받은 제안 요약을 붙이고, 남의 글이면 내 제안 상태를 보여 줍니다.
+ * 보내기 결과, 링크 복사 상태를 소유합니다. 내 모집글이면 받은 제안 요약을 붙이고 수정·마감으로 이어지며, 남의 글이면 내 제안 상태를 보여 줍니다.
  */
 export function usePartnerRecruitmentDetailViewModel(
   sendUseCase: Pick<SendPartnerProposalUseCase, 'execute'> = appContainer.resolve('sendPartnerProposalUseCase'),
+  closeUseCase: Pick<ClosePartnerRecruitmentUseCase, 'execute'> = appContainer.resolve('closePartnerRecruitmentUseCase'),
 ) {
   const { hasCompany } = useAuthSession()
   const [searchParams] = useSearchParams()
   const recruitmentId = readRecruitmentId(searchParams.getAll('recruitmentId'))
-  const { phase, recruitment } = usePartnerRecruitmentDetail(recruitmentId)
+  const { phase, recruitment: loadedRecruitment } = usePartnerRecruitmentDetail(recruitmentId)
+  // 마감하면 다시 읽지 않고 서버가 돌려준 마감 상태의 글을 그대로 보여 줍니다.
+  const [closedRecruitment, setClosedRecruitment] = useState<PartnerRecruitment | null>(null)
+  const [closeState, setCloseState] = useState<CloseState>({ status: 'idle' })
+  const recruitment = closedRecruitment !== null && closedRecruitment.id === loadedRecruitment?.id ? closedRecruitment : loadedRecruitment
   const [proposalMessage, setProposalMessage] = useState('')
   const [shareProfile, setShareProfile] = useState(true)
   const [sendState, setSendState] = useState<ProposalSendState>({ status: 'idle' })
@@ -103,6 +115,32 @@ export function usePartnerRecruitmentDetailViewModel(
     }
   }
 
+  /** 확인 상자에서 마감을 누르면 마감 UseCase를 부르고, 성공하면 마감된 글로 바꿔 보여 줍니다. */
+  async function confirmClose() {
+    if (recruitment === null || closeState.status === 'closing') return
+    setCloseState({ status: 'closing' })
+    try {
+      const result = await closeUseCase.execute(recruitment.id)
+      switch (result.outcome) {
+        case 'closed':
+          setClosedRecruitment(result.recruitment)
+          setCloseState({ status: 'idle' })
+          return
+        case 'already-closed':
+          setCloseState({ status: 'failed', message: recruitmentCloseMessages.alreadyClosed })
+          return
+        case 'forbidden':
+          setCloseState({ status: 'failed', message: recruitmentCloseMessages.notMine })
+          return
+        case 'not-found':
+          setCloseState({ status: 'failed', message: recruitmentCloseMessages.notFound })
+          return
+      }
+    } catch {
+      setCloseState({ status: 'failed', message: recruitmentCloseMessages.failed })
+    }
+  }
+
   /** 현재 주소를 클립보드에 복사합니다. 클립보드를 쓸 수 없는 환경에서는 실패로만 알립니다. */
   async function copyLink() {
     try {
@@ -119,7 +157,6 @@ export function usePartnerRecruitmentDetailViewModel(
     hasCompany,
     profilePath: appPaths.profile,
     proposalsPath: appPaths.proposals,
-    matches: exampleMatches,
     proposalMessage,
     proposalMessageMaxLength,
     updateProposalMessage: (value: string) => { setProposalMessage(value); setSendState({ status: 'idle' }) },
@@ -135,6 +172,15 @@ export function usePartnerRecruitmentDetailViewModel(
     canSendProposal: recruitment !== null && !recruitment.isMine && recruitment.status === 'OPEN' && myProposal === null,
     receivedProposals,
     receivedProposalsPhase: receivedBox.phase,
+    /** 내 글이면서 모집 중일 때만 수정·마감할 수 있습니다. */
+    canManage: recruitment !== null && recruitment.isMine && recruitment.status === 'OPEN',
+    editPath: recruitment === null ? appPaths.partners : `${appPaths.partnerEdit}?${new URLSearchParams({ recruitmentId: String(recruitment.id) })}`,
+    isCloseConfirmOpen: closeState.status !== 'idle',
+    isClosing: closeState.status === 'closing',
+    closeError: closeState.status === 'failed' ? closeState.message : null,
+    openCloseConfirm: () => setCloseState({ status: 'confirming' }),
+    cancelClose: () => setCloseState({ status: 'idle' }),
+    confirmClose,
     linkCopyState,
     copyLink,
     linkCopyLabel: linkCopyMessages[linkCopyState],

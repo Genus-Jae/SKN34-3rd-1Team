@@ -22,12 +22,13 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import tools.jackson.databind.ObjectMapper
 
 /**
- * 가입 → 기업 등록 → 모집글 작성 → 상세 조회를 실제 MySQL 8.4에서 확인합니다.
+ * 가입 → 기업 등록 → 모집글 작성 → 상세 조회 → 수정·마감을 실제 MySQL 8.4에서 확인합니다.
  * 공고는 동기화 없이 support_program에 직접 넣고, 사업자등록번호 조회는 Bizno Client만 대역으로 바꿉니다.
  */
 @SpringBootTest(
@@ -229,6 +230,78 @@ class PartnerRecruitmentFlowIntegrationTest {
             .andExpect(jsonPath("$.total").value(2))
             .andExpect(jsonPath("$.recruitments[?(@.title == '오늘 마감 모집')].status").value("CLOSED"))
     }
+
+    @Test
+    fun ownersEditAndCloseTheirOwnRecruitments() {
+        val owner = signUp("owner@company.co.kr")
+        mockMvc.perform(
+            post("/api/v1/me/company").cookie(owner).origin()
+                .json("""{"businessNumber":"124-81-00998","region":"서울특별시","industry":"정보통신업","foundedYear":2021}"""),
+        ).andExpect(status().isCreated())
+        val id = objectMapper.readTree(
+            mockMvc.perform(post("/api/v1/partners/recruitments").cookie(owner).origin().json(requestBody()))
+                .andExpect(status().isCreated()).andReturn().response.contentAsString,
+        ).get("id").asLong()
+        val other = signUp("other@company.co.kr")
+
+        // 남의 글, Origin 없는 요청, 공고 접수 마감 이후 마감일, 없는 글은 각각 거절합니다.
+        mockMvc.perform(put("/api/v1/partners/recruitments/$id").cookie(other).origin().json(updateBody()))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_ACTION_FORBIDDEN"))
+        mockMvc.perform(put("/api/v1/partners/recruitments/$id").cookie(owner).json(updateBody()))
+            .andExpect(status().isForbidden())
+        mockMvc.perform(put("/api/v1/partners/recruitments/$id").cookie(owner).origin().json(updateBody(recruitmentDeadline = today.plusDays(30))))
+            .andExpect(status().isUnprocessableContent())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_DEADLINE_NOT_ALLOWED"))
+        mockMvc.perform(put("/api/v1/partners/recruitments/${id + 1000}").cookie(owner).origin().json(updateBody()))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_NOT_FOUND"))
+
+        mockMvc.perform(put("/api/v1/partners/recruitments/$id").cookie(owner).origin().json(updateBody()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.title").value("수정한 제목"))
+            .andExpect(jsonPath("$.seekingCount").value(2))
+            .andExpect(jsonPath("$.capabilities.length()").value(1))
+            .andExpect(jsonPath("$.program.sourceProgramId").value("open-program"))
+            .andExpect(jsonPath("$.status").value("OPEN"))
+            .andExpect(jsonPath("$.isMine").value(true))
+        mockMvc.perform(get("/api/v1/partners/recruitments/$id"))
+            .andExpect(jsonPath("$.title").value("수정한 제목"))
+
+        mockMvc.perform(post("/api/v1/partners/recruitments/$id/close").cookie(other).origin())
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_ACTION_FORBIDDEN"))
+        mockMvc.perform(post("/api/v1/partners/recruitments/$id/close").cookie(owner).origin())
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("CLOSED"))
+        // 마감된 글은 다시 마감하거나 고칠 수 없고, 공개 목록에서 빠지며 내 글 목록에는 마감 상태로 남습니다.
+        mockMvc.perform(post("/api/v1/partners/recruitments/$id/close").cookie(owner).origin())
+            .andExpect(status().isUnprocessableContent())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_CLOSED"))
+        mockMvc.perform(put("/api/v1/partners/recruitments/$id").cookie(owner).origin().json(updateBody()))
+            .andExpect(status().isUnprocessableContent())
+            .andExpect(jsonPath("$.code").value("RECRUITMENT_CLOSED"))
+        mockMvc.perform(get("/api/v1/partners/recruitments"))
+            .andExpect(jsonPath("$.total").value(0))
+        mockMvc.perform(get("/api/v1/partners/recruitments").param("mine", "true").cookie(owner))
+            .andExpect(jsonPath("$.total").value(1))
+            .andExpect(jsonPath("$.recruitments[0].status").value("CLOSED"))
+    }
+
+    private fun updateBody(recruitmentDeadline: LocalDate = today.plusDays(12)): String =
+        """
+        {
+          "title": " 수정한 제목 ",
+          "body": "고친 본문입니다.",
+          "ownRole": "PARTICIPANT",
+          "seekingRole": "LEAD",
+          "seekingCount": 2,
+          "region": "부산",
+          "minimumCompanyAgeYears": null,
+          "capabilities": ["라벨링"],
+          "recruitmentDeadline": "$recruitmentDeadline"
+        }
+        """.trimIndent()
 
     private fun requestBody(
         sourceProgramId: String = "open-program",

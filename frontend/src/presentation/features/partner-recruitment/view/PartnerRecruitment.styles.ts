@@ -19,6 +19,8 @@ export const partnerRecruitmentStyles = {
   // 폭에 따라 3열·2열·1열로 저절로 줄어드는 격자입니다. 한 줄은 최대 3열(카드 폭이 전체의 1/3 이상)이고 같은 줄의 카드는 같은 높이로 늘어납니다.
   cardGrid: 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,max(300px,calc((100%_-_2rem)/3))),1fr))]',
   cardTop: 'flex items-center justify-between gap-3',
+  // 카드 제목·눈썹 옆에 ? 도움말을 붙이는 줄입니다.
+  titleRow: 'flex items-center gap-2',
   cardDeadline: 'text-[0.74rem] font-extrabold text-[#b75561]',
   mineDeadline: 'text-[0.74rem] font-extrabold text-sample-muted',
   cardTitle:

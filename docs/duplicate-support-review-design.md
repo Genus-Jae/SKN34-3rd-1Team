@@ -123,13 +123,14 @@ LLM이 사용자 설명에서 추출한 중요한 상태 변경은 제안으로 
 
 ## 5. API 계약
 
-생성·목록·상세·입력 수정과 runs·AI 내부 분석 경로를 구현했다. messages 경로는 아직 미구현 설계다.
+생성·목록·상세·입력 수정·삭제와 runs·AI 내부 분석 경로를 구현했다. messages 경로는 아직 미구현 설계다.
 
 | API | 동작 |
 |---|---|
 | POST `/api/v1/combination-reviews` | 선택 사업으로 검토 건 생성. 소유자는 서버 세션에서 결정 |
 | GET `/api/v1/combination-reviews` | 본인 검토 목록 조회 |
 | GET `/api/v1/combination-reviews/{id}` | 본인 현재 입력·버전 조회. 실행은 별도 runs 경로에서 조회 |
+| DELETE `/api/v1/combination-reviews/{id}` | 본인 검토 삭제. 선택 공고·실행 이력·보관 원문은 FK cascade로 함께 삭제 |
 | PUT `/api/v1/combination-reviews/{id}/inputs` | 확인한 입력 저장. `expectedRevision`으로 동시 수정 검출 |
 | POST `/api/v1/combination-reviews/{id}/messages` | 답변 해석·상태 변경 제안. 확정 입력은 자동 덮어쓰지 않음 |
 | POST `/api/v1/combination-reviews/{id}/runs` | 지정 입력 버전으로 검토 실행 |
@@ -139,7 +140,7 @@ LLM이 사용자 설명에서 추출한 중요한 상태 변경은 제안으로 
 | GET `/internal/v1/combination-reviews/configuration` | AI 모델·프롬프트·계약 버전 확인. LLM 호출 없음 |
 | POST `/internal/v1/combination-reviews/analyze` | Core가 구성한 근거·사실을 AI Service에서 분석 |
 
-쓰기 요청에는 세션 쿠키를 전달하고 기존 Origin 검사를 유지한다. CORS의 GET·POST 허용에 PUT을 추가했다.
+쓰기 요청에는 세션 쿠키를 전달하고 기존 Origin 검사를 유지한다. CORS의 GET·POST 허용에 PUT·DELETE를 추가했다.
 401 인증 만료, 403 접근 제한, 404 없는/접근 불가 자원, 409 입력 버전 충돌, 429 요청 제한,
 503 서비스 불가, 504 시간 초과를 각 계약에서 일관되게 처리한다. 자료 부족은 모델 장애와 구분한다.
 권한 있는 요청의 정상 분석에서 근거가 부족하면 성공 결과에 `INSUFFICIENT_EVIDENCE`를 담는다.
@@ -518,7 +519,8 @@ HWPX XML의 외부 엔티티/DTD를 차단하고 압축 파일을 로컬 경로�
 ### 분석과 오류 계약
 
 AI는 모든 사업쌍의 신청·선정·확약·협약·수행·교부 여섯 단계를 반환한다. `PERMISSION_IN_SCOPE`는 좁은 명시 범위만 허용한다.
-정확한 인용이 없는 확정 판단, 기관 확인이 필요한 확정 판단, 누락/중복 사업쌍·단계, 원문에 없는 인용은 저장 성공으로 바꾸지 않는다.
+원문을 800자 이하의 인용 선택지로 나누고 AI는 번호만 선택하며, 코드가 근거 ID와 정확한 원문을 복원한다. 다른 사업쌍의
+선택지나 범위 밖 번호, 기관 확인이 필요한 확정 판단, 누락/중복 사업쌍·단계는 저장 성공으로 바꾸지 않는다.
 사용자 사실 부족·공식 근거 부족·규정 충돌은 정상 분석의 서로 다른 판단 상태다. 기술 실패는 analysis=null인 FAILED다.
 
 | HTTP | code / 조건 |
@@ -534,7 +536,8 @@ AI는 모든 사업쌍의 신청·선정·확약·협약·수행·교부 여섯 
 Run을 예약한 뒤 실패하면 ProblemDetail에 runId를 포함한다. 예외 원문·개인 입력·원본 파일 내용은 오류 본문에 싣지 않는다.
 AI 모델 `60s`·Agent 실행 `70s`·Core 전용 읽기 `75s`를 사용한다. AI 내부 timeout은 504
 `COMBINATION_REVIEW_TIMEOUT`과 민감정보 없는 진단 로그로 구분하며, Core 실행 이력에는 기존 공개 계약인
-`ANALYSIS_UNAVAILABLE`로 저장해 정상적인 근거 부족과 구분한다.
+`ANALYSIS_UNAVAILABLE`로 저장해 정상적인 근거 부족과 구분한다. AI가 503 `COMBINATION_REVIEW_FAILED`를 반환한
+응답 계약·인용 검증 실패는 연결 장애와 구분해 `ANALYSIS_INVALID`로 저장한다.
 같은 키로 실패 실행을 재조회해도 재시도하지 않는다. 새 키로 다시 실행할지는 호출자가 결과를 확인하고 결정한다.
 
 ### 비정상 종료 복구
@@ -610,7 +613,8 @@ AI production 코드와 공개 서비스 간 계약은 변경하지 않았으므
 
 ## 15. 사용자 화면 (5-1, 2026-09-09)
 
-`/app/combination-reviews` 아래 목록·새 검토·상세 입력 수정·분석 실행·실행 이력 화면을 연결했다.
+`/app/combination-reviews` 아래 목록·새 검토·상세 입력 수정·분석 실행·실행 이력 화면을 연결했다. 새 검토와 상세는
+`제목·공고 선택 → 참여 상태 설정 → 공고 분석` 3단계로 나누며, 목록에서는 확인 후 검토를 삭제할 수 있다.
 기존 RequireAuth·WorkspaceLayout·appPaths·Awilix DI·세션 쿠키를 재사용한다.
 `View → ViewModel → CombinationReviewUseCase → Domain Repository 계약 → Data 구현 → HTTP/Zod → Core API`로 호출하며
 공고 선택은 기존 BrowseSupportProgramsUseCase의 무료 카탈로그 조회를 사용한다.
@@ -623,7 +627,8 @@ AI production 코드와 공개 서비스 간 계약은 변경하지 않았으므
 - 동기 POST 대기와 저장된 RUNNING을 구분하며 시간 경과만으로 실패 처리하거나 새 실행을 만들지 않는다.
   422·429·503 및 runId가 있는 오류를 구분하고 실패 실행을 조회할 수 있다.
 - Run 입력 스냅샷의 사업 순서·버전·추가 설명으로 결과를 표시한다. 신청·선정·확약·협약·수행·교부의
-  판단 범위·질문·기관 확인·한계와 원문 위치·인용·다운로드를 제공한다. FAILED/INTERRUPTED는 정상 판단이 아니다.
+  판단 상태는 먼저 요약하고, 선택한 한 단계의 범위·질문·기관 확인·원문 위치·인용·다운로드만 펼쳐 제공한다.
+  FAILED/INTERRUPTED는 정상 판단이 아니다.
 - HTTP 응답에서 enum·참조·원문 인용과 요청의 reviewId/requestKey/입력 버전/추가 설명 일치를 검사한다.
 - 로그아웃·계정 전환 시 미확인 요청 기록을 지우고 요청을 취소한다. 세션 참조 검사를 통해 늦은 결과 반영도 막는다.
 

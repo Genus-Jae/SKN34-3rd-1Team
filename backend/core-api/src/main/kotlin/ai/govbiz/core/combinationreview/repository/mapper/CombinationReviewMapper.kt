@@ -38,4 +38,9 @@ interface CombinationReviewMapper {
         @Param("ownerAccountId") ownerAccountId: Long,
         @Param("reviewId") reviewId: Long,
     ): Int
+
+    fun deleteReview(
+        @Param("ownerAccountId") ownerAccountId: Long,
+        @Param("reviewId") reviewId: Long,
+    ): Int
 }

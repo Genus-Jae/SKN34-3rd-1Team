@@ -14,7 +14,9 @@ FastAPI, OpenAI 임베딩, Qdrant로 전체 공고에서 관련 후보를 찾고
 `max_turns=1`, 출력 최대 6,000 tokens, `store=False`, tracing 비활성화를 적용합니다.
 입력은 최대 512블록·120,000자이며 이미지에 이미 포함된 cl100k_base로 계산한 JSON 입력이 100,000 tokens를 넘으면 거절합니다.
 모델 컨텍스트에 맞추려고 본문·각주·붙임을 조용히 잘라내지 않습니다. 이 경로는 임베딩/Qdrant를 사용하지 않습니다.
-근거 ID는 코드가 복원하고, 사업쌍 누락·단계 중복·원문에 없는 인용·기관 확인이 필요한 확정 판단은 기술 오류로 거절합니다.
+원문은 800자 이하의 정확한 인용 선택지로 나누고 모델은 선택지 번호만 반환합니다. 근거 ID와 인용문은 코드가 원문에서
+복원하므로 모델이 공백·문장부호를 바꾼 인용을 생성하지 않습니다. 다른 사업쌍의 선택지, 범위 밖 번호, 사업쌍 누락·단계 중복,
+기관 확인이 필요한 확정 판단은 기술 오류로 거절합니다.
 구조화 출력의 형태 준수와 실제 판단 품질은 다르며 [공식 안내](https://developers.openai.com/api/docs/guides/structured-outputs)를 참고합니다.
 [실행·원문 관리 계약](../../docs/duplicate-support-review-design.md)과 [무료 검증](../../evaluation/combination-review/README.md)에 범위를 정리했습니다.
 

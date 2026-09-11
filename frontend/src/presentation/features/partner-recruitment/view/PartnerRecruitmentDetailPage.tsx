@@ -6,6 +6,9 @@ import {
   workspacePageStyles,
   workspaceTagClassName,
 } from '../../../shared/workspace/WorkspacePage.styles'
+import { HelpTip } from '../../../shared/workspace/HelpTip'
+import { WorkspaceModal } from '../../../shared/workspace/WorkspaceModal'
+import { workspaceModalStyles } from '../../../shared/workspace/WorkspaceModal.styles'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import {
   companyAgeLabel,
@@ -18,7 +21,11 @@ import { appPaths } from '../../../shared/routes/appPaths'
 import { usePartnerRecruitmentDetailViewModel } from '../viewmodel/usePartnerRecruitmentDetailViewModel'
 import { partnerRecruitmentStyles } from './PartnerRecruitment.styles'
 
-/** 모집글 상세와 참여 제안 화면입니다. 공고 원문은 그대로 보여주고 매칭은 예시로만 표시합니다. */
+/**
+ * 모집글 상세와 참여 제안 화면입니다. 공고 원문은 그대로 보여 줍니다.
+ * 남의 글은 오른쪽 칸에 참여 제안 폼(또는 내 제안 상태)을 두고, 내 글은 한 칸으로 받은 제안 카드를 모집 조건 아래에 둡니다.
+ * 제안 상태 흐름은 카드 제목 옆 `?` 도움말입니다.
+ */
 export function PartnerRecruitmentDetailPage() {
   const {
     phase,
@@ -26,7 +33,6 @@ export function PartnerRecruitmentDetailPage() {
     hasCompany,
     profilePath,
     proposalsPath,
-    matches,
     proposalRequirement,
     proposalMessage,
     proposalMessageMaxLength,
@@ -41,6 +47,14 @@ export function PartnerRecruitmentDetailPage() {
     canSendProposal,
     receivedProposals,
     receivedProposalsPhase,
+    canManage,
+    editPath,
+    isCloseConfirmOpen,
+    isClosing,
+    closeError,
+    openCloseConfirm,
+    cancelClose,
+    confirmClose,
     linkCopyState,
     copyLink,
     linkCopyLabel,
@@ -70,6 +84,20 @@ export function PartnerRecruitmentDetailPage() {
   }
 
   const isClosed = recruitment.status === 'CLOSED'
+  // 제안 상태 흐름은 카드 옆에 늘 펼쳐 두지 않고 ? 도움말로 필요할 때만 봅니다.
+  const flowHelp = (
+    <HelpTip label="제안 상태 흐름 도움말" title="제안 상태 흐름">
+      <div className={partnerRecruitmentStyles.flowRow}>
+        {proposalFlowSteps.map((step, index) => (
+          <span className="flex items-center gap-[0.35rem]" key={step}>
+            {index > 0 ? <span aria-hidden="true">›</span> : null}
+            <span className={partnerRecruitmentStyles.flowStep}>{step}</span>
+          </span>
+        ))}
+      </div>
+      <p className="m-0">거절되거나 7일간 응답이 없으면 제안은 만료되고, 같은 모집글에는 다시 제안할 수 없습니다.</p>
+    </HelpTip>
+  )
   const conditions = [
     { label: '우리 역할', value: partnerRoleLabels[recruitment.ownRole] },
     { label: '찾는 역할', value: `${partnerRoleLabels[recruitment.seekingRole]} ${recruitment.seekingCount}곳` },
@@ -86,9 +114,17 @@ export function PartnerRecruitmentDetailPage() {
         title="모집글 상세"
         actions={
           <>
-            <button className={workspacePageStyles.secondaryButton} type="button" disabled>
-            모집글 저장 · 준비 중
-            </button>
+            {/* 내 글이면서 모집 중일 때만 수정·마감이 열립니다. 남의 글에는 관심 저장 자리를 남겨 둡니다. */}
+            {canManage ? (
+              <>
+                <Link className={workspacePageStyles.secondaryButton} to={editPath}>수정</Link>
+                <button className={workspacePageStyles.dangerButton} type="button" onClick={openCloseConfirm}>마감</button>
+              </>
+            ) : recruitment.isMine ? null : (
+              <button className={workspacePageStyles.secondaryButton} type="button" disabled>
+                모집글 저장 · 준비 중
+              </button>
+            )}
             <button
             className={workspacePageStyles.secondaryButton}
             type="button"
@@ -103,12 +139,7 @@ export function PartnerRecruitmentDetailPage() {
       />
 
       <div className={workspacePageStyles.content}>
-        <p className={workspacePageStyles.emptyNote}>
-          {recruitment.isMine
-            ? '내가 올린 모집글입니다. 받은 제안은 제안함에서 수락·거절합니다. 수정·마감은 준비 중입니다.'
-            : '매칭은 예시입니다. 제안을 보내면 상대가 수락한 뒤에만 담당자 이메일이 서로에게 공개됩니다.'}
-        </p>
-        <div className={workspacePageStyles.columns}>
+        <div className={recruitment.isMine ? workspacePageStyles.column : workspacePageStyles.columns}>
           <div className={workspacePageStyles.column}>
             <section className={workspacePageStyles.card} aria-label="모집 조건">
               <div className={partnerRecruitmentStyles.cardTop}>
@@ -160,6 +191,40 @@ export function PartnerRecruitmentDetailPage() {
               </div>
             </section>
 
+            {/* 내 글을 여는 이유는 대개 받은 제안 확인이므로 조건 바로 아래 본문 칸에 둡니다. 수락·거절은 제안함이 맡습니다. */}
+            {recruitment.isMine ? (
+              <section className={workspacePageStyles.card} aria-label="받은 제안">
+                <div className={workspacePageStyles.cardHeader}>
+                  <div className={partnerRecruitmentStyles.titleRow}>
+                    <h2 className={workspacePageStyles.cardTitle}>받은 제안</h2>
+                    {flowHelp}
+                  </div>
+                  <span className={workspaceTagClassName('muted')}>{recruitment.proposalCount}건</span>
+                </div>
+                {receivedProposalsPhase === 'failed' ? (
+                  <p className={workspacePageStyles.emptyNote}>받은 제안을 불러오지 못했습니다. 제안함에서 다시 확인해 주세요.</p>
+                ) : receivedProposals.length === 0 ? (
+                  <p className={workspacePageStyles.emptyNote}>
+                    {receivedProposalsPhase === 'loading' ? '받은 제안을 불러오는 중입니다.' : '아직 이 모집글로 온 제안이 없습니다.'}
+                  </p>
+                ) : (
+                  <div className={partnerRecruitmentStyles.sideList}>
+                    {receivedProposals.map((proposal) => (
+                      <div className={partnerRecruitmentStyles.matchRow} key={proposal.id}>
+                        <span>{proposal.counterpart.companyName}</span>
+                        <span className={workspaceTagClassName(partnerProposalStatusTones[proposal.status])}>
+                          {partnerProposalStatusLabels[proposal.status]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className={partnerRecruitmentStyles.linkRow}>
+                  <Link className={workspacePageStyles.secondaryButton} to={proposalsPath}>제안함에서 수락·거절</Link>
+                </div>
+              </section>
+            ) : null}
+
             <section className={workspacePageStyles.card} aria-label="연결된 공고">
               <p className={workspacePageStyles.sectionEyebrow}>연결된 공고</p>
               <div className={partnerRecruitmentStyles.cardTop}>
@@ -210,11 +275,6 @@ export function PartnerRecruitmentDetailPage() {
                 </p>
               ))}
 
-              <p className={partnerRecruitmentStyles.disclaimer}>
-                모집글의 내용은 작성 기업이 직접 입력한 것이며 GovBiz가 검증하지 않습니다. 공고
-                요건은 위 공식 원문에서 확인하세요.
-              </p>
-
               <div className={partnerRecruitmentStyles.linkRow}>
                 <button className={workspacePageStyles.mutedLink} type="button" disabled>
                   이 모집글 숨기기 · 준비 중
@@ -226,62 +286,14 @@ export function PartnerRecruitmentDetailPage() {
             </section>
           </div>
 
-          <aside className={workspacePageStyles.column} aria-label="매칭과 참여 제안">
-            <section className={workspacePageStyles.card} aria-label="우리 기업과의 매칭">
-              <p className={workspacePageStyles.sectionEyebrow}>우리 기업과의 매칭</p>
-              {hasCompany ? (
-                <>
-                  <p className={workspacePageStyles.emptyNote}>
-                    예시 비교입니다. 추천 API가 생기면 등록한 소재지·업종·설립연도로 실제 비교하며, 확인 필요
-                    항목은 상대에게 직접 물어보세요.
-                  </p>
-                  <div className={partnerRecruitmentStyles.sideList}>
-                    {matches.map((match) => (
-                      <div className={partnerRecruitmentStyles.matchRow} key={match.label}>
-                        <span>{match.label}</span>
-                        <span className={workspaceTagClassName(match.isMatched ? 'ok' : 'warn')}>
-                          {match.isMatched ? '일치' : '확인 필요'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className={workspacePageStyles.emptyNote}>
-                    기업을 등록하면 소재지·업종·설립연도로 모집 조건과의 일치를 보여 줍니다.
-                  </p>
-                  <Link className={workspacePageStyles.quietLink} to={profilePath}>프로필에서 기업 등록</Link>
-                </>
-              )}
-            </section>
-
-            {recruitment.isMine ? (
-              <section className={workspacePageStyles.card} aria-label="받은 제안">
-                <p className={workspacePageStyles.sectionEyebrow}>받은 제안</p>
-                {receivedProposalsPhase === 'failed' ? (
-                  <p className={workspacePageStyles.emptyNote}>받은 제안을 불러오지 못했습니다. 제안함에서 다시 확인해 주세요.</p>
-                ) : receivedProposals.length === 0 ? (
-                  <p className={workspacePageStyles.emptyNote}>
-                    {receivedProposalsPhase === 'loading' ? '받은 제안을 불러오는 중입니다.' : '아직 이 모집글로 온 제안이 없습니다.'}
-                  </p>
-                ) : (
-                  <div className={partnerRecruitmentStyles.sideList}>
-                    {receivedProposals.map((proposal) => (
-                      <div className={partnerRecruitmentStyles.matchRow} key={proposal.id}>
-                        <span>{proposal.counterpart.companyName}</span>
-                        <span className={workspaceTagClassName(partnerProposalStatusTones[proposal.status])}>
-                          {partnerProposalStatusLabels[proposal.status]}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Link className={workspacePageStyles.quietLink} to={proposalsPath}>제안함에서 수락·거절</Link>
-              </section>
-            ) : myProposal !== null ? (
+          {recruitment.isMine ? null : (
+          <aside className={workspacePageStyles.column} aria-label="참여 제안">
+            {myProposal !== null ? (
               <section className={partnerRecruitmentStyles.proposalCard} aria-label="내 제안 상태">
-                <p className={workspacePageStyles.sectionEyebrow}>참여 제안</p>
+                <div className={partnerRecruitmentStyles.titleRow}>
+                  <p className={workspacePageStyles.sectionEyebrow}>참여 제안</p>
+                  {flowHelp}
+                </div>
                 <strong className={workspacePageStyles.cardTitle}>제안을 보냈습니다 · {myProposalLabel}</strong>
                 <p className={partnerRecruitmentStyles.disclaimer}>
                   {myProposal.status === 'PENDING'
@@ -299,7 +311,10 @@ export function PartnerRecruitmentDetailPage() {
                 aria-label="참여 제안"
               >
                 <div className="flex flex-col gap-1">
-                  <p className={workspacePageStyles.sectionEyebrow}>참여 제안</p>
+                  <div className={partnerRecruitmentStyles.titleRow}>
+                    <p className={workspacePageStyles.sectionEyebrow}>참여 제안</p>
+                    {flowHelp}
+                  </div>
                   <strong className={workspacePageStyles.cardTitle}>
                     {recruitment.company.companyName}에 제안 보내기
                   </strong>
@@ -351,23 +366,26 @@ export function PartnerRecruitmentDetailPage() {
               </form>
             )}
 
-            <section className={partnerRecruitmentStyles.noticeCard}>
-              <p className={workspacePageStyles.sectionEyebrow}>제안 상태 흐름</p>
-              <div className={partnerRecruitmentStyles.flowRow}>
-                {proposalFlowSteps.map((step, index) => (
-                  <span className="flex items-center gap-[0.35rem]" key={step}>
-                    {index > 0 ? <span aria-hidden="true">›</span> : null}
-                    <span className={partnerRecruitmentStyles.flowStep}>{step}</span>
-                  </span>
-                ))}
-              </div>
-              <p className={partnerRecruitmentStyles.noticeText}>
-                거절되거나 7일간 응답이 없으면 제안은 만료되고, 같은 모집글에는 다시 제안할 수 없습니다.
-              </p>
-            </section>
           </aside>
+          )}
         </div>
       </div>
+
+      <WorkspaceModal
+        isOpen={isCloseConfirmOpen}
+        title="모집을 마감할까요?"
+        description="마감하면 새 제안을 받지 않고 대기 중인 제안은 만료됩니다. 되돌릴 수 없습니다."
+        tone="danger"
+        onClose={cancelClose}
+      >
+        {closeError ? <p className={workspaceModalStyles.error} role="alert">{closeError}</p> : null}
+        <div className={workspaceModalStyles.actions}>
+          <button className={workspaceModalStyles.ghostButton} type="button" onClick={cancelClose}>취소</button>
+          <button className={workspacePageStyles.dangerButton} type="button" disabled={isClosing} onClick={() => void confirmClose()}>
+            {isClosing ? '마감 중…' : '마감'}
+          </button>
+        </div>
+      </WorkspaceModal>
     </>
   )
 }

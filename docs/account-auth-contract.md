@@ -18,7 +18,7 @@ Browser
 | `POST /api/v1/auth/dev-login` | 없음 | 200 세션 응답 + `Set-Cookie` (개발 환경 전용) |
 | `GET /api/v1/auth/me` | 세션 쿠키 | 200 계정 |
 | `POST /api/v1/auth/logout` | 세션 쿠키 | 204 + 쿠키 만료 |
-| `PUT /api/v1/me/password` | 세션 쿠키 + Origin | 204. 다른 기기 세션 종료 |
+| `PUT /api/v1/me/password` | 세션 쿠키 + Origin | 204. 현재 비밀번호 없이 새 비밀번호만 받고 다른 기기 세션 종료 |
 | `GET /api/v1/me/deletion-preview` | 세션 쿠키 | 200 삭제 시 함께 닫히는 것의 수 |
 | `DELETE /api/v1/me` | 세션 쿠키 + Origin | 204 + 쿠키 만료 |
 
@@ -227,7 +227,7 @@ Cookie: govbiz_session=<JWT>
 
 ## 파트너 모집글
 
-모집글은 제공처에 현재 있는 공고 하나에 묶이며, 작성은 기업을 등록한 회원(`COMPANY`)만 할 수 있습니다. 읽기는 세션 없이도
+모집글은 제공처에 현재 있는 공고 하나에 묶이며, 작성은 기업을 등록한 회원(`COMPANY`)만, 수정·마감은 작성자만 할 수 있습니다. 읽기는 세션 없이도
 가능하고 쿠키가 있으면 `isMine`으로 내 글을 표시합니다. 담당자 이름·연락처는 응답에 싣지 않습니다.
 
 | 메서드·경로 | 용도 | 성공 |
@@ -235,6 +235,8 @@ Cookie: govbiz_session=<JWT>
 | `GET /api/v1/partners/recruitments` | 목록. `keyword`(제목·공고·기관·기업명, 100자) `seekingRole`(LEAD·PARTICIPANT·DEMAND, 여러 번 보내 함께 고름) `region`(시·도 또는 전국, 여러 번 보내 함께 고름) `mine`(세션 필요) `sort`(DEADLINE·RECENT) `page` `pageSize`(1~50, 기본 20) | 200 `recruitments[]` `total` `page` `pageSize` `totalPages` |
 | `GET /api/v1/partners/recruitments/{id}` | 상세 | 200 모집글 응답, 없으면 404 `RECRUITMENT_NOT_FOUND` |
 | `POST /api/v1/partners/recruitments` | 작성. 서버가 공고 존재·접수 상태·마감일·중복을 확인 | 201 모집글 응답 |
+| `PUT /api/v1/partners/recruitments/{id}` | 수정. 작성자만, 모집 중인 글만. 묶인 공고는 바꾸지 않으므로 본문은 작성 요청에서 `sourceCode`·`sourceProgramId`를 뺀 것. 마감일 규칙은 작성과 같음 | 200 모집글 응답. 남의 글 403 `RECRUITMENT_ACTION_FORBIDDEN`, 마감된 글 422 `RECRUITMENT_CLOSED` |
+| `POST /api/v1/partners/recruitments/{id}/close` | 수동 마감. 작성자만. 대기 중인 제안은 조회 시점에 만료로 계산 | 200 모집글 응답(`status` CLOSED). 이미 끝난 글 422 `RECRUITMENT_CLOSED` |
 
 ```http
 POST /api/v1/partners/recruitments
@@ -317,21 +319,21 @@ non-null 파라미터는 세션이 없을 때 401이고, `Account?`는 쿠키가
 
 ## 비밀번호 변경·계정 삭제
 
-둘 다 로그인한 상태에서 **현재 비밀번호를 다시 확인**합니다. 틀리면 422 `CURRENT_PASSWORD_MISMATCH`이며 세션은 그대로입니다
-(401이 아니라 로그아웃되지 않습니다). 접속 주소 한도(분당 20회)는 로그인과 같이 씁니다.
+비밀번호 변경은 로그인한 세션을 본인 확인으로 삼아 **현재 비밀번호를 받지 않습니다.** 계정 삭제는 되돌릴 수 없으므로
+**현재 비밀번호를 다시 확인**하며, 틀리면 422 `CURRENT_PASSWORD_MISMATCH`이고 세션은 그대로입니다(401이 아니라 로그아웃되지
+않습니다). 접속 주소 한도(분당 20회)는 로그인과 같이 씁니다.
 
 ```http
 PUT /api/v1/me/password
 Cookie: govbiz_session=<JWT>
 Origin: http://127.0.0.1:5173
 
-{ "currentPassword": "password1", "newPassword": "new-password-2" }
+{ "newPassword": "new-password-2" }
 ```
 
 | 필드 | 규칙 |
 |---|---|
-| `currentPassword` | 1~72자 |
-| `newPassword` | 8~72자(가입과 같음). 프런트는 현재 비밀번호와 같은 값을 보내지 않음 |
+| `newPassword` | 8~72자(가입과 같음) |
 
 성공은 204입니다. 새 해시를 저장하고 **요청한 세션만 남긴 채 같은 계정의 다른 세션 행을 지워** 다른 기기는 401이 됩니다.
 
@@ -402,7 +404,7 @@ POST /api/v1/auth/password-reset/confirm
 | 이메일 형식·비밀번호 누락 등 요청 검증 실패 | 400 | `REQUEST_VALIDATION_FAILED` (`errors[].field`) |
 | 이메일 없음 또는 비밀번호 불일치 | 401 | `INVALID_CREDENTIALS` |
 | 이미 가입된 이메일로 회원가입 | 409 | `EMAIL_ALREADY_REGISTERED` |
-| 비밀번호 변경·계정 삭제의 현재 비밀번호 불일치 | 422 | `CURRENT_PASSWORD_MISMATCH` |
+| 계정 삭제의 현재 비밀번호 불일치 | 422 | `CURRENT_PASSWORD_MISMATCH` |
 | 비밀번호 재설정 토큰이 없거나 만료·사용됨 | 422 | `PASSWORD_RESET_TOKEN_INVALID` |
 | SMTP가 없어 재설정 메일을 보낼 수 없음(개발용 로그인도 꺼짐) | 503 | `PASSWORD_RESET_MAIL_UNAVAILABLE` |
 | 기업을 등록하지 않은 계정의 기업 조회·수정 | 404 | `COMPANY_NOT_REGISTERED` |

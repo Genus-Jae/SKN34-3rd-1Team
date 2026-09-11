@@ -14,20 +14,19 @@ import { signedOut } from '../../../shared/auth/state/authSlice'
 import { publicPaths } from '../../../shared/routes/appPaths'
 
 export const accountSecurityMessages = {
-  currentPasswordRequired: '현재 비밀번호를 입력해 주세요.',
-  newPasswordLength: `${signUpPasswordLength.min}자 이상 ${signUpPasswordLength.max}자 이하로 입력합니다.`,
+  newPasswordLength: `${signUpPasswordLength.min}자 이상 ${signUpPasswordLength.max}자 이하`,
   newPasswordInvalid: `새 비밀번호는 ${signUpPasswordLength.min}자 이상 ${signUpPasswordLength.max}자 이하여야 합니다.`,
-  newPasswordSame: '현재 비밀번호와 다른 비밀번호를 입력해 주세요.',
   confirmationMismatch: '새 비밀번호와 다릅니다.',
+  confirmationMatch: '새 비밀번호와 일치합니다.',
   currentPasswordMismatch: '현재 비밀번호가 맞지 않습니다.',
   rateLimited: (retryAfterSeconds: number | null) =>
     retryAfterSeconds === null ? '시도가 많아 잠시 막혔습니다. 잠시 후 다시 시도해 주세요.' : `시도가 많아 잠시 막혔습니다. ${retryAfterSeconds}초 뒤에 다시 시도해 주세요.`,
   requestFailed: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
-  passwordChanged: '비밀번호를 변경했습니다. 다른 기기의 로그인은 모두 끝났습니다.',
+  passwordChanged: '비밀번호를 변경했습니다. 일부 기기에서는 다시 로그인해야 할 수 있습니다.',
   deletePasswordRequired: '확인을 위해 현재 비밀번호를 입력해 주세요.',
 } as const
 
-type PasswordField = 'currentPassword' | 'newPassword' | 'confirmation'
+type PasswordField = 'newPassword' | 'confirmation'
 type PasswordFormErrors = Partial<Record<PasswordField | 'form', string>>
 
 type DeletionPreviewState =
@@ -39,14 +38,6 @@ type SecurityUseCases = {
   changePassword: Pick<ChangePasswordUseCase, 'execute'>
   getDeletionPreview: Pick<GetAccountDeletionPreviewUseCase, 'execute'>
   deleteAccount: Pick<DeleteAccountUseCase, 'execute'>
-}
-
-/** 길이만 보는 비밀번호 정책에 맞춰 8·12·16자 기준으로 막대를 채웁니다. 문자 종류는 보지 않습니다. */
-export function passwordStrengthPercent(password: string): number {
-  if (password.length >= 16) return 100
-  if (password.length >= 12) return 66
-  if (password.length >= signUpPasswordLength.min) return 33
-  return 0
 }
 
 /**
@@ -68,7 +59,7 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
   }, [])
 
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
-  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmation: '' })
+  const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmation: '' })
   const [passwordErrors, setPasswordErrors] = useState<PasswordFormErrors>({})
   const [isChangingPassword, setIsChangingPassword] = useState(false)
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null)
@@ -93,7 +84,7 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
   }, [isDeleteModalOpen])
 
   function openPasswordModal() {
-    setPasswordForm({ currentPassword: '', newPassword: '', confirmation: '' })
+    setPasswordForm({ newPassword: '', confirmation: '' })
     setPasswordErrors({})
     setPasswordNotice(null)
     setIsPasswordModalOpen(true)
@@ -112,9 +103,12 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
     })
   }
 
+  // 입력하는 동안 규칙 충족과 확인 일치를 바로 보여 주고, 둘 다 맞을 때만 보냅니다.
+  const newPasswordMeetsRule = isValidSignUpPassword(passwordForm.newPassword)
+  const confirmationState: 'empty' | 'match' | 'mismatch' =
+    passwordForm.confirmation === '' ? 'empty' : passwordForm.confirmation === passwordForm.newPassword ? 'match' : 'mismatch'
   const canSubmitPassword =
-    passwordForm.currentPassword !== '' &&
-    isValidSignUpPassword(passwordForm.newPassword) &&
+    newPasswordMeetsRule &&
     passwordForm.newPassword === passwordForm.confirmation &&
     !isChangingPassword
 
@@ -122,9 +116,7 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
     event.preventDefault()
     if (isChangingPassword) return
     const errors: PasswordFormErrors = {}
-    if (passwordForm.currentPassword === '') errors.currentPassword = accountSecurityMessages.currentPasswordRequired
-    if (!isValidSignUpPassword(passwordForm.newPassword)) errors.newPassword = accountSecurityMessages.newPasswordInvalid
-    else if (passwordForm.newPassword === passwordForm.currentPassword) errors.newPassword = accountSecurityMessages.newPasswordSame
+    if (!newPasswordMeetsRule) errors.newPassword = accountSecurityMessages.newPasswordInvalid
     if (passwordForm.confirmation !== passwordForm.newPassword) errors.confirmation = accountSecurityMessages.confirmationMismatch
     if (Object.keys(errors).length > 0) {
       setPasswordErrors(errors)
@@ -133,12 +125,8 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
 
     setIsChangingPassword(true)
     try {
-      const result = await resolved.changePassword.execute(passwordForm.currentPassword, passwordForm.newPassword)
+      const result = await resolved.changePassword.execute(passwordForm.newPassword)
       if (!isMounted.current) return
-      if (result.outcome === 'current-password-mismatch') {
-        setPasswordErrors({ currentPassword: accountSecurityMessages.currentPasswordMismatch })
-        return
-      }
       if (result.outcome === 'rate-limited') {
         setPasswordErrors({ form: accountSecurityMessages.rateLimited(result.retryAfterSeconds) })
         return
@@ -202,8 +190,12 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
       form: passwordForm,
       update: updatePasswordField,
       errors: passwordErrors,
-      strengthPercent: passwordStrengthPercent(passwordForm.newPassword),
+      /** 새 비밀번호 칸 아래 규칙 한 줄입니다. 충족하면 초록으로 바뀝니다. */
       lengthHint: accountSecurityMessages.newPasswordLength,
+      newPasswordMeetsRule,
+      confirmationState,
+      confirmationMatchHint: accountSecurityMessages.confirmationMatch,
+      confirmationMismatchHint: accountSecurityMessages.confirmationMismatch,
       canSubmit: canSubmitPassword,
       isSubmitting: isChangingPassword,
       submit: submitPasswordChange,

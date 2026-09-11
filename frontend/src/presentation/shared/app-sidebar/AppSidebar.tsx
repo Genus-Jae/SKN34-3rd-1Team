@@ -9,7 +9,7 @@ import { usePendingReceivedProposalCount } from '../partner-proposal/useReceived
 import { appPaths, publicPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 
-type MenuIcon = 'search' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more'
+type MenuIcon = 'search' | 'document' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more'
 
 /** 사이드바 메뉴 한 줄입니다. `to`가 없으면 아직 화면이 없는 메뉴이므로 링크로 만들지 않습니다. */
 type MenuItem = {
@@ -32,6 +32,7 @@ const menuGroups: MenuGroup[] = [
         to: appPaths.chat,
         matches: (pathname) => pathname === appPaths.chat || pathname.startsWith(appPaths.supportProgramDetail),
       },
+      { label: '신청 문서 작성', icon: 'document', to: appPaths.applicationPreparations, matches: (pathname) => pathname.startsWith(appPaths.applicationPreparations) },
       { label: '중복 지원·수혜 검토', icon: 'shield', to: appPaths.combinationReviews, matches: (pathname) => pathname.startsWith(appPaths.combinationReviews) },
       { label: '기업 맞춤 리포트', icon: 'inbox', to: appPaths.reports, matches: (pathname) => pathname === appPaths.reports },
       { label: '관심 공고함', icon: 'bookmark', to: appPaths.savedPrograms, badge: '시안', matches: (pathname) => pathname === appPaths.savedPrograms },
@@ -76,6 +77,12 @@ const iconPaths: Record<MenuIcon, ReactNode> = {
     <>
       <circle cx="11" cy="11" r="8" />
       <path d="M21 21l-4.35-4.35" />
+    </>
+  ),
+  document: (
+    <>
+      <path d="M6 2h9l5 5v15H6z" />
+      <path d="M14 2v6h6M9 13h8M9 17h6" />
     </>
   ),
   bookmark: <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />,

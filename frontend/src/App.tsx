@@ -5,6 +5,7 @@ import { conversationReset } from './presentation/features/chat/state/chatSlice'
 import { useRestoreSupportProgramSearch } from './presentation/features/chat/hooks/useRestoreSupportProgramSearch'
 import { selectAuthStatus } from './presentation/shared/auth/state/authSlice'
 import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
+import { ApplicationPreparationEditorPage, ApplicationPreparationListPage } from './presentation/features/application-preparation/view/ApplicationPreparationPages'
 import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
 import { SavedProgramsPage } from './presentation/features/saved-programs/view/SavedProgramsPage'
 import { DailyReportEmailPage } from './presentation/features/daily-report/view/DailyReportEmailPage'
@@ -20,7 +21,9 @@ import { SupportProgramSearchPage } from './presentation/features/support-progra
 import { CompanyProfilePage } from './presentation/features/company-profile/view/CompanyProfilePage'
 import { PartnerRecruitmentCreatePage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentCreatePage'
 import { PartnerRecruitmentDetailPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentDetailPage'
+import { PartnerRecruitmentEditPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentEditPage'
 import { PartnerRecruitmentListPage } from './presentation/features/partner-recruitment/view/PartnerRecruitmentListPage'
+import { MyPartnerRecruitmentsPage } from './presentation/features/partner-recruitment/view/MyPartnerRecruitmentsPage'
 import { PartnerProposalBoxPage } from './presentation/features/partner-proposal/view/PartnerProposalBoxPage'
 import { PricingPage } from './presentation/features/pricing/view/PricingPage'
 import { PublicPartnerRecruitmentDetailPage } from './presentation/features/public-partner-recruitment/view/PublicPartnerRecruitmentDetailPage'
@@ -98,6 +101,9 @@ function App() {
         <Route element={<WorkspaceLayout />}>
           <Route path={appPaths.reports} element={<DailyReportPage />} />
           <Route path={appPaths.savedPrograms} element={<SavedProgramsPage />} />
+          <Route path={appPaths.applicationPreparations} element={<ApplicationPreparationListPage />} />
+          <Route path={appPaths.applicationPreparationNew} element={<ApplicationPreparationEditorPage create />} />
+          <Route path={appPaths.applicationPreparationDetail} element={<ApplicationPreparationEditorPage />} />
           <Route path={appPaths.combinationReviews} element={<CombinationReviewListPage />} />
           <Route path={appPaths.combinationReviewNew} element={<CombinationReviewEditorPage create />} />
           <Route path={appPaths.combinationReviewDetail} element={<CombinationReviewEditorPage />} />
@@ -105,6 +111,8 @@ function App() {
           <Route path={appPaths.pricing} element={<PricingPage layout="workspace" />} />
           <Route path={appPaths.partners} element={<PartnerRecruitmentListPage />} />
           <Route path={appPaths.partnerNew} element={<PartnerRecruitmentCreatePage />} />
+          <Route path={appPaths.partnerEdit} element={<PartnerRecruitmentEditPage />} />
+          <Route path={appPaths.myPartners} element={<MyPartnerRecruitmentsPage />} />
           <Route path={appPaths.partnerDetail} element={<PartnerRecruitmentDetailPage />} />
           <Route path={appPaths.proposals} element={<PartnerProposalBoxPage />} />
           <Route path={appPaths.profile} element={<CompanyProfilePage />} />

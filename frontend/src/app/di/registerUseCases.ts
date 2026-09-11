@@ -1,4 +1,5 @@
 import { CombinationReviewUseCase } from '../../domain/usecases/CombinationReviewUseCase'
+import { ApplicationPreparationUseCase } from '../../domain/usecases/ApplicationPreparationUseCase'
 import { DailyReportUseCase } from '../../domain/usecases/DailyReportUseCase'
 import { reviewRequestJournal } from '../../data/storage/reviewRequestJournal'
 import { asValue } from 'awilix/browser'
@@ -18,8 +19,10 @@ import {
 } from '../../domain/usecases/CompanyUseCases'
 import {
   BrowsePartnerRecruitmentsUseCase,
+  ClosePartnerRecruitmentUseCase,
   CreatePartnerRecruitmentUseCase,
   GetPartnerRecruitmentDetailUseCase,
+  UpdatePartnerRecruitmentUseCase,
 } from '../../domain/usecases/PartnerRecruitmentUseCases'
 import {
   BrowsePartnerProposalsUseCase,
@@ -49,6 +52,9 @@ import type { AppContainer, AppCradle } from './types'
 /** Domain UseCase와 UseCase가 필요로 하는 Repository 연결을 등록합니다. */
 export function registerUseCases(container: AppContainer) {
   container.register({
+    applicationPreparationUseCase: asFunction(
+      ({ applicationPreparationRepository }: Pick<AppCradle, 'applicationPreparationRepository'>) => new ApplicationPreparationUseCase(applicationPreparationRepository),
+    ).singleton(),
     restoreSupportProgramSearchUseCase: asFunction(
       ({ supportProgramRepository }: Pick<AppCradle, 'supportProgramRepository'>) => new RestoreSupportProgramSearchUseCase(supportProgramRepository),
     ).singleton(),
@@ -82,6 +88,12 @@ export function registerUseCases(container: AppContainer) {
     ).singleton(),
     getPartnerRecruitmentDetailUseCase: asFunction(
       ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new GetPartnerRecruitmentDetailUseCase(partnerRecruitmentRepository),
+    ).singleton(),
+    updatePartnerRecruitmentUseCase: asFunction(
+      ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new UpdatePartnerRecruitmentUseCase(partnerRecruitmentRepository),
+    ).singleton(),
+    closePartnerRecruitmentUseCase: asFunction(
+      ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new ClosePartnerRecruitmentUseCase(partnerRecruitmentRepository),
     ).singleton(),
     getMyCompanyUseCase: asFunction(
       ({ companyRepository }: Pick<AppCradle, 'companyRepository'>) => new GetMyCompanyUseCase(companyRepository),
