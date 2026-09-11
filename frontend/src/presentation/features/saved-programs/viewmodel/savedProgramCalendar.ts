@@ -4,7 +4,24 @@ export type CalendarProgram = {
   title: string
   organization: string
   endDate: string | null
+  region: string
+  category: string
+  target: string
 }
+
+export type SavedProgramCalendarFilters = {
+  keyword: string
+  region: string
+  category: string
+  target: string
+  excludeClosed: boolean
+}
+
+export const defaultSavedProgramCalendarFilters: SavedProgramCalendarFilters = {
+  keyword: '', region: '', category: '', target: '', excludeClosed: false,
+}
+
+export const savedProgramTargetOptions = ['예비창업자', '창업기업', '중소기업', '소상공인'] as const
 
 export const firstCalendarYear = 2000
 export const lastCalendarYear = 2100
@@ -24,6 +41,9 @@ export function calendarToday(now = new Date()): string {
 export function createCalendarPreview(today: string): CalendarProgram[] {
   const names = ['AI 사업화 지원', '수출 바우처 지원사업', '스마트공장 구축 지원', '초기 창업기업 성장 지원', '중소기업 기술개발 지원', '해외 전시회 참가 지원']
   const organizations = ['서울경제진흥원', '중소벤처기업부', '중소벤처기업진흥공단']
+  const regions = ['서울', '전국', '경기', '부산', '대전', '전국']
+  const categories = ['사업화', '수출', '기술', '창업', '기술개발(R&D)', '판로ㆍ해외진출']
+  const targets = ['창업기업', '중소기업', '중소기업', '예비창업자', '중소기업', '창업기업']
   const month = today.slice(0, 7)
   const day = Number(today.slice(8))
   const lastDay = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()
@@ -35,7 +55,26 @@ export function createCalendarPreview(today: string): CalendarProgram[] {
       title: `${names[index % names.length]}${index >= 6 ? ` · ${index + 1}차` : ''}`,
       organization: organizations[index % organizations.length]!,
       endDate: `${month}-${String(endDay).padStart(2, '0')}`,
+      region: regions[index % regions.length]!,
+      category: categories[index % categories.length]!,
+      target: targets[index % targets.length]!,
     }
+  })
+}
+
+export function filterCalendarPrograms(
+  programs: readonly CalendarProgram[],
+  filters: SavedProgramCalendarFilters,
+  today: string,
+): CalendarProgram[] {
+  const keyword = filters.keyword.trim().toLocaleLowerCase('ko-KR')
+  return programs.filter((program) => {
+    if (keyword && !`${program.title} ${program.organization}`.toLocaleLowerCase('ko-KR').includes(keyword)) return false
+    if (filters.region && program.region !== filters.region) return false
+    if (filters.category && program.category !== filters.category) return false
+    if (filters.target && program.target !== filters.target) return false
+    if (filters.excludeClosed && program.endDate !== null && program.endDate < today) return false
+    return true
   })
 }
 

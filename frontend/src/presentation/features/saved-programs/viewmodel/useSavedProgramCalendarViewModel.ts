@@ -1,14 +1,25 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 
-import { buildCalendarWeeks, calendarToday, createCalendarPreview, firstCalendarYear, lastCalendarYear, type CalendarProgram } from './savedProgramCalendar'
+import {
+  buildCalendarWeeks,
+  calendarToday,
+  createCalendarPreview,
+  defaultSavedProgramCalendarFilters,
+  filterCalendarPrograms,
+  firstCalendarYear,
+  lastCalendarYear,
+  type CalendarProgram,
+  type SavedProgramCalendarFilters,
+} from './savedProgramCalendar'
 
-/** 월 선택과 스크롤 위치는 이 화면만 사용하는 로컬 상태이므로 Redux에 넣지 않습니다. */
+/** 월 선택·필터·스크롤 위치는 이 화면만 사용하는 로컬 상태이므로 Redux에 넣지 않습니다. */
 export function useSavedProgramCalendarViewModel(input?: { today: string; programs: readonly CalendarProgram[] }) {
   const [initial] = useState(() => {
     const today = input?.today ?? calendarToday()
     return { today, programs: input?.programs ?? createCalendarPreview(today) }
   })
   const [display, setDisplay] = useState(() => ({ year: Number(initial.today.slice(0, 4)), month: Number(initial.today.slice(5, 7)) }))
+  const [filters, setFilters] = useState(defaultSavedProgramCalendarFilters)
   const [scrollTarget, setScrollTarget] = useState<'start' | 'today'>('today')
   const [scrollRevision, setScrollRevision] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -48,15 +59,33 @@ export function useSavedProgramCalendarViewModel(input?: { today: string; progra
   }
 
   const today = input ? initial.today : calendarToday()
-  const weeks = buildCalendarWeeks(display.year, display.month, today, initial.programs)
+  const filteredPrograms = filterCalendarPrograms(initial.programs, filters, today)
+  const weeks = buildCalendarWeeks(display.year, display.month, today, filteredPrograms)
   const programsInMonth = weeks.flat().reduce((count, day) => count + day.programs.length, 0)
+  const allProgramsInMonth = buildCalendarWeeks(display.year, display.month, today, initial.programs)
+    .flat().reduce((count, day) => count + day.programs.length, 0)
+  const activeFilterCount = [filters.keyword.trim(), filters.region, filters.category, filters.target]
+    .filter(Boolean).length + Number(filters.excludeClosed)
+
+  function changeFilter<Key extends keyof SavedProgramCalendarFilters>(key: Key, value: SavedProgramCalendarFilters[Key]) {
+    setFilters(current => ({ ...current, [key]: value }))
+  }
+
+  function clearFilter(key: keyof SavedProgramCalendarFilters) {
+    setFilters(current => ({ ...current, [key]: key === 'excludeClosed' ? false : '' }))
+  }
+
+  function resetFilters() {
+    setFilters(defaultSavedProgramCalendarFilters)
+  }
+
   return {
-    ...display, weeks, programsInMonth, scrollRef, todayRef,
+    ...display, weeks, programsInMonth, allProgramsInMonth, filters, activeFilterCount, scrollRef, todayRef,
     years: Array.from({ length: lastCalendarYear - firstCalendarYear + 1 }, (_, i) => firstCalendarYear + i),
     canPreviousMonth: display.year > firstCalendarYear || display.month > 1,
     canNextMonth: display.year < lastCalendarYear || display.month < 12,
     canPreviousYear: display.year > firstCalendarYear,
     canNextYear: display.year < lastCalendarYear,
-    chooseMonth, moveMonth, goToToday,
+    chooseMonth, moveMonth, goToToday, changeFilter, clearFilter, resetFilters,
   }
 }

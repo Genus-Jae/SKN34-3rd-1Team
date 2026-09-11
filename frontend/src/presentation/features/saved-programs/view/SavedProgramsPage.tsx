@@ -1,5 +1,8 @@
-import { useSavedProgramCalendarViewModel } from '../viewmodel/useSavedProgramCalendarViewModel'
+import { regionNames } from '../../../../domain/entities/Region'
+import { supportProgramCategories } from '../../../../domain/entities/SupportProgramCategory'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
+import { useSavedProgramCalendarViewModel } from '../viewmodel/useSavedProgramCalendarViewModel'
+import { savedProgramTargetOptions, type SavedProgramCalendarFilters } from '../viewmodel/savedProgramCalendar'
 import { savedCalendarStyles as s } from './SavedProgramsPage.styles'
 
 function Arrow({ direction, double = false }: { direction: 'left' | 'right'; double?: boolean }) {
@@ -8,15 +11,49 @@ function Arrow({ direction, double = false }: { direction: 'left' | 'right'; dou
   </svg>
 }
 
-/** 캘린더 1차 시안. 필터와 상세페이지 연결은 다음 작업이며 여기서는 구현하지 않습니다. */
+/** 관심 공고 캘린더 시안. 필터는 예시 데이터에 적용하며 실제 저장과 상세 이동은 다음 작업입니다. */
 export function SavedProgramsPage() {
   const vm = useSavedProgramCalendarViewModel()
   const monthLabel = `${vm.year}년 ${vm.month}월`
+  const activeFilters: { key: keyof SavedProgramCalendarFilters; label: string }[] = [
+    ...(vm.filters.keyword.trim() ? [{ key: 'keyword' as const, label: `검색 · ${vm.filters.keyword.trim()}` }] : []),
+    ...(vm.filters.region ? [{ key: 'region' as const, label: `지역 · ${vm.filters.region}` }] : []),
+    ...(vm.filters.category ? [{ key: 'category' as const, label: `분야 · ${vm.filters.category}` }] : []),
+    ...(vm.filters.target ? [{ key: 'target' as const, label: `대상 · ${vm.filters.target}` }] : []),
+    ...(vm.filters.excludeClosed ? [{ key: 'excludeClosed' as const, label: '마감 공고 제외' }] : []),
+  ]
 
   return <>
     <WorkspacePageHeader title="관심 공고함" />
     <main className={s.page}>
       <section className={s.content} aria-label="관심 공고 캘린더">
+      <form className={s.filters} aria-label="관심 공고 필터" onSubmit={event => event.preventDefault()}>
+        <div className={s.filterControls}>
+          <label className={s.searchField}>
+            <span className="sr-only">공고명 또는 기관명</span>
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+            </svg>
+            <input type="search" className={s.searchInput} placeholder="공고명·기관명 검색" maxLength={100}
+              value={vm.filters.keyword} onChange={event => vm.changeFilter('keyword', event.target.value)} />
+          </label>
+          <FilterSelect label="지역" value={vm.filters.region} options={regionNames} onChange={value => vm.changeFilter('region', value)} />
+          <FilterSelect label="지원 분야" value={vm.filters.category} options={supportProgramCategories} onChange={value => vm.changeFilter('category', value)} />
+          <FilterSelect label="지원 대상" value={vm.filters.target} options={savedProgramTargetOptions} onChange={value => vm.changeFilter('target', value)} />
+          <label className={s.closedToggle}>
+            <input type="checkbox" checked={vm.filters.excludeClosed} onChange={event => vm.changeFilter('excludeClosed', event.target.checked)} />
+            <span>마감 공고 제외</span>
+          </label>
+        </div>
+        <div className={s.appliedFilters}>
+          <strong>적용된 검색조건 <span className="text-brand-primary">{vm.activeFilterCount}</span></strong>
+          {activeFilters.map(filter => <button type="button" className={s.filterChip} key={filter.key} onClick={() => vm.clearFilter(filter.key)}>
+            {filter.label}<span aria-hidden="true">×</span><span className="sr-only"> 조건 해제</span>
+          </button>)}
+          {vm.activeFilterCount > 0 ? <button type="button" className={s.resetFilters} onClick={vm.resetFilters}>전체 초기화</button> : <span className={s.noFilters}>전체 관심 공고를 표시하고 있습니다.</span>}
+        </div>
+      </form>
+
       <div className={s.toolbar}>
         <div className={s.navigation}>
           <div className="flex items-center gap-1">
@@ -38,7 +75,7 @@ export function SavedProgramsPage() {
       </div>
 
       <div className={s.note}>
-        <span role="status">{monthLabel} · 마감 공고 <strong className="text-app-ink">{vm.programsInMonth}건</strong></span>
+        <span role="status">{monthLabel} · 표시 공고 <strong className="text-app-ink">{vm.programsInMonth}건</strong> / 전체 {vm.allProgramsInMonth}건</span>
         <span>공고가 많은 주는 달력 안에서 스크롤해 확인하세요.</span>
       </div>
       {vm.programsInMonth === 0 && <p className="m-0 shrink-0 bg-app-canvas px-4 py-3 text-sm text-sample-muted">이 달에 표시할 예시 공고가 없습니다.</p>}
@@ -65,4 +102,19 @@ export function SavedProgramsPage() {
       </section>
     </main>
   </>
+}
+
+function FilterSelect({ label, value, options, onChange }: {
+  label: string
+  value: string
+  options: readonly string[]
+  onChange: (value: string) => void
+}) {
+  return <label className={s.selectField}>
+    <span>{label}</span>
+    <select aria-label={label} value={value} onChange={event => onChange(event.target.value)}>
+      <option value="">전체</option>
+      {options.map(option => <option key={option} value={option}>{option}</option>)}
+    </select>
+  </label>
 }
