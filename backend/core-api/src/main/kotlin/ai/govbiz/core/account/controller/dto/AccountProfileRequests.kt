@@ -16,10 +16,10 @@ class ChangePasswordRequest(
     override fun toString(): String = "ChangePasswordRequest"
 }
 
+/** 비밀번호가 없는 소셜 가입 계정은 `password` 없이 보냅니다. 비밀번호가 있는 계정은 비어 있으면 현재 비밀번호 불일치입니다. */
 class DeleteAccountRequest(
-    @field:NotBlank
     @field:Size(max = 72)
-    val password: String,
+    val password: String? = null,
 ) {
     override fun toString(): String = "DeleteAccountRequest"
 }

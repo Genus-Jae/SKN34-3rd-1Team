@@ -22,8 +22,15 @@ export const publicPartnerRecruitmentStyles = {
   ),
   searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink outline-0 placeholder:text-sample-muted',
   toolbar: 'flex flex-wrap items-center justify-between gap-3',
-  sortChoices: 'flex flex-wrap items-center gap-2',
-  resultCount: 'text-[0.8rem] text-sample-muted',
+  // 지원사업 찾기 필터 검색의 "검색 결과 N건" 제목·선택 상자와 같은 모양입니다.
+  resultCount: 'm-0 text-base font-bold',
+  resultTotal: 'text-brand-primary',
+  listOptions: 'flex flex-wrap items-center gap-3',
+  optionLabel: 'flex items-center gap-2 text-xs text-sample-muted',
+  optionSelect: classes(
+    'min-h-9 w-auto min-w-0 rounded-xl border border-sample-border bg-white px-3 text-xs text-app-ink',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+  ),
   // 폭에 따라 3열·2열·1열로 저절로 줄어드는 격자입니다. 한 줄은 최대 3열(카드 폭이 전체의 1/3 이상)이고 같은 줄의 카드는 같은 높이로 늘어납니다.
   cardGrid: 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,max(300px,calc((100%_-_2rem)/3))),1fr))]',
   card: classes(

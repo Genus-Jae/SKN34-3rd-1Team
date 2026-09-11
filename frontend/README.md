@@ -88,13 +88,14 @@ pnpm dev
 | `/` | 대화 전 헤더·대화 후 사이드바 | AI 대화 검색·필터 검색 탭, 자연어 조건 해석·제안 확인, 결과 카드 |
 | `/?mode=filter` | 대화 전 헤더·대화 후 사이드바 | 키워드·지역·분야·출처·접수 상태와 K-Startup 추가 필터, 최신순·마감순, 페이지 이동 |
 | `/pricing` | 헤더 | 무료·프로·팀 요금제 소개, 출시 예정 안내, FAQ, 무료 검색 진입 |
-| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하고(검색어는 조회 버튼으로 적용, 정렬 칩: 마감 임박순·최근 등록순) 작성 기업 정보는 흐리게 가리며, 자세히 보기·제안 버튼은 로그인하면 할 수 있는 일 다이얼로그(배경 흐림)로 안내 |
+| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하고(검색어는 조회 버튼으로 적용, 출처·정렬 선택 상자는 지원사업 찾기와 같은 모양, 건수는 "검색 결과 N건") 작성 기업 정보는 흐리게 가리며, 자세히 보기·제안 버튼은 로그인하면 할 수 있는 일 다이얼로그(배경 흐림)로 안내 |
 | `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 헤더 | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
 | `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
 | `/examples/sample-item/redux` | 헤더 | Redux 상태 유지 예제 |
-| `/login` | 없음 | 이메일·비밀번호 로그인, 로그인 상태 유지, `?next=` 복귀 경로 |
-| `/signup` | 없음 | 이메일·비밀번호만 받는 회원가입. 성공하면 세션이 생겨 작업 채팅으로 이동 |
+| `/login` | 없음 | 카카오·Google 로그인 버튼(요청 없이 바로 표시, 키가 없으면 누를 때 안내), 이메일·비밀번호 로그인, 로그인 상태 유지, `?next=` 복귀 경로, 소셜 로그인 실패 안내(`?oauthError=`) |
+| `/signup` | 없음 | 카카오·Google 가입 버튼과 이메일·비밀번호 회원가입. 성공하면 세션이 생겨 작업 채팅으로 이동 |
+| `/oauth/complete` | 없음 | 소셜 로그인 뒤 서버가 보내는 완료 화면. 세션으로 계정을 확인해 `?next=`로 이동하고, 세션이 없으면 로그인 화면에 실패 안내 |
 | `/forgot-password` | 없음 | 가입 이메일로 비밀번호 재설정 링크 요청. 가입 여부와 무관한 같은 안내 |
 | `/reset-password` | 없음 | 메일 링크(`#token=`)로 여는 새 비밀번호 설정. 성공하면 로그인으로 안내 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
@@ -118,10 +119,16 @@ pnpm dev
 `/signup`은 `SignUpUseCase → AccountRepository → accountApi`로 실제 계정을 만들고 서버가 발급한 세션으로 바로 작업 채팅에
 들어갑니다. 비밀번호는 8~72자 길이만 검사하며 이미 가입된 이메일(409)·시도 제한(429)을 구분해 안내합니다. 약관 동의는 가입 버튼
 아래 안내 문구로 갈음하고 서버가 가입 시각을 기록합니다.
+두 화면의 카카오·Google 버튼은 요청 없이 `StartOAuthSignInUseCase → AccountRepository → accountApi`로 시작 주소만 계산해
+`features/auth/view/OAuthSignInButtons`가 공급자 디자인 가이드대로 바로 그립니다("…계정으로 로그인/시작하기"). 버튼은 링크라
+누르면 브라우저가 서버의 시작 주소로 이동하고(복귀 경로·로그인 상태 유지를 쿼리로 전달), 로그인과 가입이 한 흐름입니다. 키가
+없는 공급자는 서버가 `/login?oauthError=unavailable`로 돌려보내 키가 설정되지 않았다고 안내합니다. 서버 콜백은 세션 쿠키를 심고 `/oauth/complete`로
+보내며, 이 화면의 `useOAuthCompleteViewModel`이 `CompleteOAuthSignInUseCase`로 세션 힌트를 남기고 계정을 확인한 뒤 이동합니다.
 `/app/profile`의 기업 기본정보는 `CompanyRepository`(조회·등록·수정)에 연결됩니다. 기업이 없으면 그 카드 자리에 사업자등록번호
 조회 폼이 나오고, 조회로 받은 상호·사업자 상태는 읽기 전용이며 소재지(17개 시·도)·업종(표준산업분류 대분류)·설립연도와
 홈페이지(선택)만 입력합니다. 등록에 성공하면 세션 계정을 `tier=COMPANY`로 갱신해 사이드바가 상호를 보여 줍니다. 협업·파트너
-설정은 `/api/v1/me/company/partner-profile`에 저장되고, 계정과 알림 카드의 비밀번호 변경·계정 삭제는 확인 모달로 처리합니다.
+설정은 `/api/v1/me/company/partner-profile`에 저장되고, 계정과 알림 카드의 비밀번호 변경·계정 삭제는 확인 모달로 처리합니다. 소셜 로그인으로만 가입한 계정(`hasPassword=false`)은
+비밀번호 항목을 숨기고 계정 삭제에 비밀번호를 묻지 않습니다.
 알림 스위치는 발송 기능이 없어 아직 화면 상태로만 켜고 끕니다.
 파트너 모집 목록·상세는 `PartnerRecruitmentRepository`(`data/api/partnerRecruitmentApi`)로 Core API를 읽습니다. 공개·내부 화면이
 `presentation/shared/partner-recruitment/usePartnerRecruitmentBrowse`의 조회 훅과 표시 helper를 함께 쓰고, 조건 타입은

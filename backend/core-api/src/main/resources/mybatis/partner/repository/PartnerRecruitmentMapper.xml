@@ -205,6 +205,10 @@
             AND recruitment.region IN
             <foreach collection="regions" item="region" open="(" separator=", " close=")">#{region}</foreach>
         </if>
+        <!-- 출처는 모집글이 묶인 공고의 출처입니다. -->
+        <if test="sourceCode != null">
+            AND program.source_code = #{sourceCode}
+        </if>
         <choose>
             <when test="mineAccountId != null">
                 AND recruitment.account_id = #{mineAccountId}

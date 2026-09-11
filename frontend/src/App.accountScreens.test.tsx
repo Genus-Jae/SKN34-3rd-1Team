@@ -23,10 +23,10 @@ vi.mock('./presentation/shared/core-api-status/CoreApiConnectionStatus', () => (
   CoreApiConnectionStatus: () => null,
 }))
 
-const memberAccount: Account = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null }
-const adminAccount: Account = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true, company: null }
+const memberAccount: Account = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, hasPassword: true, company: null }
+const adminAccount: Account = { email: 'admin@govbiz.local', role: 'ADMIN', tier: 'ADMIN', emailVerified: true, hasPassword: true, company: null }
 const companyAccount: Account = {
-  email: 'company@govbiz.local', role: 'USER', tier: 'COMPANY', emailVerified: false,
+  email: 'company@govbiz.local', role: 'USER', tier: 'COMPANY', emailVerified: false, hasPassword: true,
   company: { companyName: '테스트 기업 주식회사', businessNumber: '1234567890' },
 }
 
@@ -177,14 +177,14 @@ describe('계정 화면', () => {
   it('가입에 성공하면 세션 계정으로 작업 채팅에 들어간다', async () => {
     const execute = vi.spyOn(appContainer.resolve('signUpUseCase'), 'execute').mockResolvedValue({
       outcome: 'session',
-      session: { expiresAt: '2026-09-07T00:00:00+09:00', account: { email: 'new@example.test', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null } },
+      session: { expiresAt: '2026-09-07T00:00:00+09:00', account: { email: 'new@example.test', role: 'USER', tier: 'MEMBER', emailVerified: false, hasPassword: true, company: null } },
     })
     renderApp('/signup')
     const form = screen.getByRole('form', { name: '회원가입' })
     fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'New@Example.test' } })
     fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'welcome-12' } })
     fireEvent.change(within(form).getByLabelText('비밀번호 확인'), { target: { value: 'welcome-12' } })
-    fireEvent.click(screen.getByRole('button', { name: '가입하고 시작하기' }))
+    fireEvent.click(screen.getByRole('button', { name: '이메일로 가입하기' }))
 
     expect(execute).toHaveBeenCalledWith({ email: 'New@Example.test', password: 'welcome-12' })
     const sidebar = await screen.findByRole('complementary', { name: '작업 사이드바' })
@@ -259,7 +259,7 @@ describe('계정 화면', () => {
     fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: ' Member@GovBiz.local ' } })
     fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'govbiz-admin1' } })
     fireEvent.click(within(form).getByLabelText('로그인 상태 유지'))
-    fireEvent.click(within(form).getByRole('button', { name: '로그인' }))
+    fireEvent.click(within(form).getByRole('button', { name: '이메일로 로그인' }))
 
     await waitFor(() => expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy())
     expect(execute).toHaveBeenCalledWith({ email: 'Member@GovBiz.local', password: 'govbiz-admin1', rememberMe: true })
@@ -278,7 +278,7 @@ describe('계정 화면', () => {
     fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'wrong' } })
 
     for (const message of [loginMessages.invalidCredentials, loginMessages.suspended, loginMessages.rateLimited(30)]) {
-      fireEvent.click(within(form).getByRole('button', { name: '로그인' }))
+      fireEvent.click(within(form).getByRole('button', { name: '이메일로 로그인' }))
       await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(message))
     }
     expect(execute).toHaveBeenCalledTimes(3)
@@ -295,7 +295,7 @@ describe('계정 화면', () => {
     const form = screen.getByRole('form', { name: '로그인' })
     fireEvent.change(within(form).getByLabelText('이메일'), { target: { value: 'member@govbiz.local' } })
     fireEvent.change(within(form).getByLabelText('비밀번호'), { target: { value: 'govbiz-admin1' } })
-    fireEvent.click(within(form).getByRole('button', { name: '로그인' }))
+    fireEvent.click(within(form).getByRole('button', { name: '이메일로 로그인' }))
 
     await waitFor(() => expect(screen.getByRole('heading', { name: '파트너 관리' })).toBeTruthy())
   })
@@ -772,6 +772,27 @@ describe('계정 보안 모달', () => {
     await waitFor(() => expect(screen.getByRole('banner', { name: '앱 헤더' })).toBeTruthy())
     expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
   })
+
+  it('소셜 로그인으로만 가입한 계정은 비밀번호 항목이 없고 비밀번호 없이 계정을 삭제한다', async () => {
+    vi.spyOn(appContainer.resolve('getAccountDeletionPreviewUseCase'), 'execute').mockResolvedValue({
+      hasCompany: false, openRecruitmentCount: 0, receivedPendingProposalCount: 0, sentPendingProposalCount: 0,
+    })
+    const remove = vi.spyOn(appContainer.resolve('deleteAccountUseCase'), 'execute').mockResolvedValue({ outcome: 'deleted' })
+    renderApp('/app/profile', { ...memberAccount, hasPassword: false })
+    const account = await screen.findByRole('region', { name: '계정과 알림' })
+
+    expect(within(account).queryByText('비밀번호')).toBeNull()
+    expect(within(account).queryByRole('button', { name: '변경' })).toBeNull()
+
+    fireEvent.click(within(account).getByRole('button', { name: '계정 삭제' }))
+    const dialog = screen.getByRole('dialog', { name: '계정을 삭제할까요?' })
+    expect(within(dialog).queryByLabelText('확인을 위해 비밀번호를 입력하세요')).toBeNull()
+    const submit = within(dialog).getByRole('button', { name: '계정 삭제' }) as HTMLButtonElement
+    expect(submit.disabled).toBe(false)
+    fireEvent.click(submit)
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(null))
+    await waitFor(() => expect(screen.getByRole('banner', { name: '앱 헤더' })).toBeTruthy())
+  })
 })
 
 describe('파트너 모집 화면', () => {
@@ -788,7 +809,7 @@ describe('파트너 모집 화면', () => {
     expect(await screen.findByRole('article', { name: 'AI 실증 과제 데이터 구축·라벨링 참여기관 구합니다' })).toBeTruthy()
     expect(screen.getByText('4건 · 마감 임박순')).toBeTruthy()
     expect(appContainer.resolve('browsePartnerRecruitmentsUseCase').execute).toHaveBeenCalledWith(
-      { keyword: '', seekingRoles: [], regions: [], mineOnly: false, sort: 'DEADLINE', page: 1 },
+      { keyword: '', seekingRoles: [], regions: [], mineOnly: false, sourceCode: '', sort: 'DEADLINE', page: 1 },
       expect.any(AbortSignal),
     )
     expect(fetch).not.toHaveBeenCalled()
@@ -850,14 +871,14 @@ describe('파트너 모집 화면', () => {
     fireEvent.click(within(panel).getByRole('radio', { name: '최근 등록순' }))
 
     await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
-      { keyword: '스마트', seekingRoles: ['LEAD'], regions: ['서울', '부산'], mineOnly: false, sort: 'RECENT', page: 1 },
+      { keyword: '스마트', seekingRoles: ['LEAD'], regions: ['서울', '부산'], mineOnly: false, sourceCode: '', sort: 'RECENT', page: 1 },
       expect.any(AbortSignal),
     ))
     expect(screen.getByText('4건 · 최근 등록순')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '검색·필터 초기화' }))
     await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
-      { keyword: '', seekingRoles: [], regions: [], mineOnly: false, sort: 'RECENT', page: 1 },
+      { keyword: '', seekingRoles: [], regions: [], mineOnly: false, sourceCode: '', sort: 'RECENT', page: 1 },
       expect.any(AbortSignal),
     ))
     expect(within(panel).getByRole('checkbox', { name: '전체 지역' })).toHaveProperty('checked', true)
@@ -1180,7 +1201,7 @@ describe('파트너 모집 화면', () => {
     fireEvent.click(within(screen.getByRole('navigation', { name: '파트너 관리 탭' })).getByRole('link', { name: '내 모집글' }))
 
     await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
-      { keyword: '', seekingRoles: [], regions: [], mineOnly: true, sort: 'RECENT', page: 1 },
+      { keyword: '', seekingRoles: [], regions: [], mineOnly: true, sourceCode: '', sort: 'RECENT', page: 1 },
       expect.any(AbortSignal),
     ))
     const cards = await screen.findAllByRole('article')

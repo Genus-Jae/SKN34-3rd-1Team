@@ -3,14 +3,17 @@ import { Link } from 'react-router'
 import { useLoginViewModel } from '../viewmodel/useLoginViewModel'
 import { AuthLogo } from './AuthLogo'
 import { authPageStyles } from './AuthPage.styles'
+import { EmailIcon } from './EmailIcon'
+import { OAuthSignInButtons } from './OAuthSignInButtons'
 
 /**
- * 로그인 화면입니다. 공용 헤더의 로그인 버튼이 이 화면으로 옵니다. 테두리 없는 가운데 열에 로고, 구분선, 입력, 버튼,
- * 회원가입·비밀번호 찾기 링크 순으로만 놓고 안내 문구는 두지 않습니다.
+ * 로그인 화면입니다. 공용 헤더의 로그인 버튼이 이 화면으로 옵니다. 테두리 없는 가운데 열에 로고, 소셜 로그인 버튼,
+ * 수평선, 이메일 입력과 "이메일로 로그인" 버튼, 회원가입·비밀번호 찾기 링크 순으로 놓습니다.
  */
 export function LoginPage() {
   const {
     signupPath,
+    oauthOptions,
     email,
     password,
     rememberMe,
@@ -29,11 +32,9 @@ export function LoginPage() {
           <AuthLogo />
           <h1 className="sr-only">로그인</h1>
 
-          <div className={authPageStyles.divider}>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-            <span className={authPageStyles.dividerText}>이메일로 로그인하기</span>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-          </div>
+          <OAuthSignInButtons mode="login" options={oauthOptions} />
+
+          <hr className={authPageStyles.sectionRule} />
 
           <div className={authPageStyles.fields}>
             <label className={authPageStyles.field}>
@@ -84,7 +85,8 @@ export function LoginPage() {
 
           {error ? <p id="login-error" className={authPageStyles.fieldError} role="alert">{error.message}</p> : null}
           <button className={authPageStyles.submitButton} type="submit" disabled={isSubmitting}>
-            {isSubmitting ? '로그인 중…' : '로그인'}
+            <EmailIcon className={authPageStyles.buttonIcon} />
+            {isSubmitting ? '로그인 중…' : '이메일로 로그인'}
           </button>
 
           <p className={authPageStyles.linksRow}>

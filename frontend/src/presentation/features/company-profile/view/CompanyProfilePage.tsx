@@ -323,12 +323,15 @@ export function CompanyProfilePage() {
                   </span>
                 </div>
 
-                <div className={companyProfileStyles.accountRow}>
-                  <span className={companyProfileStyles.accountValue}>비밀번호</span>
-                  <button className={workspacePageStyles.secondaryButton} type="button" onClick={security.password.open}>
-                    변경
-                  </button>
-                </div>
+                {/* 소셜 로그인으로만 가입한 계정은 비밀번호가 없으므로 비밀번호 항목을 숨깁니다. */}
+                {vm.account?.hasPassword === false ? null : (
+                  <div className={companyProfileStyles.accountRow}>
+                    <span className={companyProfileStyles.accountValue}>비밀번호</span>
+                    <button className={workspacePageStyles.secondaryButton} type="button" onClick={security.password.open}>
+                      변경
+                    </button>
+                  </div>
+                )}
                 {security.password.notice ? (
                   <p className={companyProfileStyles.notice} role="status">{security.password.notice}</p>
                 ) : null}

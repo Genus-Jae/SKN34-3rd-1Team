@@ -1,11 +1,14 @@
 package ai.govbiz.core.account.service
 
 import ai.govbiz.core.account.domain.AccountCredential
+import ai.govbiz.core.account.domain.OAuthLink
+import ai.govbiz.core.account.domain.OAuthProvider
 import ai.govbiz.core.account.helper.AccountTestHelper
 import ai.govbiz.core.account.helper.AccountTestHelper.NOW
 import ai.govbiz.core.account.helper.SessionTokenHelper
 import ai.govbiz.core.account.repository.AccountRepository
 import ai.govbiz.core.account.repository.CompanyRepository
+import ai.govbiz.core.account.service.dto.AccountDeletedEvent
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.CurrentPasswordMismatchException
 import ai.govbiz.core.partner.repository.PartnerProposalRepository
@@ -18,11 +21,15 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.Mockito.anyLong
+import org.mockito.Mockito.anyString
 import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.junit.jupiter.MockitoExtension
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 
 @ExtendWith(MockitoExtension::class)
@@ -40,6 +47,9 @@ class AccountProfileServiceTest {
     @Mock
     private lateinit var proposalRepository: PartnerProposalRepository
 
+    @Mock
+    private lateinit var eventPublisher: ApplicationEventPublisher
+
     private val passwordEncoder = BCryptPasswordEncoder(4)
 
     private val account = AccountTestHelper.account(id = 7L)
@@ -49,7 +59,8 @@ class AccountProfileServiceTest {
     @BeforeEach
     fun setUp() {
         service = AccountProfileService(
-            accountRepository, companyRepository, recruitmentRepository, proposalRepository, passwordEncoder, AccountTestHelper.FIXED_CLOCK,
+            accountRepository, companyRepository, recruitmentRepository, proposalRepository, passwordEncoder, eventPublisher,
+            AccountTestHelper.FIXED_CLOCK,
         )
     }
 
@@ -94,7 +105,7 @@ class AccountProfileServiceTest {
     }
 
     @Test
-    fun deleteAccountWithdrawsProposalsClosesRecruitmentsRemovesTheCompanyAndSessionsThenMarksDeleted() {
+    fun deleteAccountWithdrawsProposalsClosesRecruitmentsRemovesTheCompanyLinksAndSessionsThenMarksDeleted() {
         stubCredential()
 
         service.deleteAccount(account, "password1")
@@ -102,8 +113,25 @@ class AccountProfileServiceTest {
         verify(proposalRepository).withdrawAllPendingByProposer(7L, NOW)
         verify(recruitmentRepository).closeAllByAccountId(7L, NOW)
         verify(companyRepository).deleteByAccountId(7L)
+        verify(accountRepository).deleteOAuthIdentities(7L)
         verify(accountRepository).deleteAllSessionsByAccountId(7L)
         verify(accountRepository).markDeleted(7L, NOW)
+        verifyNoInteractions(eventPublisher)
+    }
+
+    @Test
+    fun deleteAccountReadsTheSocialLinksBeforeRemovingThemAndAnnouncesThemForUnlinking() {
+        stubCredential()
+        val links = listOf(OAuthLink(OAuthProvider.KAKAO, "4012345678"))
+        doReturn(links).`when`(accountRepository).findOAuthLinks(7L)
+
+        service.deleteAccount(account, "password1")
+
+        val order = inOrder(accountRepository, eventPublisher)
+        order.verify(accountRepository).findOAuthLinks(7L)
+        order.verify(accountRepository).deleteOAuthIdentities(7L)
+        order.verify(accountRepository).markDeleted(7L, NOW)
+        order.verify(eventPublisher).publishEvent(AccountDeletedEvent(7L, links) as Any)
     }
 
     @Test
@@ -113,6 +141,23 @@ class AccountProfileServiceTest {
 
         verify(companyRepository, never()).deleteByAccountId(anyLong())
         verify(recruitmentRepository, never()).closeAllByAccountId(anyLong(), AccountTestHelper.anyValue())
+        verify(accountRepository, never()).markDeleted(anyLong(), AccountTestHelper.anyValue())
+    }
+
+    @Test
+    fun deleteAccountOfASocialOnlyAccountNeedsNoPassword() {
+        // 소셜 로그인으로만 가입한 계정은 확인할 비밀번호가 없어 세션만으로 삭제합니다.
+        service.deleteAccount(account.copy(hasPassword = false), null)
+
+        verify(accountRepository, never()).findCredentialByEmail(anyString())
+        verify(accountRepository).markDeleted(7L, NOW)
+    }
+
+    @Test
+    fun deleteAccountWithAPasswordRejectsAMissingPassword() {
+        stubCredential()
+        assertThrows(CurrentPasswordMismatchException::class.java) { service.deleteAccount(account, null) }
+
         verify(accountRepository, never()).markDeleted(anyLong(), AccountTestHelper.anyValue())
     }
 

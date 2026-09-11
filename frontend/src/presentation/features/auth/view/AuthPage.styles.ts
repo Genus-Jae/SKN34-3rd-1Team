@@ -37,20 +37,38 @@ export const authPageStyles = {
   optionsRow: 'flex flex-wrap items-center justify-between gap-4',
   checkboxLabel: 'inline-flex items-center gap-2 text-[0.82rem] font-normal text-sample-muted',
   checkbox: 'size-[1.05rem] accent-brand-primary',
+  // 로그인·회원가입·비밀번호 변경 버튼은 입력칸·소셜 버튼과 같은 모서리(rounded-xl)를 씁니다. 아이콘을 둔 버튼도 글자는
+  // 가운데에 오도록 relative flex로 둡니다. 바탕은 브랜드색(#087f46)보다 조금 연한 #1a8752로, 흰 글자 대비 4.5:1(WCAG AA)을
+  // 넘기는 가장 연한 쪽에 맞추고, 누르려 할 때는 원래 브랜드색으로 돌아갑니다.
   submitButton: classes(
-    'min-h-14 w-full cursor-pointer rounded-full border-0 bg-brand-primary px-4 py-[0.9rem]',
-    'text-base font-extrabold text-white hover:bg-[#066538] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+    'relative flex min-h-14 w-full cursor-pointer items-center justify-center rounded-xl border-0 bg-[#1a8752] px-4 py-[0.9rem]',
+    'text-base font-extrabold text-white hover:bg-brand-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
     'disabled:cursor-default disabled:opacity-60',
   ),
   primaryLink: classes(
-    'inline-flex min-h-14 w-full items-center justify-center rounded-full bg-brand-primary px-4 py-[0.9rem]',
-    'text-base font-extrabold text-white no-underline hover:bg-[#066538] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+    'inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-[#1a8752] px-4 py-[0.9rem]',
+    'text-base font-extrabold text-white no-underline hover:bg-brand-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
   ),
-  divider: 'mb-6 flex items-center gap-4',
-  dividerLine: 'h-px flex-1 bg-sample-border',
-  dividerText: 'text-[0.95rem] text-sample-muted',
   linksRow: 'm-0 mt-3 flex flex-wrap items-center justify-center gap-3 text-[0.95rem]',
   linksLead: 'text-sample-muted',
   linkSeparator: 'h-4 w-px bg-sample-border',
   footerLink: 'rounded font-bold text-app-ink no-underline hover:text-brand-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-primary',
+  // 소셜 로그인 버튼은 두 공급자 가이드대로 같은 크기로 두고 색은 공급자가 정한 값만 씁니다.
+  socialButtons: 'flex flex-col gap-3',
+  // 카카오 로그인 디자인 가이드: 컨테이너 #FEE500, 심볼 #000000, 레이블 #000000 85%, 모서리 12px
+  kakaoButton: classes(
+    'relative flex min-h-14 w-full items-center justify-center rounded-xl bg-[#FEE500] px-12',
+    'text-base font-bold text-black/85 no-underline hover:brightness-95',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+  ),
+  // Sign in with Google 가이드: 흰 바탕, #747775 테두리, #1F1F1F 레이블, 표준 G 로고
+  googleButton: classes(
+    'relative flex min-h-14 w-full items-center justify-center rounded-xl border border-[#747775] bg-white px-12',
+    'text-base font-bold text-[#1F1F1F] no-underline hover:bg-[#F8F9FA]',
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+  ),
+  // 소셜·이메일 버튼의 아이콘은 모두 왼쪽 같은 자리에 둡니다.
+  buttonIcon: 'absolute left-5 size-6',
+  // 소셜 버튼과 이메일 입력 사이의 수평선입니다.
+  sectionRule: 'my-3 h-px w-full border-0 bg-sample-border',
 } as const

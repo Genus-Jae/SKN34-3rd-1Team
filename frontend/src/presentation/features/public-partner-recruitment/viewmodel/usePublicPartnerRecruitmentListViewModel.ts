@@ -7,12 +7,13 @@ import {
   type PartnerRecruitmentQuery,
   type PartnerRecruitmentSort,
 } from '../../../../domain/entities/PartnerRecruitmentQuery'
+import { catalogSourceCodes, catalogSourceLabels } from '../../../../domain/entities/SupportProgramCatalog'
 import { loginPathFor } from '../../../shared/auth/returnPath'
 import { usePartnerRecruitmentBrowse } from '../../../shared/partner-recruitment/usePartnerRecruitmentBrowse'
 import { publicPaths } from '../../../shared/routes/appPaths'
 
 /**
- * 로그인 전 공개 파트너 모집 목록의 대표 ViewModel입니다. 모집 중인 글을 마감 임박순·최근 등록순으로 읽기만 제공하고,
+ * 로그인 전 공개 파트너 모집 목록의 대표 ViewModel입니다. 모집 중인 글을 검색어·출처로 좁혀 마감 임박순·최근 등록순으로 읽기만 제공하고,
  * 자세히 보기를 누르면 로그인하면 할 수 있는 일을 다이얼로그로 안내합니다.
  */
 export function usePublicPartnerRecruitmentListViewModel() {
@@ -42,11 +43,18 @@ export function usePublicPartnerRecruitmentListViewModel() {
     sort: query.sort,
     sortOptions: (Object.keys(partnerRecruitmentSortLabels) as PartnerRecruitmentSort[])
       .map((sort) => ({ value: sort, label: partnerRecruitmentSortLabels[sort] })),
-    /** 정렬을 바꾸면 첫 페이지부터 다시 읽습니다. */
-    selectSort: (sort: PartnerRecruitmentSort) => setQuery((current) => ({ ...current, sort, page: 1 })),
-    resultSummary: page === null
-      ? partnerRecruitmentSortLabels[query.sort]
-      : `모집 중 ${page.total}건 · ${partnerRecruitmentSortLabels[query.sort]}`,
+    /** 정렬을 바꾸면 첫 페이지부터 다시 읽습니다. 선택 상자 값이 정렬이 아니면 무시합니다. */
+    selectSort: (value: string) => {
+      if (!(value in partnerRecruitmentSortLabels)) return
+      setQuery((current) => ({ ...current, sort: value as PartnerRecruitmentSort, page: 1 }))
+    },
+    sourceCode: query.sourceCode,
+    /** 지원사업 찾기의 출처 필터와 같은 선택지입니다. 모집글이 묶인 공고의 출처로 좁힙니다. */
+    sourceOptions: catalogSourceCodes.map((sourceCode) => ({ value: sourceCode, label: catalogSourceLabels[sourceCode] })),
+    /** 출처를 바꾸면 첫 페이지부터 다시 읽습니다. */
+    selectSource: (sourceCode: string) => setQuery((current) => ({ ...current, sourceCode, page: 1 })),
+    /** 지원사업 찾기 필터 검색처럼 "검색 결과 N건"으로 보입니다. 처음 읽기 전에는 null입니다. */
+    resultTotal: page === null ? null : page.total,
     loginPrompt: promptReturnPath === null ? null : { loginPath: loginPathFor(promptReturnPath) },
     openLoginPrompt: (recruitment: PartnerRecruitmentSummary) => setPromptRecruitmentId(recruitment.id),
     closeLoginPrompt: () => setPromptRecruitmentId(null),

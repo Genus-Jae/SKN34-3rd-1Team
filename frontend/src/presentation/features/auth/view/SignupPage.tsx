@@ -3,14 +3,17 @@ import { Link } from 'react-router'
 import { useSignupViewModel } from '../viewmodel/useSignupViewModel'
 import { AuthLogo } from './AuthLogo'
 import { authPageStyles } from './AuthPage.styles'
+import { EmailIcon } from './EmailIcon'
+import { OAuthSignInButtons } from './OAuthSignInButtons'
 
 /**
- * 회원가입 화면입니다. 로그인 화면과 같은 껍데기를 쓰고 안내 문구 없이 이메일과 비밀번호만 받습니다.
+ * 회원가입 화면입니다. 로그인 화면과 같은 껍데기를 쓰고 소셜 가입 버튼과 이메일·비밀번호 입력만 둡니다.
  * 기업 정보는 가입 뒤 프로필 단계에서 받고, 약관 동의는 가입 버튼 아래 안내로 갈음해 가입 시각을 서버가 기록합니다.
  */
 export function SignupPage() {
   const {
     loginPath,
+    oauthOptions,
     email,
     password,
     passwordConfirmation,
@@ -29,11 +32,9 @@ export function SignupPage() {
           <AuthLogo />
           <h1 className="sr-only">회원가입</h1>
 
-          <div className={authPageStyles.divider}>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-            <span className={authPageStyles.dividerText}>이메일로 시작하기</span>
-            <span className={authPageStyles.dividerLine} aria-hidden="true" />
-          </div>
+          <OAuthSignInButtons mode="signup" options={oauthOptions} />
+
+          <hr className={authPageStyles.sectionRule} />
 
           <div className={authPageStyles.fields}>
             <label className={authPageStyles.field}>
@@ -91,7 +92,8 @@ export function SignupPage() {
 
           {error ? <p id="signup-error" className={authPageStyles.fieldError} role="alert">{error.message}</p> : null}
           <button className={authPageStyles.submitButton} type="submit" disabled={isSubmitting}>
-            {isSubmitting ? '가입 중…' : '가입하고 시작하기'}
+            <EmailIcon className={authPageStyles.buttonIcon} />
+            {isSubmitting ? '가입 중…' : '이메일로 가입하기'}
           </button>
           <p className={authPageStyles.fieldHint}>가입하면 이용약관과 개인정보 처리방침에 동의한 것으로 봅니다.</p>
 

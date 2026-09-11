@@ -18,6 +18,8 @@ export const accountDtoSchema = z.object({
   tier: accountTierSchema,
   emailVerified: z.boolean(),
   company: accountCompanySummaryDtoSchema.nullable().optional().transform((value) => value ?? null),
+  // 이 값을 내려 주기 전의 서버는 비밀번호로만 가입할 수 있었으므로 없으면 참으로 봅니다.
+  hasPassword: z.boolean().optional().transform((value) => value ?? true),
 })
 
 /** 세션 토큰은 HttpOnly 쿠키로만 오므로 본문에는 만료 시각과 계정만 있습니다. */
@@ -48,6 +50,7 @@ export function toAccount(dto: AccountDto): Account {
     tier: dto.tier,
     emailVerified: dto.emailVerified,
     company: dto.company === null ? null : { companyName: dto.company.companyName, businessNumber: dto.company.businessNumber },
+    hasPassword: dto.hasPassword,
   }
 }
 

@@ -35,6 +35,7 @@ interface PartnerRecruitmentMapper {
         @Param("seekingRoles") seekingRoles: List<String>?,
         @Param("regions") regions: List<String>?,
         @Param("mineAccountId") mineAccountId: Long?,
+        @Param("sourceCode") sourceCode: String?,
         @Param("today") today: LocalDate,
         @Param("sortByRecent") sortByRecent: Boolean,
         @Param("limit") limit: Int,
@@ -46,6 +47,7 @@ interface PartnerRecruitmentMapper {
         @Param("seekingRoles") seekingRoles: List<String>?,
         @Param("regions") regions: List<String>?,
         @Param("mineAccountId") mineAccountId: Long?,
+        @Param("sourceCode") sourceCode: String?,
         @Param("today") today: LocalDate,
     ): Long
 

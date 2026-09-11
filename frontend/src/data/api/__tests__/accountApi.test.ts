@@ -20,7 +20,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false, company: null }
+const account = { email: 'manager@company.co.kr', role: 'USER' as const, tier: 'MEMBER' as const, emailVerified: false, hasPassword: true, company: null }
 const sessionResponse = { expiresAt: '2026-10-06T12:00:00+09:00', account }
 const logInCommand = { email: 'manager@company.co.kr', password: 'password1', rememberMe: true }
 
@@ -105,6 +105,7 @@ describe('account profile apis', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(jsonResponse(preview))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(changePasswordApi('new-password-2')).resolves.toBeUndefined()
@@ -121,6 +122,10 @@ describe('account profile apis', () => {
     expect(calls[2]![1].method).toBe('DELETE')
     expect(calls[2]![1].credentials).toBe('include')
     expect(JSON.parse(String(calls[2]![1].body))).toEqual({ password: 'password1' })
+
+    // 비밀번호가 없는 소셜 가입 계정은 password 없이 보냅니다.
+    await expect(deleteAccountApi(null)).resolves.toBeUndefined()
+    expect(JSON.parse(String(calls[3]![1].body))).toEqual({})
   })
 
   it('maps rate limits and a wrong deletion password to outcomes and clears the hint only after deletion', async () => {
@@ -258,6 +263,31 @@ describe('AccountRepositoryImpl', () => {
     const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
 
     await expect(repository.logOut()).resolves.toBeUndefined()
+    expect(storage.hasSession()).toBe(false)
+  })
+})
+
+describe('social login apis', () => {
+  it('builds the provider start url for a top-level navigation without calling the API', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: createMemorySessionHintStorage() })
+
+    expect(repository.oauthStartUrl('kakao')).toMatch(/\/api\/v1\/auth\/oauth\/kakao\/authorize$/)
+    expect(repository.oauthStartUrl('google')).toMatch(/\/api\/v1\/auth\/oauth\/google\/authorize$/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('marks the session hint before reading the account after the server callback and clears it without a session', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ account }))
+      .mockResolvedValueOnce(problemResponse(401, 'AUTHENTICATION_REQUIRED')))
+    const storage = createMemorySessionHintStorage()
+    const repository = new AccountRepositoryImpl({ sessionHintStorage: storage })
+
+    await expect(repository.completeOAuthSignIn()).resolves.toEqual(account)
+    expect(storage.hasSession()).toBe(true)
+    await expect(repository.completeOAuthSignIn()).resolves.toBeNull()
     expect(storage.hasSession()).toBe(false)
   })
 })

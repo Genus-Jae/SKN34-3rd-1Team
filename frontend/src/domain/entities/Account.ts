@@ -15,6 +15,8 @@ export type Account = {
   emailVerified: boolean
   /** 등록한 기업 요약입니다. 없으면 null이며 사이드바는 이메일만 보여 줍니다. */
   company: AccountCompanySummary | null
+  /** 거짓이면 소셜 로그인으로만 가입해 비밀번호가 없는 계정입니다. 프로필은 비밀번호 항목을 숨기고 계정 삭제는 비밀번호를 묻지 않습니다. */
+  hasPassword: boolean
 }
 
 export type AccountCompanySummary = {

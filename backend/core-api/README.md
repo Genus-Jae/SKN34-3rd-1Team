@@ -181,6 +181,8 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `PUT /api/v1/me/password` | 현재 비밀번호 확인 뒤 변경. 요청한 세션만 남기고 다른 기기 세션 종료 |
 | `POST /api/v1/auth/password-reset`, `POST …/confirm` | 로그인 없이 가입 이메일로 30분 일회용 재설정 링크 요청(가입 여부와 무관하게 204), 토큰으로 새 비밀번호 저장(모든 세션 종료) |
 | `GET /api/v1/me/deletion-preview`, `DELETE /api/v1/me` | 삭제 시 닫히는 모집글·제안 수 미리 보기와 계정 삭제(제안 철회·모집글 마감·기업 삭제·세션 삭제·`deleted_at`) |
+| `GET /api/v1/auth/oauth/providers` | 키가 설정된 소셜 로그인 공급자(카카오·Google)와 시작 주소. 설정 확인용이며 화면은 이 목록을 기다리지 않고 두 버튼을 바로 그림 |
+| `GET /api/v1/auth/oauth/{provider}/authorize`, `GET …/callback` | 소셜 로그인 시작(서명한 state 쿠키와 함께 공급자로 302)과 콜백(코드 교환·ID 토큰 확인 뒤 `sub`로 로그인 또는 가입, 세션 쿠키와 함께 프런트로 302). 같은 이메일의 기존 계정에는 자동 연결하지 않음 |
 | `POST /api/v1/auth/dev-login` | `ACCOUNT_DEV_LOGIN_ENABLED=true`일 때만 등록되는 개발용 시드 로그인 |
 | `GET /api/v1/me/company/lookup` | 로그인한 회원이 사업자등록번호로 국세청 등록 여부·상호·사업자 상태를 미리 보기(Bizno) |
 | `GET` `POST` `PUT /api/v1/me/company` | 내 기업 조회·등록(계속사업자만, 201)·담당자 입력 항목 수정 |
@@ -392,6 +394,12 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `ACCOUNT_PASSWORD_RESET_FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | 메일 링크(`/reset-password#token=`)의 프런트 origin |
 | `ACCOUNT_PASSWORD_RESET_TOKEN_TTL` | `PT30M` | 재설정 토큰 유효 시간 |
 | `ACCOUNT_PASSWORD_RESET_MAX_REQUESTS_PER_HOUR` | `3` | 계정당 시간당 요청 한도 |
+| `ACCOUNT_OAUTH_CALLBACK_BASE_URL` | `http://127.0.0.1:5173` | 브라우저가 `/api`에 닿는 origin. 공급자 콘솔 Redirect URI = 이 값 + `/api/v1/auth/oauth/{kakao\|google}/callback` |
+| `ACCOUNT_OAUTH_FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | 소셜 로그인 뒤 돌아갈 프런트 origin(`/oauth/complete`, 실패는 `/login?oauthError=`) |
+| `ACCOUNT_OAUTH_GOOGLE_CLIENT_ID` / `…_SECRET` | 빈 값 | Google 웹 애플리케이션 클라이언트. 둘 다 있어야 켜짐 |
+| `ACCOUNT_OAUTH_KAKAO_CLIENT_ID` / `…_SECRET` | 빈 값 | 카카오 REST API 키·Client Secret. 둘 다 있어야 켜짐 |
+| `ACCOUNT_OAUTH_KAKAO_ADMIN_KEY` | 빈 값 | 탈퇴 때 카카오 연결 끊기용 어드민 키. 비어 있으면 건너뛰고 경고 로그 |
+| `ACCOUNT_OAUTH_CONNECT_TIMEOUT` / `ACCOUNT_OAUTH_READ_TIMEOUT` | `2s` / `10s` | 공급자 호출 제한시간 |
 | `BIZNO_API_KEY` | 빈 값 | 기업 등록 시 사업자등록번호를 확인하는 Bizno API 키. 비어 있으면 조회·등록이 503 `BIZNO_NOT_CONFIGURED` |
 | `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint |
 | `BIZNO_API_CONNECT_TIMEOUT` / `BIZNO_API_READ_TIMEOUT` | `2s` / `10s` | Bizno 연결·응답 제한시간 |
@@ -465,15 +473,15 @@ supportprogram/
 account/
 ├── controller            # 로그인·로그아웃·내 계정, 개발용 로그인, 기업 등록·수정 HTTP 진입점
 │   └── dto               # 공개 요청·응답 계약
-├── service               # 회원가입, 로그인 검증·시도 제한, JWT 세션, 비밀번호 변경·계정 삭제, 기업 등록(사업자등록번호 조회)
+├── service               # 회원가입, 로그인 검증·시도 제한, JWT 세션, 소셜 로그인, 비밀번호 변경·계정 삭제, 기업 등록(사업자등록번호 조회)
 ├── client/bizno          # Bizno 사업자등록번호 조회 HTTP·응답 검증·오류 변환
-├── repository            # 계정·세션·기업 저장과 조회, DbRow 변환
+├── client/oauth          # 카카오·Google 인가 주소·코드 교환·ID 토큰 클레임 확인, 카카오 연결 끊기
+├── repository            # 계정·세션·소셜 로그인 연결·기업 저장과 조회, DbRow 변환
 │   └── mapper            # MyBatis Mapper, DbRow
-├── domain                # 계정·역할·세션·기업 업무 모델
-├── client/bizno          # Bizno 사업자등록번호 조회 HTTP·응답 검증·오류 변환
-├── helper                # HS256 JWT 발급·검증·해시, 세션 쿠키 발급·읽기, 이메일 정규화
+├── domain                # 계정·역할·세션·소셜 로그인 공급자·기업 업무 모델
+├── helper                # HS256 JWT 발급·검증·해시, 세션·소셜 로그인 상태 쿠키 발급·읽기, 이메일 정규화
 ├── web                   # Account 파라미터 resolver, Origin 검사 interceptor와 MVC 등록
-└── config                # BCrypt, 세션·개발 로그인 설정
+└── config                # BCrypt, 세션·개발 로그인·소셜 로그인 설정
 partner/
 ├── controller            # 파트너 모집글 목록·상세·작성, 제안 보내기·수락·거절·철회, 제안함 HTTP 진입점
 │   └── dto               # 공개 요청·응답 계약
@@ -520,7 +528,9 @@ SQL은 [`SupportProgramMapper.xml`](src/main/resources/mybatis/supportprogram/re
   [V11](src/main/resources/db/migration/V11__create_combination_review_run.sql)은 실행 스냅샷과 원본 파일 테이블,
   [V12](src/main/resources/db/migration/V12__create_daily_report.sql)는 일일 리포트 구독·발송 테이블,
   [V13](src/main/resources/db/migration/V13__create_company_partner_profile.sql)은 기업당 하나인 협업·파트너 설정 테이블,
-  [V14](src/main/resources/db/migration/V14__create_account_password_reset.sql)는 비밀번호 재설정 토큰 해시 테이블을 만듭니다.
+  [V14](src/main/resources/db/migration/V14__create_account_password_reset.sql)는 비밀번호 재설정 토큰 해시 테이블,
+  [V17](src/main/resources/db/migration/V17__create_account_oauth_identity.sql)은 소셜 로그인 연결 테이블(`(provider, subject)`
+  UNIQUE)을 만들고 소셜로만 가입한 계정을 위해 `account.password_hash`를 nullable로 바꿉니다.
   적용된 migration은 수정하지 않고 새 버전을 추가합니다.
 - 전체 수집·검증·색인이 끝난 뒤 최신 시작 세대만 공개합니다. 해당 제공처 행 미노출 처리와 UPSERT를
   하나의 짧은 DB transaction으로 묶고, 같은 transaction에서 스냅샷 지문·공고 수·`indexReady=true`·성공

@@ -104,6 +104,7 @@ class PartnerRecruitmentRepository(
             seekingRoles = seekingRoles,
             regions = regions,
             mineAccountId = query.mineAccountId,
+            sourceCode = query.sourceCode,
             today = today,
             sortByRecent = query.sort == PartnerRecruitmentSort.RECENT,
             limit = query.pageSize,
@@ -114,6 +115,7 @@ class PartnerRecruitmentRepository(
             seekingRoles = seekingRoles,
             regions = regions,
             mineAccountId = query.mineAccountId,
+            sourceCode = query.sourceCode,
             today = today,
         )
         return PartnerRecruitmentSlice(rows.map { it.toRecruitment() }, total)
