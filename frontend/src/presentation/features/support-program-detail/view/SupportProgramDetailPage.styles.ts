@@ -6,12 +6,22 @@ export const supportProgramDetailStyles = {
   page: 'mx-auto w-[min(920px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)] [overflow-wrap:anywhere]',
   unavailablePage: 'mx-auto w-[min(720px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)]',
   header: 'mb-8 flex flex-wrap items-center justify-between gap-4',
+  headerActions: 'flex flex-wrap items-center justify-end gap-2',
   backLink: classes(
     'inline-flex items-center rounded-full border px-[0.85rem] py-[0.65rem]',
     'border-sample-border bg-white text-[0.85rem] font-bold text-app-ink no-underline',
     'hover:border-brand-primary hover:bg-[#f6f7f8] hover:text-[#066538] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
   ),
   sourceBadge: 'rounded-full bg-brand-accent px-3 py-[0.45rem] text-[0.72rem] font-extrabold text-[#066538]',
+  saveButton: classes(
+    'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-brand-primary bg-white px-4',
+    'text-[0.78rem] font-extrabold text-brand-primary hover:bg-brand-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+  ),
+  savedButton: classes(
+    'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-brand-primary bg-brand-primary px-4',
+    'text-[0.78rem] font-extrabold text-white hover:bg-[#066538] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+  ),
+  bookmarkNotice: 'mt-[-1.25rem] mb-5 text-right text-[0.72rem] leading-relaxed text-sample-muted max-chat:text-left',
   hero: classes(
     'mb-6 grid grid-cols-[minmax(0,1fr)_minmax(160px,200px)] items-start gap-6 rounded-[1.4rem] border border-sample-border',
     'bg-white p-[clamp(1.4rem,4vw,2.5rem)] shadow-[0_16px_42px_rgb(32_33_36_/_5%)]',

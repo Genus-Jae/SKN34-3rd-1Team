@@ -34,6 +34,23 @@ describe('상세 오류 복구와 검색 화면 복귀', () => {
     expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/app/chat')
   })
 
+  it('회원용 상세에서만 관심 등록 아이콘을 표시하고 저장 전 화면 상태를 전환한다', async () => {
+    vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(supportPrograms[0])
+    renderDetail({ searchReturnTo: '/app/chat' }, undefined, '/app/support-programs/detail')
+    const saveButton = await screen.findByRole('button', { name: '관심 공고 등록' })
+    expect(saveButton.getAttribute('aria-pressed')).toBe('false')
+    expect(screen.getByText(/회원별 저장과 관심 공고함 반영은 다음 단계/)).toBeTruthy()
+    fireEvent.click(saveButton)
+    expect(screen.getByRole('button', { name: '관심 공고 해제' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('공개 상세에는 회원용 관심 등록 아이콘을 표시하지 않는다', async () => {
+    vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(supportPrograms[0])
+    renderDetail()
+    await screen.findByRole('heading', { name: supportPrograms[0].title })
+    expect(screen.queryByRole('button', { name: '관심 공고 등록' })).toBeNull()
+  })
+
   it.each([null, {}, { searchReturnTo: 'https://example.com' }, { searchReturnTo: '//example.com' }, { searchReturnTo: '/admin' }])(
     '직접 진입 또는 허용하지 않는 복귀 상태 %j는 첫 검색 화면으로 돌아간다', async (state) => {
       vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(null)
@@ -53,9 +70,13 @@ describe('상세 오류 복구와 검색 화면 복귀', () => {
   })
 })
 
-function renderDetail(state: unknown = null, search = `?${new URLSearchParams({ sourceCode: supportPrograms[0].sourceCode, sourceProgramId: supportPrograms[0].id })}`) {
-  render(<MemoryRouter initialEntries={[{ pathname: '/support-programs/detail', search, state }]}><Routes>
-    <Route path="/support-programs/detail" element={<SupportProgramDetailPage />} />
+function renderDetail(
+  state: unknown = null,
+  search = `?${new URLSearchParams({ sourceCode: supportPrograms[0].sourceCode, sourceProgramId: supportPrograms[0].id })}`,
+  pathname = '/support-programs/detail',
+) {
+  render(<MemoryRouter initialEntries={[{ pathname, search, state }]}><Routes>
+    <Route path={pathname} element={<SupportProgramDetailPage />} />
     <Route path="/support-programs/detail/question" element={<SupportProgramEvidenceQuestionPage />} />
   </Routes></MemoryRouter>)
 }

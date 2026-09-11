@@ -6,6 +6,7 @@ import { isAppPath, supportProgramQuestionPath } from '../../../shared/routes/ap
 import type { SupportProgram, SupportProgramStatus } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import { useSupportProgramDetailViewModel } from '../viewmodel/useSupportProgramDetailViewModel'
+import { useSupportProgramBookmarkPreviewViewModel } from '../viewmodel/useSupportProgramBookmarkPreviewViewModel'
 import { supportProgramDetailStyles } from './SupportProgramDetailPage.styles'
 import { getSupportProgramSearchReturnTo, type SupportProgramSearchReturnTo } from './supportProgramNavigation'
 
@@ -92,14 +93,28 @@ function SupportProgramDetail({ program, searchReturnTo }: {
 }) {
   // 작업 채팅에서 연 상세는 질문 화면도 사이드바 안(/app)에서 열리도록 현재 경로로 판단합니다.
   const inApp = isAppPath(useLocation().pathname)
+  const bookmark = useSupportProgramBookmarkPreviewViewModel()
   return (
     <main className={supportProgramDetailStyles.page}>
       <header className={supportProgramDetailStyles.header}>
         <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
           ← 검색 결과로 돌아가기
         </Link>
-        <span className={supportProgramDetailStyles.sourceBadge}>{program.sourceName}</span>
+        <div className={supportProgramDetailStyles.headerActions}>
+          <span className={supportProgramDetailStyles.sourceBadge}>{program.sourceName}</span>
+          {inApp ? <button type="button" className={bookmark.isSaved ? supportProgramDetailStyles.savedButton : supportProgramDetailStyles.saveButton}
+            aria-pressed={bookmark.isSaved} aria-describedby="bookmark-preview-notice" onClick={bookmark.toggle}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill={bookmark.isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+            {bookmark.label}
+          </button> : null}
+        </div>
       </header>
+
+      {inApp ? <p id="bookmark-preview-notice" className={supportProgramDetailStyles.bookmarkNotice}>
+        관심 등록 UI 시안입니다. 회원별 저장과 관심 공고함 반영은 다음 단계에서 연결합니다.
+      </p> : null}
 
       <section className={supportProgramDetailStyles.hero} aria-labelledby="support-program-title">
         <div>
