@@ -30,6 +30,8 @@ docker compose --env-file .env --file infrastructure/compose.yaml up --build
 [http://127.0.0.1:5173](http://127.0.0.1:5173)에서 접속합니다.
 첫 실행은 공고 수집·색인 완료까지 기다려야 하며, 임베딩·AI 답변에는 OpenAI 사용 비용이 발생합니다.
 이 구성은 로컬 개발용입니다. 환경변수·중지·키 없는 통합 검증은 [실행 안내](infrastructure/README.md)를 참고하세요.
+실행 중인 개발 스택에서 코드를 갱신한 뒤에는 [백엔드 이미지 갱신 절차](infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)로
+Core·AI만 교체해야 Frontend와 API 버전이 어긋나지 않습니다.
 
 ## 상세 문서
 

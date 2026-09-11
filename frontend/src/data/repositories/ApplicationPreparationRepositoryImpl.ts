@@ -23,7 +23,7 @@ export class ApplicationPreparationRepositoryImpl implements ApplicationPreparat
     return request(cursor(beforeId), applicationPreparationPageSchema, 'GET', undefined, signal)
   }
   async get(id: number, signal?: AbortSignal) {
-    const result = await request(`/${id}`, applicationPreparationSchema, 'GET', undefined, signal)
+    const result = await request(`/${id}`, applicationPreparationSchema, 'GET', undefined, signal, 'preparation')
     if (result.id !== id) throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
     return result
   }
@@ -40,14 +40,14 @@ export class ApplicationPreparationRepositoryImpl implements ApplicationPreparat
     return result
   }
   async interpret(id: number, sectionKey: string, input: InterpretApplicationPreparation, signal?: AbortSignal) {
-    const result = await request(`/${id}/sections/${encodeURIComponent(sectionKey)}/messages`, applicationInterpretationSchema, 'POST', input, signal)
+    const result = await request(`/${id}/sections/${encodeURIComponent(sectionKey)}/messages`, applicationInterpretationSchema, 'POST', input, signal, 'preparation')
     if (result.inputRevision !== input.expectedRevision || result.sectionKey !== sectionKey) {
       throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
     }
     return result
   }
   async replaceInputs(id: number, sectionKey: string, input: ReplaceApplicationPreparationInputs, signal?: AbortSignal) {
-    const result = await request(`/${id}/sections/${encodeURIComponent(sectionKey)}/inputs`, applicationPreparationSchema, 'PUT', input, signal)
+    const result = await request(`/${id}/sections/${encodeURIComponent(sectionKey)}/inputs`, applicationPreparationSchema, 'PUT', input, signal, 'preparation')
     if (result.id !== id || result.inputRevision !== input.expectedRevision + 1) {
       throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
     }

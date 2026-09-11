@@ -217,6 +217,25 @@ verify_application_preparation_flow() {
   fi
 
   actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --cookie "${cookie_jar}" "${WEB_BASE_URL}/api/v1/application-preparations/forms")"
+  if [[ "${actual_status}" != "200" ]] \
+      || ! grep -Eq '"formVersionId"[[:space:]]*:[[:space:]]*"bizinfo-pbln-000000000118979-innovation-voucher-2026-v1"' "${LAST_RESPONSE_FILE}"; then
+    echo "Application preparation smoke could not load forms through Web: HTTP ${actual_status}" >&2
+    sed -n '1,40p' "${LAST_RESPONSE_FILE}" >&2
+    return 1
+  fi
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --cookie "${cookie_jar}" "${WEB_BASE_URL}/api/v1/application-preparations")"
+  if [[ "${actual_status}" != "200" ]] \
+      || ! grep -Eq '"items"[[:space:]]*:[[:space:]]*\[[[:space:]]*\]' "${LAST_RESPONSE_FILE}"; then
+    echo "Application preparation smoke expected an empty preparation list before explicit creation: HTTP ${actual_status}" >&2
+    sed -n '1,40p' "${LAST_RESPONSE_FILE}" >&2
+    return 1
+  fi
+  echo "Verified application preparation forms and empty list through Web without creating a preparation"
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
     --request POST --cookie "${cookie_jar}" --header 'Accept: application/json' \
     --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
     --data '{"sourceCode":"BIZINFO","sourceProgramId":"PBLN_000000000118979","formVersionId":"bizinfo-pbln-000000000118979-innovation-voucher-2026-v1","serviceField":"TECHNICAL_SUPPORT"}' \

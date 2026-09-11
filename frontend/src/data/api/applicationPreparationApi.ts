@@ -3,12 +3,15 @@ import { ApplicationPreparationError } from '../../domain/errors/ApplicationPrep
 import { applicationPreparationProblemSchema } from '../models/ApplicationPreparationDto'
 import { getCoreApiBaseUrl } from './coreApiConfig'
 
+export type ApplicationPreparationNotFoundScope = 'feature' | 'preparation'
+
 export async function applicationPreparationRequest<T>(
   path: string,
   schema: z.ZodType<T>,
   method: 'GET' | 'POST' | 'PUT',
   body?: unknown,
   signal?: AbortSignal,
+  notFoundScope: ApplicationPreparationNotFoundScope = 'feature',
 ): Promise<T> {
   const controller = new AbortController()
   const abort = () => controller.abort()
@@ -29,7 +32,15 @@ export async function applicationPreparationRequest<T>(
     })
     if (!response.ok) {
       const problem = applicationPreparationProblemSchema.safeParse(await response.json().catch(() => null))
-      throw new ApplicationPreparationError(response.status, problem.success ? problem.data.code : 'REQUEST_FAILED')
+      const serverCode = problem.success ? problem.data.code : null
+      const code = response.status === 404
+        ? notFoundScope === 'preparation' && (
+            serverCode === 'APPLICATION_PREPARATION_NOT_FOUND' || serverCode === 'APPLICATION_PREPARATION_SECTION_NOT_FOUND'
+          )
+          ? serverCode
+          : 'APPLICATION_PREPARATION_API_UNAVAILABLE'
+        : serverCode ?? 'REQUEST_FAILED'
+      throw new ApplicationPreparationError(response.status, code)
     }
     const payload = await response.json().catch(() => null)
     const parsed = schema.safeParse(payload)
