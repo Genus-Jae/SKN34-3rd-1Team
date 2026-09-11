@@ -38,19 +38,19 @@ import { useRestoreAuthSession } from './presentation/shared/auth/hooks/useAuthS
 import { GuestOnly, PublicOnly, RequireAuth } from './presentation/shared/auth/RouteGuards'
 import { APP_PREFIX, appPaths, publicPaths } from './presentation/shared/routes/appPaths'
 
-/** 로그인 전 화면들의 레이아웃입니다. 공용 헤더가 브랜드와 로그인 진입점을 담당합니다. */
+/** 공개 검색은 대화 상태에 맞춘 자체 레이아웃을 사용하고, 나머지 공개 화면은 공용 헤더를 사용합니다. */
 function PublicLayout() {
   const { pathname } = useLocation()
   return (
     <div className={pathname === '/' ? 'flex h-dvh flex-col overflow-hidden bg-white' : undefined}>
-      <AppHeader />
+      {pathname !== '/' ? <AppHeader /> : null}
       <Outlet />
     </div>
   )
 }
 
 /**
- * 로그인 전에는 `/` 아래 공개 화면을 헤더와 함께, 로그인 뒤에는 `/app` 아래 내부 화면을 사이드바와 함께 씁니다.
+ * 공개 검색은 검색 전용 레이아웃을, 나머지 공개 화면은 공용 헤더를, 로그인 뒤 화면은 작업 사이드바를 사용합니다.
  * 로그인한 사용자가 공개 URL로 오면 같은 내용의 내부 화면으로 보내고, 비로그인으로 `/app`에 오면 로그인으로 보냅니다.
  * 로그인·회원가입은 둘 다 쓰지 않는 단독 화면이며 로그인 상태에서는 작업 화면으로 돌려보냅니다.
  */

@@ -11,7 +11,7 @@ import {
   chatPageStyles,
 } from './ChatPage.styles'
 
-/** 공개 검색은 첫 전송 후 중앙 소개에서 하단 입력 배치로 전환하며, 작업 채팅은 하단 배치를 유지합니다. */
+/** 공개 검색은 첫 전송 후 기존 중앙 소개에서 대화·하단 입력으로 전환하며 작업 채팅은 하단 배치를 유지합니다. */
 export type ChatPageLayout = 'landing' | 'workspace'
 
 export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
@@ -55,6 +55,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     || readiness.data?.searchState !== 'SEARCHABLE'
   const isLandingIntro = layout === 'landing' && conversationCount === 0
   const isDockedLanding = layout === 'landing' && !isLandingIntro
+  const isGuest = layout === 'landing'
 
   const searchContextControls = hasConfirmedSearch ? (
     <div className={chatPageStyles.searchContextControls}>
@@ -75,12 +76,12 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   )
 
   const composerFooter = (
-    <div className={`${chatPageStyles.composerFooter} ${isDockedLanding ? chatPageStyles.dockedComposerFooter : ''}`}>
+    <div className={isDockedLanding ? chatPageStyles.guestComposerFooter : chatPageStyles.composerFooter}>
       <small className={`${chatPageStyles.composerHint} ${isDockedLanding ? chatPageStyles.dockedComposerHint : ''}`}>
         Enter로 전송 · Shift+Enter로 줄바꿈
-        <span className="block text-[0.68rem]">검색 전 조건을 확인해요.</span>
+        {!isDockedLanding ? <span className="block text-[0.68rem]">검색 전 조건을 확인해요.</span> : null}
       </small>
-      {hasSearchToReset ? (
+      {!isGuest && hasSearchToReset ? (
         <button type="button" className={chatPageStyles.newSearchButton}
           title="대화와 적용 조건을 초기화합니다"
           onClick={handleStartNewConversation}>새 검색</button>
@@ -89,10 +90,10 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   )
 
   const composerInputGroup = (
-      <div className={chatPageStyles.composerInputGroup}>
+      <div className={isDockedLanding ? chatPageStyles.guestComposerGroup : chatPageStyles.composerInputGroup}>
         <textarea
           ref={composerInputRef}
-          className={`${chatPageStyles.composerInput} ${isLandingIntro ? chatPageStyles.landingComposerInput : chatPageStyles.workspaceComposerInput} ${isDockedLanding ? chatPageStyles.dockedComposerInput : ''}`}
+          className={isDockedLanding ? chatPageStyles.guestComposerInput : `${chatPageStyles.composerInput} ${isLandingIntro ? chatPageStyles.landingComposerInput : chatPageStyles.workspaceComposerInput}`}
           aria-label="지원사업 검색어"
           aria-describedby={[
             hasReadinessNotice ? 'support-program-search-readiness' : null,
@@ -110,12 +111,12 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
               : '찾고 싶은 지원사업이나 변경할 조건을 알려주세요.'}
           rows={isLandingIntro ? 3 : 1}
         />
-        {composerFooter}
+        {!isDockedLanding ? composerFooter : null}
         {isBusy ? (
           <button
             key="cancel"
             type="button"
-            className={chatPageStyles.cancelSearchButton}
+            className={isDockedLanding ? chatPageStyles.guestCancelButton : chatPageStyles.cancelSearchButton}
             onClick={(event) => {
               // 취소 후 전송 버튼으로 바뀌어도 이 클릭이 폼을 다시 제출하지 않게 합니다.
               event.preventDefault()
@@ -128,7 +129,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           <button
             key="submit"
             type="submit"
-            className={chatPageStyles.submitButton}
+            className={isDockedLanding ? chatPageStyles.guestSubmitButton : chatPageStyles.submitButton}
             aria-label="검색 전송"
             disabled={!isReadyToSubmit}
           >
@@ -164,7 +165,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     <div
       className={
         layout === 'workspace' ? chatPageStyles.workspaceTimeline
-          : isLandingIntro ? chatPageStyles.emptyTimeline : chatPageStyles.timeline
+          : isLandingIntro ? chatPageStyles.emptyTimeline : chatPageStyles.guestTimeline
       }
       ref={timelineRef}
       role="region"
@@ -194,15 +195,15 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
         return (
           <article
             key={message.id}
-            className={chatMessageRowClassName(isUser)}
+            className={isGuest ? `${chatPageStyles.guestMessageRow} ${isUser ? 'justify-end' : ''}` : chatMessageRowClassName(isUser)}
           >
-            {!isUser ? (
+            {!isUser && !isGuest ? (
               <span className={chatPageStyles.assistantAvatar}>
                 G
               </span>
             ) : null}
-            <div className={chatPageStyles.messageContent}>
-              <div className={`${chatMessageBubbleClassName(isUser)} ${message.failure ? chatPageStyles.failureMessageBubble : ''}`}>
+            <div className={isGuest ? (isUser ? chatPageStyles.guestUserContent : chatPageStyles.guestAssistantContent) : chatPageStyles.messageContent}>
+              <div className={`${isGuest ? (isUser ? chatPageStyles.guestUserBubble : chatPageStyles.guestAssistantBubble) : chatMessageBubbleClassName(isUser)} ${message.failure ? chatPageStyles.failureMessageBubble : ''}`}>
                 {message.failure ? (
                   <p className="m-0" role={isCurrentFailure ? 'alert' : undefined}>{message.text}</p>
                 ) : message.text}
@@ -245,9 +246,7 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
       })}
       {isBusy ? (
         <div className={chatPageStyles.messageRow}>
-          <span className={chatPageStyles.assistantAvatar}>
-            G
-          </span>
+          {!isGuest ? <span className={chatPageStyles.assistantAvatar}>G</span> : null}
           <div className={chatPageStyles.searchingBubble} role="group"
             aria-label={isInterpreting ? '조건 해석 진행 중' : '지원사업 검색 진행 중'}>
             <div className={chatPageStyles.loadingHeader}>
@@ -304,17 +303,20 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   }
 
   return (
-    <main className={chatPageStyles.page}>
+    <main className={chatPageStyles.page} data-guest-chat>
       <section className={`${chatPageStyles.workspace} ${isLandingIntro ? chatPageStyles.introWorkspace : chatPageStyles.conversationWorkspace}`}>
         {isLandingIntro ? introBlock : <h1 className="sr-only">지원사업 채팅</h1>}
         {timeline}
         {/* 같은 폼·입력 노드를 유지하여 전환 중 요청 수명과 한글 입력 상태를 보존합니다. */}
-        <form className={isLandingIntro ? chatPageStyles.composer : chatPageStyles.composerDock} onSubmit={handleSubmit}>
+        <form className={isLandingIntro ? chatPageStyles.composer : chatPageStyles.guestComposerDock} onSubmit={handleSubmit}>
           {!isLandingIntro ? readinessNotice : null}
           {searchContextControls}
           {composerInputGroup}
           {composerErrors}
-          {!isLandingIntro ? <small className={`${chatPageStyles.privacyHint} ${chatPageStyles.dockedComposerHint}`}>개인정보·비밀정보는 입력하지 마세요.</small> : null}
+          {isDockedLanding ? composerFooter : null}
+          {isDockedLanding ? <small className={chatPageStyles.guestDisclaimer}>
+            AI 답변은 참고용입니다. 최종 신청 조건은 공고 원문에서 확인하세요.
+          </small> : null}
         </form>
         {isLandingIntro ? suggestionChips : null}
         {isLandingIntro ? <p className={chatPageStyles.sourceHint}>
