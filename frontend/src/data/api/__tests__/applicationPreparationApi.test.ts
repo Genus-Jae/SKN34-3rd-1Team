@@ -81,6 +81,29 @@ describe('application preparation HTTP boundary', () => {
     })
   })
 
+  it('distinguishes an unavailable feature endpoint from a missing owned preparation', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('Not Found', { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ code: 'APPLICATION_PREPARATION_NOT_FOUND' }, { status: 404 }))
+      .mockResolvedValueOnce(Response.json({ code: 'APPLICATION_PREPARATION_NOT_FOUND' }, { status: 404 })))
+    const repository = new ApplicationPreparationRepositoryImpl()
+
+    await expect(repository.forms()).rejects.toMatchObject({
+      status: 404,
+      code: 'APPLICATION_PREPARATION_API_UNAVAILABLE',
+      message: expect.stringContaining('Core·AI Service 이미지를 갱신'),
+    })
+    await expect(repository.list()).rejects.toMatchObject({
+      status: 404,
+      code: 'APPLICATION_PREPARATION_API_UNAVAILABLE',
+    })
+    await expect(repository.get(404)).rejects.toMatchObject({
+      status: 404,
+      code: 'APPLICATION_PREPARATION_NOT_FOUND',
+      message: '신청 준비 건을 찾을 수 없습니다.',
+    })
+  })
+
   it('rejects malformed JSON, contract violations, mismatched ids and mismatched creation selections', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(new Response('{', { headers: { 'Content-Type': 'application/json' } }))

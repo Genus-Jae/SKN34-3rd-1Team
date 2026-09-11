@@ -146,6 +146,10 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 `GET /forms`로 고정 양식을 읽고 사용자가 생성 버튼을 누를 때만
 POST를 보냅니다. 목록·상세는 로그인 계정 소유 데이터만 읽으며 AI Service를 호출하지 않습니다. 첫 양식의
 `institutionReviewed=false`를 그대로 표시해 공식 출처·구조 확인과 기관 검수를 구분합니다.
+HTTP·Repository 경계는 목록·양식 endpoint의 404 또는 상세 endpoint의 비계약 404를 구버전 API로 구분해 Core·AI 이미지
+갱신을 안내합니다. 상세가 `APPLICATION_PREPARATION_NOT_FOUND`를 반환한 경우에는 기존처럼 없거나 타인 소유인 신청 준비로
+안내합니다. 정상 빈 목록은 오류로 바꾸지 않고 새 작성 진입을 유지합니다. 백엔드만 안전하게 갱신하는 방법은
+[Compose 실행 안내](../infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)를 참고하세요.
 
 사이드바와 각 화면의 머리말은 화면에 고정하고 본문 칸만 스크롤합니다. 작업 채팅의 입력창은 화면 아래에
 붙어 있고 대화만 그 위에서 스크롤됩니다. 한 칸으로 접히는 좁은 화면에서는 고정을 풀어 문서 전체가 스크롤됩니다.

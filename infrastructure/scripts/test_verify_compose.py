@@ -2,12 +2,14 @@
 
 from pathlib import Path
 import importlib.util
+import os
 import subprocess
 import tempfile
 import unittest
 
 
 SCRIPT = Path(__file__).with_name("verify-compose.sh")
+BASH = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe" if os.name == "nt" else Path("/bin/bash")
 FAKE_DOCKER = """#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$VERIFY_DOCKER_CALLS"
 if [[ "${VERIFY_CHECK_SAFE_UPSTREAM_ENV:-false}" == "true" ]]; then
@@ -61,12 +63,13 @@ class VerifyComposeSafetyTest(unittest.TestCase):
             calls = root / "calls"
             environment = {
                 "PATH": f"{root}:/usr/bin:/bin",
+                "TMPDIR": root.as_posix(),
                 "VERIFY_DOCKER_CALLS": str(calls),
                 "VERIFY_COMPOSE_PROJECT_NAME": "govbiz-safety-test",
                 **overrides,
             }
             result = subprocess.run(
-                ["/bin/bash", str(SCRIPT)], env=environment,
+                [str(BASH), str(SCRIPT)], env=environment,
                 capture_output=True, text=True, timeout=10,
             )
             return result, calls.read_text(encoding="utf-8") if calls.exists() else ""
@@ -168,6 +171,17 @@ class VerifyComposeSafetyTest(unittest.TestCase):
         for line in script.splitlines():
             if "/api/v1/" in line:
                 self.assertIn("${WEB_BASE_URL}/api/v1/", line)
+
+    def test_application_preparation_reads_forms_and_empty_list_before_creation(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+        forms = '${WEB_BASE_URL}/api/v1/application-preparations/forms'
+        listing = '${WEB_BASE_URL}/api/v1/application-preparations")'
+        creation = '--data \'{"sourceCode":"BIZINFO"'
+
+        self.assertIn(forms, script)
+        self.assertIn(listing, script)
+        self.assertLess(script.index(forms), script.index(creation))
+        self.assertLess(script.index(listing), script.index(creation))
 
 
 class PublicNoticeFixtureTest(unittest.TestCase):

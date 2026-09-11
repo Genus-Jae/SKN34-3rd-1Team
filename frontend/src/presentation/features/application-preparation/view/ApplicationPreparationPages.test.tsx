@@ -136,6 +136,15 @@ describe('application preparation list', () => {
     expect(repository.list).toHaveBeenCalledTimes(2)
   })
 
+  it('explains that a collection 404 requires a backend image refresh instead of showing an empty list', async () => {
+    repository.list.mockRejectedValueOnce(new ApplicationPreparationError(404, 'APPLICATION_PREPARATION_API_UNAVAILABLE'))
+    mount('/app/application-preparations')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Core·AI Service 이미지를 갱신')
+    expect(screen.queryByRole('heading', { name: '아직 시작한 신청 문서가 없습니다.' })).toBeNull()
+  })
+
   it('appends a cursor page and announces the more-loading state', async () => {
     const nextPage = deferred<ApplicationPreparationPage>()
     repository.list
@@ -184,6 +193,14 @@ describe('application preparation list', () => {
 })
 
 describe('application preparation creation and detail', () => {
+  it('explains that a forms 404 requires a backend image refresh', async () => {
+    repository.forms.mockRejectedValueOnce(new ApplicationPreparationError(404, 'APPLICATION_PREPARATION_API_UNAVAILABLE'))
+    mount('/app/application-preparations/new')
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Core·AI Service 이미지를 갱신')
+    expect(screen.queryByRole('button', { name: '신청 문서 작성 시작' })).toBeNull()
+  })
+
   it('lets the user choose among official forms and limits service fields to the selected form', async () => {
     repository.forms.mockResolvedValueOnce([structuredClone(firstForm), structuredClone(secondForm)])
     mount('/app/application-preparations/new')

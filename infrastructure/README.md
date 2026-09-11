@@ -176,29 +176,29 @@ Core API가 포트를 열기 전에 Web이 공고 상태를 조회해 연결 거
 AI Service의 `/internal/v1/support-program-rankings/rank`와 `/internal/v1/support-program-index/*`는
 Compose 네트워크 내부에서 Core API만 호출합니다. Host나 브라우저에 AI Service 포트를 공개하지 않습니다.
 
-### 백엔드 변경 반영과 검색 405 오류
+### 백엔드 변경 반영과 화면·API 버전 불일치
 
 Web은 소스 디렉터리를 bind mount하여 Vite가 변경을 바로 반영하지만, Core·AI는 이미지 안의 JAR/Python 코드를
 실행합니다. 소스 수정이나 `docker compose restart`만으로 백엔드 코드가 갱신되지는 않습니다.
 C01처럼 공개 POST 검색과 내부 기업 조건 계약을 함께 변경했다면 **Core와 AI를 함께 재빌드**해야 합니다.
 화면의 POST 검색에 `405 Method Not Allowed`가 나오고 `OPTIONS /api/v1/support-programs/search`의 `Allow`에
 GET만 있다면 실행 중인 Core가 구버전인지 확인합니다. Core만 갱신하고 AI를 그대로 두는 것도 계약 불일치를 만듭니다.
+신청 문서 목록·양식 API가 모두 404라면 Frontend만 최신이고 Core·AI 이미지가 이전 버전인 경우입니다.
 
-기존 `govbiz` 프로젝트의 환경 파일과 설정을 유지하며 백엔드만 교체하는 예시입니다. 다른 프로젝트 이름으로
-실행했다면 먼저 실제 프로젝트를 확인합니다. MySQL·Qdrant·Web을 재생성하거나 volume을 삭제하지 않습니다.
-Core 시작 시 기존 설정에 따라 자동 수집·색인이 동작할 수 있고 OpenAI 임베딩 비용이 발생할 수 있습니다.
+기존 개발 스택의 백엔드만 갱신할 때는 저장소 루트에서 다음 스크립트를 실행합니다.
 
 ```bash
-docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml build core-api ai-service
-docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml up --detach --no-deps --no-build ai-service
-# AI가 준비된 뒤 Core를 교체합니다.
-docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml up --detach --no-deps --no-build core-api
+./infrastructure/scripts/refresh-backend.sh
 ```
 
-교체 후 Web 프록시 경유 `/api/v1/health`, `/api/v1/health/ai-service`를 확인합니다. 검색 경로에 빈 JSON `{}`를
-POST하면 새 서버는 입력 오류 400을 반환해야 하며, 이 검증 요청은 실제 검색·모델 호출을 시작하지 않습니다.
-AI의 내부 `/openapi.json`에서는 랭킹 요청의 `companyConditions`와 내부 검색문 최대 길이 1,000을 확인할 수 있습니다.
-Health·계약 검증은 실제 모델의 검색 품질 검증과 구분합니다.
+스크립트는 기본 `govbiz` 프로젝트의 Compose 설정과 기존 컨테이너·서비스 구성을 먼저 검사합니다. MySQL·Qdrant·Web이
+실행 중이면 현재 checkout으로 Core·AI 이미지만 빌드하고, AI 준비 확인 후 두 컨테이너를 순서대로 교체합니다.
+마지막으로 Web 프록시 경유 `/api/v1/health`, `/api/v1/health/ai-service`의 200 응답을 확인합니다. `down`,
+`--volumes` 또는 데이터 컨테이너 재생성은 실행하지 않으므로 기존 MySQL·Qdrant 컨테이너와 named volume은 건드리지 않습니다.
+스택이 다른 이름으로 시작됐다면 `docker compose ls`로 이름을 먼저 확인한 뒤
+`GOVBIZ_COMPOSE_PROJECT_NAME=확인한이름 ./infrastructure/scripts/refresh-backend.sh`로 명시합니다. 스크립트는 해당 프로젝트가
+없거나 예상 서비스 구성이 아니면 빌드·교체 전에 중단합니다. Core 시작 시 기존 설정에 따라 자동 수집·색인이 동작할 수 있고
+OpenAI 임베딩 비용이 발생할 수 있습니다.
 
 ### 중지와 데이터 초기화
 
@@ -248,16 +248,18 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 
 1. Vite Web 응답이 200인지 확인합니다.
 2. Vite 프록시를 거친 Core API Health가 200인지 확인합니다.
-3. 동기화된 공고 행이 MySQL에 존재하는지 확인한 뒤 로컬 스텁을 중지하고, 빈 검색어 GET이
+3. 개발 로그인 뒤 신청 문서 양식·빈 목록을 Web 프록시로 조회하고, 조회만으로 준비 건이 생기지 않았음을 확인한 뒤
+   준비 건 생성 → AI 고정 스텁의 사실 제안 → 사용자 확인 스냅샷 저장 → 상세 재조회까지 검증합니다.
+4. 동기화된 공고 행이 MySQL에 존재하는지 확인한 뒤 로컬 스텁을 중지하고, 빈 검색어 GET이
    Web → Core API → MySQL 카탈로그를 거쳐 이를 반환하는지 확인합니다. 이 검색 요청은 로컬 스텁을
    직접 호출하지 않으며, 더미 OpenAI 키도 외부로 보내지 않습니다.
-4. 자연어 검색이 Web → Core → MySQL → AI Service → Qdrant → 점수화를 거쳐 오래된 관련 공고를 반환하는지 확인합니다.
-5. Qdrant를 중지하고 정기 복구가 `UNAVAILABLE/indexReady=false`를 기록한 뒤에도 자연어 검색은 503,
+5. 자연어 검색이 Web → Core → MySQL → AI Service → Qdrant → 점수화를 거쳐 오래된 관련 공고를 반환하는지 확인합니다.
+6. Qdrant를 중지하고 정기 복구가 `UNAVAILABLE/indexReady=false`를 기록한 뒤에도 자연어 검색은 503,
    빈 검색어 목록은 기존 공개 공고를 포함한 200인지 확인합니다. 이후 재시작 뒤 검색 복구를 확인합니다.
-6. SampleItem 준비 POST가 200과 `READY_FOR_PROCESSING`을 반환하는지 확인합니다.
-7. Core API를 통한 AI Service Health가 200인지 확인합니다.
-8. AI Service를 중지했을 때 Core Health는 200, AI Health와 자연어 검색은 503(연결 불가) 또는 504(시간 초과)인지 확인합니다.
-9. AI Service 재시작 후 Core API 재시작 없이 Health와 자연어 검색이 복구되는지 확인합니다.
+7. SampleItem 준비 POST가 200과 `READY_FOR_PROCESSING`을 반환하는지 확인합니다.
+8. Core API를 통한 AI Service Health가 200인지 확인합니다.
+9. AI Service를 중지했을 때 Core Health는 200, AI Health와 자연어 검색은 503(연결 불가) 또는 504(시간 초과)인지 확인합니다.
+10. AI Service 재시작 후 Core API 재시작 없이 Health와 자연어 검색이 복구되는지 확인합니다.
 
 Web/Core는 검증 전용 `15173`/`18080` 포트를 사용해 기존 개발 서비스를 중지하지 않고 실행할 수 있습니다.
 `VERIFY_COMPOSE_WEB_HOST_PORT`/`VERIFY_COMPOSE_CORE_API_HOST_PORT`로 바꿀 수 있으며 CORS·요청 Origin도 같은 Web 주소를 사용합니다.

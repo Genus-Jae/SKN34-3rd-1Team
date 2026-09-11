@@ -12,7 +12,8 @@ export class ApplicationPreparationError extends Error {
 
 function messageFor(code: string, status: number): string {
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'
-  if (code === 'APPLICATION_PREPARATION_NOT_FOUND' || status === 404) return '신청 준비 건을 찾을 수 없습니다.'
+  if (code === 'APPLICATION_PREPARATION_API_UNAVAILABLE') return '현재 연결된 서버가 신청 문서 작성 기능을 지원하지 않습니다. Core·AI Service 이미지를 갱신한 뒤 다시 시도해 주세요.'
+  if (code === 'APPLICATION_PREPARATION_NOT_FOUND') return '신청 준비 건을 찾을 수 없습니다.'
   if (code === 'APPLICATION_FORM_NOT_SUPPORTED') return '현재 지원하지 않는 공고·양식·지원 분야입니다.'
   if (code === 'APPLICATION_PREPARATION_SECTION_NOT_FOUND') return '현재 지원하지 않는 작성 항목입니다.'
   if (code === 'APPLICATION_PREPARATION_REVISION_CONFLICT') return '다른 변경이 먼저 저장되었습니다. 최신 입력을 다시 불러와 주세요.'
