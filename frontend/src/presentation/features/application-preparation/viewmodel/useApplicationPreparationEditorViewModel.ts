@@ -9,6 +9,8 @@ import type {
   NewApplicationPreparationFact,
   ApplicationServiceField,
 } from '../../../../domain/entities/ApplicationPreparation'
+import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
+import type { SupportProgramCatalog } from '../../../../domain/entities/SupportProgramCatalog'
 import { appPaths } from '../../../shared/routes/appPaths'
 
 function asError(value: unknown): Error {
@@ -17,6 +19,7 @@ function asError(value: unknown): Error {
 
 export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceProgramId = '') {
   const useCase = appContainer.resolve('applicationPreparationUseCase')
+  const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const navigate = useNavigate()
   const [forms, setForms] = useState<ApplicationForm[]>([])
   const [selectedFormVersionId, setSelectedFormVersionId] = useState('')
@@ -25,12 +28,19 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   const [discoveryInput, setDiscoveryInput] = useState(initialSourceProgramId)
   const [discovering, setDiscovering] = useState(false)
   const [discoveryWarnings, setDiscoveryWarnings] = useState<string[]>([])
+  const [catalog, setCatalog] = useState<SupportProgramCatalog | null>(null)
+  const [catalogKeyword, setCatalogKeyword] = useState('')
+  const [appliedCatalogKeyword, setAppliedCatalogKeyword] = useState('')
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<Error | null>(null)
+  const [selectedProgram, setSelectedProgram] = useState<SupportProgram | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const loadController = useRef<AbortController | null>(null)
   const createController = useRef<AbortController | null>(null)
   const discoveryController = useRef<AbortController | null>(null)
+  const catalogController = useRef<AbortController | null>(null)
   const loadSequence = useRef(0)
   const submittingGuard = useRef(false)
   const actionController = useRef<AbortController | null>(null)
@@ -85,8 +95,60 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   useEffect(() => () => {
     createController.current?.abort()
     discoveryController.current?.abort()
+    catalogController.current?.abort()
     actionController.current?.abort()
     submittingGuard.current = false
+  }, [])
+
+  const searchPrograms = useCallback(async (page = 1, keyword = catalogKeyword) => {
+    catalogController.current?.abort()
+    const controller = new AbortController()
+    catalogController.current = controller
+    setCatalogLoading(true)
+    setCatalogError(null)
+    try {
+      const result = await catalogUseCase.execute({
+        keyword: keyword.trim(),
+        region: '',
+        category: '',
+        sourceCode: 'BIZINFO',
+        startupStage: '',
+        applicantType: '',
+        founderAge: '',
+        status: 'ALL',
+        sort: 'RECENT',
+        page,
+        pageSize: 10,
+      }, controller.signal)
+      if (controller.signal.aborted || catalogController.current !== controller) return
+      setCatalog({ ...result, programs: result.programs.filter((program) => program.sourceCode === 'BIZINFO') })
+      setAppliedCatalogKeyword(keyword)
+    } catch (caught) {
+      if (!controller.signal.aborted && catalogController.current === controller) setCatalogError(asError(caught))
+    } finally {
+      if (catalogController.current === controller) {
+        catalogController.current = null
+        setCatalogLoading(false)
+      }
+    }
+  }, [catalogKeyword, catalogUseCase])
+
+  const selectProgram = useCallback((program: SupportProgram) => {
+    if (program.sourceCode !== 'BIZINFO') return
+    setSelectedProgram(program)
+    setDiscoveryInput(program.id)
+    setForms([])
+    setSelectedFormVersionId('')
+    setDiscoveryWarnings([])
+    setError(null)
+  }, [])
+
+  const setManualDiscoveryInput = useCallback((value: string) => {
+    setSelectedProgram(null)
+    setDiscoveryInput(value)
+    setForms([])
+    setSelectedFormVersionId('')
+    setDiscoveryWarnings([])
   }, [])
 
   const discoverForms = useCallback(async () => {
@@ -286,11 +348,20 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     discoveryInput,
     discovering,
     discoveryWarnings,
+    catalog,
+    catalogKeyword,
+    appliedCatalogKeyword,
+    catalogLoading,
+    catalogError,
+    selectedProgram,
     loading,
     submitting,
     error,
     setServiceField,
-    setDiscoveryInput,
+    setCatalogKeyword,
+    searchPrograms,
+    selectProgram,
+    setManualDiscoveryInput,
     discoverForms,
     selectForm,
     load,

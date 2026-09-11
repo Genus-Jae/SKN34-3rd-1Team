@@ -20,6 +20,12 @@ const sectionStatus = {
   IN_PROGRESS: { label: '입력 중', className: s.inProgress },
   INPUT_CONFIRMED: { label: '사실 확인됨', className: s.confirmed },
 } as const
+const programStatusLabels = {
+  OPEN: '접수 중',
+  UPCOMING: '접수 예정',
+  CLOSED: '접수 종료',
+  UNKNOWN: '접수 상태 미확인',
+} as const
 
 function readableTime(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -204,22 +210,86 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
         if (vm.selectedForm) void vm.create()
       }}>
         <section className={s.card}>
-          <h2 className={s.cardTitle} id="create-preparation-title">공고에서 신청 문서 찾기</h2>
+          <h2 className={s.cardTitle} id="create-preparation-title">지원 공고 검색</h2>
+          <p className={s.muted}>공고명이나 기관명으로 검색하고 작성할 공고를 선택하세요. 현재 기업마당 공고의 PDF/HWPX를 분석할 수 있습니다.</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="min-w-0 flex-1 text-sm font-bold text-app-ink" htmlFor="application-program-search">
+              공고명·기관명
+              <input
+                className={`${s.input} mt-2`}
+                disabled={vm.catalogLoading || vm.discovering || vm.submitting}
+                id="application-program-search"
+                maxLength={100}
+                value={vm.catalogKeyword}
+                onChange={(event) => vm.setCatalogKeyword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void vm.searchPrograms()
+                  }
+                }}
+              />
+            </label>
+            <button className={s.button} disabled={vm.catalogLoading || vm.discovering || vm.submitting} type="button" onClick={() => { void vm.searchPrograms() }}>
+              {vm.catalogLoading ? '공고 검색 중…' : '공고 검색'}
+            </button>
+          </div>
+          {vm.catalogLoading && <p className={s.status} role="status" aria-live="polite">기업마당 공고를 검색하고 있습니다.</p>}
+          {vm.catalogError && <ErrorNotice message={vm.catalogError.message} retryLabel="공고 다시 검색" onRetry={() => { void vm.searchPrograms(vm.catalog?.page ?? 1, vm.appliedCatalogKeyword || vm.catalogKeyword) }} />}
+          {vm.catalog?.programs.length === 0 && <p className={s.notice}>검색 결과가 없습니다. 다른 검색어를 입력하거나 아래에서 공식 URL·공고 ID를 직접 입력해 주세요.</p>}
+          {vm.catalog && vm.catalog.programs.length > 0 && <>
+            <p className={s.muted}>검색 결과 {vm.catalog.total}건 · {vm.catalog.page}/{vm.catalog.totalPages}페이지</p>
+            <ul className="divide-y divide-slate-200" aria-label="신청 문서 공고 검색 결과">
+              {vm.catalog.programs.map((program) => {
+                const selected = vm.selectedProgram?.sourceCode === program.sourceCode && vm.selectedProgram.id === program.id
+                return <li className="py-3" key={`${program.sourceCode}:${program.id}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <strong>{program.title}</strong>
+                      <p className={s.muted}>{program.organization} · {programStatusLabels[program.status]}</p>
+                      <p className={s.muted}>{program.applicationPeriod}</p>
+                    </div>
+                    <button className={s.button} disabled={selected || vm.discovering || vm.submitting} type="button" onClick={() => vm.selectProgram(program)}>
+                      {selected ? '선택됨' : '선택'}
+                    </button>
+                  </div>
+                </li>
+              })}
+            </ul>
+            {vm.catalog.totalPages > 1 && <div className={s.moreActions}>
+              <button className={s.button} disabled={vm.catalogLoading || vm.catalog.page <= 1} type="button" onClick={() => { void vm.searchPrograms(vm.catalog!.page - 1, vm.appliedCatalogKeyword) }}>이전</button>
+              <button className={s.button} disabled={vm.catalogLoading || vm.catalog.page >= vm.catalog.totalPages} type="button" onClick={() => { void vm.searchPrograms(vm.catalog!.page + 1, vm.appliedCatalogKeyword) }}>다음</button>
+            </div>}
+          </>}
+        </section>
+
+        {vm.selectedProgram && <section className={s.notice} aria-labelledby="selected-application-program-title">
+          <h2 className={s.cardTitle} id="selected-application-program-title">선택한 공고</h2>
+          <strong>{vm.selectedProgram.title}</strong>
+          <p className={s.muted}>{vm.selectedProgram.organization} · {programStatusLabels[vm.selectedProgram.status]}</p>
+          <p className={s.muted}>{vm.selectedProgram.applicationPeriod}</p>
+        </section>}
+
+        <details className={s.card}>
+          <summary className="cursor-pointer text-sm font-bold text-app-ink">검색에서 공고를 찾지 못했나요?</summary>
           <label className={s.label} htmlFor="application-program">기업마당 공식 공고 URL 또는 공고 ID</label>
           <input
             className={s.input}
             disabled={vm.discovering || vm.submitting}
             id="application-program"
             value={vm.discoveryInput}
-            onChange={(event) => vm.setDiscoveryInput(event.target.value)}
+            onChange={(event) => vm.setManualDiscoveryInput(event.target.value)}
             placeholder="https://www.bizinfo.go.kr/…?pblancId=PBLN_… 또는 PBLN_…"
           />
+        </details>
+
+        {vm.discoveryInput.trim() && <section className={s.card} aria-label="선택한 공고 분석">
           <button className={s.primary} disabled={vm.discovering || vm.submitting || !vm.discoveryInput.trim()} type="button" onClick={() => { void vm.discoverForms() }}>
             {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
           </button>
           {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
           <p className={s.muted}>공식 페이지가 직접 연결한 PDF/HWPX만 분석합니다. 분석 결과는 확인 전 AI 제안이며 자동 제출되지 않습니다.</p>
-        </section>
+        </section>}
 
         {vm.discoveryWarnings.length > 0 && <section className={s.notice} aria-label="공고 분석 안내">
           <ul className="list-disc space-y-1 pl-5">{vm.discoveryWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
