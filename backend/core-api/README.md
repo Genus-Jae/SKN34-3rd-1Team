@@ -36,7 +36,7 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 없는 검토와 타인 검토는 같은 404를 반환합니다. 성공 응답은 `Cache-Control: no-store`이며 시각은 `+09:00`입니다.
 쓰기 요청의 기존 Origin 방어를 유지하고 CORS에서 PUT·DELETE를 허용합니다. 상세 JSON·오류 코드는 위 설계 문서에 있습니다.
 
-신청 문서 작성 도우미의 기본 흐름은 `ai.govbiz.core.applicationpreparation`에 구현합니다. V15는 로그인 계정이
+신청 문서 작성 도우미는 `ai.govbiz.core.applicationpreparation`에 구현합니다. V15는 로그인 계정이
 소유한 신청 준비 건의 공고·고정 양식 버전·지원 분야·입력 revision을 저장합니다. 현재는 2026년 2차 중소기업
 혁신바우처 사업계획서 한 건만 지원하며, classpath manifest의 공식 파일 hash와 확인한 문항 위치를 사용합니다.
 현재 공개 카탈로그에 과거 공고가 없더라도 저장한 준비 건은 manifest 버전으로 다시 열 수 있습니다.
@@ -47,9 +47,13 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 | `POST /api/v1/application-preparations` | 공고·양식 버전·지원 분야를 검증해 본인 준비 건 생성. 201·Location·상세 반환 |
 | `GET /api/v1/application-preparations?size=20&beforeId=123` | 본인 준비 건 목록을 생성 ID 내림차순으로 조회 |
 | `GET /api/v1/application-preparations/{id}` | 본인 준비 건과 고정 양식 문항 조회. 타인 건과 없는 건은 같은 404 |
+| `POST /api/v1/application-preparations/{id}/sections/{sectionKey}/messages` | 현재 입력 revision과 요청 키로 사용자 답변을 AI가 해석해 확인 전 사실·미정 제안 반환 |
+| `PUT /api/v1/application-preparations/{id}/sections/{sectionKey}/inputs` | 사용자가 확인한 문항 사실 전체 스냅샷 저장. revision 충돌은 409 |
 
 지원 양식 조회·목록·상세와 화면 진입은 AI Service·OpenAI·Qdrant를 호출하지 않습니다. 생성은 명시적 POST와 허용된
 Origin에서만 수행합니다. 공식 출처와 구조의 기술 확인은 기관 검수·선정 가능성 판단을 뜻하지 않습니다.
+V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 스냅샷·상태를 저장합니다. AI 호출은 DB transaction 밖에서
+`Controller → Service → AI Facade → Client → AI Service`로 실행하고, 제안은 PUT 전까지 사실로 저장하지 않습니다.
 [기능 범위와 후속 경계](../../docs/application-preparation-design.md)를 참고하세요.
 
 자동 수집은 BIZINFO의 숫자형 `PBLN_...` ID와 세부사업 ID가 없는 공고를 지원합니다. 공식 상세에 직접 연결된

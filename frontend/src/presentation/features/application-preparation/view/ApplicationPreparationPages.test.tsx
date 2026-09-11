@@ -24,8 +24,14 @@ const firstForm: ApplicationForm = {
   institutionReviewed: false,
   supportedServiceFields: ['CONSULTING', 'TECHNICAL_SUPPORT', 'MARKETING'],
   sections: [
-    { key: 'company-overview', title: '기업 개요', locator: 'HWPX 문단 1', description: '기업을 설명합니다.', status: 'NOT_STARTED' },
-    { key: 'voucher-plan', title: '바우처 활용 계획', locator: 'HWPX 문단 2', description: '계획을 설명합니다.', status: 'NOT_STARTED' },
+    {
+      key: 'company-overview', title: '기업 개요', locator: 'HWPX 문단 1', description: '기업을 설명합니다.', status: 'NOT_STARTED',
+      fields: [{ key: 'company-name', label: '업체명', guidance: '공식 업체명을 입력합니다.', required: true }], facts: [],
+    },
+    {
+      key: 'voucher-plan', title: '바우처 활용 계획', locator: 'HWPX 문단 2', description: '계획을 설명합니다.', status: 'NOT_STARTED',
+      fields: [{ key: 'project-title', label: '과제명', guidance: '과제명을 입력합니다.', required: true }], facts: [],
+    },
   ],
 }
 const secondForm: ApplicationForm = {
@@ -45,7 +51,7 @@ const detail = {
   updatedAt: '2026-09-11T01:00:00+09:00',
   form: structuredClone(firstForm),
 }
-const repository = { forms: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn() }
+const repository = { forms: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -63,6 +69,26 @@ beforeEach(() => {
   repository.list.mockResolvedValue({ items: [], nextBeforeId: null })
   repository.get.mockResolvedValue(structuredClone(detail))
   repository.create.mockResolvedValue(structuredClone(detail))
+  repository.interpret.mockResolvedValue({
+    runId: 31,
+    inputRevision: 3,
+    sectionKey: 'company-overview',
+    suggestions: [{ fieldKey: 'company-name', status: 'PROVIDED', value: '새봄테크', evidenceQuote: '업체명은 새봄테크' }],
+    missingFields: [],
+    nextQuestion: null,
+  })
+  repository.replaceInputs.mockResolvedValue({
+    ...structuredClone(detail),
+    inputRevision: 4,
+    form: {
+      ...structuredClone(firstForm),
+      sections: firstForm.sections.map((section) => section.key === 'company-overview' ? {
+        ...section,
+        status: 'INPUT_CONFIRMED' as const,
+        facts: [{ id: 9, fieldKey: 'company-name', status: 'PROVIDED' as const, value: '새봄테크 연구소', sourceText: '업체명은 새봄테크입니다.', inputRevision: 4, updatedAt: detail.updatedAt }],
+      } : section),
+    },
+  })
   appContainer.register({ applicationPreparationUseCase: asValue(new ApplicationPreparationUseCase(repository)) })
 })
 
@@ -207,6 +233,29 @@ describe('application preparation creation and detail', () => {
     expect(screen.getAllByLabelText('작성 상태: 작성 전')).toHaveLength(2)
     expect(screen.getByText('공식 양식 위치: HWPX 문단 1')).toBeTruthy()
     expect(repository.create).not.toHaveBeenCalled()
+    expect(repository.interpret).not.toHaveBeenCalled()
+  })
+
+  it('keeps AI suggestions unconfirmed until the user reviews and saves them', async () => {
+    mount('/app/application-preparations/12')
+    const section = (await screen.findByRole('heading', { name: '공식 작성 항목' }))
+      .parentElement!.querySelector('li') as HTMLElement
+    const answer = within(section).getByLabelText('AI가 사실 항목을 구분할 수 있도록 답변하기')
+    fireEvent.change(answer, { target: { value: '업체명은 새봄테크입니다.' } })
+    fireEvent.click(within(section).getByRole('button', { name: 'AI로 답변 확인' }))
+
+    expect(await within(section).findByText('확인 전 AI 제안')).toBeTruthy()
+    expect(repository.replaceInputs).not.toHaveBeenCalled()
+    const value = within(section).getByLabelText('업체명 확인 값')
+    fireEvent.change(value, { target: { value: '새봄테크 연구소' } })
+    fireEvent.click(within(section).getByRole('button', { name: '선택한 사실 확인하고 저장' }))
+
+    expect(repository.replaceInputs).toHaveBeenCalledWith(12, 'company-overview', {
+      expectedRevision: 3,
+      facts: [{ fieldKey: 'company-name', status: 'PROVIDED', value: '새봄테크 연구소', sourceText: '업체명은 새봄테크입니다.' }],
+    }, expect.any(AbortSignal))
+    expect(await screen.findByText('새봄테크 연구소')).toBeTruthy()
+    expect(screen.getByText('4')).toBeTruthy()
   })
 
   it('rejects a malformed detail id without making a request', () => {

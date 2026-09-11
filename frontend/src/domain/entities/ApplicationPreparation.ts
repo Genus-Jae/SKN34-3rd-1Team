@@ -12,7 +12,50 @@ export type ApplicationFormSection = {
   title: string
   locator: string
   description: string
-  status: 'NOT_STARTED'
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'INPUT_CONFIRMED'
+  fields: ApplicationFormField[]
+  facts: ApplicationPreparationFact[]
+}
+
+export type ApplicationFormField = { key: string; label: string; guidance: string; required: boolean }
+export type ApplicationFactStatus = 'PROVIDED' | 'UNKNOWN'
+export type ApplicationPreparationFact = {
+  id: number
+  fieldKey: string
+  status: ApplicationFactStatus
+  value: string | null
+  sourceText: string
+  inputRevision: number
+  updatedAt: string
+}
+
+export type NewApplicationPreparationFact = Omit<ApplicationPreparationFact, 'id' | 'inputRevision' | 'updatedAt'>
+
+export type ApplicationFactSuggestion = {
+  fieldKey: string
+  status: ApplicationFactStatus
+  value: string | null
+  evidenceQuote: string
+}
+
+export type ApplicationInterpretation = {
+  runId: number
+  inputRevision: number
+  sectionKey: string
+  suggestions: ApplicationFactSuggestion[]
+  missingFields: string[]
+  nextQuestion: string | null
+}
+
+export type InterpretApplicationPreparation = {
+  expectedRevision: number
+  requestKey: string
+  message: string
+}
+
+export type ReplaceApplicationPreparationInputs = {
+  expectedRevision: number
+  facts: NewApplicationPreparationFact[]
 }
 
 export type ApplicationForm = {

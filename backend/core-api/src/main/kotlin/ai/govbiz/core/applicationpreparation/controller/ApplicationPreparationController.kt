@@ -5,6 +5,9 @@ import ai.govbiz.core.applicationpreparation.controller.dto.ApplicationPreparati
 import ai.govbiz.core.applicationpreparation.controller.dto.ApplicationPreparationResponse
 import ai.govbiz.core.applicationpreparation.controller.dto.CreateApplicationPreparationRequest
 import ai.govbiz.core.applicationpreparation.controller.dto.SupportedApplicationFormsResponse
+import ai.govbiz.core.applicationpreparation.controller.dto.ApplicationInterpretationResponse
+import ai.govbiz.core.applicationpreparation.controller.dto.InterpretApplicationPreparationRequest
+import ai.govbiz.core.applicationpreparation.controller.dto.ReplaceApplicationPreparationInputsRequest
 import ai.govbiz.core.applicationpreparation.service.ApplicationPreparationService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -55,4 +59,28 @@ class ApplicationPreparationController(private val service: ApplicationPreparati
     ): ResponseEntity<ApplicationPreparationResponse> =
         ResponseEntity.ok().cacheControl(CacheControl.noStore())
             .body(ApplicationPreparationResponse.from(service.findOwned(account, id)))
+
+    @PostMapping("/{id}/sections/{sectionKey}/messages")
+    fun interpret(
+        account: Account,
+        @PathVariable @Min(1) id: Long,
+        @PathVariable sectionKey: String,
+        @RequestBody @Valid request: InterpretApplicationPreparationRequest,
+    ): ResponseEntity<ApplicationInterpretationResponse> =
+        ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+            ApplicationInterpretationResponse.from(
+                service.interpret(account, id, sectionKey, request.expectedRevision, request.requestKey, request.message.trim()),
+            ),
+        )
+
+    @PutMapping("/{id}/sections/{sectionKey}/inputs")
+    fun replaceInputs(
+        account: Account,
+        @PathVariable @Min(1) id: Long,
+        @PathVariable sectionKey: String,
+        @RequestBody @Valid request: ReplaceApplicationPreparationInputsRequest,
+    ): ResponseEntity<ApplicationPreparationResponse> =
+        ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+            ApplicationPreparationResponse.from(service.replaceInputs(account, id, sectionKey, request.expectedRevision, request.toFacts())),
+        )
 }

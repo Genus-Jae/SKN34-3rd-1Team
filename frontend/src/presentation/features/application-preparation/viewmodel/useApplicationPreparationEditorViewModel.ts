@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router'
 import { appContainer } from '../../../../app/appContainer'
 import type {
   ApplicationForm,
+  ApplicationInterpretation,
   ApplicationPreparation,
+  ApplicationFormSection,
+  NewApplicationPreparationFact,
   ApplicationServiceField,
 } from '../../../../domain/entities/ApplicationPreparation'
 import { appPaths } from '../../../shared/routes/appPaths'
@@ -26,6 +29,15 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
   const createController = useRef<AbortController | null>(null)
   const loadSequence = useRef(0)
   const submittingGuard = useRef(false)
+  const actionController = useRef<AbortController | null>(null)
+  const [sectionMessages, setSectionMessages] = useState<Record<string, string>>({})
+  const [interpretations, setInterpretations] = useState<Record<string, {
+    result: ApplicationInterpretation
+    sourceMessage: string
+    selected: Record<string, boolean>
+    values: Record<string, string>
+  }>>({})
+  const [busySection, setBusySection] = useState<{ key: string; action: 'interpret' | 'save' } | null>(null)
 
   const selectedForm = useMemo(
     () => forms.find(({ formVersionId }) => formVersionId === selectedFormVersionId) ?? null,
@@ -75,6 +87,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
 
   useEffect(() => () => {
     createController.current?.abort()
+    actionController.current?.abort()
     submittingGuard.current = false
   }, [])
 
@@ -120,6 +133,119 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
     }
   }, [navigate, selectedForm, serviceField, useCase])
 
+  const setSectionMessage = useCallback((sectionKey: string, message: string) => {
+    setSectionMessages((current) => ({ ...current, [sectionKey]: message }))
+  }, [])
+
+  const interpretSection = useCallback(async (section: ApplicationFormSection) => {
+    if (!preparation || busySection) return
+    const message = (sectionMessages[section.key] ?? '').trim()
+    if (!message) {
+      setError(new Error('AI가 확인할 답변을 입력해 주세요.'))
+      return
+    }
+    const controller = new AbortController()
+    actionController.current?.abort()
+    actionController.current = controller
+    setBusySection({ key: section.key, action: 'interpret' })
+    setError(null)
+    try {
+      const result = await useCase.interpret(preparation.id, section.key, {
+        expectedRevision: preparation.inputRevision,
+        requestKey: crypto.randomUUID(),
+        message,
+      }, controller.signal)
+      if (controller.signal.aborted || actionController.current !== controller) return
+      setInterpretations((current) => ({
+        ...current,
+        [section.key]: {
+          result,
+          sourceMessage: message,
+          selected: Object.fromEntries(result.suggestions.map(({ fieldKey }) => [fieldKey, true])),
+          values: Object.fromEntries(result.suggestions.map(({ fieldKey, value }) => [fieldKey, value ?? ''])),
+        },
+      }))
+    } catch (caught) {
+      if (!controller.signal.aborted && actionController.current === controller) setError(asError(caught))
+    } finally {
+      if (actionController.current === controller) {
+        actionController.current = null
+        setBusySection(null)
+      }
+    }
+  }, [busySection, preparation, sectionMessages, useCase])
+
+  const toggleSuggestion = useCallback((sectionKey: string, fieldKey: string) => {
+    setInterpretations((current) => {
+      const state = current[sectionKey]
+      if (!state) return current
+      return { ...current, [sectionKey]: { ...state, selected: { ...state.selected, [fieldKey]: !state.selected[fieldKey] } } }
+    })
+  }, [])
+
+  const setSuggestionValue = useCallback((sectionKey: string, fieldKey: string, value: string) => {
+    setInterpretations((current) => {
+      const state = current[sectionKey]
+      if (!state) return current
+      return { ...current, [sectionKey]: { ...state, values: { ...state.values, [fieldKey]: value } } }
+    })
+  }, [])
+
+  const saveSuggestions = useCallback(async (section: ApplicationFormSection) => {
+    if (!preparation || busySection) return
+    const interpretation = interpretations[section.key]
+    if (!interpretation || interpretation.result.inputRevision !== preparation.inputRevision) {
+      setError(new Error('현재 입력 버전의 AI 제안을 먼저 받아 주세요.'))
+      return
+    }
+    const merged = new Map<string, NewApplicationPreparationFact>(section.facts.map((fact) => [fact.fieldKey, {
+      fieldKey: fact.fieldKey,
+      status: fact.status,
+      value: fact.value,
+      sourceText: fact.sourceText,
+    }]))
+    for (const suggestion of interpretation.result.suggestions) {
+      if (!interpretation.selected[suggestion.fieldKey]) continue
+      const value = suggestion.status === 'PROVIDED' ? (interpretation.values[suggestion.fieldKey] ?? '').trim() : null
+      if (suggestion.status === 'PROVIDED' && !value) {
+        setError(new Error('확인할 사실의 값을 입력해 주세요.'))
+        return
+      }
+      merged.set(suggestion.fieldKey, {
+        fieldKey: suggestion.fieldKey,
+        status: suggestion.status,
+        value,
+        sourceText: interpretation.sourceMessage,
+      })
+    }
+    if (![...interpretation.result.suggestions].some(({ fieldKey }) => interpretation.selected[fieldKey])) {
+      setError(new Error('저장할 AI 제안을 하나 이상 선택해 주세요.'))
+      return
+    }
+    const controller = new AbortController()
+    actionController.current = controller
+    setBusySection({ key: section.key, action: 'save' })
+    setError(null)
+    try {
+      const updated = await useCase.replaceInputs(preparation.id, section.key, {
+        expectedRevision: preparation.inputRevision,
+        facts: [...merged.values()],
+      }, controller.signal)
+      if (controller.signal.aborted || actionController.current !== controller) return
+      setPreparation(updated)
+      // inputRevision is global to the preparation, so every older proposal becomes stale.
+      setInterpretations({})
+      setSectionMessages((current) => ({ ...current, [section.key]: '' }))
+    } catch (caught) {
+      if (!controller.signal.aborted && actionController.current === controller) setError(asError(caught))
+    } finally {
+      if (actionController.current === controller) {
+        actionController.current = null
+        setBusySection(null)
+      }
+    }
+  }, [busySection, interpretations, preparation, useCase])
+
   return {
     forms,
     selectedForm,
@@ -133,5 +259,13 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
     selectForm,
     load,
     create,
+    sectionMessages,
+    interpretations,
+    busySection,
+    setSectionMessage,
+    interpretSection,
+    toggleSuggestion,
+    setSuggestionValue,
+    saveSuggestions,
   }
 }

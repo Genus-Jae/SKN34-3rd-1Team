@@ -13,7 +13,10 @@ const form = {
   verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED',
   institutionReviewed: false,
   supportedServiceFields: ['TECHNICAL_SUPPORT'],
-  sections: [{ key: 'company-overview', title: '기업 개요', locator: 'HWPX paragraph 1', description: '기업을 설명합니다.', status: 'NOT_STARTED' }],
+  sections: [{
+    key: 'company-overview', title: '기업 개요', locator: 'HWPX paragraph 1', description: '기업을 설명합니다.', status: 'NOT_STARTED',
+    fields: [{ key: 'company-name', label: '업체명', guidance: '업체명을 입력합니다.', required: true }], facts: [],
+  }],
 }
 const detail = {
   id: 1,
@@ -100,6 +103,32 @@ describe('application preparation HTTP boundary', () => {
       code: 'REQUEST_FAILED',
       message: 'Core API에 연결하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.',
     })
+  })
+
+  it('posts interpretation and puts only the confirmed input snapshot', async () => {
+    const interpreted = {
+      runId: 5,
+      inputRevision: 1,
+      sectionKey: 'company-overview',
+      suggestions: [{ fieldKey: 'company-name', status: 'PROVIDED', value: '새봄테크', evidenceQuote: '새봄테크' }],
+      missingFields: [],
+      nextQuestion: null,
+    }
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(Response.json(interpreted))
+      .mockResolvedValueOnce(Response.json({ ...detail, inputRevision: 2 })))
+    const repository = new ApplicationPreparationRepositoryImpl()
+    const interpretation = { expectedRevision: 1, requestKey: crypto.randomUUID(), message: '새봄테크' }
+    await repository.interpret(1, 'company-overview', interpretation)
+    const inputs = { expectedRevision: 1, facts: [{ fieldKey: 'company-name', status: 'PROVIDED' as const, value: '새봄테크', sourceText: '새봄테크' }] }
+    await repository.replaceInputs(1, 'company-overview', inputs)
+
+    const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][]
+    expect(calls.map(([, options]) => options.method)).toEqual(['POST', 'PUT'])
+    expect(calls[0]?.[0]).toMatch(/\/1\/sections\/company-overview\/messages$/)
+    expect(calls[1]?.[0]).toMatch(/\/1\/sections\/company-overview\/inputs$/)
+    expect(JSON.parse(calls[0]?.[1].body as string)).toEqual(interpretation)
+    expect(JSON.parse(calls[1]?.[1].body as string)).toEqual(inputs)
   })
 
   it('propagates cancellation to fetch without converting it to a visible request error', async () => {

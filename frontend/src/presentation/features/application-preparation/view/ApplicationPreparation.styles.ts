@@ -19,5 +19,13 @@ export const applicationPreparationStyles = {
   sectionItem: 'flex flex-col gap-2 rounded-xl border border-slate-200 p-4',
   sectionHeading: 'flex flex-wrap items-center justify-between gap-2',
   notStarted: 'rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600',
+  inProgress: 'rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900',
+  confirmed: 'rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900',
+  textarea: 'block min-h-28 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm leading-6 focus-visible:border-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100',
+  fieldList: 'grid gap-2 sm:grid-cols-2',
+  factItem: 'rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm leading-6',
+  suggestion: 'flex flex-col gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3',
+  checkboxLabel: 'flex items-start gap-2 text-sm font-bold text-slate-900',
+  quote: 'm-0 border-l-2 border-sky-300 pl-3 text-xs leading-5 text-slate-600',
   locator: 'm-0 text-xs leading-5 text-slate-500',
 } as const

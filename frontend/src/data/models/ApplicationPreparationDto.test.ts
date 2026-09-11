@@ -15,7 +15,10 @@ const form = {
   verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED',
   institutionReviewed: false,
   supportedServiceFields: ['CONSULTING', 'TECHNICAL_SUPPORT'],
-  sections: [{ key: 'company-overview', title: '기업 개요', locator: '문단 1', description: '기업을 설명합니다.', status: 'NOT_STARTED' }],
+  sections: [{
+    key: 'company-overview', title: '기업 개요', locator: '문단 1', description: '기업을 설명합니다.', status: 'NOT_STARTED',
+    fields: [{ key: 'company-name', label: '업체명', guidance: '업체명을 입력합니다.', required: true }], facts: [],
+  }],
 }
 const detail = {
   id: 1,

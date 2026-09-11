@@ -6,7 +6,7 @@ import { getCoreApiBaseUrl } from './coreApiConfig'
 export async function applicationPreparationRequest<T>(
   path: string,
   schema: z.ZodType<T>,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT',
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
@@ -18,7 +18,7 @@ export async function applicationPreparationRequest<T>(
   const timer = setTimeout(() => {
     timedOut = true
     abort()
-  }, 15_000)
+  }, path.endsWith('/messages') ? 45_000 : 15_000)
   try {
     const response = await fetch(`${getCoreApiBaseUrl()}/api/v1/application-preparations${path}`, {
       method,

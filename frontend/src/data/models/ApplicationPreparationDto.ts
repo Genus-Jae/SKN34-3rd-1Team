@@ -4,12 +4,37 @@ import { applicationServiceFields } from '../../domain/entities/ApplicationPrepa
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
 const time = z.string().datetime({ offset: true })
 const serviceField = z.enum(applicationServiceFields)
+const field = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  label: z.string().min(1).max(100),
+  guidance: z.string().min(1).max(500),
+  required: z.boolean(),
+})
+const factStatus = z.enum(['PROVIDED', 'UNKNOWN'])
+const fact = z.object({
+  id,
+  fieldKey: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  status: factStatus,
+  value: z.string().min(1).max(2000).nullable(),
+  sourceText: z.string().min(1).max(4000),
+  inputRevision: id,
+  updatedAt: time,
+}).superRefine((value, context) => {
+  if ((value.status === 'PROVIDED') !== (value.value !== null)) context.addIssue({ code: 'custom', message: '사실 상태와 값이 일치하지 않습니다.' })
+})
 const section = z.object({
   key: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
   title: z.string().min(1).max(100),
   locator: z.string().min(1).max(200),
   description: z.string().min(1).max(1000),
-  status: z.literal('NOT_STARTED'),
+  status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'INPUT_CONFIRMED']),
+  fields: z.array(field).min(1).max(20),
+  facts: z.array(fact).max(20),
+}).superRefine((value, context) => {
+  const keys = new Set(value.fields.map(({ key }) => key))
+  if (keys.size !== value.fields.length || value.facts.some(({ fieldKey }) => !keys.has(fieldKey))) {
+    context.addIssue({ code: 'custom', message: '작성 항목과 확인 사실이 일치하지 않습니다.' })
+  }
 })
 
 export const applicationFormSchema = z.object({
@@ -61,3 +86,19 @@ export const applicationPreparationSchema = z.object({
   }
 })
 export const applicationPreparationProblemSchema = z.object({ code: z.string() })
+
+export const applicationInterpretationSchema = z.object({
+  runId: id,
+  inputRevision: id,
+  sectionKey: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  suggestions: z.array(z.object({
+    fieldKey: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+    status: factStatus,
+    value: z.string().min(1).max(2000).nullable(),
+    evidenceQuote: z.string().min(1).max(1000),
+  }).superRefine((value, context) => {
+    if ((value.status === 'PROVIDED') !== (value.value !== null)) context.addIssue({ code: 'custom', message: '제안 상태와 값이 일치하지 않습니다.' })
+  })).max(20),
+  missingFields: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)).max(20),
+  nextQuestion: z.string().min(1).max(300).nullable(),
+})
