@@ -10,7 +10,13 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.application_preparation.agent import ApplicationPreparationAgent
-from app.application_preparation.models import InterpretRequest, InterpretationSelection
+from app.application_preparation.discovery_prompt import DISCOVERY_PROMPT_VERSION
+from app.application_preparation.models import (
+    DiscoverFormsRequest,
+    FormDiscoverySelection,
+    InterpretRequest,
+    InterpretationSelection,
+)
 from app.application_preparation.prompt import PROMPT_VERSION
 from app.application_preparation.service import ApplicationPreparationError, ApplicationPreparationService
 from app.config import Settings
@@ -46,6 +52,37 @@ def selection_data():
     }
 
 
+def discovery_request_data():
+    return {
+        "contractVersion": "application-form-discovery-v1",
+        "sourceCode": "BIZINFO",
+        "sourceProgramId": "PBLN_123",
+        "programTitle": "지원사업 공고",
+        "documents": [{
+            "documentIndex": 0,
+            "fileName": "사업계획서.hwpx",
+            "format": "HWPX",
+            "blocks": [{"blockId": "D0-B0", "locator": "HWPX section0 paragraphs 1-3", "text": "사업 개요를 작성해 주세요."}],
+        }],
+    }
+
+
+def discovery_selection_data():
+    return {"forms": [{"documentIndex": 0, "sections": [{
+        "sectionKey": "business-plan",
+        "title": "사업 계획",
+        "description": "사업 개요를 작성합니다.",
+        "fields": [{
+            "fieldKey": "business-overview",
+            "label": "사업 개요",
+            "guidance": "사업의 목적과 내용을 입력합니다.",
+            "required": True,
+            "evidenceBlockId": "D0-B0",
+            "evidenceQuote": "사업 개요",
+        }],
+    }]}]}
+
+
 def make_service(data=None):
     model = ScriptedModel([[assistant_message(json.dumps(data or selection_data(), ensure_ascii=False))]])
     agent = ApplicationPreparationAgent(model=model, model_timeout_seconds=2, run_timeout_seconds=3)
@@ -62,6 +99,27 @@ def test_real_runner_returns_validated_suggestions_without_confirming_them():
     assert service.agent._agent.tools == []
     assert service.agent._agent.model_settings.store is False
     assert service.agent._run_config.tracing_disabled is True
+
+
+def test_real_runner_discovers_only_fields_with_exact_document_evidence():
+    model = ScriptedModel([[assistant_message(json.dumps(discovery_selection_data(), ensure_ascii=False))]])
+    agent = ApplicationPreparationAgent(model=model, model_timeout_seconds=2, run_timeout_seconds=3)
+    service = ApplicationPreparationService(agent, "test-model")
+    result = asyncio.run(service.discover(DiscoverFormsRequest.model_validate(discovery_request_data())))
+    assert result["forms"][0]["sections"][0]["fields"][0]["evidenceQuote"] == "사업 개요"
+    assert result["promptVersion"] == DISCOVERY_PROMPT_VERSION
+    assert len(model.calls) == 1
+    assert agent._discovery_agent.tools == []
+
+
+def test_discovery_rejects_a_field_without_exact_source_evidence():
+    output = discovery_selection_data()
+    output["forms"][0]["sections"][0]["fields"][0]["evidenceQuote"] = "문서에 없는 항목"
+    agent = SimpleNamespace(discover=AsyncMock(return_value=FormDiscoverySelection.model_validate(output)))
+    with pytest.raises(ApplicationPreparationError, match="APPLICATION_PREPARATION_FAILED"):
+        asyncio.run(ApplicationPreparationService(agent, "test-model").discover(
+            DiscoverFormsRequest.model_validate(discovery_request_data()),
+        ))
 
 
 @pytest.mark.parametrize("change", [
@@ -103,8 +161,13 @@ def test_fastapi_contract_hides_private_failures():
     app.state.container.application_preparation_service = service
     with TestClient(app) as client:
         assert client.get("/internal/v1/application-preparations/configuration").json() == service.configuration()
+        assert client.get("/internal/v1/application-preparations/discovery/configuration").json() == service.discovery_configuration()
         response = client.post("/internal/v1/application-preparations/interpret", json=request_data())
         assert response.status_code == 200
+        service.agent = SimpleNamespace(discover=AsyncMock(return_value=FormDiscoverySelection.model_validate(discovery_selection_data())))
+        discovered = client.post("/internal/v1/application-preparations/discovery", json=discovery_request_data())
+        assert discovered.status_code == 200
+        assert discovered.json()["forms"][0]["documentIndex"] == 0
         service.agent = SimpleNamespace(interpret=AsyncMock(side_effect=RuntimeError("private failure")))
         failure = client.post("/internal/v1/application-preparations/interpret", json=request_data())
         assert failure.status_code == 503

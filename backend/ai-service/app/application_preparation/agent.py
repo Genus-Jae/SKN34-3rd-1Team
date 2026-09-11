@@ -5,7 +5,13 @@ from agents import Agent, Model, ModelSettings, ModelTimeoutError, RunConfig, Ru
 from openai import APITimeoutError
 from openai.types.shared import Reasoning
 
-from app.application_preparation.models import InterpretationSelection, InterpretRequest
+from app.application_preparation.discovery_prompt import DISCOVERY_INSTRUCTIONS
+from app.application_preparation.models import (
+    DiscoverFormsRequest,
+    FormDiscoverySelection,
+    InterpretationSelection,
+    InterpretRequest,
+)
 from app.application_preparation.prompt import INSTRUCTIONS
 
 
@@ -21,6 +27,19 @@ class ApplicationPreparationAgent:
             output_type=InterpretationSelection,
             model_settings=ModelSettings(
                 max_tokens=2500,
+                reasoning=Reasoning(effort="none"),
+                store=False,
+                timeout=model_timeout_seconds,
+                extra_args={"timeout": model_timeout_seconds},
+            ),
+        )
+        self._discovery_agent = Agent(
+            name="GovBiz Application Form Discovery",
+            model=model,
+            instructions=DISCOVERY_INSTRUCTIONS,
+            output_type=FormDiscoverySelection,
+            model_settings=ModelSettings(
+                max_tokens=5000,
                 reasoning=Reasoning(effort="none"),
                 store=False,
                 timeout=model_timeout_seconds,
@@ -43,3 +62,18 @@ class ApplicationPreparationAgent:
         if not isinstance(result.final_output, InterpretationSelection):
             raise ValueError("invalid application preparation output")
         return InterpretationSelection.model_validate(result.final_output.model_dump())
+
+    async def discover(self, request: DiscoverFormsRequest) -> FormDiscoverySelection:
+        try:
+            async with asyncio.timeout(self._run_timeout_seconds):
+                result = await Runner.run(
+                    self._discovery_agent,
+                    json.dumps(request.model_dump(), ensure_ascii=False),
+                    max_turns=1,
+                    run_config=self._run_config,
+                )
+        except (ModelTimeoutError, APITimeoutError, TimeoutError) as error:
+            raise TimeoutError("Application form discovery agent timed out") from error
+        if not isinstance(result.final_output, FormDiscoverySelection):
+            raise ValueError("invalid application form discovery output")
+        return FormDiscoverySelection.model_validate(result.final_output.model_dump())

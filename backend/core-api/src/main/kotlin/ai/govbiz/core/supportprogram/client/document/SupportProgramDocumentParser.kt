@@ -1,15 +1,8 @@
-package ai.govbiz.core.combinationreview.client.mapper
+package ai.govbiz.core.supportprogram.client.document
 
-import ai.govbiz.core.combinationreview.domain.ReviewSourceBlock
-import ai.govbiz.core.combinationreview.domain.ReviewSourceDocument
-import ai.govbiz.core.combinationreview.client.dto.ReviewAttachmentResult
-import ai.govbiz.core.combinationreview.helper.CombinationReviewHashHelper
-import ai.govbiz.core.combinationreview.client.exception.CombinationReviewSourceClientException
-import ai.govbiz.core.combinationreview.client.exception.CombinationReviewSourceClientException.Reason
-import ai.govbiz.core.combinationreview.client.dto.MAX_REVIEW_ATTACHMENT_BYTES
+import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException.Reason
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.time.LocalDateTime
 import java.util.zip.ZipInputStream
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
@@ -19,18 +12,13 @@ import org.apache.pdfbox.text.PDFTextStripper
 import org.springframework.stereotype.Component
 import org.w3c.dom.Element
 
-/** 원문 전체의 순서를 보존한다. 한도 초과를 잘라내거나 키워드로 일부 조항만 선택하지 않는다. */
-@Component
-class CombinationReviewDocumentMapper {
-    fun toDocument(attachment: ReviewAttachmentResult, programIndex: Int, blocks: List<ReviewSourceBlock>, fetchedAt: LocalDateTime): ReviewSourceDocument =
-        ReviewSourceDocument(
-            programIndex, attachment.sourceUrl, attachment.fileName, attachment.format,
-            CombinationReviewHashHelper.sha256(attachment.bytes),
-            CombinationReviewHashHelper.sha256(blocks.joinToString("\n") { it.text }), VERSION, fetchedAt,
-        )
+data class SupportProgramDocumentBlock(val locator: String, val text: String)
 
-    fun fromBytes(bytes: ByteArray, format: String): List<ReviewSourceBlock> = try {
-        if (bytes.size > MAX_REVIEW_ATTACHMENT_BYTES) fail(Reason.TOO_LARGE)
+/** 공식 PDF/HWPX 원문의 순서와 위치를 보존하며 안전 한도 안에서 텍스트 블록으로 변환합니다. */
+@Component
+class SupportProgramDocumentParser {
+    fun parse(bytes: ByteArray, format: String): List<SupportProgramDocumentBlock> = try {
+        if (bytes.size > MAX_SUPPORT_PROGRAM_ATTACHMENT_BYTES) fail(Reason.TOO_LARGE)
         val blocks = when (format) {
             "PDF" -> pdf(bytes)
             "HWPX" -> hwpx(bytes)
@@ -39,28 +27,29 @@ class CombinationReviewDocumentMapper {
         if (blocks.sumOf { it.text.length } < 50) fail(Reason.UNSUPPORTED)
         if (blocks.sumOf { it.text.length } > 60_000 || blocks.size > 256) fail(Reason.TOO_LARGE)
         blocks
-    } catch (error: CombinationReviewSourceClientException) {
+    } catch (error: SupportProgramDocumentException) {
         throw error
     } catch (error: InvalidPasswordException) {
-        throw CombinationReviewSourceClientException(Reason.UNSUPPORTED, cause = error)
+        throw SupportProgramDocumentException(Reason.UNSUPPORTED, cause = error)
     } catch (error: Exception) {
-        throw CombinationReviewSourceClientException(Reason.INVALID, cause = error)
+        throw SupportProgramDocumentException(Reason.INVALID, cause = error)
     }
 
-    private fun pdf(bytes: ByteArray): List<ReviewSourceBlock> = Loader.loadPDF(bytes).use { document ->
+    private fun pdf(bytes: ByteArray): List<SupportProgramDocumentBlock> = Loader.loadPDF(bytes).use { document ->
         if (document.isEncrypted || !document.currentAccessPermission.canExtractContent()) fail(Reason.UNSUPPORTED)
         if (document.numberOfPages !in 1..80) fail(Reason.TOO_LARGE)
         buildList {
             for (page in 1..document.numberOfPages) {
                 val text = PDFTextStripper().apply { startPage = page; endPage = page; sortByPosition = true }.getText(document).trim()
-                // A scanned/empty page may contain a relevant exception. Do not silently omit it.
                 if (text.length < 10) fail(Reason.UNSUPPORTED)
-                splitText(text).forEachIndexed { part, value -> add(ReviewSourceBlock("PDF page $page part ${part + 1}", value)) }
+                splitText(text).forEachIndexed { part, value ->
+                    add(SupportProgramDocumentBlock("PDF page $page part ${part + 1}", value))
+                }
             }
         }
     }
 
-    private fun hwpx(bytes: ByteArray): List<ReviewSourceBlock> {
+    private fun hwpx(bytes: ByteArray): List<SupportProgramDocumentBlock> {
         val sections = sortedMapOf<Int, ByteArray>()
         var expanded = 0
         var entries = 0
@@ -98,7 +87,7 @@ class CombinationReviewDocumentMapper {
                 var buffer = StringBuilder()
                 var start = 1
                 fun flush(end: Int) {
-                    if (buffer.isNotEmpty()) add(ReviewSourceBlock("HWPX section$section paragraphs $start-$end", buffer.toString()))
+                    if (buffer.isNotEmpty()) add(SupportProgramDocumentBlock("HWPX section$section paragraphs $start-$end", buffer.toString()))
                     buffer = StringBuilder()
                 }
                 for (index in 0 until nodes.length) {
@@ -116,7 +105,9 @@ class CombinationReviewDocumentMapper {
                     if (text.isBlank()) continue
                     if (text.length > 3000) {
                         flush(index)
-                        splitText(text).forEachIndexed { part, value -> add(ReviewSourceBlock("HWPX section$section paragraph ${index + 1} part ${part + 1}", value)) }
+                        splitText(text).forEachIndexed { part, value ->
+                            add(SupportProgramDocumentBlock("HWPX section$section paragraph ${index + 1} part ${part + 1}", value))
+                        }
                         continue
                     }
                     if (buffer.length + text.length + 1 > 3000) flush(index)
@@ -138,7 +129,8 @@ class CombinationReviewDocumentMapper {
         }
     }
 
-    private fun fail(reason: Reason): Nothing = throw CombinationReviewSourceClientException(reason)
+    private fun fail(reason: Reason): Nothing = throw SupportProgramDocumentException(reason)
+
     companion object {
         const val VERSION = "pdfbox-3.0.8-hwpx-direct-paragraph-v1"
         private const val HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"

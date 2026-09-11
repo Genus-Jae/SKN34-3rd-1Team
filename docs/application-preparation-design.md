@@ -1,16 +1,16 @@
-# 공식 양식 기반 신청 문서 작성 도우미 설계
+# 공고 기반 신청 문서 작성 도우미 설계
 
 [문서 목록](README.md) · [시스템 구조](architecture/README.md) · [계정·인증 계약](account-auth-contract.md)
 
-- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189)
-- 상태: **고정 양식과 신청 준비 기본 흐름에 이어 문항별 AI 질문·사실 제안·사용자 확인 입력 저장을 구현했다. 초안 생성·수정·확인은 미구현이다.**
-- 설계 기준: 2026-09-11, 팀 `main`의 PR #186 병합 커밋 `bfe44aa`.
+- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189) · [#199 — skn-96 공고 기반 양식 발견](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/199)
+- 상태: **기업마당 공고별 공식 PDF/HWPX에서 신청 문서와 문항을 동적으로 발견해 기존 질문·사실 확인 흐름에 연결한다. 초안 생성·수정·확인은 미구현이다.**
+- 설계 기준: 2026-09-11, 팀 `main` 커밋 `6fc41bc`에서 `skn-96` 전환.
 - 기능 이름: 화면에서는 **신청 문서 작성 도우미**, 코드에서는 `applicationpreparation` / `application_preparation` / `application-preparation`을 사용한다.
 
 ## 1. 해결할 문제와 기능 정의
 
 지원사업 공고를 찾은 사용자가 공식 신청 양식의 문항을 이해하고 빈 문서에서 초안을 시작하기 어렵다는 문제를 해결한다.
-사용자가 특정 공고에서 `신청 문서 작성 시작`을 명시적으로 선택하면, 검수된 공식 양식의 문항을 순서대로 보여주고
+사용자가 특정 공고에서 `신청 문서 작성 시작`을 명시적으로 선택하면, 공식 첨부에서 찾은 신청 문서와 문항을 먼저 확인시키고
 AI가 필요한 사실을 질문한다. 사용자가 확인한 답변과 공식 작성 안내만으로 문항별 초안을 만들며, 미정 정보는
 미정으로 남긴다.
 
@@ -26,10 +26,10 @@ AI가 필요한 사실을 질문한다. 사용자가 확인한 답변과 공식 
 AI가 만든 문장은 제출 완료나 사실 확인을 의미하지 않는다. 사용자가 직접 수정하고 특정 작성본 버전을 확인해야
 `사용자 확인`으로 표시한다.
 
-## 2. 첫 지원 대상과 고정 근거
+## 2. 최초 검수 기준과 동적 지원 범위
 
-첫 수직 범위는 기업마당의 **2026년 2차 중소기업 혁신바우처 사업 지원계획 공고** 한 건과 첨부
-`【서식 1】사업 계획서` 중 일반형 주요 문항이다.
+기업마당의 **2026년 2차 중소기업 혁신바우처 사업 지원계획 공고** 한 건은 자동 추출 결과를 비교할 최초 검수 기준이다.
+사용자 기능은 이 한 건에 제한하지 않고, 기업마당 숫자형 `PBLN_...` 공고가 직접 연결한 PDF/HWPX를 명시적 요청에서 분석한다.
 
 | 항목 | 고정 값 |
 |---|---|
@@ -50,16 +50,15 @@ AI가 만든 문장은 제출 완료나 사실 확인을 의미하지 않는다.
 | `voucher-necessity` | 문단 726~729 `바우처 지원 필요성` | 기업활동과 활용계획의 관련성, 도입 필요성 |
 
 공식 첨부는 사업 신청서를 플랫폼에서 온라인 작성하고, 별첨 사업계획서는 신청서 작성 시 업로드하도록 구분한다.
-따라서 첫 기능은 **혁신바우처 사업계획서 초안 작성**이며 온라인 신청서 입력이나 제출을 대신하지 않는다.
-원문 문항·위치·파일 해시는 2장 구현에서 검수 manifest로 고정한다. 이후 같은 URL의 파일 내용이 달라지면 기존
-버전을 덮어쓰지 않고 미지원 새 버전으로 구분한다.
+이 기준 manifest는 기존 준비 건 복원과 회귀 검증에 유지한다. 동적으로 발견한 양식도 원문 URL, 파일 hash, 파서·모델·
+프롬프트 버전을 스냅샷으로 고정하며 같은 URL의 파일 내용이 달라지면 기존 버전을 덮어쓰지 않는다.
 
 ## 3. 포함 범위와 제외 범위
 
 | 포함 | 제외 |
 |---|---|
 | 로그인 회원의 신청 준비 건 생성·저장·이어쓰기 | 정부 사이트 로그인·자동 입력·자동 제출 |
-| 검수된 공식 문항·작성 안내 표시 | 모든 지원사업과 임의 양식 자동 지원 |
+| 기업마당 공식 PDF/HWPX의 신청 문서·문항 발견과 사용자 확인 | 다른 제공처·HWP·스캔 PDF/OCR·임의 파일 업로드 |
 | 문항별 질문, 사용자 답변의 사실·미정 구분 | 사용자에게 없는 실적·수치·인증·일정 생성 |
 | 사용자 확인 사실로 문항 초안 생성 | 선정 가능성·기관 수용 여부·법률 적합성 보장 |
 | 직접 수정, 버전 저장, 특정 버전 사용자 확인 | 원본 HWPX의 표·글꼴·페이지 완전 재현 |
@@ -72,15 +71,12 @@ AI가 만든 문장은 제출 완료나 사실 확인을 의미하지 않는다.
 
 ## 4. 사용자 흐름과 화면 경계
 
-1. 로그인 사용자가 지원사업 상세에서 `신청 문서 작성 시작`을 선택한다.
-2. 공고·지원 분야·공식 양식 버전을 확인하고 생성 버튼을 누른다.
-3. 공식 문항 목록과 문항별 작성 상태를 본다.
-4. 선택 문항에서 AI 질문에 답한다.
-5. AI가 제안한 사실·미정 정보를 사용자가 확인하거나 정정한다.
-6. 사용자가 `초안 만들기`를 눌러 현재 확인 사실로 초안을 생성한다.
-7. 초안을 직접 수정하고 특정 버전을 확인한다.
-8. 입력 사실이 바뀌면 영향을 받은 확인본을 `재확인 필요`로 표시한다.
-9. 전체 화면에서 미작성·추가 입력 필요·초안·사용자 확인 상태를 확인하고 문안을 복사한다.
+1. 로그인 사용자가 지원사업 상세에서 `신청 문서 작성 시작`을 선택하거나 기업마당 URL·공고 ID를 입력한다.
+2. 사용자가 분석 버튼을 누르면 공식 PDF/HWPX를 수집하고 신청 문서·문항 후보를 추출한다.
+3. 사용자가 원문 위치와 발견 양식을 확인하고 생성 버튼을 누른다.
+4. 공식 문항 목록과 문항별 작성 상태를 본다.
+5. 선택 문항에서 AI 질문에 답하고 제안 사실·미정 정보를 확인하거나 정정한다.
+6. 후속 기능에서 초안 생성·수정·확인을 제공한다.
 
 제안 경로:
 
@@ -137,11 +133,11 @@ backend/core-api/src/main/resources/mybatis/applicationpreparation/repository/
 backend/core-api/src/main/resources/application-preparation/
 
 backend/ai-service/app/application_preparation/
-  router.py  service.py  agent.py  models.py  prompt.py
+  router.py  service.py  agent.py  models.py  prompt.py  discovery_prompt.py
 ```
 
-실제 책임이 생긴 디렉터리와 파일만 추가한다. 공식 양식이 한 건인 첫 버전에서는 범용 `officialdocument` 패키지나
-별도 양식 registry를 만들지 않는다.
+공식 첨부 수집·파싱은 신청 문서 발견과 중복 지원 검토가 실제로 함께 사용하므로 `supportprogram/client` 경계에서 공유한다.
+추출 양식은 범용 registry 대신 `application_form_snapshot`이 파일·파서·모델·프롬프트 버전을 직접 소유한다.
 
 ## 6. 데이터와 상태 계약
 
@@ -149,6 +145,10 @@ backend/ai-service/app/application_preparation/
 
 - **신청 준비 건(Preparation)**: 사용자가 계속 편집하는 현재 작업. 소유자·공고·양식 버전·현재 revision을 가진다.
 - **AI 실행(Run)**: 특정 문항, 확인 사실, 공식 근거와 입력 revision으로 수행한 질문 해석 또는 초안 생성 한 번.
+
+`application_form_snapshot`은 사용자 작업과 분리된 공개 공식 자료의 추출 버전이다. 공고의 전체 첨부 URL·파일명·hash로
+source fingerprint를 만들고, 파일 hash·파서·모델·추출 프롬프트가 같을 때만 재사용한다. 어느 값이든 바뀌면 새
+`formVersionId`를 만들며 기존 준비 건이 참조하는 버전을 덮어쓰지 않는다.
 
 ```text
 신청 준비 건 P1
@@ -179,7 +179,8 @@ AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초�
 
 | 메서드·경로 | 역할 |
 |---|---|
-| GET `/application-preparations/forms` | 로그인 회원에게 현재 지원하는 고정 양식·분야·문항 표시. 조회만으로 준비 건을 만들지 않음 |
+| GET `/application-preparations/forms` | 기존 검수 기준 양식 조회. 이전 작업 호환용이며 새 작성 진입에서는 자동 호출하지 않음 |
+| POST `/application-preparations/forms/discover` | 선택한 기업마당 공고의 공식 PDF/HWPX에서 신청 문서·문항을 발견하고 버전 스냅샷 저장·재사용 |
 | POST `/application-preparations` | 공고·지원 분야·양식 버전으로 신청 준비 건 생성 |
 | GET `/application-preparations` | 본인 신청 준비 목록 |
 | GET `/application-preparations/{id}` | 본인 현재 입력·문항·작성 상태 조회 |
@@ -268,17 +269,19 @@ AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초�
 
 ## 8. AI 내부 계약과 생성 제약
 
-첫 버전은 Qdrant 양식 검색을 추가하지 않는다. Core가 선택 문항의 검수된 작성 안내·허용된 인용 후보와 사용자 확인
-사실만 골라 AI Service에 전달한다.
+Qdrant 양식 검색은 추가하지 않는다. 양식 발견에서는 Core가 공식 첨부에서 안전하게 추출한 위치 포함 블록만 전달하고,
+입력 해석에서는 선택 문항의 작성 안내·현재 사용자 확인 사실과 이번 답변만 AI Service에 전달한다.
 
 ```text
 GET  /internal/v1/application-preparations/configuration
 POST /internal/v1/application-preparations/interpret
+GET  /internal/v1/application-preparations/discovery/configuration
+POST /internal/v1/application-preparations/discovery
 POST /internal/v1/application-preparations/draft
 ```
 
-AI Service는 기능 전용 typed Agent 한 개를 `max_turns=1`로 실행한다. configuration은 LLM을 호출하지 않고
-계약·모델·프롬프트 버전을 반환한다. interpret와 draft는 역할은 다르지만 같은 구체 Agent와 검증 계층을 사용한다.
+AI Service는 양식 발견과 입력 해석의 역할별 typed Agent를 각각 `max_turns=1`로 실행한다. configuration은 LLM을 호출하지 않고
+계약·모델·프롬프트 버전을 반환한다. 두 Agent는 도구·handoff·fallback 없이 각 출력 계약을 검증한다.
 
 Core는 AI 응답에서 다음을 검증한다.
 
@@ -301,7 +304,9 @@ Core는 AI 응답에서 다음을 검증한다.
 - 401 이후 쓰기·AI 요청을 로그인만으로 자동 재전송하지 않고 기존 반영 여부를 먼저 조회한다.
 - 요청 취소만으로 OpenAI 실행 중단을 보장하지 않으며 늦은 결과는 입력 revision으로 격리한다.
 - 공식 첨부 다운로드·파싱·AI 호출을 하나의 DB transaction 안에서 수행하지 않는다.
-- 공식 파일 hash가 고정 값과 다르면 자동으로 새 양식으로 채택하거나 기존 manifest를 덮어쓰지 않는다.
+- 사용자가 입력한 URL은 Frontend에서 기업마당 상세 URL의 공고 ID로만 정규화하며 Core는 임의 URL을 다운로드하지 않는다.
+- Core는 숫자형 기업마당 공고 ID로 공식 상세를 다시 구성하고 그 페이지가 직접 연결한 허용 도메인의 PDF/HWPX만 받는다.
+- 공식 파일 hash가 기존 값과 다르면 새 스냅샷으로 분석하고 사용자가 다시 선택하게 하며 기존 manifest를 덮어쓰지 않는다.
 - 기관이 검수하지 않은 AI 초안을 공식 작성 지침이나 선정 가능성 판단으로 표시하지 않는다.
 
 ## 10. 기능별 이슈·브랜치·PR 경계
@@ -331,6 +336,7 @@ GitHub 이슈에서 skn-번호 확정
 | 제약·계약 확정 | `skn-89` / #185 | 이 문서, 공식 대상·범위·공개/AI 계약 | 링크·원문 위치·`git diff --check` |
 | 신청 준비 기본 흐름 | `skn-90` / #187 | 검수 양식, 신청 준비 생성·목록·상세의 Domain·DB·Core API·Frontend | Core·MySQL 8.4·Frontend |
 | 문항별 질문과 사실 확인 | `skn-92` / #189 | AI 답변 해석, 사실 제안·확인, 문항 입력 저장과 화면 | AI Service·Core 계약·Frontend |
+| 공고 기반 양식 발견 전환 | `skn-96` / #199 | 기업마당 공식 첨부 수집·문항 추출·버전 스냅샷과 공고 상세·새 작성 연결 | AI Service·Core·MySQL 8.4·Frontend |
 | 초안 생성·수정·확인 | 새 번호 배정 필요 | 초안 실행·이력, 직접 수정, 확인·재확인 상태와 화면 | AI Service·Core·Frontend·Stub 연결 |
 | 전체 흐름 안정화 | 새 번호 배정 필요 | 로그인 복귀·세션 격리·장애·Compose 통합과 운영 문서 | 변경 서비스 전체·Compose·`git diff --check` |
 

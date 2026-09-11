@@ -7,15 +7,17 @@ import ai.govbiz.core.account.helper.SessionCookieHelper
 import ai.govbiz.core.account.repository.AccountRepository
 import ai.govbiz.core.account.service.AccountSessionService
 import ai.govbiz.core.combinationreview.client.AiCombinationReviewClient
-import ai.govbiz.core.combinationreview.client.CombinationReviewSourceClient
 import ai.govbiz.core.combinationreview.client.dto.*
 import ai.govbiz.core.combinationreview.domain.*
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRunConflictException
-import ai.govbiz.core.combinationreview.client.exception.CombinationReviewSourceClientException
 import ai.govbiz.core.combinationreview.helper.CombinationReviewHashHelper
 import ai.govbiz.core.combinationreview.repository.CombinationReviewRepository
 import ai.govbiz.core.combinationreview.repository.CombinationReviewRunRepository
 import ai.govbiz.core.combinationreview.service.exception.*
+import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachment
+import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
+import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
 import jakarta.servlet.http.Cookie
 import java.io.ByteArrayOutputStream
 import java.time.LocalDateTime
@@ -63,7 +65,7 @@ class CombinationReviewRunIntegrationTest {
     @Autowired private lateinit var sessions: AccountSessionService
     @Autowired private lateinit var reviews: CombinationReviewRepository
     @Autowired private lateinit var runs: CombinationReviewRunRepository
-    @MockitoBean private lateinit var source: CombinationReviewSourceClient
+    @MockitoBean private lateinit var source: BizInfoAttachmentClient
     @MockitoBean private lateinit var ai: AiCombinationReviewClient
     private var ownerId = 0L
     private var otherId = 0L
@@ -88,11 +90,11 @@ class CombinationReviewRunIntegrationTest {
         general = resource("general.hwpx"); deep = resource("deeptech.hwpx")
         answer = json.readValue(resource("contract-response.json"), AiCombinationReviewPayload::class.java)
         request = json.readValue(resource("contract-request.json"), AiCombinationReviewRequest::class.java)
-        `when`(source.collect(g)).thenAnswer {
+        `when`(source.collect(g.sourceCode, g.sourceProgramId)).thenAnswer {
             assertFalse(TransactionSynchronizationManager.isActualTransactionActive())
             fetched(general, "general.hwpx")
         }
-        `when`(source.collect(d)).thenReturn(fetched(deep, "deeptech.hwpx"))
+        `when`(source.collect(d.sourceCode, d.sourceProgramId)).thenReturn(fetched(deep, "deeptech.hwpx"))
         `when`(ai.configuration()).thenReturn(AiReviewConfigurationPayload(answer.contractVersion, answer.model, answer.promptVersion))
         `when`(ai.analyze(any(AiCombinationReviewRequest::class.java) ?: request)).thenAnswer {
             assertFalse(TransactionSynchronizationManager.isActualTransactionActive())
@@ -123,11 +125,11 @@ class CombinationReviewRunIntegrationTest {
     @Test
     fun skipsUnreadableAttachmentWhenTheSameProgramHasAUsableOfficialDocument() {
         val blankPdf = blankPdf()
-        `when`(source.collect(g)).thenReturn(ReviewAttachmentsResult(
+        `when`(source.collect(g.sourceCode, g.sourceProgramId)).thenReturn(SupportProgramAttachments(
             "공식 공고",
             listOf(
-                ReviewAttachmentResult("https://www.mss.go.kr/general.hwpx", "공고문.hwpx", "HWPX", general),
-                ReviewAttachmentResult("https://www.mss.go.kr/appendix.pdf", "이미지형 붙임.pdf", "PDF", blankPdf),
+                SupportProgramAttachment("https://www.mss.go.kr/general.hwpx", "공고문.hwpx", "HWPX", general),
+                SupportProgramAttachment("https://www.mss.go.kr/appendix.pdf", "이미지형 붙임.pdf", "PDF", blankPdf),
             ),
             emptyList(),
         ))
@@ -143,9 +145,9 @@ class CombinationReviewRunIntegrationTest {
 
     @Test
     fun failsWhenAProgramHasNoUsableOfficialDocument() {
-        `when`(source.collect(g)).thenReturn(ReviewAttachmentsResult(
+        `when`(source.collect(g.sourceCode, g.sourceProgramId)).thenReturn(SupportProgramAttachments(
             "공식 공고",
-            listOf(ReviewAttachmentResult("https://www.mss.go.kr/appendix.pdf", "이미지형 붙임.pdf", "PDF", blankPdf())),
+            listOf(SupportProgramAttachment("https://www.mss.go.kr/appendix.pdf", "이미지형 붙임.pdf", "PDF", blankPdf())),
             emptyList(),
         ))
 
@@ -207,7 +209,7 @@ class CombinationReviewRunIntegrationTest {
 
     @Test
     fun sourceFailureIsStoredAndDoesNotReachAi() {
-        `when`(source.collect(g)).thenThrow(CombinationReviewSourceClientException(CombinationReviewSourceClientException.Reason.UNSUPPORTED))
+        `when`(source.collect(g.sourceCode, g.sourceProgramId)).thenThrow(SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED))
         val result = start().andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("SOURCE_UNSUPPORTED")).andReturn().response
         val runId = json.readTree(result.contentAsString).path("runId").asLong()
         val run = requireNotNull(runs.findOwned(ownerId, reviewId, runId))
@@ -311,7 +313,7 @@ class CombinationReviewRunIntegrationTest {
         } finally { release.countDown(); executor.shutdownNow() }
     }
 
-    private fun fetched(bytes: ByteArray, name: String) = ReviewAttachmentsResult("공식 공고", listOf(ReviewAttachmentResult("https://www.mss.go.kr/common/board/Download.do?bcIdx=1&cbIdx=310&streFileNm=$name", name, "HWPX", bytes)), listOf("기관 해석 미확인"))
+    private fun fetched(bytes: ByteArray, name: String) = SupportProgramAttachments("공식 공고", listOf(SupportProgramAttachment("https://www.mss.go.kr/common/board/Download.do?bcIdx=1&cbIdx=310&streFileNm=$name", name, "HWPX", bytes)), listOf("기관 해석 미확인"))
     private fun blankPdf(): ByteArray = ByteArrayOutputStream().use { output ->
         PDDocument().use { document ->
             document.addPage(PDPage())

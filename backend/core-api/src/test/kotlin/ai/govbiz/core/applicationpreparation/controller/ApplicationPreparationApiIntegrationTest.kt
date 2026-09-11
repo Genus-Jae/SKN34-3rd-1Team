@@ -11,6 +11,20 @@ import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparat
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationInterpretPayload
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationInterpretRequest
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationSuggestionPayload
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDiscoveryPayload
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDiscoveryRequest
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicationFormFieldPayload
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicationFormPayload
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicationFormSectionPayload
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION
+import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachment
+import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
+import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentBlock
+import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
+import ai.govbiz.core.supportprogram.domain.SupportProgram
+import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
+import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
 import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import java.util.UUID
@@ -57,6 +71,9 @@ class ApplicationPreparationApiIntegrationTest {
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var json: ObjectMapper
     @MockitoBean private lateinit var ai: AiApplicationPreparationClient
+    @MockitoBean private lateinit var details: SupportProgramDetailService
+    @MockitoBean private lateinit var attachments: BizInfoAttachmentClient
+    @MockitoBean private lateinit var documentParser: SupportProgramDocumentParser
     private lateinit var owner: Cookie
     private lateinit var other: Cookie
     private var ownerId = 0L
@@ -64,12 +81,16 @@ class ApplicationPreparationApiIntegrationTest {
     @BeforeEach
     fun prepareSessions() {
         jdbc.update("DELETE FROM application_preparation")
+        jdbc.update("DELETE FROM application_form_snapshot")
         val first = newSession()
         ownerId = first.first
         owner = first.second
         other = newSession().second
         `when`(ai.configuration()).thenReturn(
             AiApplicationPreparationConfigurationPayload(AI_APPLICATION_PREPARATION_CONTRACT_VERSION, "test-model", PROMPT_VERSION),
+        )
+        `when`(ai.discoveryConfiguration()).thenReturn(
+            AiApplicationPreparationConfigurationPayload(AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION, "test-model", DISCOVERY_PROMPT_VERSION),
         )
         `when`(ai.interpret(any(AiApplicationPreparationInterpretRequest::class.java) ?: fallbackAiRequest())).thenAnswer { invocation ->
             val request = invocation.getArgument<AiApplicationPreparationInterpretRequest>(0)
@@ -86,6 +107,39 @@ class ApplicationPreparationApiIntegrationTest {
                 "신청 업무 담당자의 이름과 역할은 무엇인가요?",
             )
         }
+        val program = SupportProgram(
+            DISCOVERY_PROGRAM_ID, "BIZINFO", "동적 지원사업", "지원기관", "공고 요약", emptyList(), emptyList(),
+            "중소기업", "2026-01-01 ~ 2026-12-31", null, null, SupportProgramStatus.OPEN,
+            "기업마당", "https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=$DISCOVERY_PROGRAM_ID",
+            emptyList(),
+        )
+        val bytes = "official-form".toByteArray()
+        `when`(details.get("BIZINFO", DISCOVERY_PROGRAM_ID)).thenReturn(program)
+        `when`(attachments.collect("BIZINFO", DISCOVERY_PROGRAM_ID)).thenReturn(
+            SupportProgramAttachments(
+                program.title,
+                listOf(SupportProgramAttachment("https://www.bizinfo.go.kr/cmm/fms/fileDown.do?atchFileId=FILE_1&fileSn=1", "사업계획서.hwpx", "HWPX", bytes)),
+                listOf("원문 대조 필요"),
+            ),
+        )
+        `when`(documentParser.parse(bytes, "HWPX")).thenReturn(
+            listOf(SupportProgramDocumentBlock("HWPX section0 paragraphs 1-3", "사업 개요를 작성해 주세요.")),
+        )
+        `when`(ai.discover(any(AiApplicationFormDiscoveryRequest::class.java) ?: fallbackDiscoveryRequest())).thenReturn(
+            AiApplicationFormDiscoveryPayload(
+                AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION,
+                "test-model",
+                DISCOVERY_PROMPT_VERSION,
+                listOf(AiDiscoveredApplicationFormPayload(0, listOf(
+                    AiDiscoveredApplicationFormSectionPayload("business-plan", "사업 계획", "사업 개요를 작성합니다.", listOf(
+                        AiDiscoveredApplicationFormFieldPayload(
+                            "business-overview", "사업 개요", "사업의 목적과 내용을 입력합니다.", true,
+                            "D0-B0", "사업 개요",
+                        ),
+                    )),
+                ))),
+            ),
+        )
     }
 
     @Test
@@ -100,6 +154,35 @@ class ApplicationPreparationApiIntegrationTest {
             .andExpect(jsonPath("$.items[0].sections.length()").value(3))
             .andExpect(jsonPath("$.items[0].sections[0].status").value("NOT_STARTED"))
         assertEquals(0, count())
+    }
+
+    @Test
+    fun discoversAnOfficialFormPersistsTheSnapshotAndCreatesAPreparationFromIt() {
+        val response = mvc.perform(post("$BASE/forms/discover").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"sourceCode":"BIZINFO","sourceProgramId":"$DISCOVERY_PROGRAM_ID"}"""))
+            .andExpect(status().isOk())
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+            .andExpect(jsonPath("$.cached").value(false))
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].verificationStatus").value("SOURCE_DOCUMENT_EXTRACTED"))
+            .andExpect(jsonPath("$.items[0].supportedServiceFields[0]").value("GENERAL"))
+            .andExpect(jsonPath("$.items[0].sections[0].fields[0].label").value("사업 개요"))
+            .andReturn().response
+        val formVersionId = json.readTree(response.contentAsString).path("items").path(0).path("formVersionId").asString()
+        mvc.perform(post(BASE).cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN).contentType(MediaType.APPLICATION_JSON)
+            .content("""{"sourceCode":"BIZINFO","sourceProgramId":"$DISCOVERY_PROGRAM_ID","formVersionId":"$formVersionId","serviceField":"GENERAL"}"""))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.form.formVersionId").value(formVersionId))
+            .andExpect(jsonPath("$.form.sections[0].fields[0].key").value("business-overview"))
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM application_form_snapshot WHERE form_version_id = ?", Int::class.java, formVersionId))
+
+        mvc.perform(post("$BASE/forms/discover").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"sourceCode":"BIZINFO","sourceProgramId":"$DISCOVERY_PROGRAM_ID"}"""))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.cached").value(true))
+        verify(attachments, times(2)).collect("BIZINFO", DISCOVERY_PROGRAM_ID)
+        verify(ai, times(1)).discover(any(AiApplicationFormDiscoveryRequest::class.java) ?: fallbackDiscoveryRequest())
     }
 
     @Test
@@ -276,6 +359,14 @@ class ApplicationPreparationApiIntegrationTest {
         emptyList(),
     )
 
+    private fun fallbackDiscoveryRequest() = AiApplicationFormDiscoveryRequest(
+        AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION,
+        "BIZINFO",
+        DISCOVERY_PROGRAM_ID,
+        "동적 지원사업",
+        emptyList(),
+    )
+
     private fun count(): Int = requireNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM application_preparation", Int::class.java))
 
     private companion object {
@@ -283,5 +374,7 @@ class ApplicationPreparationApiIntegrationTest {
         const val ORIGIN = "http://localhost:5173"
         const val FORM_VERSION = "bizinfo-pbln-000000000118979-innovation-voucher-2026-v1"
         const val PROMPT_VERSION = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        const val DISCOVERY_PROMPT_VERSION = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        const val DISCOVERY_PROGRAM_ID = "PBLN_123456"
     }
 }

@@ -3,6 +3,10 @@ package ai.govbiz.core.applicationpreparation.facade
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core.applicationpreparation.client.ai.AiApplicationPreparationClient
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AI_APPLICATION_PREPARATION_CONTRACT_VERSION
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDiscoveryBlockRequest
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDiscoveryDocumentRequest
+import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDiscoveryRequest
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationFactRequest
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationFieldRequest
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationInterpretRequest
@@ -12,11 +16,85 @@ import ai.govbiz.core.applicationpreparation.domain.ApplicationFactSuggestion
 import ai.govbiz.core.applicationpreparation.domain.ApplicationInterpretation
 import ai.govbiz.core.applicationpreparation.domain.ApplicationInterpretationConfiguration
 import ai.govbiz.core.applicationpreparation.domain.ApplicationInterpretationInputSnapshot
+import ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryConfiguration
+import ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryInput
+import ai.govbiz.core.applicationpreparation.domain.ExtractedApplicationForm
+import ai.govbiz.core.applicationpreparation.domain.ExtractedApplicationFormField
+import ai.govbiz.core.applicationpreparation.domain.ExtractedApplicationFormSection
 import org.springframework.stereotype.Component
 
 /** AI 계약 생성·응답 검증·내부 모델 변환을 담당하며 DB나 상위 Service를 호출하지 않습니다. */
 @Component
 class AiApplicationPreparationFacade(private val client: AiApplicationPreparationClient) {
+    fun discoveryConfiguration(): ApplicationFormDiscoveryConfiguration = try {
+        val payload = client.discoveryConfiguration()
+        ApplicationFormDiscoveryConfiguration(payload.contractVersion, payload.model, payload.promptVersion).also {
+            require(it.contractVersion == AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION)
+            require(it.model.isNotBlank() && it.model.length <= 200)
+            require(Regex("sha256:[0-9a-f]{64}").matches(it.promptVersion))
+        }
+    } catch (error: AiServiceCallException) {
+        throw error
+    } catch (error: IllegalArgumentException) {
+        throw AiServiceCallException.invalidResponse("Application form discovery configuration violated its contract", error)
+    }
+
+    fun discover(input: ApplicationFormDiscoveryInput, configuration: ApplicationFormDiscoveryConfiguration): List<ExtractedApplicationForm> = try {
+        val request = AiApplicationFormDiscoveryRequest(
+            AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION,
+            input.sourceCode,
+            input.sourceProgramId,
+            input.programTitle,
+            input.documents.map { document ->
+                AiApplicationFormDiscoveryDocumentRequest(
+                    document.documentIndex,
+                    document.fileName,
+                    document.format,
+                    document.blocks.map { block -> AiApplicationFormDiscoveryBlockRequest(block.blockId, block.locator, block.text) },
+                )
+            },
+        )
+        val payload = client.discover(request)
+        require(payload.contractVersion == configuration.contractVersion && payload.model == configuration.model &&
+            payload.promptVersion == configuration.promptVersion && payload.forms.size <= input.documents.size)
+        val documents = input.documents.associateBy { it.documentIndex }
+        require(payload.forms.map { it.documentIndex }.distinct().size == payload.forms.size)
+        payload.forms.map { form ->
+            val document = requireNotNull(documents[form.documentIndex])
+            val blocks = document.blocks.associateBy { it.blockId }
+            require(form.sections.isNotEmpty() && form.sections.size <= 12 &&
+                form.sections.map { it.sectionKey }.distinct().size == form.sections.size)
+            ExtractedApplicationForm(form.documentIndex, form.sections.map { section ->
+                require(Regex("[a-z][a-z0-9-]{0,63}").matches(section.sectionKey))
+                require(section.title.isNotBlank() && section.title.length <= 100)
+                require(section.description.isNotBlank() && section.description.length <= 1000)
+                require(section.fields.isNotEmpty() && section.fields.size <= 20 &&
+                    section.fields.map { it.fieldKey }.distinct().size == section.fields.size)
+                ExtractedApplicationFormSection(
+                    section.sectionKey,
+                    section.title,
+                    section.description,
+                    section.fields.map { field ->
+                        val block = requireNotNull(blocks[field.evidenceBlockId])
+                        require(Regex("[a-z][a-z0-9-]{0,63}").matches(field.fieldKey))
+                        require(field.label.isNotBlank() && field.label.length <= 100)
+                        require(field.guidance.isNotBlank() && field.guidance.length <= 500)
+                        require(field.evidenceQuote.isNotBlank() && field.evidenceQuote.length <= 300 &&
+                            block.text.contains(field.evidenceQuote))
+                        ExtractedApplicationFormField(
+                            field.fieldKey, field.label, field.guidance, field.required,
+                            field.evidenceBlockId, field.evidenceQuote,
+                        )
+                    },
+                )
+            })
+        }
+    } catch (error: AiServiceCallException) {
+        throw error
+    } catch (error: IllegalArgumentException) {
+        throw AiServiceCallException.invalidResponse("Application form discovery response violated its contract", error)
+    }
+
     fun interpret(preparationId: Long, form: ApplicationFormManifest, snapshot: ApplicationInterpretationInputSnapshot): ApplicationInterpretation =
         try {
             interpretValidated(preparationId, form, snapshot)

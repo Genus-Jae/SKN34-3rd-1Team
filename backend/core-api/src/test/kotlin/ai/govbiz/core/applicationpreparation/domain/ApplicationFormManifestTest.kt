@@ -16,6 +16,13 @@ class ApplicationFormManifestTest {
     }
 
     @Test
+    fun acceptsAnUnreviewedFormExtractedFromAnOfficialSourceDocument() {
+        val form = form(verificationStatus = "SOURCE_DOCUMENT_EXTRACTED")
+        assertEquals("SOURCE_DOCUMENT_EXTRACTED", form.verificationStatus)
+        assertFalse(form.institutionReviewed)
+    }
+
+    @Test
     fun rejectsDuplicateSectionsUnsafeSourcesAndInstitutionReviewClaims() {
         assertThrows(IllegalArgumentException::class.java) { form(sections = listOf(section("same"), section("same"))) }
         assertThrows(IllegalArgumentException::class.java) { form(sourceUrl = "http://example.com/form") }
@@ -27,6 +34,7 @@ class ApplicationFormManifestTest {
         sourceUrl: String = "https://www.bizinfo.go.kr/form",
         institutionReviewed: Boolean = false,
         attachmentSha256: String = "a".repeat(64),
+        verificationStatus: String = "SOURCE_HASH_AND_LOCATORS_VERIFIED",
         sections: List<ApplicationFormSectionDefinition> = listOf(
             section("company-overview"),
             section("voucher-plan"),
@@ -43,7 +51,7 @@ class ApplicationFormManifestTest {
         "공식 양식.hwpx",
         10,
         attachmentSha256,
-        "SOURCE_HASH_AND_LOCATORS_VERIFIED",
+        verificationStatus,
         institutionReviewed,
         ApplicationServiceField.entries,
         sections,

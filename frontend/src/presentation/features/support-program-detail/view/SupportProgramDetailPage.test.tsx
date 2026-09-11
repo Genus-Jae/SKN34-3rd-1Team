@@ -21,6 +21,9 @@ describe('상세 오류 복구와 검색 화면 복귀', () => {
     await screen.findByRole('heading', { name: supportPrograms[0].title })
     expect(detail).toHaveBeenCalledTimes(2)
     expect(question).not.toHaveBeenCalled()
+    expect(screen.getByRole('link', { name: '이 공고의 신청 문서 작성하기' }).getAttribute('href')).toBe(
+      `/app/application-preparations/new?${new URLSearchParams({ sourceCode: supportPrograms[0].sourceCode, sourceProgramId: supportPrograms[0].id })}`,
+    )
     expect(screen.queryByText('private failure')).toBeNull()
   })
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ApplicationPreparationUseCase } from './ApplicationPreparationUseCase'
 
-const repository = { forms: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
+const repository = { forms: vi.fn(), discover: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
 const useCase = new ApplicationPreparationUseCase(repository)
 const valid = {
   sourceCode: 'BIZINFO',
@@ -19,6 +19,14 @@ describe('ApplicationPreparationUseCase', () => {
   it('rejects invalid ids and form selections before the repository', () => {
     expect(() => useCase.get(0)).toThrow('주소')
     expect(() => useCase.create({ ...valid, formVersionId: '잘못된 버전' })).toThrow('양식')
+  })
+
+  it('accepts a BizInfo id or official URL and rejects untrusted discovery input', () => {
+    useCase.discover('PBLN_123')
+    useCase.discover('https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=PBLN_456')
+    expect(repository.discover).toHaveBeenNthCalledWith(1, 'BIZINFO', 'PBLN_123', undefined)
+    expect(repository.discover).toHaveBeenNthCalledWith(2, 'BIZINFO', 'PBLN_456', undefined)
+    expect(() => useCase.discover('https://evil.example/?pblancId=PBLN_123')).toThrow('기업마당')
   })
 
   it('trims answers and rejects invalid section input before the repository', () => {

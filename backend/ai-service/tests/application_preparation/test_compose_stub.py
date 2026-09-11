@@ -8,7 +8,7 @@ from agents import OpenAIResponsesModel
 from openai import AsyncOpenAI
 
 from app.application_preparation.agent import ApplicationPreparationAgent
-from app.application_preparation.models import InterpretRequest
+from app.application_preparation.models import DiscoverFormsRequest, InterpretRequest
 from app.application_preparation.service import ApplicationPreparationService
 
 
@@ -55,8 +55,22 @@ async def test_actual_compose_stub_through_sdk_and_service(monkeypatch):
         run_timeout_seconds=5,
     )
     try:
-        result = await ApplicationPreparationService(agent, "gpt-5.6-luna").interpret(request)
+        service = ApplicationPreparationService(agent, "gpt-5.6-luna")
+        result = await service.interpret(request)
+        discovery = await service.discover(DiscoverFormsRequest.model_validate({
+            "contractVersion": "application-form-discovery-v1",
+            "sourceCode": "BIZINFO",
+            "sourceProgramId": "PBLN_1",
+            "programTitle": "지원사업",
+            "documents": [{
+                "documentIndex": 0,
+                "fileName": "사업계획서.hwpx",
+                "format": "HWPX",
+                "blocks": [{"blockId": "D0-B0", "locator": "HWPX paragraph 1", "text": "사업 개요를 작성합니다."}],
+            }],
+        }))
     finally:
         await client.close()
     assert result["suggestions"][0]["value"] == "새봄테크"
     assert result["missingFields"] == ["contact-person"]
+    assert discovery["forms"][0]["sections"][0]["fields"][0]["evidenceQuote"] == "사업 개요"
