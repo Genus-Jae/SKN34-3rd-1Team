@@ -170,6 +170,9 @@ docker compose --env-file .env --file infrastructure/compose.yaml up --build
 | `http://127.0.0.1:5173/api/v1/sample-items/prepare` | Vite 프록시를 거친 SampleItem 준비 API (`POST`, JSON 본문 필요) |
 | `http://127.0.0.1:5173/api/v1/health/ai-service` | Core API를 거친 AI Service Health |
 
+Compose에서는 Web 컨테이너가 Core API의 /api/v1/health 응답을 확인한 뒤 시작됩니다. 따라서 재시작 직후
+Core API가 포트를 열기 전에 Web이 공고 상태를 조회해 연결 거부 오류를 표시하는 기동 순서를 피합니다.
+
 AI Service의 `/internal/v1/support-program-rankings/rank`와 `/internal/v1/support-program-index/*`는
 Compose 네트워크 내부에서 Core API만 호출합니다. Host나 브라우저에 AI Service 포트를 공개하지 않습니다.
 

@@ -139,12 +139,21 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-govbiz-local}
     ports:
       - "127.0.0.1:${CORE_API_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080/api/v1/health > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
 
   web:
     build:
       context: ../frontend
       dockerfile: Dockerfile.dev
     init: true
+    depends_on:
+      core-api:
+        condition: service_healthy
     working_dir: /app
     environment:
       CHOKIDAR_USEPOLLING: "true"
