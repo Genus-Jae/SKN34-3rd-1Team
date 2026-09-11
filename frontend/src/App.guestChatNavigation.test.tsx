@@ -85,7 +85,7 @@ describe('비로그인 대화의 화면 이동 수명', () => {
     })
   })
 
-  it('로그인한 사용자는 파트너 모집을 왕복해도 기존 대화·결과·조건·초안을 유지한다', async () => {
+  it('로그인한 사용자는 파트너 모집에서 로고로 돌아오면 기존 대화·결과·조건·초안을 유지한다', async () => {
     const store = seededConversationStore(true)
     const previous = store.getState().chat
     renderApp(store, '/app/chat')
@@ -94,11 +94,26 @@ describe('비로그인 대화의 화면 이동 수명', () => {
     expect(screen.getByRole('heading', { name: '파트너 관리' })).toBeTruthy()
     expect(store.getState().chat).toEqual(previous)
     fireEvent.click(within(screen.getByRole('complementary', { name: '작업 사이드바' }))
-      .getByRole('link', { name: '지원사업 검색' }))
+      .getByRole('link', { name: 'GovBiz' }))
     expect(store.getState().chat).toEqual(previous)
     expect(screen.getByText(originalMessage, { selector: 'div' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: program.title })).toBeTruthy()
     expect((screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement).value).toBe(unsentDraft)
+  })
+
+  it('파트너 화면에서 지원사업 새검색을 누르면 로그인 상태를 유지하고 대화·결과·조건·초안을 지운다', () => {
+    const store = seededConversationStore(true)
+    const accountEmail = store.getState().chat.accountEmail
+    renderApp(store, '/app/partners')
+    fireEvent.click(screen.getByRole('button', { name: '지원사업 새검색' }))
+    expectEmptyChatScreen()
+    expect(store.getState().chat).toMatchObject({
+      accountEmail, draft: '', confirmedSearch: null, conversationQuery: null,
+      pendingClarification: null, searchOptions: { acceptingOnly: true },
+    })
+    expect(store.getState().chat.messages).toHaveLength(1)
+    expect(store.getState().chat.searchOptions.companyConditions).toBeUndefined()
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: '지원사업 검색어' }))
   })
 
   it.each(['interpretation', 'search'] as const)('진행 중인 %s 요청을 남기고 다른 메뉴로 나가면 취소하고 복귀 후 늦은 응답도 무시한다', async (phase) => {

@@ -360,23 +360,47 @@ describe('작업 화면 사이드바', () => {
     expect(within(sidebar).getByText('관심 공고함')).toBeTruthy()
   })
 
-  it('새 검색은 채팅 화면이 맡으므로 사이드바에는 두지 않는다', () => {
+  it('사이드바 지원사업 새검색은 작성 중 초안과 대화를 지우고 입력창으로 포커스를 옮긴다', () => {
     renderApp('/app/chat')
-
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
-    expect(within(sidebar).queryByText('새 대화 시작')).toBeNull()
-
-    const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
-    fireEvent.change(input, {
-      target: { value: '수출 지원사업' },
-    })
-    expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
-
-    // 초안이 아닌 실제 대화가 시작되면 채팅 입력 영역에 새 검색을 제공합니다.
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: '수출 지원사업' } })
     fireEvent.submit(input.closest('form')!)
-    expect(within(input.closest('form')!).getByRole('button', { name: '새 검색' })).toBeTruthy()
-    expect(within(sidebar).queryByRole('button', { name: '새 검색' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
+    expect(within(sidebar).queryByRole('link', { name: '지원사업 검색' })).toBeNull()
+    expect(within(sidebar).queryByRole('button', { name: '새 채팅' })).toBeNull()
+    expect(within(sidebar).getAllByRole('button', { name: '지원사업 새검색' })).toHaveLength(1)
+    fireEvent.click(within(sidebar).getByRole('button', { name: '지원사업 새검색' }))
+    expect(input.value).toBe('')
+    expect(document.activeElement).toBe(input)
+    expect(within(screen.getByRole('region', { name: '대화 내역' })).queryByText('수출 지원사업')).toBeNull()
   })
+
+  it('사이드바를 접고 펼쳐도 본문과 작성 중인 초안은 유지한다', () => {
+    renderApp('/app/chat')
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: '작성 중인 질문' } })
+    fireEvent.click(screen.getByRole('button', { name: '사이드바 접기' }))
+    expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
+    const expand = screen.getByRole('button', { name: '사이드바 펼치기' })
+    expect(document.activeElement).toBe(expand)
+    expect(screen.getByRole('textbox', { name: '지원사업 검색어' })).toBe(input)
+    expect(input.value).toBe('작성 중인 질문')
+    fireEvent.click(expand)
+    expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '사이드바 접기' }))
+    expect(input.value).toBe('작성 중인 질문')
+  })
+
+  it.each([false, true])('필터 검색에서 지원사업 새검색은 AI 탭으로 돌아와 입력창에 포커스한다 (사이드바 접힘: %s)', (collapsed) => {
+    renderApp('/app/chat?mode=filter')
+    expect(screen.getByRole('tab', { name: '필터 검색' }).getAttribute('aria-selected')).toBe('true')
+    if (collapsed) fireEvent.click(screen.getByRole('button', { name: '사이드바 접기' }))
+    fireEvent.click(screen.getByRole('button', { name: '지원사업 새검색' }))
+    expect(screen.getByRole('tab', { name: 'AI 대화 검색' }).getAttribute('aria-selected')).toBe('true')
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: '지원사업 검색어' }))
+  })
+
 })
 
 describe('기업 프로필 화면', () => {

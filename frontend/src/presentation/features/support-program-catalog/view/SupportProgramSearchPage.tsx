@@ -42,7 +42,7 @@ export function SupportProgramSearchPage({ layout = 'landing' }: { layout?: Chat
     contentRef.current?.querySelector<HTMLTextAreaElement>('textarea[aria-label="지원사업 검색어"]')?.focus()
   }
   const searchTabs = <div role="tablist" aria-label="지원사업 검색 방식" aria-orientation={hasGuestSidebar ? 'vertical' : 'horizontal'}
-    className={hasGuestSidebar ? 'grid gap-1' : 'inline-flex gap-1 rounded-full border border-sample-border bg-[#f5f6f7] p-1'}>
+    className={hasGuestSidebar ? 'grid gap-1' : 'inline-flex gap-1 rounded-full border border-sample-border bg-white p-1'}>
     {['AI 대화 검색', '필터 검색'].map((label, index) => <button type="button" key={label} role="tab" id={`search-tab-${index}`}
       ref={(node) => { tabs.current[index] = node }} aria-controls={`search-panel-${index}`} aria-selected={isFilter === (index === 1)}
       tabIndex={isFilter === (index === 1) ? 0 : -1} onKeyDown={(event) => handleKey(event, index)} onClick={() => select(index === 1)}
@@ -66,7 +66,7 @@ export function SupportProgramSearchPage({ layout = 'landing' }: { layout?: Chat
 
   return isGuest ? <GuestSearchLayout hasConversation={hasConversation} searchTabs={searchTabs} isFilter={isFilter} onNewChat={startNewChat}>{panels}</GuestSearchLayout>
     : <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 justify-center px-4 pt-3 pb-2">{searchTabs}</div>
+      <div className="flex shrink-0 justify-center bg-white px-4 pt-3 pb-2">{searchTabs}</div>
       {panels}
     </div>
 }

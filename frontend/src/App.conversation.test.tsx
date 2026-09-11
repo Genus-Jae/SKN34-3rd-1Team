@@ -62,7 +62,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(store.getState().chat.messages).toHaveLength(1)
   })
 
-  it.each(['/', '/app/chat'])('%s에서 대화 초기화는 비로그인 사이드바의 새 채팅 또는 로그인 입력창의 새 검색을 사용한다', async (path) => {
+  it.each(['/', '/app/chat'])('%s에서 대화 초기화는 사이드바의 새 채팅을 사용한다', async (path) => {
     const network = mockConversationNetwork([readyConversationProposal(seoulConversationContext)])
     renderConversationApp(path)
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
@@ -73,17 +73,9 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.fetch).not.toHaveBeenCalled()
 
     await submitMessage('서울 AI 창업지원 사업 찾아줘')
-    if (path === '/') {
-      expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
-      expect(within(screen.getByRole('complementary', { name: '검색 사이드바' }))
-        .getByRole('button', { name: '새 채팅' })).toBeTruthy()
-    } else {
-      const newSearchButton = screen.getByRole('button', { name: '새 검색' })
-      const hint = screen.getByText(/Enter로 전송 · Shift\+Enter로 줄바꿈/)
-      expect(input.compareDocumentPosition(newSearchButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
-      expect(newSearchButton.parentElement).toBe(hint.parentElement)
-      expect(input.closest('form')?.contains(newSearchButton)).toBe(true)
-    }
+    expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
+    expect(within(screen.getByRole('complementary', { name: path === '/' ? '검색 사이드바' : '작업 사이드바' }))
+      .getByRole('button', { name: path === '/' ? '새 채팅' : '지원사업 새검색' })).toBeTruthy()
     expect(network.fetch).toHaveBeenCalledOnce()
   })
 
@@ -159,7 +151,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(screen.getByText('적용 중인 조건: 접수 상태 전체 · 현재 소재지 서울 · 업종 SW · 설립일 2024-01-01 · 지원 목적 사업화')).toBeTruthy()
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     expect(input.getAttribute('aria-describedby')).toContain('support-program-current-conditions')
-    fireEvent.click(screen.getByRole('button', { name: path === '/' ? '새 채팅' : '새 검색' }))
+    fireEvent.click(screen.getByRole('button', { name: path === '/' ? '새 채팅' : '지원사업 새검색' }))
     expect(store.getState().chat.conversationQuery).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
     expect(store.getState().chat.confirmedSearch).toBeNull()
@@ -173,14 +165,19 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.searchRequests).toHaveLength(1)
   })
 
-  it.each(['interpretation', 'search'] as const)('새 채팅 버튼은 진행 중 %s 요청을 취소하고 늦은 응답을 무시한다', async (phase) => {
+  it.each([
+    { path: '/', phase: 'interpretation' },
+    { path: '/', phase: 'search' },
+    { path: '/app/chat', phase: 'interpretation' },
+    { path: '/app/chat', phase: 'search' },
+  ] as const)('$path의 새 채팅은 진행 중 $phase 요청을 취소하고 늦은 응답을 무시한다', async ({ path, phase }) => {
     let complete!: (response: Response) => void
     const pending = new Promise<Response>((resolve) => { complete = resolve })
     const fetchMock = vi.fn()
     if (phase === 'search') fetchMock.mockResolvedValueOnce(json(readyConversationProposal(seoulConversationContext)))
     fetchMock.mockReturnValueOnce(pending)
     vi.stubGlobal('fetch', fetchMock)
-    const { store } = renderConversationApp()
+    const { store } = renderConversationApp(path)
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     fireEvent.change(input, { target: { value: '서울 SW 사업화' } })
     await act(async () => fireEvent.submit(input.closest('form')!))
@@ -190,7 +187,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const requestSignal = fetchMock.mock.calls.at(-1)![1].signal as AbortSignal
     expect(requestSignal.aborted).toBe(false)
     readiness.canSearch = false
-    fireEvent.click(screen.getByRole('button', { name: '새 채팅' }))
+    fireEvent.click(screen.getByRole('button', { name: path === '/' ? '새 채팅' : '지원사업 새검색' }))
     expect(requestSignal.aborted).toBe(true)
     expect(document.activeElement).toBe(input)
     expect((input as HTMLTextAreaElement).disabled).toBe(false)

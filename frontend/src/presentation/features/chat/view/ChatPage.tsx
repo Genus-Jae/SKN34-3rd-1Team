@@ -18,7 +18,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
   const {
     displayProposal,
     hasConfirmedSearch,
-    hasSearchToReset,
     interpretationError,
     canRetryInterpretation,
     isInterpreting,
@@ -37,7 +36,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
     handleInputKeyDown,
     handleRetrySearch,
     handleSelectSuggestion,
-    handleStartNewConversation,
     handleSubmit,
     isReadyToSubmit,
     messages,
@@ -81,11 +79,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
         Enter로 전송 · Shift+Enter로 줄바꿈
         {!isDockedLanding ? <span className="block text-[0.68rem]">검색 전 조건을 확인해요.</span> : null}
       </small>
-      {!isGuest && hasSearchToReset ? (
-        <button type="button" className={chatPageStyles.newSearchButton}
-          title="대화와 적용 조건을 초기화합니다"
-          onClick={handleStartNewConversation}>새 검색</button>
-      ) : null}
     </div>
   )
 
