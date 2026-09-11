@@ -7,10 +7,7 @@ export function AuthLogo() {
   return (
     <Link className={authPageStyles.logo} to="/" aria-label="GovBiz 홈으로">
       <span className={authPageStyles.logoMark} aria-hidden="true">G</span>
-      <span>
-        <strong className={authPageStyles.logoTitle}>GovBiz</strong>
-        <span className={authPageStyles.logoSubtitle}>지원사업 탐색 도우미</span>
-      </span>
+      <strong className={authPageStyles.logoTitle}>GovBiz</strong>
     </Link>
   )
 }
