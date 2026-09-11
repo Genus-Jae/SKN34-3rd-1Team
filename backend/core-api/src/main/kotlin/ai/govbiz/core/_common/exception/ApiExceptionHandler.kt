@@ -22,6 +22,7 @@ import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPrepara
 import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPreparationRunConflictException
 import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPreparationSectionNotFoundException
 import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormNotSupportedException
+import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormDiscoveryException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewNotFoundException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRevisionConflictException
 import ai.govbiz.core.combinationreview.controller.exception.InvalidCombinationReviewInputException
@@ -68,6 +69,30 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(ApplicationFormDiscoveryException::class)
+    fun handleApplicationFormDiscovery(
+        exception: ApplicationFormDiscoveryException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val status = when (exception.reason) {
+            ApplicationFormDiscoveryException.Reason.SOURCE_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE
+            ApplicationFormDiscoveryException.Reason.SOURCE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE
+            ApplicationFormDiscoveryException.Reason.SOURCE_NOT_FOUND -> HttpStatus.NOT_FOUND
+            else -> HttpStatus.UNPROCESSABLE_CONTENT
+        }
+        val code = "APPLICATION_FORM_${exception.reason.name}"
+        return problemResponse(
+            ProblemDefinition(
+                status,
+                URI.create("urn:govbiz:problem:${code.lowercase().replace('_', '-')}"),
+                "Application Form Discovery Failed",
+                "The official application form could not be discovered for this support program.",
+                code,
+            ),
+            request,
+        )
+    }
 
     @ExceptionHandler(ApplicationPreparationNotFoundException::class)
     fun handleApplicationPreparationNotFound(request: HttpServletRequest): ResponseEntity<ProblemDetail> =

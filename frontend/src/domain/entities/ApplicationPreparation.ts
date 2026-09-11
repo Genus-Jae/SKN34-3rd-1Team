@@ -1,7 +1,8 @@
-export const applicationServiceFields = ['CONSULTING', 'TECHNICAL_SUPPORT', 'MARKETING'] as const
+export const applicationServiceFields = ['GENERAL', 'CONSULTING', 'TECHNICAL_SUPPORT', 'MARKETING'] as const
 export type ApplicationServiceField = typeof applicationServiceFields[number]
 
 export const applicationServiceFieldLabels: Record<ApplicationServiceField, string> = {
+  GENERAL: '일반 신청',
   CONSULTING: '컨설팅',
   TECHNICAL_SUPPORT: '기술지원',
   MARKETING: '마케팅',
@@ -65,7 +66,9 @@ export type ApplicationForm = {
   programTitle: string
   formTitle: string
   sourceUrl: string
-  verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED'
+  attachmentFileName: string
+  attachmentSha256: string
+  verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED' | 'SOURCE_DOCUMENT_EXTRACTED'
   institutionReviewed: false
   supportedServiceFields: ApplicationServiceField[]
   sections: ApplicationFormSection[]
@@ -99,6 +102,12 @@ export type NewApplicationPreparation = {
   sourceProgramId: string
   formVersionId: string
   serviceField: ApplicationServiceField
+}
+
+export type DiscoveredApplicationForms = {
+  items: ApplicationForm[]
+  warnings: string[]
+  cached: boolean
 }
 
 export function validateNewApplicationPreparation(input: NewApplicationPreparation): NewApplicationPreparation {

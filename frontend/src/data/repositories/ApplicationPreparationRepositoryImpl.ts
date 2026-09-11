@@ -11,6 +11,7 @@ import {
   applicationPreparationSchema,
   supportedApplicationFormsSchema,
   applicationInterpretationSchema,
+  discoveredApplicationFormsSchema,
 } from '../models/ApplicationPreparationDto'
 
 const cursor = (beforeId?: number) => `?size=20${beforeId === undefined ? '' : `&beforeId=${beforeId}`}`
@@ -18,6 +19,9 @@ const cursor = (beforeId?: number) => `?size=20${beforeId === undefined ? '' : `
 export class ApplicationPreparationRepositoryImpl implements ApplicationPreparationRepository {
   async forms(signal?: AbortSignal) {
     return (await request('/forms', supportedApplicationFormsSchema, 'GET', undefined, signal)).items
+  }
+  discover(sourceCode: string, sourceProgramId: string, signal?: AbortSignal) {
+    return request('/forms/discover', discoveredApplicationFormsSchema, 'POST', { sourceCode, sourceProgramId }, signal)
   }
   list(beforeId?: number, signal?: AbortSignal) {
     return request(cursor(beforeId), applicationPreparationPageSchema, 'GET', undefined, signal)

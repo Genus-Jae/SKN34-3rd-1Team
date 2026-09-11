@@ -8,6 +8,9 @@ import ai.govbiz.core.applicationpreparation.controller.dto.SupportedApplication
 import ai.govbiz.core.applicationpreparation.controller.dto.ApplicationInterpretationResponse
 import ai.govbiz.core.applicationpreparation.controller.dto.InterpretApplicationPreparationRequest
 import ai.govbiz.core.applicationpreparation.controller.dto.ReplaceApplicationPreparationInputsRequest
+import ai.govbiz.core.applicationpreparation.controller.dto.DiscoverApplicationFormsRequest
+import ai.govbiz.core.applicationpreparation.controller.dto.DiscoveredApplicationFormsResponse
+import ai.govbiz.core.applicationpreparation.service.ApplicationFormDiscoveryService
 import ai.govbiz.core.applicationpreparation.service.ApplicationPreparationService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
@@ -26,11 +29,23 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/v1/application-preparations")
-class ApplicationPreparationController(private val service: ApplicationPreparationService) {
+class ApplicationPreparationController(
+    private val service: ApplicationPreparationService,
+    private val discovery: ApplicationFormDiscoveryService,
+) {
     @GetMapping("/forms")
     fun forms(account: Account): ResponseEntity<SupportedApplicationFormsResponse> =
         ResponseEntity.ok().cacheControl(CacheControl.noStore())
             .body(SupportedApplicationFormsResponse.from(service.supportedForms(account)))
+
+    @PostMapping("/forms/discover")
+    fun discoverForms(
+        account: Account,
+        @RequestBody @Valid request: DiscoverApplicationFormsRequest,
+    ): ResponseEntity<DiscoveredApplicationFormsResponse> =
+        ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+            DiscoveredApplicationFormsResponse.from(discovery.discover(account, request.sourceCode, request.sourceProgramId)),
+        )
 
     @PostMapping
     fun create(

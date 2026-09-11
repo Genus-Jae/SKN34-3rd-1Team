@@ -6,6 +6,7 @@ import ai.govbiz.core.applicationpreparation.service.dto.ApplicationPreparationD
 import ai.govbiz.core.applicationpreparation.service.dto.ApplicationPreparationListItemResult
 import ai.govbiz.core.applicationpreparation.service.dto.ApplicationPreparationPageResult
 import ai.govbiz.core.applicationpreparation.domain.ApplicationFormFieldDefinition
+import ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryResult
 import ai.govbiz.core.applicationpreparation.domain.ConfirmedApplicationFact
 import ai.govbiz.core.applicationpreparation.service.dto.ApplicationInterpretationResult
 import java.time.OffsetDateTime
@@ -18,6 +19,8 @@ data class ApplicationFormResponse(
     val programTitle: String,
     val formTitle: String,
     val sourceUrl: String,
+    val attachmentFileName: String,
+    val attachmentSha256: String,
     val verificationStatus: String,
     val institutionReviewed: Boolean,
     val supportedServiceFields: List<String>,
@@ -31,6 +34,8 @@ data class ApplicationFormResponse(
             form.programTitle,
             form.formTitle,
             form.sourceUrl,
+            form.attachmentFileName,
+            form.attachmentSha256,
             form.verificationStatus,
             form.institutionReviewed,
             form.supportedServiceFields.map { it.name },
@@ -96,6 +101,18 @@ data class ApplicationPreparationFactResponse(
 data class SupportedApplicationFormsResponse(val items: List<ApplicationFormResponse>) {
     companion object {
         fun from(forms: List<ApplicationFormManifest>) = SupportedApplicationFormsResponse(forms.map(ApplicationFormResponse::from))
+    }
+}
+
+data class DiscoveredApplicationFormsResponse(
+    val items: List<ApplicationFormResponse>,
+    val warnings: List<String>,
+    val cached: Boolean,
+) {
+    companion object {
+        fun from(result: ApplicationFormDiscoveryResult) = DiscoveredApplicationFormsResponse(
+            result.forms.map(ApplicationFormResponse::from), result.warnings, result.cached,
+        )
     }
 }
 

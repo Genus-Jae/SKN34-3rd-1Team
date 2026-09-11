@@ -75,6 +75,33 @@ def application_preparation_output(payload: dict) -> dict | None:
     }
 
 
+def application_form_discovery_output(payload: dict) -> dict | None:
+    """공식 첨부 문항 발견의 계약 연결만 검증하는 고정 응답입니다."""
+    documents = payload.get("documents", [])
+    if not documents:
+        return None
+    document = documents[0]
+    block = next((item for item in document.get("blocks", []) if "사업 개요" in item.get("text", "")), None)
+    if block is None:
+        return {"forms": []}
+    return {"forms": [{
+        "documentIndex": document["documentIndex"],
+        "sections": [{
+            "sectionKey": "business-plan",
+            "title": "사업 계획",
+            "description": "사업 개요를 작성합니다.",
+            "fields": [{
+                "fieldKey": "business-overview",
+                "label": "사업 개요",
+                "guidance": "사업의 목적과 내용을 입력합니다.",
+                "required": False,
+                "evidenceBlockId": block["blockId"],
+                "evidenceQuote": "사업 개요",
+            }],
+        }],
+    }]}
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self.respond(200, {"status": "up"})
@@ -117,6 +144,13 @@ class Handler(BaseHTTPRequestHandler):
                 output = application_preparation_output(payload)
                 if output is None:
                     self.respond(400, {"error": {"message": "unsupported application preparation fixture message"}})
+                    return
+                self.respond_model_output(request, output)
+                return
+            if payload.get("contractVersion") == "application-form-discovery-v1":
+                output = application_form_discovery_output(payload)
+                if output is None:
+                    self.respond(400, {"error": {"message": "unsupported application form discovery fixture"}})
                     return
                 self.respond_model_output(request, output)
                 return

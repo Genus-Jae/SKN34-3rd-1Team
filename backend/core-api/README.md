@@ -37,21 +37,22 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 쓰기 요청의 기존 Origin 방어를 유지하고 CORS에서 PUT·DELETE를 허용합니다. 상세 JSON·오류 코드는 위 설계 문서에 있습니다.
 
 신청 문서 작성 도우미는 `ai.govbiz.core.applicationpreparation`에 구현합니다. V15는 로그인 계정이
-소유한 신청 준비 건의 공고·고정 양식 버전·지원 분야·입력 revision을 저장합니다. 현재는 2026년 2차 중소기업
-혁신바우처 사업계획서 한 건만 지원하며, classpath manifest의 공식 파일 hash와 확인한 문항 위치를 사용합니다.
-현재 공개 카탈로그에 과거 공고가 없더라도 저장한 준비 건은 manifest 버전으로 다시 열 수 있습니다.
+소유한 신청 준비 건의 공고·양식 버전·분야·입력 revision을 저장합니다. V18은 사용자가 선택한 기업마당 공고의
+공식 PDF/HWPX에서 발견한 신청 문서와 문항을 파일 hash·파서·모델·프롬프트 버전이 고정된 양식 스냅샷으로 저장합니다.
+기존 혁신바우처 manifest는 검수 기준과 기존 준비 건 복원을 위해 유지합니다.
 
 | 신청 준비 API | 동작 |
 |---|---|
 | `GET /api/v1/application-preparations/forms` | 로그인 회원에게 지원 양식·분야·문항 조회. DB·AI 호출 없음 |
+| `POST /api/v1/application-preparations/forms/discover` | 선택한 기업마당 공고의 공식 PDF/HWPX에서 신청 문서·문항을 추출하고 동일 버전 스냅샷 재사용 |
 | `POST /api/v1/application-preparations` | 공고·양식 버전·지원 분야를 검증해 본인 준비 건 생성. 201·Location·상세 반환 |
 | `GET /api/v1/application-preparations?size=20&beforeId=123` | 본인 준비 건 목록을 생성 ID 내림차순으로 조회 |
-| `GET /api/v1/application-preparations/{id}` | 본인 준비 건과 고정 양식 문항 조회. 타인 건과 없는 건은 같은 404 |
+| `GET /api/v1/application-preparations/{id}` | 본인 준비 건과 선택한 버전의 양식 문항 조회. 타인 건과 없는 건은 같은 404 |
 | `POST /api/v1/application-preparations/{id}/sections/{sectionKey}/messages` | 현재 입력 revision과 요청 키로 사용자 답변을 AI가 해석해 확인 전 사실·미정 제안 반환 |
 | `PUT /api/v1/application-preparations/{id}/sections/{sectionKey}/inputs` | 사용자가 확인한 문항 사실 전체 스냅샷 저장. revision 충돌은 409 |
 
-지원 양식 조회·목록·상세와 화면 진입은 AI Service·OpenAI·Qdrant를 호출하지 않습니다. 생성은 명시적 POST와 허용된
-Origin에서만 수행합니다. 공식 출처와 구조의 기술 확인은 기관 검수·선정 가능성 판단을 뜻하지 않습니다.
+목록·상세와 화면 진입은 AI Service·OpenAI·Qdrant를 호출하지 않습니다. 양식 발견과 생성은 각각 사용자의 명시적 POST와
+허용된 Origin에서만 수행합니다. 공식 출처 확인과 AI 문항 추출은 기관 검수·선정 가능성 판단을 뜻하지 않습니다.
 V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 스냅샷·상태를 저장합니다. AI 호출은 DB transaction 밖에서
 `Controller → Service → AI Facade → Client → AI Service`로 실행하고, 제안은 PUT 전까지 사실로 저장하지 않습니다.
 [기능 범위와 후속 경계](../../docs/application-preparation-design.md)를 참고하세요.
@@ -65,7 +66,8 @@ V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 
 검토별 DB 동시 실행 1개·Core 프로세스별 중복 검토 2개 한도를 추가로 적용합니다.
 
 `CombinationReviewRunService`는 실행 순서와 저장을, `AiCombinationReviewFacade`는 AI 호출·계약 검증 경계를 담당합니다.
-첨부 파싱·문서 변환과 AI DTO 변환은 각각 `client/mapper/CombinationReviewDocumentMapper`, `AiCombinationReviewMapper`에 둡니다.
+두 기능이 함께 쓰는 공식 첨부 수집·파싱은 `supportprogram/client/bizinfo/BizInfoAttachmentClient`와
+`supportprogram/client/document/SupportProgramDocumentParser`에 두고, AI DTO 변환은 `AiCombinationReviewMapper`가 담당합니다.
 업무 실패는 `domain/exception`, 외부 시스템 실패는 `client/exception`에 두어 Repository·Client가 Service에 역으로 의존하지 않습니다.
 이는 프로젝트의 기능 중심 레이어드 구조이며 범용 port/interface나 전달만 하는 Facade를 추가한 구조는 아닙니다.
 

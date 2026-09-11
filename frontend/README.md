@@ -100,7 +100,7 @@ pnpm dev
 | `/reset-password` | 없음 | 메일 링크(`#token=`)로 여는 새 비밀번호 설정. 성공하면 로그인으로 안내 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
 | `/app/application-preparations` | 사이드바 | 내 신청 준비 목록과 생성 ID 커서 페이지. 조회만으로 신청 준비나 AI 실행을 만들지 않음 |
-| `/app/application-preparations/new` | 사이드바 | 검수된 혁신바우처 사업계획서와 지원 분야를 확인하고 명시적으로 신청 준비 시작 |
+| `/app/application-preparations/new` | 사이드바 | 기업마당 공고 URL·ID로 공식 PDF/HWPX의 신청 문서와 문항을 찾고 확인한 뒤 신청 준비 시작 |
 | `/app/application-preparations/:preparationId` | 사이드바 | 공식 문항별 답변을 AI가 사실·미정으로 제안하고, 사용자가 값과 근거를 확인한 항목만 입력 스냅샷으로 저장. 초안은 후속 기능 |
 | `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
 | `/app/partners` | 사이드바(파트너 관리 · 모집글 탭) | 파트너 모집 목록. 검색어·찾는 역할(복수)·지역(복수, 전체가 전국까지 뜻함)은 조회 버튼으로 적용하고 정렬·페이지는 바로 적용해 모집 API 조회(내 글만 보기 칩은 내 모집글 탭으로 대체). 카드는 폭에 따라 3·2·1열, 작성 버튼은 기업 등록 회원만 |
@@ -150,9 +150,10 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 링크가 아니라 "준비 중" 표시로 둡니다. 새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
 
 신청 문서 작성 도우미는 `View → ViewModel → ApplicationPreparationUseCase → ApplicationPreparationRepository →
-data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 `GET /forms`로 고정 양식을 읽고 사용자가 생성 버튼을 누를 때만
-POST를 보냅니다. 목록·상세는 로그인 계정 소유 데이터만 읽으며 AI Service를 호출하지 않습니다. 첫 양식의
-`institutionReviewed=false`를 그대로 표시해 공식 출처·구조 확인과 기관 검수를 구분합니다.
+data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 사용자가 기업마당 공고 URL·ID를 입력하고 `신청 문서 찾기`를
+누를 때만 공식 첨부 분석 POST를 보냅니다. 공고 상세 링크는 공고 식별자를 입력란에만 전달하며 화면 진입으로 분석을
+시작하지 않습니다. 발견 문서·문항을 확인하고 별도 시작 버튼을 눌러야 준비 건을 생성합니다. 목록·상세는 AI Service를
+호출하지 않고 `institutionReviewed=false`를 표시해 AI 추출과 기관 검수를 구분합니다.
 HTTP·Repository 경계는 목록·양식 endpoint의 404 또는 상세 endpoint의 비계약 404를 구버전 API로 구분해 Core·AI 이미지
 갱신을 안내합니다. 상세가 `APPLICATION_PREPARATION_NOT_FOUND`를 반환한 경우에는 기존처럼 없거나 타인 소유인 신청 준비로
 안내합니다. 정상 빈 목록은 오류로 바꾸지 않고 새 작성 진입을 유지합니다. 백엔드만 안전하게 갱신하는 방법은

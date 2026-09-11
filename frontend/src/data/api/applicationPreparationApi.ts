@@ -21,7 +21,7 @@ export async function applicationPreparationRequest<T>(
   const timer = setTimeout(() => {
     timedOut = true
     abort()
-  }, path.endsWith('/messages') ? 45_000 : 15_000)
+  }, path.endsWith('/forms/discover') ? 90_000 : path.endsWith('/messages') ? 45_000 : 15_000)
   try {
     const response = await fetch(`${getCoreApiBaseUrl()}/api/v1/application-preparations${path}`, {
       method,
@@ -34,7 +34,9 @@ export async function applicationPreparationRequest<T>(
       const problem = applicationPreparationProblemSchema.safeParse(await response.json().catch(() => null))
       const serverCode = problem.success ? problem.data.code : null
       const code = response.status === 404
-        ? notFoundScope === 'preparation' && (
+        ? serverCode?.startsWith('APPLICATION_FORM_')
+          ? serverCode
+          : notFoundScope === 'preparation' && (
             serverCode === 'APPLICATION_PREPARATION_NOT_FOUND' || serverCode === 'APPLICATION_PREPARATION_SECTION_NOT_FOUND'
           )
           ? serverCode

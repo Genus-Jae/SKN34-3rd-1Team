@@ -10,6 +10,8 @@ const form = {
   programTitle: '지원사업',
   formTitle: '사업계획서',
   sourceUrl: 'https://www.bizinfo.go.kr/form',
+  attachmentFileName: '사업계획서.hwpx',
+  attachmentSha256: 'a'.repeat(64),
   verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED',
   institutionReviewed: false,
   supportedServiceFields: ['TECHNICAL_SUPPORT'],
@@ -37,12 +39,14 @@ describe('application preparation HTTP boundary', () => {
   it('uses the exact URLs, methods, body, session cookie and no-store options', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({ items: [form] }))
+      .mockResolvedValueOnce(Response.json({ items: [form], warnings: [], cached: false }))
       .mockResolvedValueOnce(Response.json({ items: [], nextBeforeId: null }))
       .mockResolvedValueOnce(Response.json(detail, { status: 201 }))
       .mockResolvedValueOnce(Response.json(detail))
     vi.stubGlobal('fetch', fetchMock)
     const repository = new ApplicationPreparationRepositoryImpl()
     await repository.forms()
+    await repository.discover('BIZINFO', 'PBLN_1')
     await repository.list(20)
     await repository.create(creation)
     await repository.get(1)
@@ -50,18 +54,20 @@ describe('application preparation HTTP boundary', () => {
     const calls = fetchMock.mock.calls as [string, RequestInit][]
     expect(calls.map(([url]) => url)).toEqual([
       expect.stringMatching(/\/api\/v1\/application-preparations\/forms$/),
+      expect.stringMatching(/\/api\/v1\/application-preparations\/forms\/discover$/),
       expect.stringMatching(/\/api\/v1\/application-preparations\?size=20&beforeId=20$/),
       expect.stringMatching(/\/api\/v1\/application-preparations$/),
       expect.stringMatching(/\/api\/v1\/application-preparations\/1$/),
     ])
-    expect(calls.map(([, options]) => options.method)).toEqual(['GET', 'GET', 'POST', 'GET'])
+    expect(calls.map(([, options]) => options.method)).toEqual(['GET', 'POST', 'GET', 'POST', 'GET'])
     for (const [, options] of calls) {
       expect(options).toMatchObject({ credentials: 'include', cache: 'no-store' })
       expect(options.signal).toBeInstanceOf(AbortSignal)
     }
     expect(calls[0]?.[1].body).toBeUndefined()
-    expect(calls[2]?.[1].headers).toEqual({ 'Content-Type': 'application/json' })
-    expect(JSON.parse(calls[2]?.[1].body as string)).toEqual(creation)
+    expect(JSON.parse(calls[1]?.[1].body as string)).toEqual({ sourceCode: 'BIZINFO', sourceProgramId: 'PBLN_1' })
+    expect(calls[3]?.[1].headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(calls[3]?.[1].body as string)).toEqual(creation)
   })
 
   it('preserves known server errors and converts authentication failures', async () => {

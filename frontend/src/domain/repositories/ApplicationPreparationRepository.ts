@@ -6,10 +6,12 @@ import type {
   InterpretApplicationPreparation,
   ReplaceApplicationPreparationInputs,
   ApplicationInterpretation,
+  DiscoveredApplicationForms,
 } from '../entities/ApplicationPreparation'
 
 export interface ApplicationPreparationRepository {
   forms(signal?: AbortSignal): Promise<ApplicationForm[]>
+  discover(sourceCode: string, sourceProgramId: string, signal?: AbortSignal): Promise<DiscoveredApplicationForms>
   list(beforeId?: number, signal?: AbortSignal): Promise<ApplicationPreparationPage>
   get(id: number, signal?: AbortSignal): Promise<ApplicationPreparation>
   create(input: NewApplicationPreparation, signal?: AbortSignal): Promise<ApplicationPreparation>

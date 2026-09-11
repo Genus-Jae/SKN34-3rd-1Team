@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { useAppSelector } from '../../../../app/hooks'
 import {
   applicationServiceFieldLabels,
@@ -40,8 +40,12 @@ function OfficialFormSummary({ form }: { form: ApplicationForm }) {
     <dl className={s.details}>
       <div><dt>공고명</dt><dd>{form.programTitle}</dd></div>
       <div><dt>양식명</dt><dd>{form.formTitle}</dd></div>
+      <div><dt>공식 첨부</dt><dd>{form.attachmentFileName}</dd></div>
+      <div><dt>파일 SHA-256</dt><dd className="break-all font-mono text-xs">{form.attachmentSha256}</dd></div>
     </dl>
-    <p className={s.muted}>공식 파일 해시와 문항 위치를 확인한 양식입니다. 기관 검수 완료나 선정 가능성을 뜻하지 않습니다.</p>
+    <p className={s.muted}>{form.verificationStatus === 'SOURCE_DOCUMENT_EXTRACTED'
+      ? '공식 첨부에서 AI가 추출한 작성 문항입니다. 문항 위치와 원문을 직접 대조해 주세요.'
+      : '공식 파일 해시와 문항 위치를 확인한 양식입니다.'} 기관 검수 완료나 선정 가능성을 뜻하지 않습니다.</p>
     <a className={s.officialLink} href={form.sourceUrl} target="_blank" rel="noreferrer">
       공식 공고 열기<span className="sr-only">: {form.programTitle} (새 창)</span>
     </a>
@@ -166,6 +170,7 @@ function ApplicationPreparationList() {
 export function ApplicationPreparationEditorPage({ create = false }: { create?: boolean }) {
   const account = useAppSelector(selectCurrentAccount)
   const { preparationId } = useParams()
+  const [searchParams] = useSearchParams()
   const id = create ? null : Number(preparationId)
   if (!account) return null
   if (!create && (id === null || !Number.isSafeInteger(id) || id <= 0)) {
@@ -174,11 +179,14 @@ export function ApplicationPreparationEditorPage({ create = false }: { create?: 
       <main className={workspacePageStyles.content}><ErrorNotice message="올바른 신청 준비 주소가 아닙니다." /></main>
     </>
   }
-  return <ApplicationPreparationEditor key={`${account.email}:${id ?? 'new'}`} id={id} />
+  const initialSourceProgramId = create && searchParams.get('sourceCode') === 'BIZINFO'
+    ? searchParams.get('sourceProgramId') ?? ''
+    : ''
+  return <ApplicationPreparationEditor key={`${account.email}:${id ?? 'new'}`} id={id} initialSourceProgramId={initialSourceProgramId} />
 }
 
-function ApplicationPreparationEditor({ id }: { id: number | null }) {
-  const vm = useApplicationPreparationEditorViewModel(id)
+function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: number | null; initialSourceProgramId: string }) {
+  const vm = useApplicationPreparationEditorViewModel(id, initialSourceProgramId)
   const detail = id === null ? null : vm.preparation
   return <>
     <WorkspacePageHeader
@@ -189,15 +197,38 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
       {vm.loading && <p className={s.status} role="status" aria-live="polite">
         {id === null ? '지원 가능한 공식 양식을 불러오는 중입니다.' : '신청 문서 정보를 불러오는 중입니다.'}
       </p>}
-      {vm.error && <ErrorNotice message={vm.error.message} onRetry={vm.submitting ? undefined : vm.load} />}
+      {vm.error && <ErrorNotice message={vm.error.message} onRetry={vm.submitting || vm.discovering ? undefined : id === null ? vm.discoverForms : vm.load} />}
 
-      {id === null && vm.selectedForm && <form className={s.form} aria-labelledby="create-preparation-title" onSubmit={(event) => {
+      {id === null && <form className={s.form} aria-labelledby="create-preparation-title" onSubmit={(event) => {
         event.preventDefault()
-        void vm.create()
+        if (vm.selectedForm) void vm.create()
       }}>
         <section className={s.card}>
-          <h2 className={s.cardTitle} id="create-preparation-title">공식 양식 선택</h2>
-          <label className={s.label} htmlFor="application-form">작성할 공식 양식</label>
+          <h2 className={s.cardTitle} id="create-preparation-title">공고에서 신청 문서 찾기</h2>
+          <label className={s.label} htmlFor="application-program">기업마당 공식 공고 URL 또는 공고 ID</label>
+          <input
+            className={s.input}
+            disabled={vm.discovering || vm.submitting}
+            id="application-program"
+            value={vm.discoveryInput}
+            onChange={(event) => vm.setDiscoveryInput(event.target.value)}
+            placeholder="https://www.bizinfo.go.kr/…?pblancId=PBLN_… 또는 PBLN_…"
+          />
+          <button className={s.primary} disabled={vm.discovering || vm.submitting || !vm.discoveryInput.trim()} type="button" onClick={() => { void vm.discoverForms() }}>
+            {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
+          </button>
+          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
+          <p className={s.muted}>공식 페이지가 직접 연결한 PDF/HWPX만 분석합니다. 분석 결과는 확인 전 AI 제안이며 자동 제출되지 않습니다.</p>
+        </section>
+
+        {vm.discoveryWarnings.length > 0 && <section className={s.notice} aria-label="공고 분석 안내">
+          <ul className="list-disc space-y-1 pl-5">{vm.discoveryWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+        </section>}
+
+        {vm.selectedForm && <>
+        <section className={s.card}>
+          <h2 className={s.cardTitle}>작성 문서 선택</h2>
+          <label className={s.label} htmlFor="application-form">작성할 공식 첨부</label>
           <select
             aria-describedby="application-form-hint"
             className={s.input}
@@ -210,13 +241,14 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
               {form.programTitle} — {form.formTitle}
             </option>)}
           </select>
-          <p className={s.muted} id="application-form-hint">Core API가 제공하는 검증된 공식 양식만 선택할 수 있습니다.</p>
+          <p className={s.muted} id="application-form-hint">발견한 문서와 문항 위치를 원문에서 확인한 뒤 시작해 주세요.</p>
         </section>
 
         <OfficialFormSummary form={vm.selectedForm} />
 
         <section className={s.card} aria-labelledby="service-field-title">
-          <h2 className={s.cardTitle} id="service-field-title">지원 분야 선택</h2>
+          <h2 className={s.cardTitle} id="service-field-title">작성 시작</h2>
+          {!(vm.selectedForm.supportedServiceFields.length === 1 && vm.selectedForm.supportedServiceFields[0] === 'GENERAL') && <>
           <label className={s.label} htmlFor="application-service-field">작성할 지원 분야</label>
           <select
             className={s.input}
@@ -229,12 +261,14 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
               {applicationServiceFieldLabels[field]}
             </option>)}
           </select>
-          <p className={s.muted}>선택한 공식 양식이 지원하는 분야만 표시합니다. 생성만 수행하며 이 단계에서는 AI를 호출하지 않습니다.</p>
+          </>}
+          <p className={s.muted}>추출된 문항을 확인했습니다. 작성 시작은 신청 준비 건만 만들며 추가 AI 호출은 하지 않습니다.</p>
           <button className={s.primary} disabled={vm.submitting} type="submit">
             {vm.submitting ? '신청 준비 생성 중…' : '신청 문서 작성 시작'}
           </button>
           {vm.submitting && <p className={s.status} role="status" aria-live="polite">신청 준비를 생성하고 있습니다. 잠시만 기다려 주세요.</p>}
         </section>
+        </>}
       </form>}
 
       {detail && <>

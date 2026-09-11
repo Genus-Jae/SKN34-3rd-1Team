@@ -20,6 +20,8 @@ const firstForm: ApplicationForm = {
   programTitle: '혁신바우처 지원사업',
   formTitle: '혁신바우처 사업계획서',
   sourceUrl: 'https://www.bizinfo.go.kr/form',
+  attachmentFileName: '혁신바우처 사업계획서.hwpx',
+  attachmentSha256: 'a'.repeat(64),
   verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED',
   institutionReviewed: false,
   supportedServiceFields: ['CONSULTING', 'TECHNICAL_SUPPORT', 'MARKETING'],
@@ -51,7 +53,7 @@ const detail = {
   updatedAt: '2026-09-11T01:00:00+09:00',
   form: structuredClone(firstForm),
 }
-const repository = { forms: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
+const repository = { forms: vi.fn(), discover: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -66,6 +68,7 @@ function deferred<T>() {
 beforeEach(() => {
   vi.resetAllMocks()
   repository.forms.mockResolvedValue([structuredClone(firstForm)])
+  repository.discover.mockResolvedValue({ items: [structuredClone(firstForm)], warnings: ['원문 대조 필요'], cached: false })
   repository.list.mockResolvedValue({ items: [], nextBeforeId: null })
   repository.get.mockResolvedValue(structuredClone(detail))
   repository.create.mockResolvedValue(structuredClone(detail))
@@ -193,20 +196,26 @@ describe('application preparation list', () => {
 })
 
 describe('application preparation creation and detail', () => {
-  it('explains that a forms 404 requires a backend image refresh', async () => {
-    repository.forms.mockRejectedValueOnce(new ApplicationPreparationError(404, 'APPLICATION_PREPARATION_API_UNAVAILABLE'))
+  it('explains when the selected notice has no discoverable application form', async () => {
+    repository.discover.mockRejectedValueOnce(new ApplicationPreparationError(422, 'APPLICATION_FORM_NO_FORM'))
     mount('/app/application-preparations/new')
+    fireEvent.change(screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID'), { target: { value: 'PBLN_1' } })
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain('Core·AI Service 이미지를 갱신')
+    expect((await screen.findByRole('alert')).textContent).toContain('신청 문서를 찾지 못했습니다')
     expect(screen.queryByRole('button', { name: '신청 문서 작성 시작' })).toBeNull()
   })
 
-  it('lets the user choose among official forms and limits service fields to the selected form', async () => {
-    repository.forms.mockResolvedValueOnce([structuredClone(firstForm), structuredClone(secondForm)])
-    mount('/app/application-preparations/new')
+  it('discovers the selected notice and lets the user choose among its official forms', async () => {
+    repository.discover.mockResolvedValueOnce({ items: [structuredClone(firstForm), structuredClone(secondForm)], warnings: ['원문 대조 필요'], cached: false })
+    mount('/app/application-preparations/new?sourceCode=BIZINFO&sourceProgramId=PBLN_1')
+    expect((screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID') as HTMLInputElement).value).toBe('PBLN_1')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
 
-    const formSelect = await screen.findByLabelText('작성할 공식 양식')
+    const formSelect = await screen.findByLabelText('작성할 공식 첨부')
     expect(within(formSelect).getAllByRole('option')).toHaveLength(2)
+    expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_1', expect.any(AbortSignal))
+    expect(screen.getByText('원문 대조 필요')).toBeTruthy()
     fireEvent.change(formSelect, { target: { value: secondForm.formVersionId } })
 
     expect(screen.getByText(secondForm.programTitle)).toBeTruthy()
@@ -218,7 +227,8 @@ describe('application preparation creation and detail', () => {
   it('prevents duplicate submissions and opens the created detail', async () => {
     const creation = deferred<ApplicationPreparation>()
     repository.create.mockReturnValueOnce(creation.promise)
-    mount('/app/application-preparations/new')
+    mount('/app/application-preparations/new?sourceCode=BIZINFO&sourceProgramId=PBLN_1')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
     await screen.findByText(firstForm.programTitle)
     fireEvent.change(screen.getByLabelText('작성할 지원 분야'), { target: { value: 'MARKETING' } })
 
@@ -292,11 +302,12 @@ describe('application preparation creation and detail', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(message)
   })
 
-  it('aborts an in-flight form request when the screen unmounts', () => {
-    const formsRequest = deferred<ApplicationForm[]>()
-    repository.forms.mockReturnValueOnce(formsRequest.promise)
-    const { unmount } = mount('/app/application-preparations/new')
-    const signal = repository.forms.mock.calls[0]?.[0] as AbortSignal
+  it('aborts an in-flight discovery request when the screen unmounts', () => {
+    const discoveryRequest = deferred<{ items: ApplicationForm[]; warnings: string[]; cached: boolean }>()
+    repository.discover.mockReturnValueOnce(discoveryRequest.promise)
+    const { unmount } = mount('/app/application-preparations/new?sourceCode=BIZINFO&sourceProgramId=PBLN_1')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+    const signal = repository.discover.mock.calls[0]?.[2] as AbortSignal
 
     unmount()
 

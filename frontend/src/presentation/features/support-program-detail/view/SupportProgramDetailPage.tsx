@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 
-import { isAppPath, supportProgramQuestionPath } from '../../../shared/routes/appPaths'
+import { appPaths, isAppPath, supportProgramQuestionPath } from '../../../shared/routes/appPaths'
 
 import type { SupportProgram, SupportProgramStatus } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
@@ -182,6 +182,15 @@ function SupportProgramDetail({ program, searchReturnTo }: {
               )}
             >
               이 공고에 질문하기
+            </Link>
+            <Link
+              className={supportProgramDetailStyles.questionLink}
+              to={`${appPaths.applicationPreparationNew}?${new URLSearchParams({
+                sourceCode: program.sourceCode,
+                sourceProgramId: program.id,
+              })}`}
+            >
+              이 공고의 신청 문서 작성하기
             </Link>
           </>
         ) : (

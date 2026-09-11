@@ -31,7 +31,9 @@ data class ApplicationFormManifest(
         }
         require(attachmentFileName.isSafeText(500) && attachmentBytes > 0) { "invalid attachment identity" }
         require(SHA256_PATTERN.matches(attachmentSha256)) { "invalid attachment hash" }
-        require(verificationStatus == "SOURCE_HASH_AND_LOCATORS_VERIFIED") { "unsupported verification status" }
+        require(verificationStatus in setOf("SOURCE_HASH_AND_LOCATORS_VERIFIED", "SOURCE_DOCUMENT_EXTRACTED")) {
+            "unsupported verification status"
+        }
         require(!institutionReviewed) { "institution review must not be claimed by this manifest" }
         require(supportedServiceFields.isNotEmpty() && supportedServiceFields.distinct().size == supportedServiceFields.size) {
             "supported service fields must be unique"

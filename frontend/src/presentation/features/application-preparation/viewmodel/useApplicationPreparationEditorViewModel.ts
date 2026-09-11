@@ -15,18 +15,22 @@ function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error('신청 문서 정보를 처리하지 못했습니다.')
 }
 
-export function useApplicationPreparationEditorViewModel(id: number | null) {
+export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceProgramId = '') {
   const useCase = appContainer.resolve('applicationPreparationUseCase')
   const navigate = useNavigate()
   const [forms, setForms] = useState<ApplicationForm[]>([])
   const [selectedFormVersionId, setSelectedFormVersionId] = useState('')
   const [preparation, setPreparation] = useState<ApplicationPreparation | null>(null)
-  const [serviceField, setServiceField] = useState<ApplicationServiceField>('TECHNICAL_SUPPORT')
+  const [serviceField, setServiceField] = useState<ApplicationServiceField>('GENERAL')
+  const [discoveryInput, setDiscoveryInput] = useState(initialSourceProgramId)
+  const [discovering, setDiscovering] = useState(false)
+  const [discoveryWarnings, setDiscoveryWarnings] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const loadController = useRef<AbortController | null>(null)
   const createController = useRef<AbortController | null>(null)
+  const discoveryController = useRef<AbortController | null>(null)
   const loadSequence = useRef(0)
   const submittingGuard = useRef(false)
   const actionController = useRef<AbortController | null>(null)
@@ -49,21 +53,14 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
     const controller = new AbortController()
     const sequence = ++loadSequence.current
     loadController.current = controller
+    if (id === null) return controller
     setLoading(true)
     setError(null)
 
-    const request = id === null ? useCase.forms(controller.signal) : useCase.get(id, controller.signal)
+    const request = useCase.get(id, controller.signal)
     void request.then((result) => {
       if (controller.signal.aborted || sequence !== loadSequence.current) return
-      if (id === null) {
-        const loadedForms = result as ApplicationForm[]
-        const firstForm = loadedForms[0]
-        setForms(loadedForms)
-        setSelectedFormVersionId(firstForm?.formVersionId ?? '')
-        if (firstForm?.supportedServiceFields[0]) setServiceField(firstForm.supportedServiceFields[0])
-      } else {
-        setPreparation(result as ApplicationPreparation)
-      }
+      setPreparation(result as ApplicationPreparation)
     }).catch((caught: unknown) => {
       if (controller.signal.aborted || sequence !== loadSequence.current) return
       setError(asError(caught))
@@ -87,9 +84,43 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
 
   useEffect(() => () => {
     createController.current?.abort()
+    discoveryController.current?.abort()
     actionController.current?.abort()
     submittingGuard.current = false
   }, [])
+
+  const discoverForms = useCallback(async () => {
+    if (discovering || !discoveryInput.trim()) {
+      if (!discoveryInput.trim()) setError(new Error('기업마당 공식 공고 URL 또는 PBLN 공고 ID를 입력해 주세요.'))
+      return
+    }
+    discoveryController.current?.abort()
+    const controller = new AbortController()
+    discoveryController.current = controller
+    setDiscovering(true)
+    setError(null)
+    setDiscoveryWarnings([])
+    try {
+      const result = await useCase.discover(discoveryInput, controller.signal)
+      if (controller.signal.aborted || discoveryController.current !== controller) return
+      const firstForm = result.items[0]
+      setForms(result.items)
+      setSelectedFormVersionId(firstForm?.formVersionId ?? '')
+      if (firstForm?.supportedServiceFields[0]) setServiceField(firstForm.supportedServiceFields[0])
+      setDiscoveryWarnings(result.warnings)
+    } catch (caught) {
+      if (!controller.signal.aborted && discoveryController.current === controller) {
+        setForms([])
+        setSelectedFormVersionId('')
+        setError(asError(caught))
+      }
+    } finally {
+      if (discoveryController.current === controller) {
+        discoveryController.current = null
+        setDiscovering(false)
+      }
+    }
+  }, [discovering, discoveryInput, useCase])
 
   const selectForm = useCallback((formVersionId: string) => {
     const form = forms.find((candidate) => candidate.formVersionId === formVersionId)
@@ -252,10 +283,15 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
     selectedFormVersionId,
     preparation,
     serviceField,
+    discoveryInput,
+    discovering,
+    discoveryWarnings,
     loading,
     submitting,
     error,
     setServiceField,
+    setDiscoveryInput,
+    discoverForms,
     selectForm,
     load,
     create,

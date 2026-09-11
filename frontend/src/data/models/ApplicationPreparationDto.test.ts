@@ -12,6 +12,8 @@ const form = {
   programTitle: '지원사업',
   formTitle: '사업계획서',
   sourceUrl: 'https://www.bizinfo.go.kr/form',
+  attachmentFileName: '사업계획서.hwpx',
+  attachmentSha256: 'a'.repeat(64),
   verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED',
   institutionReviewed: false,
   supportedServiceFields: ['CONSULTING', 'TECHNICAL_SUPPORT'],

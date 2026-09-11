@@ -10,6 +10,14 @@ export class ApplicationPreparationUseCase {
   }
 
   forms(signal?: AbortSignal) { return this.repository.forms(signal) }
+  discover(value: string, signal?: AbortSignal) {
+    const normalized = value.trim()
+    const sourceProgramId = /^PBLN_[0-9]{1,32}$/.test(normalized)
+      ? normalized
+      : extractBizInfoProgramId(normalized)
+    if (!sourceProgramId) throw new Error('기업마당 공식 공고 URL 또는 PBLN 공고 ID를 입력해 주세요.')
+    return this.repository.discover('BIZINFO', sourceProgramId, signal)
+  }
   list(beforeId?: number, signal?: AbortSignal) { return this.repository.list(beforeId, signal) }
   get(id: number, signal?: AbortSignal) {
     if (!Number.isSafeInteger(id) || id <= 0) throw new Error('올바른 신청 준비 주소가 아닙니다.')
@@ -27,5 +35,21 @@ export class ApplicationPreparationUseCase {
     if (!Number.isSafeInteger(id) || id <= 0 || !/^[a-z][a-z0-9-]{0,63}$/.test(sectionKey)) throw new Error('올바른 작성 항목이 아닙니다.')
     if (new Set(input.facts.map(({ fieldKey }) => fieldKey)).size !== input.facts.length) throw new Error('같은 입력 항목이 중복되었습니다.')
     return this.repository.replaceInputs(id, sectionKey, input, signal)
+  }
+}
+
+function extractBizInfoProgramId(value: string): string | null {
+  try {
+    const url = new URL(value)
+    if (
+      url.protocol !== 'https:' || url.port || url.username || url.password ||
+      !['bizinfo.go.kr', 'www.bizinfo.go.kr'].includes(url.hostname) ||
+      url.pathname !== '/sii/siia/selectSIIA200Detail.do'
+    ) return null
+    const ids = url.searchParams.getAll('pblancId')
+    const id = ids.length === 1 ? ids[0] : null
+    return id && /^PBLN_[0-9]{1,32}$/.test(id) ? id : null
+  } catch {
+    return null
   }
 }

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.application_preparation.models import InterpretRequest
+from app.application_preparation.models import DiscoverFormsRequest, InterpretRequest
 from app.application_preparation.service import ApplicationPreparationError, ApplicationPreparationService
 
 router = APIRouter(prefix="/internal/v1/application-preparations", tags=["internal"])
@@ -18,6 +18,29 @@ def get_service(request: Request) -> ApplicationPreparationService:
 @router.get("/configuration")
 async def configuration(service: Annotated[ApplicationPreparationService, Depends(get_service)]):
     return service.configuration()
+
+
+@router.get("/discovery/configuration")
+async def discovery_configuration(service: Annotated[ApplicationPreparationService, Depends(get_service)]):
+    return service.discovery_configuration()
+
+
+@router.post("/discovery")
+async def discover(payload: DiscoverFormsRequest, service: Annotated[ApplicationPreparationService, Depends(get_service)]):
+    try:
+        return await service.discover(payload)
+    except ApplicationPreparationError as error:
+        timed_out = str(error) == "APPLICATION_PREPARATION_TIMEOUT"
+        logger.warning(
+            "application_form_discovery_failed failure_kind=%s error_type=%s document_count=%d",
+            "timeout" if timed_out else "execution",
+            type(error.__cause__ or error).__name__,
+            len(payload.documents),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT if timed_out else status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": str(error)},
+        ) from error
 
 
 @router.post("/interpret")
