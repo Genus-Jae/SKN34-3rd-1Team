@@ -124,7 +124,7 @@ describe('App navigation', () => {
 
     expect(within(header).queryByRole('link', { name: '상태관리 비교 예제' })).toBeNull()
     fireEvent.click(within(header).getByRole('link', { name: '요금제' }))
-    expect(within(header).getByText('요금제', { selector: 'p' })).toBeTruthy()
+    expect(within(screen.getByRole('banner', { name: '앱 헤더' })).getByText('요금제', { selector: 'p' })).toBeTruthy()
   })
 
   it('헤더의 로그인을 누르면 헤더 없는 로그인 화면으로 이동한다', () => {
@@ -352,7 +352,7 @@ describe('App navigation', () => {
     fireEvent.change(searchInput, { target: { value: '제주 소프트웨어 개발업 2024-02-29 설립 사업화 지원금' } })
     await submitConfirmedSearch(searchInput)
     expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('제주')
-    fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
+    fireEvent.click(screen.getByRole('button', { name: '새 채팅' }))
     expect((searchInput as HTMLTextAreaElement).value).toBe('')
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })

@@ -62,7 +62,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(store.getState().chat.messages).toHaveLength(1)
   })
 
-  it.each(['/', '/app/chat'])('%s에서 새 검색은 초안 입력만으로 나타나지 않고 대화가 시작되면 입력창 아래 안내 옆에 표시된다', async (path) => {
+  it.each(['/', '/app/chat'])('%s에서 대화 초기화는 비로그인 사이드바의 새 채팅 또는 로그인 입력창의 새 검색을 사용한다', async (path) => {
     const network = mockConversationNetwork([readyConversationProposal(seoulConversationContext)])
     renderConversationApp(path)
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
@@ -73,11 +73,17 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.fetch).not.toHaveBeenCalled()
 
     await submitMessage('서울 AI 창업지원 사업 찾아줘')
-    const newSearchButton = screen.getByRole('button', { name: '새 검색' })
-    const hint = screen.getByText(/Enter로 전송 · Shift\+Enter로 줄바꿈/)
-    expect(input.compareDocumentPosition(newSearchButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
-    expect(newSearchButton.parentElement).toBe(hint.parentElement)
-    expect(input.closest('form')?.contains(newSearchButton)).toBe(true)
+    if (path === '/') {
+      expect(screen.queryByRole('button', { name: '새 검색' })).toBeNull()
+      expect(within(screen.getByRole('complementary', { name: '검색 사이드바' }))
+        .getByRole('button', { name: '새 채팅' })).toBeTruthy()
+    } else {
+      const newSearchButton = screen.getByRole('button', { name: '새 검색' })
+      const hint = screen.getByText(/Enter로 전송 · Shift\+Enter로 줄바꿈/)
+      expect(input.compareDocumentPosition(newSearchButton) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+      expect(newSearchButton.parentElement).toBe(hint.parentElement)
+      expect(input.closest('form')?.contains(newSearchButton)).toBe(true)
+    }
     expect(network.fetch).toHaveBeenCalledOnce()
   })
 
@@ -140,7 +146,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(fetchMock).toHaveBeenCalledTimes(requestCount)
   })
 
-  it.each(['/', '/app/chat'])('%s에서 새 검색 버튼은 대화와 조건을 초기화하고 다음 메시지를 빈 맥락으로 보낸다', async (path) => {
+  it.each(['/', '/app/chat'])('%s에서 대화 초기화 버튼은 대화와 조건을 초기화하고 다음 메시지를 빈 맥락으로 보낸다', async (path) => {
     const context = { ...seoulConversationContext, acceptingOnly: false }
     const next = { ...emptyConversationContext, query: '수출 지원' }
     const network = mockConversationNetwork([readyConversationProposal(context), readyConversationProposal(next)])
@@ -153,7 +159,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(screen.getByText('적용 중인 조건: 접수 상태 전체 · 현재 소재지 서울 · 업종 SW · 설립일 2024-01-01 · 지원 목적 사업화')).toBeTruthy()
     const input = screen.getByRole('textbox', { name: '지원사업 검색어' })
     expect(input.getAttribute('aria-describedby')).toContain('support-program-current-conditions')
-    fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
+    fireEvent.click(screen.getByRole('button', { name: path === '/' ? '새 채팅' : '새 검색' }))
     expect(store.getState().chat.conversationQuery).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
     expect(store.getState().chat.confirmedSearch).toBeNull()
@@ -167,7 +173,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(network.searchRequests).toHaveLength(1)
   })
 
-  it.each(['interpretation', 'search'] as const)('새 검색 버튼은 진행 중 %s 요청을 취소하고 늦은 응답을 무시한다', async (phase) => {
+  it.each(['interpretation', 'search'] as const)('새 채팅 버튼은 진행 중 %s 요청을 취소하고 늦은 응답을 무시한다', async (phase) => {
     let complete!: (response: Response) => void
     const pending = new Promise<Response>((resolve) => { complete = resolve })
     const fetchMock = vi.fn()
@@ -184,7 +190,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     const requestSignal = fetchMock.mock.calls.at(-1)![1].signal as AbortSignal
     expect(requestSignal.aborted).toBe(false)
     readiness.canSearch = false
-    fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
+    fireEvent.click(screen.getByRole('button', { name: '새 채팅' }))
     expect(requestSignal.aborted).toBe(true)
     expect(document.activeElement).toBe(input)
     expect((input as HTMLTextAreaElement).disabled).toBe(false)
@@ -204,14 +210,14 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(fetchMock).toHaveBeenCalledTimes(phase === 'search' ? 2 : 1)
   })
 
-  it.each(['READY', 'CLARIFICATION_REQUIRED'] as const)('새 검색 버튼은 %s 제안과 미확정 초안도 초기화한다', async (status) => {
+  it.each(['READY', 'CLARIFICATION_REQUIRED'] as const)('새 채팅 버튼은 %s 제안과 미확정 초안도 초기화한다', async (status) => {
     const proposal: SupportProgramInterpretation = status === 'READY'
       ? readyConversationProposal(seoulConversationContext)
       : { status, proposedContext: seoulConversationContext, clarificationQuestion: '지원 목적을 알려주세요.', changedFields: [] }
     const network = mockConversationNetwork([proposal])
     const { store } = renderConversationApp()
     await submitMessage('서울 SW 사업화')
-    fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
+    fireEvent.click(screen.getByRole('button', { name: '새 채팅' }))
     expect(store.getState().chat.interpretation).toEqual({ status: 'idle' })
     expect(store.getState().chat.pendingClarification).toBeNull()
     expect(store.getState().chat.messages).toHaveLength(1)
@@ -466,7 +472,7 @@ describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
     expect(screen.getByText(/검색 당시 조건: 접수 중만 · 현재 소재지 서울/)).toBeTruthy()
     expect(screen.getByText(/검색 당시 조건: 접수 상태 전체 · 현재 소재지 부산/)).toBeTruthy()
     expect(network.fetch).toHaveBeenCalledTimes(6)
-    fireEvent.click(screen.getByRole('button', { name: '새 검색' }))
+    fireEvent.click(screen.getByRole('button', { name: '새 채팅' }))
     expect(store.getState().chat.conversationQuery).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()

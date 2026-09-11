@@ -5,6 +5,19 @@ function classes(...groups: string[]) {
 // 색상이나 CSS 속성이 아니라 ChatPage에서 맡는 UI 역할을 이름으로 사용합니다.
 // open/closed, user/assistant처럼 화면 상태가 달라지는 경우에는 base 스타일과 variant를 분리합니다.
 export const chatPageStyles = {
+  guestTimeline: 'relative mx-auto min-h-0 w-[min(860px,calc(100%_-_4rem))] flex-1 overflow-y-auto overscroll-contain pt-8 pb-8 max-chat:w-[calc(100%_-_2rem)] max-chat:pt-4 [&>section]:ml-0 [&>section]:w-full',
+  guestMessageRow: 'mb-10 flex min-w-0 gap-3 max-chat:mb-7',
+  guestUserContent: 'min-w-0 max-w-[80%] [overflow-wrap:anywhere] max-chat:max-w-[90%]',
+  guestAssistantContent: 'min-w-0 w-full [overflow-wrap:anywhere]',
+  guestUserBubble: 'whitespace-pre-wrap rounded-3xl bg-[#f1f3f2] px-5 py-3.5 text-[0.95rem] leading-7 text-app-ink',
+  guestAssistantBubble: 'whitespace-pre-wrap rounded-xl py-3 text-[0.95rem] leading-8 text-app-ink',
+  guestComposerDock: 'mx-auto mt-auto max-h-[50%] w-[min(860px,calc(100%_-_4rem))] shrink-0 overflow-y-auto overscroll-contain pt-3 pb-[max(0.8rem,env(safe-area-inset-bottom))] max-chat:w-[calc(100%_-_1.5rem)]',
+  guestComposerGroup: 'relative rounded-[1.8rem] border border-[#dce2de] bg-white shadow-[0_2px_12px_rgb(0_0_0_/_4%)] focus-within:border-[#7b9c88] focus-within:ring-2 focus-within:ring-brand-primary/10',
+  guestComposerInput: 'block max-h-40 min-h-15 w-full resize-none rounded-[1.8rem] border-0 bg-transparent py-[1.05rem] pr-17 pl-6 text-base leading-7 text-app-ink placeholder:text-sample-muted outline-0 [field-sizing:content] max-chat:pl-4 max-chat:text-base',
+  guestSubmitButton: 'absolute right-2.5 bottom-2.5 grid size-10 cursor-pointer place-items-center rounded-full bg-[#202124] text-white hover:bg-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:cursor-not-allowed disabled:bg-[#e9edeb] disabled:text-[#959e98]',
+  guestCancelButton: 'absolute right-2 bottom-2 min-h-11 cursor-pointer rounded-full bg-[#edf2ef] px-3 text-xs font-semibold text-app-ink hover:bg-[#dee7e1] focus-visible:outline-2 focus-visible:outline-brand-primary',
+  guestComposerFooter: 'mx-2 mt-2 flex min-h-7 items-center justify-between gap-2 [&_small]:text-[0.65rem] [&_button]:py-1',
+  guestDisclaimer: 'mx-2 mt-1 block text-center text-[0.65rem] leading-5 text-sample-muted [@media(max-height:500px)]:sr-only',
   proposalPanel: 'ml-11 grid w-[min(40rem,calc(100%_-_2.75rem))] min-w-0 grid-cols-1 scroll-mt-36 gap-2 rounded-3xl border border-[#c9e4d6] bg-white p-4 shadow-[0_8px_28px_rgb(32_33_36_/_4%)] max-chat:ml-0 max-chat:w-full',
   proposalHeader: 'flex flex-wrap items-center justify-between gap-2',
   proposalEyebrow: 'inline-flex items-center gap-1.5 text-xs font-semibold text-brand-primary',

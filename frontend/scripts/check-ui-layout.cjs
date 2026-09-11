@@ -226,7 +226,10 @@ async function main() {
           }
           assert.equal(calls.interpret, before.interpret + 1)
           assert.equal(calls.search, before.search + 1)
-          await page.getByRole('button', { name: '새 검색', exact: true }).click()
+          if (path === '/' && await page.getByRole('button', { name: '메뉴 열기', exact: true }).isVisible()) {
+            await page.getByRole('button', { name: '메뉴 열기', exact: true }).click()
+          }
+          await page.getByRole('button', { name: path === '/' ? '새 채팅' : '새 검색', exact: true }).click()
           assert.equal(await input.inputValue(), '')
           assert(await input.evaluate(n => n === document.activeElement), `${label}: 새 검색 포커스`)
           assert.equal(await page.getByRole('heading', { name: longProgram.title, exact: true }).count(), 0)
