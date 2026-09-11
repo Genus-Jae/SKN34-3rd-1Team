@@ -28,13 +28,27 @@ describe('관심 공고 캘린더', () => {
 
   it('한 날짜에 공고가 200개여도 누락하거나 날짜 없는 공고를 끼워 넣지 않는다', () => {
     const programs: CalendarProgram[] = Array.from({ length: 200 }, (_, i) => ({
-      id: `${i}`, title: `지원사업 ${i}`, organization: '기관', endDate: '2026-09-11', region: '전국', category: '기술', target: '중소기업',
+      id: `${i}`, title: `지원사업 ${i}`, organization: '기관', startDate: null, endDate: '2026-09-11', region: '전국', category: '기술', target: '중소기업',
     }))
-    programs.push({ id: 'unknown', title: '날짜 미확인', organization: '기관', endDate: null, region: '전국', category: '기술', target: '중소기업' })
+    programs.push({ id: 'unknown', title: '날짜 미확인', organization: '기관', startDate: null, endDate: null, region: '전국', category: '기술', target: '중소기업' })
     const days = buildCalendarWeeks(2026, 9, '2026-09-10', programs).flat()
-    expect(days.find(day => day.key === '2026-09-11')!.programs).toHaveLength(200)
-    expect(days.flatMap(day => day.programs)).toHaveLength(200)
+    expect(days.find(day => day.key === '2026-09-11')!.events).toHaveLength(200)
+    expect(days.flatMap(day => day.events)).toHaveLength(200)
     expect(programs).toHaveLength(201)
+  })
+
+  it('시작일과 마감일을 각각 표시하고 같은 날짜면 당일 일정 하나로 합친다', () => {
+    const base = { organization: '기관', region: '전국', category: '기술', target: '중소기업' }
+    const programs: CalendarProgram[] = [
+      { ...base, id: 'period', title: '기간 공고', startDate: '2026-09-03', endDate: '2026-09-11' },
+      { ...base, id: 'same', title: '당일 공고', startDate: '2026-09-05', endDate: '2026-09-05' },
+      { ...base, id: 'start-only', title: '시작만 있는 공고', startDate: '2026-09-07', endDate: null },
+    ]
+    const days = buildCalendarWeeks(2026, 9, '2026-09-10', programs).flat()
+    expect(days.find(day => day.key === '2026-09-03')!.events.map(event => event.type)).toEqual(['START'])
+    expect(days.find(day => day.key === '2026-09-11')!.events.map(event => event.type)).toEqual(['END'])
+    expect(days.find(day => day.key === '2026-09-05')!.events.map(event => event.type)).toEqual(['SAME_DAY'])
+    expect(days.find(day => day.key === '2026-09-07')!.events.map(event => event.type)).toEqual(['START'])
   })
 
   it('검색어·지역·분야·지원 대상·마감 제외 조건을 함께 적용한다', () => {

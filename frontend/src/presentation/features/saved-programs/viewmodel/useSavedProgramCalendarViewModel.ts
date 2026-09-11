@@ -61,9 +61,9 @@ export function useSavedProgramCalendarViewModel(input?: { today: string; progra
   const today = input ? initial.today : calendarToday()
   const filteredPrograms = filterCalendarPrograms(initial.programs, filters, today)
   const weeks = buildCalendarWeeks(display.year, display.month, today, filteredPrograms)
-  const programsInMonth = weeks.flat().reduce((count, day) => count + day.programs.length, 0)
-  const allProgramsInMonth = buildCalendarWeeks(display.year, display.month, today, initial.programs)
-    .flat().reduce((count, day) => count + day.programs.length, 0)
+  const programsInMonth = new Set(weeks.flatMap(week => week.flatMap(day => day.events.map(event => event.program.id)))).size
+  const allProgramsInMonth = new Set(buildCalendarWeeks(display.year, display.month, today, initial.programs)
+    .flatMap(week => week.flatMap(day => day.events.map(event => event.program.id)))).size
   const activeFilterCount = [filters.keyword.trim(), filters.region, filters.category, filters.target]
     .filter(Boolean).length + Number(filters.excludeClosed)
 

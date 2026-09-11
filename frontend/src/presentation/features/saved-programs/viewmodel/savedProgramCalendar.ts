@@ -3,10 +3,18 @@ export type CalendarProgram = {
   id: string
   title: string
   organization: string
+  startDate: string | null
   endDate: string | null
   region: string
   category: string
   target: string
+}
+
+export type CalendarEventType = 'START' | 'END' | 'SAME_DAY'
+
+export type CalendarEvent = {
+  program: CalendarProgram
+  type: CalendarEventType
 }
 
 export type SavedProgramCalendarFilters = {
@@ -50,10 +58,12 @@ export function createCalendarPreview(today: string): CalendarProgram[] {
   const crowdedDay = Math.min(day + 1, lastDay)
   return Array.from({ length: 24 }, (_, index) => {
     const endDay = index < 9 ? crowdedDay : [3, 7, day, 15, 20, 24, 27][index % 7]!
+    const startDay = index % 8 === 0 ? endDay : Math.max(1, endDay - (index % 4 + 1))
     return {
       id: `calendar-preview-${index + 1}`,
       title: `${names[index % names.length]}${index >= 6 ? ` · ${index + 1}차` : ''}`,
       organization: organizations[index % organizations.length]!,
+      startDate: `${month}-${String(startDay).padStart(2, '0')}`,
       endDate: `${month}-${String(endDay).padStart(2, '0')}`,
       region: regions[index % regions.length]!,
       category: categories[index % categories.length]!,
@@ -82,19 +92,39 @@ export function buildCalendarWeeks(year: number, month: number, today: string, p
   const start = new Date(Date.UTC(year, month - 1, 1))
   const length = new Date(Date.UTC(year, month, 0)).getUTCDate()
   const monthKey = `${year}-${String(month).padStart(2, '0')}`
-  const grouped = new Map<string, CalendarProgram[]>()
+  const grouped = new Map<string, CalendarEvent[]>()
   for (const program of programs) {
-    if (!program.endDate?.startsWith(`${monthKey}-`)) continue
-    const entries = grouped.get(program.endDate) ?? []
-    entries.push(program)
-    grouped.set(program.endDate, entries)
+    if (program.startDate !== null && program.startDate === program.endDate) {
+      addCalendarEvent(grouped, monthKey, program.startDate, { program, type: 'SAME_DAY' })
+      continue
+    }
+    if (program.startDate !== null) addCalendarEvent(grouped, monthKey, program.startDate, { program, type: 'START' })
+    if (program.endDate !== null) addCalendarEvent(grouped, monthKey, program.endDate, { program, type: 'END' })
   }
+  for (const events of grouped.values()) events.sort(compareCalendarEvents)
   return Array.from({ length: Math.ceil((start.getUTCDay() + length) / 7) }, (_, week) =>
     Array.from({ length: 7 }, (_, weekday) => {
       const date = new Date(Date.UTC(year, month - 1, week * 7 + weekday - start.getUTCDay() + 1))
       const key = toCalendarDate(date)
       const inMonth = key.startsWith(`${monthKey}-`)
-      return { key, day: date.getUTCDate(), inMonth, isToday: key === today, programs: inMonth ? grouped.get(key) ?? [] : [] }
+      return { key, day: date.getUTCDate(), inMonth, isToday: key === today, events: inMonth ? grouped.get(key) ?? [] : [] }
     }),
   )
+}
+
+function addCalendarEvent(
+  grouped: Map<string, CalendarEvent[]>,
+  monthKey: string,
+  date: string,
+  event: CalendarEvent,
+) {
+  if (!date.startsWith(`${monthKey}-`)) return
+  const entries = grouped.get(date) ?? []
+  entries.push(event)
+  grouped.set(date, entries)
+}
+
+function compareCalendarEvents(left: CalendarEvent, right: CalendarEvent): number {
+  const order: Record<CalendarEventType, number> = { START: 0, SAME_DAY: 1, END: 2 }
+  return order[left.type] - order[right.type] || left.program.title.localeCompare(right.program.title, 'ko-KR')
 }

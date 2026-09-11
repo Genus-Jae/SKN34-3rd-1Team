@@ -2,7 +2,7 @@ import { regionNames } from '../../../../domain/entities/Region'
 import { supportProgramCategories } from '../../../../domain/entities/SupportProgramCategory'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { useSavedProgramCalendarViewModel } from '../viewmodel/useSavedProgramCalendarViewModel'
-import { savedProgramTargetOptions, type SavedProgramCalendarFilters } from '../viewmodel/savedProgramCalendar'
+import { savedProgramTargetOptions, type CalendarEventType, type SavedProgramCalendarFilters } from '../viewmodel/savedProgramCalendar'
 import { savedCalendarStyles as s } from './SavedProgramsPage.styles'
 
 function Arrow({ direction, double = false }: { direction: 'left' | 'right'; double?: boolean }) {
@@ -81,17 +81,20 @@ export function SavedProgramsPage() {
       {vm.programsInMonth === 0 && <p className="m-0 shrink-0 bg-app-canvas px-4 py-3 text-sm text-sample-muted">이 달에 표시할 예시 공고가 없습니다.</p>}
 
       <div ref={vm.scrollRef} className={s.scroll} role="region" aria-label="달력 내부 스크롤" tabIndex={0}>
-        <table className={s.table} aria-label={`${monthLabel} 마감 일정`}>
+        <table className={s.table} aria-label={`${monthLabel} 접수 일정`}>
           <thead><tr>{['일', '월', '화', '수', '목', '금', '토'].map((day, index) =>
             <th key={day} scope="col" className={`${s.weekday} ${index === 0 ? 'text-red-700' : index === 6 ? 'text-blue-700' : 'text-sample-muted'}`}>{day}</th>,
           )}</tr></thead>
           <tbody>{vm.weeks.map(week => <tr key={week[0]!.key}>{week.map((day, index) =>
             <td key={day.key} ref={day.isToday ? vm.todayRef : undefined} className={`${s.cell} ${!day.inMonth ? 'bg-[#fafbfc]' : 'bg-white'}`}>
               <time dateTime={day.key} aria-current={day.isToday ? 'date' : undefined} className={`${s.date} ${day.isToday ? 'bg-brand-primary font-bold text-white' : !day.inMonth ? 'text-[#9ca3af]' : index === 0 ? 'text-red-700' : index === 6 ? 'text-blue-700' : 'text-sample-muted'}`}>{day.day}</time>
-              {day.programs.length > 0 && <ul className={s.events} aria-label={`${day.key} 마감 공고 ${day.programs.length}건`}>{day.programs.map(program =>
-                <li key={program.id} className={s.event}>
-                  <span className={s.eventTitle}>{program.title}</span>
-                  <span className={s.eventOrg}>{program.organization}</span>
+              {day.events.length > 0 && <ul className={s.events} aria-label={`${day.key} 접수 일정 ${day.events.length}건`}>{day.events.map(event =>
+                <li key={`${event.program.id}:${event.type}`} className={s.event}>
+                  <span className={`${s.eventBadge} ${eventBadgeStyle[event.type]}`}>{eventBadgeLabel[event.type]}</span>
+                  <span className={s.eventBody}>
+                    <span className={s.eventTitle}>{event.program.title}</span>
+                    <span className={s.eventOrg}>{event.program.organization}</span>
+                  </span>
                 </li>,
               )}</ul>}
             </td>,
@@ -102,6 +105,16 @@ export function SavedProgramsPage() {
       </section>
     </main>
   </>
+}
+
+const eventBadgeLabel: Record<CalendarEventType, string> = {
+  START: '시', END: '끝', SAME_DAY: '당일',
+}
+
+const eventBadgeStyle: Record<CalendarEventType, string> = {
+  START: 'bg-[#dff4e7] text-[#187348]',
+  END: 'bg-[#344054] text-white',
+  SAME_DAY: 'bg-[#fff0d5] text-[#9a5b00]',
 }
 
 function FilterSelect({ label, value, options, onChange }: {
