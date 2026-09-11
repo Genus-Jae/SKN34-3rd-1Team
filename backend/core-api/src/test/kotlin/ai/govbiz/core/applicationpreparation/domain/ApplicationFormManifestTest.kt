@@ -49,5 +49,11 @@ class ApplicationFormManifestTest {
         sections,
     )
 
-    private fun section(key: String) = ApplicationFormSectionDefinition(key, "문항", "HWPX paragraph 1", "작성 안내")
+    private fun section(key: String) = ApplicationFormSectionDefinition(
+        key,
+        "문항",
+        "HWPX paragraph 1",
+        "작성 안내",
+        listOf(ApplicationFormFieldDefinition("field-one", "입력", "확인된 값을 입력합니다.", true)),
+    )
 }

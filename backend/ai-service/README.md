@@ -20,6 +20,11 @@ FastAPI, OpenAI 임베딩, Qdrant로 전체 공고에서 관련 후보를 찾고
 구조화 출력의 형태 준수와 실제 판단 품질은 다르며 [공식 안내](https://developers.openai.com/api/docs/guides/structured-outputs)를 참고합니다.
 [실행·원문 관리 계약](../../docs/duplicate-support-review-design.md)과 [무료 검증](../../evaluation/combination-review/README.md)에 범위를 정리했습니다.
 
+신청 문서 입력 해석은 `app/application_preparation`의 단일 typed Agent가 담당합니다. Core가 고정 manifest에서 고른
+문항 필드와 현재 사용자 확인 사실, 이번 답변만 전달하며 Qdrant나 외부 원문을 조회하지 않습니다. Agent는 이번 답변의
+정확한 부분 문자열을 근거로 `PROVIDED` 또는 명시적인 `UNKNOWN` 제안과 다음 질문을 반환합니다. Service는 허용 필드,
+중복, 정확 인용, 필수 미입력 순서를 검증하며 제안을 사용자 확인 사실로 표시하거나 저장하지 않습니다.
+
 AI Service가 하는 일:
 
 - 사용자의 자연어 질문과 Core가 검증한 공고 후보를 함께 읽음
@@ -48,6 +53,8 @@ AI Service가 하지 않는 일:
 GET /internal/v1/health
 GET /internal/v1/combination-reviews/configuration
 POST /internal/v1/combination-reviews/analyze
+GET /internal/v1/application-preparations/configuration
+POST /internal/v1/application-preparations/interpret
 POST /internal/v1/support-program-rankings/rank
 PUT /internal/v1/support-program-index/batch
 POST /internal/v1/support-program-index/prune

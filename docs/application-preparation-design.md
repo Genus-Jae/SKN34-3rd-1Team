@@ -2,8 +2,8 @@
 
 [문서 목록](README.md) · [시스템 구조](architecture/README.md) · [계정·인증 계약](account-auth-contract.md)
 
-- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187)
-- 상태: **고정 양식 manifest와 신청 준비 생성·목록·상세의 Domain·MySQL·Core API·Frontend 기본 흐름을 구현했다. 문항 입력·AI 초안은 미구현이다.**
+- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189)
+- 상태: **고정 양식과 신청 준비 기본 흐름에 이어 문항별 AI 질문·사실 제안·사용자 확인 입력 저장을 구현했다. 초안 생성·수정·확인은 미구현이다.**
 - 설계 기준: 2026-09-11, 팀 `main`의 PR #186 병합 커밋 `bfe44aa`.
 - 기능 이름: 화면에서는 **신청 문서 작성 도우미**, 코드에서는 `applicationpreparation` / `application_preparation` / `application-preparation`을 사용한다.
 
@@ -173,7 +173,7 @@ backend/ai-service/app/application_preparation/
 AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초안 생성의 확정 사실로 사용하지 않는다. 값이 `UNKNOWN`이면
 같은 질문을 반복하지 않고 문안에 미정으로 표시하거나 초안 생성 전에 필요한 이유를 설명한다.
 
-## 7. 공개 API 계약 초안
+## 7. 공개 API 계약
 
 모든 주소는 `/api/v1` 뒤에 붙는다. 소유자는 요청에서 받지 않고 인증 세션의 Account로 결정한다.
 
@@ -192,6 +192,36 @@ AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초�
 답변 해석과 초안 생성을 분리한다. 답변 전송이 기존 문안을 덮어쓰거나, AI가 추출한 사실을 자동 확정하지 않는다.
 쓰기 요청은 현재 상태의 `expectedRevision`을 받고, AI 실행 요청은 소문자 UUID `requestKey`를 추가로 받는다.
 같은 신청 준비 건·요청 키·payload는 기존 실행을 반환하고, 같은 키의 다른 payload는 409로 거절한다.
+
+문항 답변 해석은 현재 확인 사실을 자동 변경하지 않는다.
+
+```json
+{
+  "expectedRevision": 2,
+  "requestKey": "0a504895-77bd-4d34-bc61-3e6d12389042",
+  "message": "업체명은 새봄테크이고 담당자는 아직 미정입니다."
+}
+```
+
+응답의 `evidenceQuote`는 이번 `message`의 정확한 부분 문자열이다. `PROVIDED` 값은 확인 전 제안이며,
+`UNKNOWN`은 사용자가 모름·미정이라고 명시한 경우에만 제안한다.
+
+```json
+{
+  "runId": 31,
+  "inputRevision": 2,
+  "sectionKey": "company-overview",
+  "suggestions": [
+    {"fieldKey": "company-name", "status": "PROVIDED", "value": "새봄테크", "evidenceQuote": "업체명은 새봄테크"},
+    {"fieldKey": "contact-person", "status": "UNKNOWN", "value": null, "evidenceQuote": "담당자는 아직 미정"}
+  ],
+  "missingFields": ["company-history", "main-products", "main-customers"],
+  "nextQuestion": "주요 연혁을 확인된 연도와 함께 알려주세요."
+}
+```
+
+사용자가 제안을 선택·수정한 뒤 `PUT .../inputs`에 해당 문항의 전체 사실 스냅샷을 보낸다. 성공하면 준비 건의
+`inputRevision`이 정확히 1 증가한다. 빈 목록은 해당 문항의 현재 확인 사실을 모두 지우는 명시적 저장이다.
 
 초안 생성 요청의 핵심 형태:
 
@@ -300,7 +330,7 @@ GitHub 이슈에서 skn-번호 확정
 |---|---|---|---|
 | 제약·계약 확정 | `skn-89` / #185 | 이 문서, 공식 대상·범위·공개/AI 계약 | 링크·원문 위치·`git diff --check` |
 | 신청 준비 기본 흐름 | `skn-90` / #187 | 검수 양식, 신청 준비 생성·목록·상세의 Domain·DB·Core API·Frontend | Core·MySQL 8.4·Frontend |
-| 문항별 질문과 사실 확인 | 새 번호 배정 필요 | AI 답변 해석, 사실 제안·확인, 문항 입력 저장과 화면 | AI Service·Core 계약·Frontend |
+| 문항별 질문과 사실 확인 | `skn-92` / #189 | AI 답변 해석, 사실 제안·확인, 문항 입력 저장과 화면 | AI Service·Core 계약·Frontend |
 | 초안 생성·수정·확인 | 새 번호 배정 필요 | 초안 실행·이력, 직접 수정, 확인·재확인 상태와 화면 | AI Service·Core·Frontend·Stub 연결 |
 | 전체 흐름 안정화 | 새 번호 배정 필요 | 로그인 복귀·세션 격리·장애·Compose 통합과 운영 문서 | 변경 서비스 전체·Compose·`git diff --check` |
 

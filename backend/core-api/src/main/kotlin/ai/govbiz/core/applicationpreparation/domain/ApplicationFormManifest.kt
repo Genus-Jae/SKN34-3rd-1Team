@@ -55,16 +55,36 @@ data class ApplicationFormSectionDefinition(
     val title: String,
     val locator: String,
     val description: String,
+    val fields: List<ApplicationFormFieldDefinition>,
 ) {
     init {
         require(SECTION_KEY_PATTERN.matches(key)) { "invalid application form section key" }
         require(title.isSafeText(100) && locator.isSafeText(200) && description.isSafeText(1000)) {
             "invalid application form section text"
         }
+        require(fields.isNotEmpty() && fields.size <= 20 && fields.map { it.key }.distinct().size == fields.size) {
+            "application form fields must be present and unique"
+        }
     }
 
     private companion object {
         val SECTION_KEY_PATTERN = Regex("[a-z][a-z0-9-]{0,63}")
+    }
+}
+
+data class ApplicationFormFieldDefinition(
+    val key: String,
+    val label: String,
+    val guidance: String,
+    val required: Boolean,
+) {
+    init {
+        require(FIELD_KEY_PATTERN.matches(key)) { "invalid application form field key" }
+        require(label.isSafeText(100) && guidance.isSafeText(500)) { "invalid application form field text" }
+    }
+
+    private companion object {
+        val FIELD_KEY_PATTERN = Regex("[a-z][a-z0-9-]{0,63}")
     }
 }
 

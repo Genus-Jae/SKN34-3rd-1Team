@@ -1,4 +1,8 @@
-import type { NewApplicationPreparation } from '../../domain/entities/ApplicationPreparation'
+import type {
+  InterpretApplicationPreparation,
+  NewApplicationPreparation,
+  ReplaceApplicationPreparationInputs,
+} from '../../domain/entities/ApplicationPreparation'
 import type { ApplicationPreparationRepository } from '../../domain/repositories/ApplicationPreparationRepository'
 import { ApplicationPreparationError } from '../../domain/errors/ApplicationPreparationError'
 import { applicationPreparationRequest as request } from '../api/applicationPreparationApi'
@@ -6,6 +10,7 @@ import {
   applicationPreparationPageSchema,
   applicationPreparationSchema,
   supportedApplicationFormsSchema,
+  applicationInterpretationSchema,
 } from '../models/ApplicationPreparationDto'
 
 const cursor = (beforeId?: number) => `?size=20${beforeId === undefined ? '' : `&beforeId=${beforeId}`}`
@@ -30,6 +35,20 @@ export class ApplicationPreparationRepositoryImpl implements ApplicationPreparat
       result.form.formVersionId !== input.formVersionId ||
       result.serviceField !== input.serviceField
     ) {
+      throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
+    }
+    return result
+  }
+  async interpret(id: number, sectionKey: string, input: InterpretApplicationPreparation, signal?: AbortSignal) {
+    const result = await request(`/${id}/sections/${encodeURIComponent(sectionKey)}/messages`, applicationInterpretationSchema, 'POST', input, signal)
+    if (result.inputRevision !== input.expectedRevision || result.sectionKey !== sectionKey) {
+      throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
+    }
+    return result
+  }
+  async replaceInputs(id: number, sectionKey: string, input: ReplaceApplicationPreparationInputs, signal?: AbortSignal) {
+    const result = await request(`/${id}/sections/${encodeURIComponent(sectionKey)}/inputs`, applicationPreparationSchema, 'PUT', input, signal)
+    if (result.id !== id || result.inputRevision !== input.expectedRevision + 1) {
       throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
     }
     return result

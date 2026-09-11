@@ -1,0 +1,40 @@
+import logging
+from time import perf_counter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+
+from app.application_preparation.models import InterpretRequest
+from app.application_preparation.service import ApplicationPreparationError, ApplicationPreparationService
+
+router = APIRouter(prefix="/internal/v1/application-preparations", tags=["internal"])
+logger = logging.getLogger(__name__)
+
+
+def get_service(request: Request) -> ApplicationPreparationService:
+    return request.app.state.container.application_preparation_service
+
+
+@router.get("/configuration")
+async def configuration(service: Annotated[ApplicationPreparationService, Depends(get_service)]):
+    return service.configuration()
+
+
+@router.post("/interpret")
+async def interpret(payload: InterpretRequest, service: Annotated[ApplicationPreparationService, Depends(get_service)]):
+    started = perf_counter()
+    try:
+        return await service.interpret(payload)
+    except ApplicationPreparationError as error:
+        timed_out = str(error) == "APPLICATION_PREPARATION_TIMEOUT"
+        logger.warning(
+            "application_preparation_failed failure_kind=%s error_type=%s section_key=%s elapsed_ms=%d",
+            "timeout" if timed_out else "execution",
+            type(error.__cause__ or error).__name__,
+            payload.sectionKey,
+            round((perf_counter() - started) * 1_000),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT if timed_out else status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": str(error)},
+        ) from error

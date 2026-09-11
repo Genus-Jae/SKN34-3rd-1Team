@@ -4,6 +4,7 @@ import { useAppSelector } from '../../../../app/hooks'
 import {
   applicationServiceFieldLabels,
   type ApplicationForm,
+  type ApplicationFormSection,
 } from '../../../../domain/entities/ApplicationPreparation'
 import { selectCurrentAccount } from '../../../shared/auth/state/authSlice'
 import { appPaths } from '../../../shared/routes/appPaths'
@@ -14,6 +15,11 @@ import { useApplicationPreparationListViewModel } from '../viewmodel/useApplicat
 import { applicationPreparationStyles as s } from './ApplicationPreparation.styles'
 
 const listTitle = '신청 문서 작성 도우미'
+const sectionStatus = {
+  NOT_STARTED: { label: '작성 전', className: s.notStarted },
+  IN_PROGRESS: { label: '입력 중', className: s.inProgress },
+  INPUT_CONFIRMED: { label: '사실 확인됨', className: s.confirmed },
+} as const
 
 function readableTime(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -40,6 +46,82 @@ function OfficialFormSummary({ form }: { form: ApplicationForm }) {
       공식 공고 열기<span className="sr-only">: {form.programTitle} (새 창)</span>
     </a>
   </section>
+}
+
+function SectionInputEditor({ section, vm }: {
+  section: ApplicationFormSection
+  vm: ReturnType<typeof useApplicationPreparationEditorViewModel>
+}) {
+  const state = vm.interpretations[section.key]
+  const busy = vm.busySection?.key === section.key
+  const status = sectionStatus[section.status]
+  const labels = new Map(section.fields.map((field) => [field.key, field.label]))
+  return <li className={s.sectionItem}>
+    <div className={s.sectionHeading}>
+      <strong>{section.title}</strong>
+      <span className={status.className} aria-label={`작성 상태: ${status.label}`}>{status.label}</span>
+    </div>
+    <p className={s.muted}>{section.description}</p>
+    <ul className={s.fieldList} aria-label={`${section.title} 필수 입력`}>
+      {section.fields.map((field) => <li className={s.notice} key={field.key}>
+        <strong>{field.label}{field.required ? ' · 필수' : ''}</strong>
+        <p className={s.muted}>{field.guidance}</p>
+      </li>)}
+    </ul>
+    {section.facts.length > 0 && <div>
+      <h3 className={s.label}>사용자가 확인한 사실</h3>
+      <ul className={s.fieldList}>
+        {section.facts.map((fact) => <li className={s.factItem} key={fact.id}>
+          <strong>{labels.get(fact.fieldKey) ?? fact.fieldKey}</strong>
+          <p>{fact.status === 'UNKNOWN' ? '미정으로 확인함' : fact.value}</p>
+        </li>)}
+      </ul>
+    </div>}
+    <label className={s.label} htmlFor={`section-answer-${section.key}`}>AI가 사실 항목을 구분할 수 있도록 답변하기</label>
+    <textarea
+      className={s.textarea}
+      disabled={vm.busySection !== null}
+      id={`section-answer-${section.key}`}
+      maxLength={4000}
+      value={vm.sectionMessages[section.key] ?? ''}
+      onChange={(event) => vm.setSectionMessage(section.key, event.target.value)}
+      placeholder="확인된 사실만 적어 주세요. 모르는 값은 미정이라고 밝혀 주세요."
+    />
+    <div className={s.moreActions}>
+      <button className={s.button} disabled={vm.busySection !== null || !(vm.sectionMessages[section.key] ?? '').trim()} type="button" onClick={() => { void vm.interpretSection(section) }}>
+        {busy && vm.busySection?.action === 'interpret' ? 'AI가 답변 확인 중…' : 'AI로 답변 확인'}
+      </button>
+      {busy && <p className={s.status} role="status" aria-live="polite">답변에서 사실과 미정 항목을 구분하고 있습니다.</p>}
+    </div>
+    {state && <section className={s.notice} aria-label={`${section.title} AI 제안`}>
+      <h3 className={s.label}>확인 전 AI 제안</h3>
+      <p className={s.muted}>자동 저장되지 않습니다. 값과 근거를 확인하고 필요한 항목만 선택해 저장하세요.</p>
+      {state.result.suggestions.length === 0 && <p className={s.muted}>이번 답변에서 저장할 사실을 찾지 못했습니다.</p>}
+      <div className="flex flex-col gap-3">
+        {state.result.suggestions.map((suggestion) => <div className={s.suggestion} key={suggestion.fieldKey}>
+          <label className={s.checkboxLabel}>
+            <input checked={state.selected[suggestion.fieldKey] ?? false} type="checkbox" onChange={() => vm.toggleSuggestion(section.key, suggestion.fieldKey)} />
+            <span>{labels.get(suggestion.fieldKey) ?? suggestion.fieldKey}</span>
+          </label>
+          {suggestion.status === 'UNKNOWN'
+            ? <p className={s.muted}>미정으로 저장할 제안입니다.</p>
+            : <input
+              aria-label={`${labels.get(suggestion.fieldKey) ?? suggestion.fieldKey} 확인 값`}
+              className={s.input}
+              maxLength={2000}
+              value={state.values[suggestion.fieldKey] ?? ''}
+              onChange={(event) => vm.setSuggestionValue(section.key, suggestion.fieldKey, event.target.value)}
+            />}
+          <blockquote className={s.quote}>사용자 답변 근거: “{suggestion.evidenceQuote}”</blockquote>
+        </div>)}
+      </div>
+      {state.result.nextQuestion && <p className={s.warning}><strong>다음 질문:</strong> {state.result.nextQuestion}</p>}
+      {state.result.suggestions.length > 0 && <button className={s.primary} disabled={vm.busySection !== null} type="button" onClick={() => { void vm.saveSuggestions(section) }}>
+        {busy && vm.busySection?.action === 'save' ? '확인 사실 저장 중…' : '선택한 사실 확인하고 저장'}
+      </button>}
+    </section>}
+    <p className={s.locator}>공식 양식 위치: {section.locator}</p>
+  </li>
 }
 
 export function ApplicationPreparationListPage() {
@@ -168,16 +250,13 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
         <section className={s.card} aria-labelledby="official-sections-title">
           <h2 className={s.cardTitle} id="official-sections-title">공식 작성 항목</h2>
           <ol className={s.sectionList}>
-            {detail.form.sections.map((section, index) => <li className={s.sectionItem} key={section.key}>
-              <div className={s.sectionHeading}>
-                <strong>{index + 1}. {section.title}</strong>
-                <span className={s.notStarted} aria-label="작성 상태: 작성 전">작성 전</span>
-              </div>
-              <p className={s.muted}>{section.description}</p>
-              <p className={s.locator}>공식 양식 위치: {section.locator}</p>
-            </li>)}
+            {detail.form.sections.map((section, index) => <SectionInputEditor
+              key={section.key}
+              section={{ ...section, title: `${index + 1}. ${section.title}` }}
+              vm={vm}
+            />)}
           </ol>
-          <p className={s.notice}>문항 답변 작성과 AI 도움 기능은 아직 제공하지 않습니다. 현재는 공식 작성 항목과 상태만 확인할 수 있습니다.</p>
+          <p className={s.notice}>AI 제안은 사용자가 확인해 저장하기 전까지 입력 사실이 아닙니다. 초안 생성·직접 편집·최종 확인은 다음 단계에서 제공합니다.</p>
         </section>
       </>}
     </main>

@@ -5,6 +5,9 @@ import ai.govbiz.core.account.domain.NewAccount
 import ai.govbiz.core.account.repository.AccountRepository
 import ai.govbiz.core.applicationpreparation.domain.ApplicationServiceField
 import ai.govbiz.core.applicationpreparation.domain.NewApplicationPreparation
+import ai.govbiz.core.applicationpreparation.domain.ApplicationFactStatus
+import ai.govbiz.core.applicationpreparation.domain.ApplicationInputReplaceResult
+import ai.govbiz.core.applicationpreparation.domain.NewConfirmedApplicationFact
 import java.time.LocalDateTime
 import java.util.UUID
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -28,6 +31,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 @Import(MySqlTestContainerConfig::class)
 class ApplicationPreparationRepositoryIntegrationTest {
     @Autowired private lateinit var repository: ApplicationPreparationRepository
+    @Autowired private lateinit var inputs: ApplicationPreparationInputRepository
     @Autowired private lateinit var accounts: AccountRepository
     @Autowired private lateinit var jdbc: JdbcTemplate
     private var ownerId = 0L
@@ -75,6 +79,33 @@ class ApplicationPreparationRepositoryIntegrationTest {
             jdbc.update("UPDATE application_preparation SET form_version_id = '잘못된-버전' WHERE id = ?", created.id)
         }
         assertEquals(created, repository.findOwned(ownerId, created.id))
+    }
+
+    @Test
+    fun replacesKoreanSpecialCharacterAndUnknownFactsInOneRevision() {
+        val created = repository.create(ownerId, draft())
+        val result = inputs.replaceOwned(ownerId, created.id, "company-overview", 1, listOf(
+            NewConfirmedApplicationFact("company-name", ApplicationFactStatus.PROVIDED, "새봄테크 & 연구소", "업체명은 ‘새봄테크 & 연구소’입니다."),
+            NewConfirmedApplicationFact("contact-person", ApplicationFactStatus.UNKNOWN, null, "담당자는 아직 미정입니다."),
+        ))
+        assertEquals(ApplicationInputReplaceResult.Updated(2), result)
+        val facts = inputs.listOwnedFacts(ownerId, created.id)
+        assertEquals(listOf("새봄테크 & 연구소", null), facts.map { it.value })
+        assertEquals(listOf(ApplicationFactStatus.PROVIDED, ApplicationFactStatus.UNKNOWN), facts.map { it.status })
+        assertEquals(2L, repository.findOwned(ownerId, created.id)!!.inputRevision)
+        assertTrue(inputs.listOwnedFacts(otherId, created.id).isEmpty())
+    }
+
+    @Test
+    fun duplicateSnapshotRollsBackDeletedFactsAndRevision() {
+        val created = repository.create(ownerId, draft())
+        val original = NewConfirmedApplicationFact("company-name", ApplicationFactStatus.PROVIDED, "기존 업체", "기존 답변")
+        inputs.replaceOwned(ownerId, created.id, "company-overview", 1, listOf(original))
+        assertThrows(DataAccessException::class.java) {
+            inputs.replaceOwned(ownerId, created.id, "company-overview", 2, listOf(original, original))
+        }
+        assertEquals("기존 업체", inputs.listOwnedFacts(ownerId, created.id).single().value)
+        assertEquals(2L, repository.findOwned(ownerId, created.id)!!.inputRevision)
     }
 
     private fun createAccount(): Long = accounts.createAccount(
