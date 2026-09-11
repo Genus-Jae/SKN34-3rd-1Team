@@ -10,10 +10,10 @@ export const authPageStyles = {
     'mb-7 flex items-center gap-3 self-center rounded-xl text-app-ink no-underline',
     'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-primary',
   ),
+  // 로그인·회원가입은 로고 마크와 이름 둘만 두므로 공개 헤더보다 한 단계 크게 씁니다.
   logoMark:
-    'grid size-11 shrink-0 place-items-center rounded-xl bg-brand-accent text-[1.4rem] font-black text-brand-primary',
-  logoTitle: 'block text-[1.25rem] font-extrabold leading-tight tracking-[-0.04em]',
-  logoSubtitle: 'mt-[0.15rem] block text-[0.78rem] font-normal text-sample-muted',
+    'grid size-14 shrink-0 place-items-center rounded-2xl bg-brand-accent text-[1.8rem] font-black text-brand-primary',
+  logoTitle: 'block text-[1.75rem] font-extrabold leading-none tracking-[-0.05em]',
   // 입력·버튼 폭 444px은 참고한 로그인 화면과 같습니다.
   formPanel: 'flex w-full max-w-[444px] min-w-0 flex-col justify-center',
   card: 'flex min-w-0 w-full flex-col gap-3',

@@ -33,6 +33,7 @@ export function AppHeader() {
   const currentTitle = pageTitles.find((page) => page.matches(pathname))?.title ?? null
 
   return (
+    <div className={appHeaderStyles.shell}>
     <header className={isMarketingPage ? appHeaderStyles.landingHeader : appHeaderStyles.header} aria-label="앱 헤더">
       {/* 같은 홈 주소에서도 대화·필터 상태를 비우고 처음 화면으로 돌아갑니다. */}
       <Link className={isMarketingPage ? appHeaderStyles.landingBrand : appHeaderStyles.brand}
@@ -65,6 +66,7 @@ export function AppHeader() {
         <AccountMenu isMarketingPage={isMarketingPage} />
       </nav>
     </header>
+    </div>
   )
 }
 
