@@ -87,7 +87,7 @@ pnpm dev
 | `/` | 헤더 | AI 대화 검색·필터 검색 탭, 자연어 조건 해석·제안 확인, 결과 카드 |
 | `/?mode=filter` | 헤더 | 키워드·지역·분야·출처·접수 상태와 K-Startup 추가 필터, 최신순·마감순, 페이지 이동 |
 | `/pricing` | 헤더 | 무료·프로·팀 요금제 소개, 출시 예정 안내, FAQ, 무료 검색 진입 |
-| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하고 작성 기업 정보는 흐리게 가리며, 자세히 보기·제안 버튼은 로그인하면 할 수 있는 일 다이얼로그(배경 흐림)로 안내 |
+| `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하고(검색어는 조회 버튼으로 적용, 정렬 칩: 마감 임박순·최근 등록순) 작성 기업 정보는 흐리게 가리며, 자세히 보기·제안 버튼은 로그인하면 할 수 있는 일 다이얼로그(배경 흐림)로 안내 |
 | `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 헤더 | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
 | `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |

@@ -10,12 +10,19 @@ export const publicPartnerRecruitmentStyles = {
     'max-chat:w-[calc(100%_-_2rem)] max-chat:gap-8 max-chat:pb-10',
   ),
   hero: 'flex flex-col gap-3',
-  eyebrow: 'm-0 inline-flex w-fit items-center gap-2 rounded-full bg-brand-accent px-4 py-2 text-[0.8rem] font-bold text-brand-primary',
   title: 'm-0 text-[clamp(1.7rem,3.2vw,2.4rem)] font-extrabold leading-[1.25] tracking-[-0.04em]',
   description: 'm-0 max-w-[62ch] text-[0.95rem] leading-[1.7] text-sample-muted',
   columns: 'grid grid-cols-[minmax(0,1fr)_320px] items-start gap-6 max-chat:grid-cols-1',
   column: 'flex min-w-0 flex-col gap-5',
+  // 로그인 뒤 목록의 검색 칸과 같은 모양입니다.
+  searchRow: 'flex flex-wrap items-center gap-2',
+  search: classes(
+    'flex min-h-11 w-[320px] max-w-full items-center gap-2 rounded-[1rem] border border-sample-border bg-white px-[0.9rem]',
+    'text-[0.85rem] text-[#838a93] focus-within:border-[#087f46] focus-within:shadow-[0_0_0_3px_rgb(8_127_70_/_12%)]',
+  ),
+  searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink outline-0 placeholder:text-sample-muted',
   toolbar: 'flex flex-wrap items-center justify-between gap-3',
+  sortChoices: 'flex flex-wrap items-center gap-2',
   resultCount: 'text-[0.8rem] text-sample-muted',
   // 폭에 따라 3열·2열·1열로 저절로 줄어드는 격자입니다. 한 줄은 최대 3열(카드 폭이 전체의 1/3 이상)이고 같은 줄의 카드는 같은 높이로 늘어납니다.
   cardGrid: 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,max(300px,calc((100%_-_2rem)/3))),1fr))]',

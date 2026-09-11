@@ -4,11 +4,14 @@ function classes(...groups: string[]) {
 
 // 색상이나 CSS 속성이 아니라 앱 최상단 헤더에서 맡는 UI 역할을 이름으로 사용합니다.
 export const appHeaderStyles = {
+  // 헤더 알약을 감싸는 고정 껍데기입니다. 문서가 스크롤되는 공개 화면에서 알약 위 여백으로 본문이 비치던 것을 배경으로 가립니다.
+  // 스크롤이 없는 채팅 화면에서는 흰 배경 위의 흰 띠라 보이지 않습니다.
+  shell: 'sticky top-0 z-[5] shrink-0 bg-white pt-5 min-[640px]:pt-6',
   // 공개 검색·요금제에서 사용하는 변형입니다. 작은 화면에서는 이동 경로를 다음 줄로 배치합니다.
   landingHeader: classes(
-    'sticky top-5 z-[5] mx-auto mt-5 grid w-[calc(100%-2.5rem)] max-w-[1400px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-7 gap-y-3',
+    'mx-auto grid w-[calc(100%-2.5rem)] max-w-[1400px] shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-7 gap-y-3',
     'rounded-[2rem] border border-sample-border bg-white px-6 py-4 text-app-ink shadow-[0_8px_24px_rgb(32_33_36_/_5%)]',
-    'min-[640px]:top-6 min-[640px]:mt-6 min-[640px]:w-[calc(100%-3rem)]',
+    'min-[640px]:w-[calc(100%-3rem)]',
     'max-[900px]:grid-cols-[minmax(0,1fr)_auto] max-[900px]:gap-x-3 max-[900px]:px-3',
   ),
   landingBrand: 'flex min-w-0 items-center gap-2.5 justify-self-start text-app-ink no-underline',
@@ -29,7 +32,7 @@ export const appHeaderStyles = {
     'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-primary max-[400px]:px-2.5 max-[400px]:text-[0.7rem]',
   ),
   header: classes(
-    'sticky top-5 z-[5] mx-auto mt-5 grid w-[calc(100%-2.5rem)] max-w-[1400px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4',
+    'mx-auto grid w-[calc(100%-2.5rem)] max-w-[1400px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4',
     'rounded-[2rem] border border-sample-border bg-white text-app-ink shadow-[0_8px_24px_rgb(32_33_36_/_5%)]',
     'max-chat:grid-cols-[minmax(0,1fr)_auto] max-chat:gap-y-2',
     'px-[clamp(0.75rem,3vw,1.5rem)] py-4',

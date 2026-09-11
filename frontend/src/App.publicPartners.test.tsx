@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -33,6 +33,29 @@ afterEach(() => {
 })
 
 describe('공개 파트너 모집', () => {
+  it('공개 목록은 정렬·검색어를 바꾸면 첫 페이지부터 다시 읽는다', async () => {
+    const browse = appContainer.resolve('browsePartnerRecruitmentsUseCase').execute as ReturnType<typeof vi.fn>
+    renderApp('/partners', null)
+    await screen.findAllByRole('article')
+
+    fireEvent.click(screen.getByRole('button', { name: '최근 등록순' }))
+    await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
+      { keyword: '', seekingRoles: [], regions: [], mineOnly: false, sort: 'RECENT', page: 1 },
+      expect.any(AbortSignal),
+    ))
+    expect(await screen.findByText('모집 중 4건 · 최근 등록순')).toBeTruthy()
+
+    // 검색어는 조회를 눌러야 적용되고 첫 페이지부터 읽습니다.
+    const search = screen.getByRole('form', { name: '모집글 검색' })
+    fireEvent.change(within(search).getByRole('searchbox', { name: '모집글 검색' }), { target: { value: ' 스마트 ' } })
+    expect(browse).not.toHaveBeenCalledWith(expect.objectContaining({ keyword: '스마트' }), expect.anything())
+    fireEvent.click(within(search).getByRole('button', { name: '조회' }))
+    await waitFor(() => expect(browse).toHaveBeenLastCalledWith(
+      { keyword: '스마트', seekingRoles: [], regions: [], mineOnly: false, sort: 'RECENT', page: 1 },
+      expect.any(AbortSignal),
+    ))
+  })
+
   it('비로그인은 헤더 아래에서 모집글을 읽고 제안 대신 로그인 안내를 본다', async () => {
     renderApp('/partners', null)
 
@@ -46,6 +69,9 @@ describe('공개 파트너 모집', () => {
     expect(within(navigation).getByRole('link', { name: '요금제' }).getAttribute('aria-current')).toBeNull()
     expect(await screen.findAllByRole('article')).toHaveLength(4)
     expect(screen.getByText('모집 중 4건 · 마감 임박순')).toBeTruthy()
+    // 제목 위 초록 눈썹 문구는 없고, 정렬은 칩으로 바꿉니다.
+    expect(within(screen.getByRole('heading', { level: 1, name: '함께 신청할 기업 찾기' }).closest('section')!).queryByText('파트너 모집')).toBeNull()
+    expect(within(screen.getByRole('group', { name: '정렬' })).getByRole('button', { name: '마감 임박순' }).getAttribute('aria-pressed')).toBe('true')
     // 내 글 표시와 프로필 일치는 로그인 뒤에만 의미가 있습니다.
     expect(screen.queryByText('내가 쓴 모집글')).toBeNull()
     expect(screen.queryByText(/예시 일치/)).toBeNull()

@@ -1,5 +1,5 @@
 import type { PartnerRecruitmentSummary } from '../../../../domain/entities/PartnerRecruitment'
-import { workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
+import { workspaceChipClassName, workspacePageStyles, workspaceTagClassName } from '../../../shared/workspace/WorkspacePage.styles'
 import {
   programDeadlineLabel,
   recruitmentConditionTags,
@@ -66,6 +66,12 @@ export function PublicPartnerRecruitmentListPage() {
     goToPage,
     retry,
     resultSummary,
+    keyword,
+    updateKeyword,
+    submitSearch,
+    sort,
+    sortOptions,
+    selectSort,
     loginPrompt,
     openLoginPrompt,
     closeLoginPrompt,
@@ -74,7 +80,6 @@ export function PublicPartnerRecruitmentListPage() {
   return (
     <main className={styles.page}>
       <section className={styles.hero} aria-labelledby="public-partners-title">
-        <p className={styles.eyebrow}>파트너 모집</p>
         <h1 className={styles.title} id="public-partners-title">함께 신청할 기업 찾기</h1>
         <p className={styles.description}>
           공식 공고 하나에 묶인 컨소시엄 모집글입니다. 모집글은 로그인 없이 읽을 수 있고,
@@ -83,8 +88,57 @@ export function PublicPartnerRecruitmentListPage() {
       </section>
 
       <div className={styles.column}>
+        {/* 검색어는 조회를 눌러야 적용됩니다. 로그인 뒤 목록과 같은 API keyword(제목·공고·기관·기업명)를 씁니다. */}
+        <form
+          className={styles.searchRow}
+          aria-label="모집글 검색"
+          onSubmit={(event) => {
+            event.preventDefault()
+            submitSearch()
+          }}
+        >
+          <label className={styles.search}>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <span className="sr-only">모집글 검색</span>
+            <input
+              className={styles.searchInput}
+              type="search"
+              name="keyword"
+              placeholder="공고명, 기관 검색"
+              value={keyword}
+              onChange={(event) => updateKeyword(event.target.value)}
+            />
+          </label>
+          <button className={workspacePageStyles.primaryButton} type="submit">조회</button>
+        </form>
         <div className={styles.toolbar}>
           <span className={styles.resultCount} aria-live="polite">{resultSummary}</span>
+          <div className={styles.sortChoices} role="group" aria-label="정렬">
+            {sortOptions.map((option) => (
+              <button
+                className={workspaceChipClassName(sort === option.value)}
+                key={option.value}
+                type="button"
+                aria-pressed={sort === option.value}
+                onClick={() => selectSort(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
         {phase === 'failed' ? (
           <section className={styles.card} aria-label="모집글 불러오기 실패">
