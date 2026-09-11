@@ -1,4 +1,5 @@
 import { useSavedProgramCalendarViewModel } from '../viewmodel/useSavedProgramCalendarViewModel'
+import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { savedCalendarStyles as s } from './SavedProgramsPage.styles'
 
 function Arrow({ direction, double = false }: { direction: 'left' | 'right'; double?: boolean }) {
@@ -12,16 +13,10 @@ export function SavedProgramsPage() {
   const vm = useSavedProgramCalendarViewModel()
   const monthLabel = `${vm.year}년 ${vm.month}월`
 
-  return <main className={s.page}>
-    <header className={s.header}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className={s.heading}>관심 공고함</h1>
-        <span className={s.preview}>캘린더 시안</span>
-      </div>
-      <p className={s.intro}>관심 있는 지원사업의 마감 일정을 확인하세요.</p>
-    </header>
-
-    <section className={s.content} aria-label="관심 공고 캘린더">
+  return <>
+    <WorkspacePageHeader title="관심 공고함" />
+    <main className={s.page}>
+      <section className={s.content} aria-label="관심 공고 캘린더">
       <div className={s.toolbar}>
         <div className={s.navigation}>
           <div className="flex items-center gap-1">
@@ -38,7 +33,6 @@ export function SavedProgramsPage() {
             <button type="button" className={s.arrow} aria-label="다음 달" title="다음 달" disabled={!vm.canNextMonth} onClick={() => vm.moveMonth(1)}><Arrow direction="right" /></button>
             <button type="button" className={s.arrow} aria-label="다음 연도" title="다음 연도" disabled={!vm.canNextYear} onClick={() => vm.moveMonth(12)}><Arrow direction="right" double /></button>
           </div>
-          <button type="button" className={s.today} onClick={vm.goToToday}>오늘</button>
         </div>
         <span className="text-sm font-semibold text-brand-primary">월간 캘린더</span>
       </div>
@@ -68,6 +62,7 @@ export function SavedProgramsPage() {
         </table>
       </div>
       <p className={s.footer}>예시 데이터로 보는 캘린더입니다. 실제 관심 등록·저장 및 공고 상세 이동은 아직 연결되지 않았습니다.</p>
-    </section>
-  </main>
+      </section>
+    </main>
+  </>
 }
