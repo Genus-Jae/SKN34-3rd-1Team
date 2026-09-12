@@ -335,7 +335,7 @@ describe('계정 화면', () => {
 })
 
 describe('작업 화면 사이드바', () => {
-  it('흰색 사이드바에서 선택 메뉴는 초록색, 준비 중 메뉴는 회색으로 표시하고 기존 메뉴 계약을 유지한다', () => {
+  it('흰색 사이드바에서 선택 메뉴를 초록색으로 표시하고 기존 메뉴 계약을 유지한다', () => {
     renderApp('/app/chat')
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     expect(sidebar.classList.contains('bg-white')).toBe(true)
@@ -350,11 +350,10 @@ describe('작업 화면 사이드바', () => {
     expect(documents.getAttribute('href')).toBe('/app/application-preparations')
     expect(documents.classList.contains('rounded-2xl')).toBe(true)
     expect(documents.getAttribute('aria-current')).toBeNull()
-    const pending = within(sidebar).getByText('관심 공고함').closest('[aria-disabled="true"]') as HTMLElement
-    expect(pending).toBeTruthy()
-    expect(pending.classList.contains('bg-[#f5f6f7]')).toBe(true)
-    expect(within(pending).getByText('준비 중').classList.contains('rounded-full')).toBe(true)
-    expect(within(sidebar).queryByRole('link', { name: /관심 공고함/ })).toBeNull()
+    const savedPrograms = within(sidebar).getByRole('link', { name: /관심 공고함/ })
+    expect(savedPrograms.getAttribute('href')).toBe('/app/saved-programs')
+    expect(savedPrograms.getAttribute('aria-disabled')).toBeNull()
+    expect(within(savedPrograms).getByText('시안').classList.contains('rounded-full')).toBe(true)
 
     fireEvent.click(within(sidebar).getByRole('link', { name: '요금제' }))
     expect(within(sidebar).getByRole('link', { name: '요금제' }).getAttribute('aria-current')).toBe('page')
