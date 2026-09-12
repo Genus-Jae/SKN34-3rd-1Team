@@ -69,13 +69,13 @@ export function useSavedProgramCalendarViewModel(
 
   const today = input ? initial.today : calendarToday()
   const programs = initial.programs ?? toCalendarPrograms(loadState.items)
-  const filteredPrograms = filterCalendarPrograms(programs, filters, today)
+  const filteredPrograms = filterCalendarPrograms(programs, filters)
   const weeks = buildCalendarWeeks(display.year, display.month, today, filteredPrograms)
   const programsInMonth = new Set(weeks.flatMap(week => week.flatMap(day => day.events.map(event => event.program.id)))).size
   const allProgramsInMonth = new Set(buildCalendarWeeks(display.year, display.month, today, programs)
     .flatMap(week => week.flatMap(day => day.events.map(event => event.program.id)))).size
   const activeFilterCount = [filters.keyword.trim(), filters.region, filters.category, filters.target]
-    .filter(Boolean).length + Number(filters.excludeClosed)
+    .filter(Boolean).length
   const listTotalPages = Math.max(1, Math.ceil(filteredPrograms.length / savedProgramListPageSize))
   const safeListPage = Math.min(listPage, listTotalPages)
   const listPrograms = filteredPrograms.slice((safeListPage - 1) * savedProgramListPageSize, safeListPage * savedProgramListPageSize)
@@ -86,7 +86,7 @@ export function useSavedProgramCalendarViewModel(
   }
 
   function clearFilter(key: keyof SavedProgramCalendarFilters) {
-    setFilters(current => ({ ...current, [key]: key === 'excludeClosed' ? false : '' }))
+    setFilters(current => ({ ...current, [key]: '' }))
     setListPage(1)
   }
 

@@ -28,11 +28,10 @@ export type SavedProgramCalendarFilters = {
   region: string
   category: string
   target: string
-  excludeClosed: boolean
 }
 
 export const defaultSavedProgramCalendarFilters: SavedProgramCalendarFilters = {
-  keyword: '', region: '', category: '', target: '', excludeClosed: false,
+  keyword: '', region: '', category: '', target: '',
 }
 
 export const savedProgramTargetOptions = ['예비창업자', '창업기업', '중소기업', '소상공인', '기타'] as const
@@ -103,7 +102,6 @@ export function createCalendarPreview(today: string): CalendarProgram[] {
 export function filterCalendarPrograms(
   programs: readonly CalendarProgram[],
   filters: SavedProgramCalendarFilters,
-  today: string,
 ): CalendarProgram[] {
   const keyword = filters.keyword.trim().toLocaleLowerCase('ko-KR')
   return programs.filter((program) => {
@@ -111,7 +109,6 @@ export function filterCalendarPrograms(
     if (filters.region && !(program.regionValues ?? [program.region]).includes(filters.region)) return false
     if (filters.category && !(program.categoryValues ?? [program.category]).includes(filters.category)) return false
     if (filters.target && program.target !== filters.target) return false
-    if (filters.excludeClosed && program.endDate !== null && program.endDate < today) return false
     return true
   })
 }

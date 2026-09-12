@@ -38,7 +38,6 @@ export function SavedProgramsPage({ initial, browseUseCase }: SavedProgramsPageP
     ...(vm.filters.region ? [{ key: 'region' as const, label: `지역 · ${vm.filters.region}` }] : []),
     ...(vm.filters.category ? [{ key: 'category' as const, label: `분야 · ${vm.filters.category}` }] : []),
     ...(vm.filters.target ? [{ key: 'target' as const, label: `대상 · ${vm.filters.target}` }] : []),
-    ...(vm.filters.excludeClosed ? [{ key: 'excludeClosed' as const, label: '마감 공고 제외' }] : []),
   ]
 
   return <>
@@ -63,10 +62,6 @@ export function SavedProgramsPage({ initial, browseUseCase }: SavedProgramsPageP
           <FilterSelect label="지역" value={vm.filters.region} options={regionNames} onChange={value => vm.changeFilter('region', value)} />
           <FilterSelect label="지원 분야" value={vm.filters.category} options={supportProgramCategories} onChange={value => vm.changeFilter('category', value)} />
           <FilterSelect label="지원 대상" value={vm.filters.target} options={savedProgramTargetOptions} onChange={value => vm.changeFilter('target', value)} />
-          <label className={s.closedToggle}>
-            <input type="checkbox" checked={vm.filters.excludeClosed} onChange={event => vm.changeFilter('excludeClosed', event.target.checked)} />
-            <span>마감 공고 제외</span>
-          </label>
         </div>
         <div className={s.appliedFilters}>
           <strong>적용된 검색조건 <span className="text-brand-primary">{vm.activeFilterCount}</span></strong>

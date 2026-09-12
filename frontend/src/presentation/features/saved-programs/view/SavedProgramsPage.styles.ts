@@ -8,7 +8,6 @@ export const savedCalendarStyles = {
   searchField: `flex min-h-12 items-center gap-2 rounded-xl border border-sample-border px-3 text-sample-muted focus-within:border-brand-primary ${focus}`,
   searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-sm text-app-ink placeholder:text-[#9ca3af] focus:outline-0',
   selectField: 'grid min-w-0 gap-1 text-[0.68rem] font-semibold text-sample-muted [&>select]:min-h-8 [&>select]:w-full [&>select]:cursor-pointer [&>select]:border-0 [&>select]:bg-transparent [&>select]:text-sm [&>select]:font-semibold [&>select]:text-app-ink [&>select]:focus:outline-0 [&>select]:focus-visible:outline-2 [&>select]:focus-visible:outline-brand-primary',
-  closedToggle: `flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#f4f8f5] px-4 text-sm font-semibold whitespace-nowrap text-brand-primary [&>input]:size-4 [&>input]:accent-brand-primary ${focus}`,
   appliedFilters: 'flex min-h-14 flex-wrap items-center gap-2 border-t border-sample-border bg-[#f5f7fa] px-4 py-2 text-xs text-sample-muted',
   filterChip: `inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-sample-border bg-white px-3 text-xs font-medium text-app-ink hover:border-brand-primary hover:text-brand-primary ${focus}`,
   resetFilters: `ml-auto cursor-pointer border-0 bg-transparent px-1 py-1 text-xs font-semibold text-brand-primary underline-offset-4 hover:underline ${focus}`,
