@@ -592,14 +592,15 @@ AI Service는 조건 변경 해석·점수화·원문 근거 답변에서 각각
 컬렉션을 직접 사용합니다.
 
 랭킹 모델은 `OPENAI_RANKING_MODEL`로 지정하고 미설정이면 공통 `OPENAI_MODEL`을 상속합니다.
-`OPENAI_RANKING_REASONING_EFFORT`는 `none`/`low`만 허용합니다. 정확도 우선 프로필은 랭킹만
-Sol/low를 사용하며 대화·원문 답변 모델은 바꾸지 않습니다. 모델 객체는 분리하되 동일한 OpenAI
+`OPENAI_RANKING_REASONING_EFFORT`는 `none`/`low`만 허용합니다. 제공 설정 예제는 비용 절감을 위해 랭킹도
+Luna/low를 사용하며 대화·원문 답변 모델은 바꾸지 않습니다. 모델 객체는 분리하되 동일한 OpenAI
 클라이언트·인증·재시도 정책을 공유하며 새 provider나 orchestration 계층은 없습니다.
 출력 축약은 미채택이며 기존 후보 ID·필드명·출력 계약을 유지합니다. 축약 구현은 평가 경로에만 남깁니다.
 `OPENAI_RANKING_SERVICE_TIER` 미설정 시 코드·Compose 기본값은 `default`입니다. 제공 `.env.example`은
-사용자 승인에 따른 Fast 상시 사용 프로필인 `priority`를 명시하며, 현재 Sol의 랭킹 토큰 단가는 일반 처리의 2배입니다.
-랭킹 요청에만 적용하고 대화 해석·RAG 답변·임베딩 설정은 바꾸지 않습니다. 모델·후보·점수·출력/시간 상한은 유지합니다.
-설정 프로필과 배포·실측 상태는 [지역 충돌·Fast 기록](region-conflict-fast-20260908.md)에서 구분합니다.
+기존 Fast 상시 사용 프로필인 `priority`를 유지합니다. 일반 처리보다 추가 요금이 있으며 일반 처리는 `default`로 지정합니다.
+랭킹 요청에만 적용하고 대화 해석·RAG 답변·임베딩 설정은 바꾸지 않습니다. 후보·점수·출력/시간 상한은 유지합니다.
+모델 교체는 토큰 단가 절감이며 토큰 수나 품질·속도의 개선을 보장하지 않습니다.
+이전 Sol의 배포·실측은 [지역 충돌·Fast 기록](region-conflict-fast-20260908.md)에 보존하며 Luna 평가 결과로 재해석하지 않습니다.
 
 두 색인 Service가 실제로 공유하는 입력 토큰 상한 처리는 `support_program_embedding.py`의 함수 하나로
 유지합니다. 토크나이저 준비·인코딩·잘라내기를 작업 스레드에서 실행해 HTTP 이벤트 루프를 막지 않으며,

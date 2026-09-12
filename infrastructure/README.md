@@ -94,7 +94,7 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint |
 | `OPENAI_API_KEY` | 없음(필수) | AI Service만 사용하는 OpenAI 인증키 |
 | `OPENAI_MODEL` | `gpt-5.6-luna` | 대화·원문 답변의 모델, 랭킹 전용 모델 미설정 시 상속 |
-| `OPENAI_RANKING_MODEL` | 미설정 | 랭킹 전용 모델. `.env.example`은 정확도 우선 `gpt-5.6-sol` 설정 |
+| `OPENAI_RANKING_MODEL` | 미설정 | 랭킹 전용 모델. `.env.example`은 비용 절감을 위해 `gpt-5.6-luna` 설정 |
 | `OPENAI_RANKING_REASONING_EFFORT` | `none` | 랭킹 추론 수준(`none` 또는 `low`). `.env.example`은 `low`; 비용·지연 증가 가능 |
 | `LLM_MODEL_TIMEOUT_SECONDS` | `25.0` | 조건 해석·원문 근거 답변의 OpenAI 호출 제한시간(초) |
 | `LLM_RUN_TIMEOUT_SECONDS` | `30.0` | 조건 해석·원문 근거 답변의 Agent 실행 제한시간(초) |
