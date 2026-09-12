@@ -25,6 +25,12 @@ import {
   UpdatePartnerRecruitmentUseCase,
 } from '../../domain/usecases/PartnerRecruitmentUseCases'
 import {
+  BrowseAdminAccountsUseCase,
+  GetAdminAccountDetailUseCase,
+  GetAdminAccountStatsUseCase,
+  TakeAdminAccountActionUseCase,
+} from '../../domain/usecases/AdminAccountUseCases'
+import {
   BrowsePartnerProposalsUseCase,
   RespondPartnerProposalUseCase,
   SendPartnerProposalUseCase,
@@ -86,6 +92,18 @@ export function registerUseCases(container: AppContainer) {
     ).singleton(),
     sendPartnerProposalUseCase: asFunction(
       ({ partnerProposalRepository }: Pick<AppCradle, 'partnerProposalRepository'>) => new SendPartnerProposalUseCase(partnerProposalRepository),
+    ).singleton(),
+    getAdminAccountStatsUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new GetAdminAccountStatsUseCase(adminAccountRepository),
+    ).singleton(),
+    browseAdminAccountsUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new BrowseAdminAccountsUseCase(adminAccountRepository),
+    ).singleton(),
+    getAdminAccountDetailUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new GetAdminAccountDetailUseCase(adminAccountRepository),
+    ).singleton(),
+    takeAdminAccountActionUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new TakeAdminAccountActionUseCase(adminAccountRepository),
     ).singleton(),
     browsePartnerRecruitmentsUseCase: asFunction(
       ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new BrowsePartnerRecruitmentsUseCase(partnerRecruitmentRepository),

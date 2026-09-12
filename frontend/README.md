@@ -82,7 +82,7 @@ pnpm dev
 나머지 공개 화면은 공용 헤더를, 로그인 뒤 `/app` 화면은 작업 사이드바를 사용합니다.
 로그인한 사용자가 공개 URL(`/`, `/pricing`, `/partners`, 공고 상세)에 오면 같은 내용의 `/app` 화면으로 보내고, 비로그인으로
 `/app`에 오면 `/login?next=`로 보냅니다. 로그인·회원가입·비밀번호 찾기·재설정은 둘 다 쓰지 않는 단독 화면(상단 로고와 가운데
-카드)이며 로그인 상태에서는 작업 화면으로 돌려보냅니다. `/app/admin/members`는 관리자만 엽니다. 경로 상수와 공개↔내부 대응은 `presentation/shared/routes/appPaths.ts`에 있습니다.
+카드)이며 로그인 상태에서는 작업 화면으로 돌려보냅니다. `/app/admin/accounts`(계정 관리)는 관리자만 엽니다. 경로 상수와 공개↔내부 대응은 `presentation/shared/routes/appPaths.ts`에 있습니다.
 
 | 경로 | 껍데기 | 기능 |
 |---|---|---|
@@ -112,7 +112,8 @@ pnpm dev
 | `/app/proposals` | 사이드바(파트너 관리 · 제안함 탭) | 제안함. 받은 제안 수락·거절, 보낸 제안 철회, 수락된 제안의 상대 담당자 연락처 |
 | `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
 | `/app/profile` | 사이드바 계정 카드 메뉴 | 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정. 완성도와 체크리스트는 맨 위 요약 카드, 이 정보가 쓰이는 곳·공개 범위는 카드 제목 옆 `?` 도움말(한 칸 배치). 나머지 섹션은 준비 중 |
-| `/app/admin/members` | 사이드바 계정 카드 메뉴(관리자) | 하단 관리자 아이디를 눌러 연 메뉴의 `회원·기업`으로 이동. 어드민 회원·기업 목록과 운영 규칙 |
+| `/app/admin/accounts` | 사이드바 계정 카드 메뉴(관리자) | 하단 관리자 아이디를 눌러 연 메뉴의 `회원·기업`으로 이동. 요약 수치, 요약 수치, 검색(이메일·기업명·사업자등록번호)과 상태·권한·로그인 방법 필터·정렬, "검색 결과 N건". 조건은 주소에 남아 상세에서 돌아와도 유지 |
+| `/app/admin/accounts/detail?accountId=...` | 계정 목록 | 머리글 `계정 관리 > 계정 상세`로 목록에 돌아감. 계정·기업·활동·조치 기록과 정지·정지 해제·강제 로그아웃(사유 필수). 내 계정·다른 관리자 계정은 조치 버튼 대신 까닭을 표시. 예전 `/app/admin/members`는 목록으로 보냄 |
 
 `/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,
 잘못된 비밀번호·정지 계정·시도 제한(429)을 구분해 안내합니다. 개발 빌드의 헤더에는 `개발 로그인 · 관리자`와
@@ -138,7 +139,7 @@ pnpm dev
 받은 제안함은 사이드바 배지·제안함 화면·모집글 상세가 함께 읽고 제안함 화면이 수락·거절로 바꾸므로 `presentation/shared/partner-proposal`의
 Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조회, 결과를 slice에 반영)가 소유하고,
 보낸 제안함은 제안함 화면만 쓰므로 `useSentProposalBox`의 Hook 로컬 상태로 둡니다.
-`/app/admin/members`와 추천·매칭은 아직 **데모 단계**라 ViewModel이 예시 값을 돌려줍니다.
+추천·매칭은 아직 **데모 단계**라 ViewModel이 예시 값을 돌려줍니다. 관리자 계정 관리는 Core의 `/api/v1/admin/accounts`를 씁니다.
 지역은 공고 분류와 같은 `domain/entities/Region`의 시·도 목록을 쓰고, 프로필의 정식 명칭은 `toRegionName`으로 바꿉니다.
 모집글 작성·프로필 일치 표시는 `useAuthSession().hasCompany`(기업 등록 여부) 하나로 정하며, 제안 조건(이메일 인증)은 서비스 정책이라 작성자가 고르지 않습니다.
 모집 작성은 `browseSupportProgramsUseCase`로 접수 중 공고를 검색해 고르고 `createPartnerRecruitmentUseCase`로 등록합니다.
@@ -359,7 +360,7 @@ src/
 ├── presentation/features/public-partner-recruitment/ # 로그인 전 공개 모집 목록·상세 View와 ViewModel
 ├── presentation/features/partner-proposal/ # 제안함(받은·보낸 제안, 수락·거절·철회) View와 ViewModel
 ├── presentation/features/company-profile/ # 기업 등록·기본정보 수정(사업자번호 자동 하이픈·연도 선택기·홈페이지 정규화), 협업·파트너 설정, 계정 보안 모달의 View·ViewModel
-├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
+├── presentation/features/admin/ # 관리자 계정 관리 목록·상세 View와 ViewModel
 ├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 조회 훅·표시 helper, 받은 제안함 slice·훅과 보낸 제안함 훅, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture

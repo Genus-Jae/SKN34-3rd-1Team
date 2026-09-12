@@ -249,7 +249,7 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
               {account.tier === 'ADMIN' ? (
                 <Link
                   className={sidebarMenuItemClassName(pathname.startsWith(appPaths.admin) ? 'active' : 'inactive')}
-                  to={appPaths.adminMembers}
+                  to={appPaths.adminAccounts}
                   aria-current={pathname.startsWith(appPaths.admin) ? 'page' : undefined}
                 >
                   <MenuIconGraphic name="shield" />

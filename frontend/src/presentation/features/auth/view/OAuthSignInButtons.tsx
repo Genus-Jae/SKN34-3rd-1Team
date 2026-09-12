@@ -25,9 +25,6 @@ export function OAuthSignInButtons({ mode, options }: { mode: 'login' | 'signup'
           {labels[mode][option.id]}
         </a>
       ))}
-      {mode === 'login' ? (
-        <p className={authPageStyles.fieldHint}>처음이면 바로 가입되며, 이용약관과 개인정보 처리방침에 동의한 것으로 봅니다.</p>
-      ) : null}
     </div>
   )
 }

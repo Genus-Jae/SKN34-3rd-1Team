@@ -26,6 +26,13 @@ import type {
   GetPartnerRecruitmentDetailUseCase,
   UpdatePartnerRecruitmentUseCase,
 } from '../../domain/usecases/PartnerRecruitmentUseCases'
+import type { AdminAccountRepository } from '../../domain/repositories/AdminAccountRepository'
+import type {
+  BrowseAdminAccountsUseCase,
+  GetAdminAccountDetailUseCase,
+  GetAdminAccountStatsUseCase,
+  TakeAdminAccountActionUseCase,
+} from '../../domain/usecases/AdminAccountUseCases'
 import type {
   BrowsePartnerProposalsUseCase,
   RespondPartnerProposalUseCase,
@@ -67,6 +74,11 @@ export type AppCradle = {
   reviewRequestJournal: typeof import('../../data/storage/reviewRequestJournal').reviewRequestJournal
   browseSupportProgramsUseCase: BrowseSupportProgramsUseCase
   accountRepository: AccountRepository
+  adminAccountRepository: AdminAccountRepository
+  getAdminAccountStatsUseCase: GetAdminAccountStatsUseCase
+  browseAdminAccountsUseCase: BrowseAdminAccountsUseCase
+  getAdminAccountDetailUseCase: GetAdminAccountDetailUseCase
+  takeAdminAccountActionUseCase: TakeAdminAccountActionUseCase
   browsePartnerProposalsUseCase: BrowsePartnerProposalsUseCase
   browsePartnerRecruitmentsUseCase: BrowsePartnerRecruitmentsUseCase
   companyRepository: CompanyRepository

@@ -40,6 +40,9 @@ class BusinessNumberAlreadyRegisteredException : RuntimeException()
 /** 비밀번호 변경·계정 삭제에서 입력한 현재 비밀번호가 저장된 것과 다를 때 발생합니다. 세션은 유효하므로 401이 아닙니다. */
 class CurrentPasswordMismatchException : RuntimeException()
 
+/** 활성 관리자가 한 명뿐인데 그 관리자가 스스로 탈퇴하려 했습니다. 관리자 화면을 열 계정이 없어지므로 막습니다. */
+class LastAdminDeletionException : RuntimeException()
+
 /** 요청 검증은 통과했지만 시계가 필요한 규칙(설립연도는 올해까지)에 걸린 기업 프로필 필드입니다. 400으로 필드명을 알립니다. */
 class CompanyProfileInvalidException(val field: String) : RuntimeException("company profile field $field is invalid")
 

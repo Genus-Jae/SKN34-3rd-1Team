@@ -8,6 +8,7 @@ import ai.govbiz.core.account.service.dto.AccountDeletedEvent
 import ai.govbiz.core.account.service.dto.AccountDeletionPreview
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.CurrentPasswordMismatchException
+import ai.govbiz.core.account.service.exception.LastAdminDeletionException
 import ai.govbiz.core.partner.domain.PartnerProposalStatus
 import ai.govbiz.core.partner.repository.PartnerProposalRepository
 import ai.govbiz.core.partner.repository.PartnerRecruitmentRepository
@@ -65,6 +66,8 @@ class AccountProfileService(
     fun deleteAccount(account: Account, currentPassword: String?) {
         // 소셜 로그인으로만 가입해 비밀번호가 없는 계정은 확인할 비밀번호가 없어 세션만으로 본인을 확인합니다.
         if (account.hasPassword) verifyCurrentPassword(account, currentPassword.orEmpty())
+        // 마지막 관리자가 탈퇴하면 관리자 화면을 열 계정이 없어지므로 막습니다.
+        if (account.isAdmin && accountRepository.countActiveAdmins() <= 1) throw LastAdminDeletionException()
         val now = LocalDateTime.now(clock)
         val oauthLinks = accountRepository.findOAuthLinks(account.id)
 

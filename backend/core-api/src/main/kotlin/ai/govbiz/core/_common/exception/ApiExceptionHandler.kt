@@ -10,6 +10,12 @@ import ai.govbiz.core.account.service.exception.CompanyAlreadyRegisteredExceptio
 import ai.govbiz.core.account.service.exception.CompanyNotRegisteredException
 import ai.govbiz.core.account.service.exception.CompanyProfileInvalidException
 import ai.govbiz.core.account.service.exception.CurrentPasswordMismatchException
+import ai.govbiz.core.account.service.exception.LastAdminDeletionException
+import ai.govbiz.core.admin.service.exception.AdminAccessDeniedException
+import ai.govbiz.core.admin.service.exception.AdminAccountNotFoundException
+import ai.govbiz.core.admin.service.exception.AdminAccountStateConflictException
+import ai.govbiz.core.admin.service.exception.AdminSelfActionException
+import ai.govbiz.core.admin.service.exception.AdminTargetProtectedException
 import ai.govbiz.core.account.service.exception.PasswordResetMailUnavailableException
 import ai.govbiz.core.account.service.exception.PasswordResetTokenInvalidException
 import ai.govbiz.core.account.service.exception.EmailAlreadyRegisteredException
@@ -381,6 +387,84 @@ class ApiExceptionHandler {
                 "Account Suspended",
                 "The account is suspended.",
                 "ACCOUNT_SUSPENDED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(LastAdminDeletionException::class)
+    fun handleLastAdminDeletionException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:last-admin-deletion"),
+                "Last Admin Deletion",
+                "The only active admin account cannot be deleted.",
+                "LAST_ADMIN_DELETION",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(AdminAccessDeniedException::class)
+    fun handleAdminAccessDeniedException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.FORBIDDEN,
+                URI.create("urn:govbiz:problem:admin-access-denied"),
+                "Admin Access Denied",
+                "Only admin accounts can use this endpoint.",
+                "ADMIN_ACCESS_DENIED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(AdminAccountNotFoundException::class)
+    fun handleAdminAccountNotFoundException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:admin-account-not-found"),
+                "Account Not Found",
+                "The account was not found.",
+                "ADMIN_ACCOUNT_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(AdminSelfActionException::class)
+    fun handleAdminSelfActionException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:admin-self-action"),
+                "Admin Self Action",
+                "An admin cannot take this action on their own account.",
+                "ADMIN_SELF_ACTION",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(AdminTargetProtectedException::class)
+    fun handleAdminTargetProtectedException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                URI.create("urn:govbiz:problem:admin-target-protected"),
+                "Admin Target Protected",
+                "Admin accounts cannot be suspended or signed out by another admin.",
+                "ADMIN_TARGET_PROTECTED",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(AdminAccountStateConflictException::class)
+    fun handleAdminAccountStateConflictException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:admin-account-state-conflict"),
+                "Account State Conflict",
+                "The account is already in the requested state.",
+                "ADMIN_ACCOUNT_STATE_CONFLICT",
             ),
             request,
         )
