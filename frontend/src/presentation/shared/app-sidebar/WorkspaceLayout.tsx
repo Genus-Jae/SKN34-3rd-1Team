@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router'
 
 import { useAppDispatch } from '../../../app/hooks'
 import { conversationReset } from '../../features/chat/state/chatSlice'
+import { useChatHistory } from '../../features/chat/hooks/useChatHistory'
 import { appPaths } from '../routes/appPaths'
 import { AppSidebar, SidebarActionIcon } from './AppSidebar'
 import { appSidebarStyles } from './AppSidebar.styles'
@@ -22,6 +23,8 @@ export function WorkspaceLayout() {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const location = useLocation()
+  const history = useChatHistory()
+  const { cancelOpening } = history
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return
@@ -32,6 +35,8 @@ export function WorkspaceLayout() {
   }, [])
 
   useEffect(() => { setIsMenuOpen(false) }, [location.key])
+  // 다른 화면으로 이동한 뒤 늦게 도착한 기록 조회가 채팅으로 다시 끌고 가지 않게 합니다.
+  useEffect(() => { cancelOpening() }, [location.key, cancelOpening])
 
   useEffect(() => {
     if (isMobile && isMenuOpen) dialogRef.current?.showModal()
@@ -65,6 +70,7 @@ export function WorkspaceLayout() {
   }
 
   function startNewChat() {
+    history.cancelOpening()
     shouldFocusComposer.current = true
     // 요청 ID까지 함께 비워 진행 중인 해석·검색을 취소하고 늦은 응답이 대화를 되살리지 않게 합니다.
     flushSync(() => {
@@ -74,7 +80,15 @@ export function WorkspaceLayout() {
     })
   }
 
+  async function openChatHistory(id: string) {
+    if (!await history.open(id)) return
+    shouldFocusComposer.current = true
+    setIsMenuOpen(false)
+    navigate(appPaths.chat)
+  }
+
   const sidebar = <AppSidebar onClose={closeSidebar} onNewChat={startNewChat}
+    history={history} onOpenHistory={(id) => { void openChatHistory(id) }}
     closeLabel={isMobile ? '메뉴 닫기' : '사이드바 접기'} onNavigate={() => setIsMenuOpen(false)} />
 
   return (

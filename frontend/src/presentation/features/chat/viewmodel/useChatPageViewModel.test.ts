@@ -397,6 +397,7 @@ describe('useChatPageViewModel', () => {
 
 function createChatHook(overrides: Partial<ChatHook> = {}): ChatHook {
   return {
+    isRestoredHistory: false,
     confirmedContext: emptyConversationContext,
     conversationQuery: null,
     interpretation: { status: 'idle' },

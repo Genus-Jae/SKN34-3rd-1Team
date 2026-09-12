@@ -8,6 +8,7 @@ import { useAuthSession } from '../auth/hooks/useAuthSession'
 import { usePendingReceivedProposalCount } from '../partner-proposal/useReceivedProposals'
 import { appPaths, publicPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
+import type { ChatHistoryViewModel } from '../../features/chat/hooks/useChatHistory'
 
 type MenuIcon = 'search' | 'document' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more' | 'newChat' | 'panel'
 
@@ -131,11 +132,13 @@ function tierLabel(account: Account): string {
  * 계정 정보는 세션에서 읽고, 관리자 메뉴는 관리자에게만 그리며, 화면이 없는 메뉴는 링크로 만들지 않습니다.
  * 로그인한 사용자는 `/app` 아래에만 머무르므로 공개 화면으로 가는 링크는 두지 않습니다.
  */
-export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
+export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate, history, onOpenHistory }: {
   onClose: () => void
   onNewChat: () => void
   closeLabel: string
   onNavigate: () => void
+  history: ChatHistoryViewModel
+  onOpenHistory: (id: string) => void
 }) {
   const { pathname } = useLocation()
   const { account, logOut } = useAuthSession()
@@ -170,6 +173,7 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
 
   /** 로그아웃하면 공개 메인 화면으로 돌아갑니다. */
   function signOutToLanding() {
+    if ((history.saving || history.saveError) && !window.confirm('아직 저장되지 않은 대화가 있습니다. 저장을 완료하지 않고 로그아웃할까요?')) return
     // 로그아웃 상태를 먼저 동기로 그려 보호 라우트의 로그인 이동을 끝낸 뒤, 마지막 이동을 메인으로 잡습니다.
     flushSync(() => {
       void logOut()
@@ -232,6 +236,26 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
               )}
             </nav>
           ))}
+        {account ? <section className="mt-6 flex flex-col gap-1" aria-label="대화 기록">
+          <h2 className="mb-1 px-3 text-xs font-medium text-[#888]">대화 기록</h2>
+          {history.items.map((item) => <button key={item.id} type="button"
+            className={`${sidebarMenuItemClassName(history.activeId === item.id && pathname === appPaths.chat ? 'active' : 'inactive')} w-full cursor-pointer border-0 text-left`}
+            aria-label={`대화 열기: ${item.title}`} title={item.title}
+            aria-current={history.activeId === item.id && pathname === appPaths.chat ? 'page' : undefined}
+            onClick={() => onOpenHistory(item.id)}>
+            <span className="min-w-0 flex-1 truncate font-normal">{item.title}</span>
+            {history.openingId === item.id ? <span className="shrink-0 text-xs">여는 중</span> : null}
+          </button>)}
+          {history.loading ? <p className="px-3 text-xs text-[#888]" role="status">기록을 불러오는 중…</p> : null}
+          {!history.loading && !history.loadError && history.items.length === 0 ? <p className="px-3 text-xs text-[#888]">대화를 시작하면 여기에 저장됩니다.</p> : null}
+          {history.loadError ? <p className="px-3 text-xs text-red-700" role="alert">{history.loadError}</p> : null}
+          {history.nextCursor !== null || history.loadError ? <button type="button" className={appSidebarStyles.accountMenuButton}
+            disabled={history.loading} onClick={history.loadMore}>{history.loadError ? '기록 다시 불러오기' : '이전 기록 더 보기'}</button> : null}
+          {history.saveError ? <div className="px-3 text-xs text-red-700" role="alert">
+            <p>저장하지 못한 대화가 있습니다. 연결 오류·다른 창의 변경·저장 크기 제한 등을 확인해 주세요. 저장 전에는 이 창을 닫지 마세요.</p>
+            <button type="button" className="cursor-pointer underline" onClick={history.retrySave}>대화 저장 재시도</button>
+          </div> : history.saving ? <p className="px-3 text-xs text-[#888]" role="status">대화 저장 중…</p> : null}
+        </section> : null}
       </div>
 
       {account ? (

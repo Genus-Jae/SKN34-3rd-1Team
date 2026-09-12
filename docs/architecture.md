@@ -69,6 +69,22 @@ AI Service는 호스트에 포트를 게시하지 않습니다. MySQL·Qdrant·C
 `127.0.0.1`에 바인딩합니다. 기업마당·K-Startup 키는 Core API에, OpenAI 키는 AI Service에만 주입합니다.
 이는 개발 환경의 서비스 배치이며 운영 인증·접근 제어가 구현됐다는 의미는 아닙니다.
 
+## 로그인 회원의 대화 기록
+
+`WorkspaceLayout/useChatHistory → ChatConversationUseCase → ChatConversationRepository → data/api →
+ChatConversationController → ChatConversationService → ChatConversationRepository → MyBatis Mapper → XML → MySQL`로
+대화 화면 스냅샷을 보관합니다. Frontend Repository와 Core Repository는 각 애플리케이션의 경계를 담당합니다.
+새 전송은 현재 대화에 누적하고 새 대화의 첫 전송은 별도 기록을 만듭니다. 비회원과 미전송 초안은 저장하지 않습니다.
+사이드바 요금제 아래 목록은 생성 ID 기반 30개 단위 커서 조회를 사용합니다. 기록을 열면 기존 Redux 상태만 복원하며
+검색·해석·OpenAI를 재호출하지 않습니다. 공고 결과는 저장 당시 내용이라는 안내를 표시합니다.
+
+Core는 세션 account ID로 모든 SQL을 제한하고 `X-Chat-Account` 사전조건으로 다른 탭의 계정 변경을 감지합니다.
+`V19`의 복합 UNIQUE와 FK는 소유자별 ID를 보호하며 저장 transaction의 계정 행 잠금·expectedVersion 검사로
+중복 생성·동시 덮어쓰기를 막습니다. 동일 내용 재전송은 멱등이며 충돌은 409로 드러냅니다. 이 스냅샷은 회원이 저장한
+화면 데이터로 신뢰된 검색 결과나 서버 권한의 근거가 아닙니다. 탈퇴 이벤트의 대화 삭제는 탈퇴 transaction에 참여합니다.
+브라우저는 계정 변경 때 진행 요청·메모리를 폐기하고, 조회 중 새 입력·화면 이동이 발생하면 늦은 복원을 적용하지 않습니다.
+저장 실패는 현재 창의 내용을 유지한 채 안내하며 자동 fallback·강제 덮어쓰기를 하지 않습니다.
+
 ## 기업 맞춤 일일 리포트
 
 `DailyReportController → DailyReportService`는 저장된 기업 조건·지원 목적을 기존 검색에 전달하고,

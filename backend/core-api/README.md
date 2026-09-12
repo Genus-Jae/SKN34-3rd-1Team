@@ -8,6 +8,27 @@
 [기술 구성](../../docs/technology.md)과 [구현 현황](../../docs/implementation-status.md),
 실제 실행 순서는 [호출·데이터 흐름](../../docs/architecture.md)을 참고하세요.
 
+## 계정별 대화 기록
+
+`ai.govbiz.core.chathistory`는 로그인 회원 본인의 대화 스냅샷을 보관합니다. `V19__create_chat_conversation.sql`로
+기존 MySQL에 테이블을 추가하며 기존 migration·공고 데이터는 수정하지 않습니다.
+
+| API | 동작 |
+|---|---|
+| `GET /api/v1/me/chat-conversations?before=123` | 본인 기록 요약 최대 30개와 `nextCursor`. 생성 ID 내림차순, 스냅샷 본문 제외 |
+| `GET /api/v1/me/chat-conversations/{id}` | 본인 기록의 요약·버전·스냅샷 조회 |
+| `PUT /api/v1/me/chat-conversations/{id}` | `{expectedVersion, snapshot}` 저장. 최초 버전 0, 이후 읽은 버전으로 갱신 |
+
+모든 요청은 세션 쿠키와 `X-Chat-Account`(화면 계정 이메일의 URL 인코딩 값)를 보냅니다. 소유자는 세션의 account ID로만
+정하고, 헤더는 다른 탭에서 계정이 바뀐 경우 요청을 차단하는 사전조건입니다. 비로그인·계정 불일치는 401, 타인 기록은
+404, 허용 Origin 없는 상태 변경은 403입니다. 관리자도 타인의 개인 대화를 조회하지 않으며 응답 캐시는 `no-store`입니다.
+
+스냅샷 `schemaVersion=1`, 첫 사용자 메시지 ID와 경로 ID 일치, 메시지 200개·UTF-8 JSON 2,000,000바이트 이하를 검증합니다.
+제목은 첫 질문에서 유니코드 문자 최대 80개로 만듭니다. 이것은 회원이 보관하는 화면 데이터로, 서버가 보증한 검색 결과나
+AI 입력의 신뢰 근거로 사용하지 않습니다. 프론트엔드는 복원 시 DTO·공식 원문 링크 등을 별도로 검증합니다.
+저장 transaction에서 계정 행을 잠그고 버전을 검사합니다. 오래된 다른 내용은 409이며 같은 JSON의 재전송은 멱등입니다.
+계정 탈퇴 이벤트는 같은 transaction에서 대화 기록을 제거합니다. 저장·조회에는 외부 API·OpenAI 호출이 없습니다.
+
 ## 실행
 
 기업 맞춤 리포트는 `ai.govbiz.core.dailyreport`에서 저장된 기업 조건·지원 목적을 기존 검색과 HTML 근거 답변에

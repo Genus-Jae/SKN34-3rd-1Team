@@ -100,7 +100,7 @@ export function DeleteAccountModal({ vm, email }: { vm: SecurityViewModel['delet
     <WorkspaceModal
       isOpen={vm.isOpen}
       title="계정을 삭제할까요?"
-      description={`${email} 계정과 연결된 정보가 함께 지워집니다.`}
+      description={`${email} 계정과 연결된 정보 및 저장된 대화 기록이 함께 지워집니다.`}
       tone="danger"
       onClose={vm.close}
     >
