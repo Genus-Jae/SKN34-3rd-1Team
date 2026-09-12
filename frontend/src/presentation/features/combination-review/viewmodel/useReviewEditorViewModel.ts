@@ -16,7 +16,7 @@ function isEarlierState(current: RunSummary, next: RunSummary) {
   )
 }
 
-export function useReviewEditorViewModel(id: number | null, account: string, autoStart = false, loadSavedPrograms = false) {
+export function useReviewEditorViewModel(id: number | null, account: string, autoStart = false, loadSavedPrograms = false, resultRunId: number | null = null) {
   const useCase = appContainer.resolve('combinationReviewUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const detailUseCase = appContainer.resolve('getSupportProgramDetailUseCase')
@@ -90,11 +90,10 @@ export function useReviewEditorViewModel(id: number | null, account: string, aut
     void perform('run', (signal) => useCase.run(id, runId, signal), acceptRun).then((accepted) => setPollingPaused(!accepted))
   }, [id, perform, useCase, acceptRun])
   useEffect(() => {
-    const latestRunId = runs?.items[0]?.id
-    if (!latestRunId || autoSelectedRunId.current === latestRunId) return
-    autoSelectedRunId.current = latestRunId
-    selectRun(latestRunId)
-  }, [runs, selectRun])
+    if (!resultRunId || autoSelectedRunId.current === resultRunId) return
+    autoSelectedRunId.current = resultRunId
+    selectRun(resultRunId)
+  }, [resultRunId, selectRun])
   const activeRunId = runs?.items.find((item) => item.status === 'QUEUED' || item.status === 'RUNNING')?.id
   useEffect(() => {
     if (!id || !activeRunId || pollingPaused) return

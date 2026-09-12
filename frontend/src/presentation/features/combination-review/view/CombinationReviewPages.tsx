@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router'
 import { useAppDispatch, useAppSelector } from '../../../../app/hooks'
 import { selectCurrentAccount, signedOut } from '../../../shared/auth/state/authSlice'
-import { appPaths, supportProgramDetailPath } from '../../../shared/routes/appPaths'
+import { appPaths, combinationReviewRunResultPath, supportProgramDetailPath } from '../../../shared/routes/appPaths'
 import { reviewProgramKey, supportsAutomaticReview, validateReviewDraft } from '../../../../domain/entities/CombinationReview'
 import { useReviewListViewModel } from '../viewmodel/useReviewListViewModel'
 import { useReviewEditorViewModel } from '../viewmodel/useReviewEditorViewModel'
@@ -66,6 +66,42 @@ export function CombinationReviewEditorPage({ create = false }: { create?: boole
   if (!create && (!Number.isSafeInteger(id) || id! <= 0)) return <><WorkspacePageHeader parent={{ to: appPaths.combinationReviews, label: listTitle }} title="검토" /><main className={workspacePageStyles.content}><p role="alert">올바른 검토 주소가 아닙니다.</p><Link className={workspacePageStyles.quietLink} to={appPaths.combinationReviews}>목록으로</Link></main></>
   return <ReviewEditor key={`${sessionKey(account)}:${id ?? 'new'}`} id={id} account={account.email} />
 }
+
+export function CombinationReviewRunResultPage() {
+  const account = useAppSelector(selectCurrentAccount)
+  const { reviewId: reviewIdParam, runId: runIdParam } = useParams()
+  const reviewId = Number(reviewIdParam)
+  const runId = Number(runIdParam)
+  const valid = Number.isSafeInteger(reviewId) && reviewId > 0 && Number.isSafeInteger(runId) && runId > 0
+  if (!account) return null
+  if (!valid) return <><WorkspacePageHeader parent={{ to: appPaths.combinationReviews, label: listTitle }} title="실행 결과" /><main className={workspacePageStyles.content}><p role="alert">올바른 실행 결과 주소가 아닙니다.</p><Link className={workspacePageStyles.quietLink} to={appPaths.combinationReviews}>목록으로</Link></main></>
+  return <RunResultPage key={`${sessionKey(account)}:${reviewId}:${runId}`} reviewId={reviewId} runId={runId} account={account.email} />
+}
+
+function RunResultPage({ reviewId, runId, account }: { reviewId: number; runId: number; account: string }) {
+  const vm = useReviewEditorViewModel(reviewId, account, false, false, runId)
+  const contentRef = useRef<HTMLElement>(null)
+  const analysisPath = `${appPaths.combinationReviews}/${reviewId}?step=analysis`
+  const header = <WorkspacePageHeader parent={{ to: analysisPath, label: '공고 분석' }} title={`실행 #${runId} 결과`} />
+  useEffect(() => {
+    const scrollArea = contentRef.current?.parentElement
+    if (scrollArea && typeof scrollArea.scrollTo === 'function') scrollArea.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [])
+  if (vm.error?.status === 401) return <>{header}<main className={workspacePageStyles.content}><ReviewError error={vm.error} /></main></>
+  const selectedRun = vm.run?.id === runId ? vm.run : null
+  return <>{header}<main ref={contentRef} className={workspacePageStyles.content}>
+    <Link className={workspacePageStyles.quietLink} to={analysisPath}>← 공고 분석으로</Link>
+    {vm.review && <section className={`${s.card} space-y-1`}><h2 className="font-bold">{vm.review.title}</h2><p className={s.muted}>저장 입력 버전 {vm.review.inputRevision}의 실행 이력입니다.</p></section>}
+    <ReviewError error={vm.error} />
+    {!selectedRun && vm.busy.some((value) => value === 'load' || value === 'run') && <p role="status">실행 결과를 불러오는 중입니다.</p>}
+    {!selectedRun && vm.review && !vm.busy.includes('run') && <button className={s.button} type="button" onClick={() => vm.selectRun(runId)}>실행 결과 다시 불러오기</button>}
+    {selectedRun && <>
+      <div className="flex justify-end"><button className={s.button} type="button" disabled={vm.busy.includes('run')} onClick={() => vm.selectRun(runId)}>결과 새로고침</button></div>
+      <ReviewRunResult run={selectedRun} currentRevision={vm.review?.inputRevision ?? selectedRun.inputRevision} download={vm.download} downloading={vm.busy.includes('download')} />
+    </>}
+  </main></>
+}
+
 function ReviewEditor({ id, account }: { id: number | null; account: string }) {
   const location = useLocation()
   const autoStart = new URLSearchParams(location.search).get('start') === '1'
@@ -100,7 +136,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
       {([['selection', '1. 제목·공고 선택'], ['participation', '2. 참여 상태 설정'], ['analysis', '3. 공고 분석']] as const).map(([value, label]) => <li key={value} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${step === value ? 'border-emerald-700 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-500'}`} aria-current={step === value ? 'step' : undefined}>{label}</li>)}
     </ol>
     <ReviewError error={vm.error} />
-    {vm.error?.runId && <button className={s.button} disabled={vm.busy.includes('run')} onClick={() => vm.selectRun(vm.error!.runId!)}>실패 실행 #{vm.error.runId} 확인</button>}
+    {id && vm.error?.runId && <Link className={s.button} to={combinationReviewRunResultPath(id, vm.error.runId)}>실패 실행 #{vm.error.runId} 확인</Link>}
     {vm.rejectedRevision && vm.pending && <button className={s.button} onClick={vm.clearRejectedRequest}>버전 충돌로 거절된 실행 요청 정리</button>}
     {vm.notice && <p role="status" className={s.muted}>{vm.notice}</p>}
     {id && !vm.review ? <div className={s.card}>{vm.busy.includes('load') ? <p role="status">저장 입력과 실행 이력을 불러오는 중입니다.</p> : <button className={s.button} onClick={vm.load}>검토 다시 불러오기</button>}</div> : <>
@@ -166,11 +202,9 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
         </section>
         <section className={`${s.card} space-y-3`}><h2 className="text-lg font-bold">실행 이력</h2><button className={s.button} disabled={vm.busy.includes('history')} onClick={() => vm.history()}>실행 이력 새로고침</button>
           {vm.runs?.items.length === 0 && <p className={s.muted}>아직 분석을 실행하지 않았습니다.</p>}
-          <ul className="space-y-2">{vm.runs?.items.map((run) => <li key={run.id}><button className={`${s.button} w-full justify-start text-left`} disabled={vm.busy.includes('run')} onClick={() => vm.selectRun(run.id)}>#{run.id} · 입력 버전 {run.inputRevision} · {runLabels[run.status]} · {run.startedAt}</button></li>)}</ul>
+          <ul className="space-y-2">{vm.runs?.items.map((run) => <li key={run.id}><Link className={`${s.button} w-full justify-start text-left`} to={combinationReviewRunResultPath(id, run.id)}>#{run.id} · 입력 버전 {run.inputRevision} · {runLabels[run.status]} · {run.startedAt}</Link></li>)}</ul>
           {vm.runs?.nextBeforeId && <button className={s.button} disabled={vm.busy.includes('history')} onClick={() => vm.history(vm.runs!.nextBeforeId!)}>이전 실행 더 보기</button>}
-          {vm.busy.includes('run') && <p role="status">실행 상세를 불러오는 중입니다.</p>}
         </section>
-        {vm.run && <><button className={s.button} disabled={vm.busy.includes('run')} onClick={() => vm.selectRun(vm.run!.id)}>선택한 실행 상태 조회</button><ReviewRunResult run={vm.run} currentRevision={vm.review!.inputRevision} download={vm.download} downloading={vm.busy.includes('download')} /></>}
       </>}
     </>}
   </main></>

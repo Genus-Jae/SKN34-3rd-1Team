@@ -11,7 +11,7 @@ import { CombinationReviewError } from '../../../../domain/errors/CombinationRev
 import { CombinationReviewUseCase } from '../../../../domain/usecases/CombinationReviewUseCase'
 import { CombinationReviewRepositoryImpl } from '../../../../data/repositories/CombinationReviewRepositoryImpl'
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
-import { CombinationReviewEditorPage, CombinationReviewListPage } from './CombinationReviewPages'
+import { CombinationReviewEditorPage, CombinationReviewListPage, CombinationReviewRunResultPage } from './CombinationReviewPages'
 import { reviewFixture, runFixture } from '../testing/reviewFixtures'
 import { useReviewSessionIsolation } from '../viewmodel/useReviewSessionIsolation'
 
@@ -47,6 +47,7 @@ function mount(path = '/app/combination-reviews/12?step=analysis') {
   const rendered = render(<Provider store={store}><Isolation /><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/app/combination-reviews" element={<CombinationReviewListPage />} />
     <Route path="/app/combination-reviews/new" element={<CombinationReviewEditorPage create />} />
+    <Route path="/app/combination-reviews/:reviewId/runs/:runId" element={<CombinationReviewRunResultPage />} />
     <Route path="/app/combination-reviews/:reviewId" element={<CombinationReviewEditorPage />} />
   </Routes></MemoryRouter></Provider>)
   return { store, ...rendered }
@@ -59,13 +60,13 @@ describe('review screens and execution safety', () => {
     repository.run.mockResolvedValueOnce({ ...queued, status: 'RUNNING' }).mockResolvedValue(runFixture)
     await act(async () => { mount() })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '새 분석 실행' })) })
-    expect(screen.getByRole('heading', { name: /실행 #30 · 대기 중/ })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /#30 · 입력 버전 1 · 대기 중/ })).toBeTruthy()
     expect(screen.queryByText('같은 요청 확인')).toBeNull()
     expect((screen.getByRole('button', { name: '새 분석 실행' }) as HTMLButtonElement).disabled).toBe(true)
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByRole('heading', { name: /실행 #30 · 분석 중/ })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /#30 · 입력 버전 1 · 분석 중/ })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByRole('heading', { name: /실행 #30 · 분석 완료/ })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /#30 · 입력 버전 1 · 분석 완료/ })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
     expect(repository.run).toHaveBeenCalledTimes(2)
     expect(repository.start).toHaveBeenCalledTimes(1)
@@ -78,12 +79,12 @@ describe('review screens and execution safety', () => {
     let mounted!: ReturnType<typeof mount>
     await act(async () => { mounted = mount() })
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByRole('heading', { name: /실행 #30 · 대기 중/ })).toBeTruthy()
-    expect(repository.run).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('link', { name: /#30 · 입력 버전 1 · 대기 중/ })).toBeTruthy()
+    expect(repository.run).toHaveBeenCalledTimes(1)
     expect(repository.start).not.toHaveBeenCalled()
     act(() => mounted.store.dispatch(signedOut()))
     await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
-    expect(repository.run).toHaveBeenCalledTimes(2)
+    expect(repository.run).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('heading', { name: /실행 #30/ })).toBeNull()
   })
   it('pauses failed polling until the user checks the saved run again', async () => {
@@ -94,7 +95,7 @@ describe('review screens and execution safety', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(12000) })
     expect(repository.run).toHaveBeenCalledTimes(1)
     expect(screen.getByText(/상태 자동 조회가 중단/)).toBeTruthy()
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /#30 · 입력 버전/ })) })
+    await act(async () => { fireEvent.click(screen.getByRole('link', { name: /#30 · 입력 버전/ })) })
     expect(screen.getByRole('heading', { name: /실행 #30 · 분석 완료/ })).toBeTruthy()
     expect(repository.start).not.toHaveBeenCalled()
   })
@@ -103,10 +104,10 @@ describe('review screens and execution safety', () => {
     repository.runs.mockResolvedValue({ items: [{ ...runFixture, status: 'UNKNOWN', analysis: null }], nextBeforeId: null })
     repository.run.mockResolvedValue({ ...runFixture, status: 'UNKNOWN', analysis: null, failureCode: 'RUN_OUTCOME_UNKNOWN' })
     await act(async () => { mount() })
-    expect(screen.getByText(/중복 과금을 방지/)).toBeTruthy()
+    expect(screen.getByText(/결과 확인이 필요한 실행/)).toBeTruthy()
     expect((screen.getByRole('button', { name: '새 분석 실행' }) as HTMLButtonElement).disabled).toBe(true)
     await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
-    expect(repository.run).toHaveBeenCalledTimes(1)
+    expect(repository.run).not.toHaveBeenCalled()
     expect(repository.start).not.toHaveBeenCalled()
   })
   it('adds two saved notices to a new review without a catalog search', async () => {
@@ -120,7 +121,7 @@ describe('review screens and execution safety', () => {
     expect(browseSavedPrograms).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '관심 공고함에서 선택' }))
     const dialog = await screen.findByRole('dialog', { name: '관심 공고함에서 선택' })
-    const savedPrograms = within(dialog).getByRole('list', { name: '중복 지원 검토 관심 공고 목록' })
+    const savedPrograms = await within(dialog).findByRole('list', { name: '중복 지원 검토 관심 공고 목록' })
     fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[0]!.title} 관심 공고 선택` }))
     fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[1]!.title} 관심 공고 선택` }))
 
@@ -274,7 +275,7 @@ describe('review screens and execution safety', () => {
     view.unmount(); mount(); await screen.findByText('같은 요청 확인')
     expect(repository.start).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByText('같은 요청 확인'))
-    await screen.findByText('실행 #30 · 분석 완료')
+    await screen.findByRole('link', { name: /#30 · 입력 버전 1 · 분석 완료/ })
     expect(repository.start.mock.calls[1][1]).toEqual(input)
   })
   it.each([
@@ -336,8 +337,16 @@ describe('review screens and execution safety', () => {
   })
   it('uses the run snapshot order, six stages and source index', async () => {
     repository.runs.mockResolvedValue({ items: [runFixture], nextBeforeId: null })
-    mount(); await screen.findByText('새 분석 실행')
+    const view = mount()
+    const scrollTo = vi.fn()
+    view.container.scrollTo = scrollTo
+    await screen.findByText('새 분석 실행')
+    const resultLink = await screen.findByRole('link', { name: /#30 · 입력 버전/ })
+    expect(resultLink.getAttribute('href')).toBe('/app/combination-reviews/12/runs/30')
+    expect(screen.queryByRole('heading', { name: /실행 #30 · 분석 완료/ })).toBeNull()
+    fireEvent.click(resultLink)
     await screen.findByText('실행 #30 · 분석 완료')
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' })
     expect(screen.getByText(/과거 입력 버전의 결과/)).toBeTruthy()
     expect(screen.queryByText(/BIZINFO:PBLN_/)).toBeNull()
     expect(screen.getAllByRole('tab')).toHaveLength(6)

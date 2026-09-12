@@ -721,8 +721,8 @@ PDF·첨부·다른 제공처 확장은 후속 범위입니다.
 ## 중복 지원·수혜 검토 사용자 화면 (5-1)
 
 `/app/combination-reviews`는 본인 목록·커서 조회·확인 후 삭제, `/new`와 `/:reviewId`는
-`제목·공고 2개 선택 → 공고별 참여 상태 → 공고 분석`의 3단계 흐름을 제공한다. 단계 이동 시 스크롤을 상단으로 초기화하고, 분석 단계에서 실행·이력·원본 다운로드를
-제공하며 RequireAuth와 WorkspaceLayout을 사용한다.
+`제목·공고 2개 선택 → 공고별 참여 상태 → 공고 분석`의 3단계 흐름을 제공한다. 단계 이동 시 스크롤을 상단으로 초기화하고, 분석 단계에서 실행과 이력 목록을 제공한다.
+실행 이력 항목은 `/:reviewId/runs/:runId` 결과 전용 화면으로 이동하며 그 화면에서 분석 결과·원본 다운로드를 제공한다. RequireAuth와 WorkspaceLayout을 사용한다.
 호출은 `View → ViewModel → CombinationReviewUseCase → Domain Repository 계약 → Data 구현 → HTTP/Zod → Core API`다.
 공고 선택은 BrowseSavedSupportProgramsUseCase의 관심 공고함과 기존 BrowseSupportProgramsUseCase의 무료 카탈로그 API를 재사용하며 접수 종료·미지원 자동 분석을 구분한다. 관심 공고는 기본 화면에서 호출하지 않고 사용자가 선택 팝업을 열 때 조회하며, 선택 요약은 고정 높이 한 줄로 유지한다.
 저장된 원본 식별자는 상세 API로 공고명과 기관명을 보완해 참여 상태 화면에서 `사업 1`이 어떤 공고인지 함께 표시한다.
