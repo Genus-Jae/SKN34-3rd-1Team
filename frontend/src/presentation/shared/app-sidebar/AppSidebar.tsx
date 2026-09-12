@@ -30,7 +30,7 @@ const menuGroups: MenuGroup[] = [
       { label: '신청 문서 작성', icon: 'document', to: appPaths.applicationPreparations, matches: (pathname) => pathname.startsWith(appPaths.applicationPreparations) },
       { label: '중복 지원·수혜 검토', icon: 'shield', to: appPaths.combinationReviews, matches: (pathname) => pathname.startsWith(appPaths.combinationReviews) },
       { label: '기업 맞춤 리포트', icon: 'inbox', to: appPaths.reports, matches: (pathname) => pathname === appPaths.reports },
-      { label: '관심 공고함', icon: 'bookmark', badge: '준비 중' },
+      { label: '관심 공고함', icon: 'bookmark', to: appPaths.savedPrograms, matches: (pathname) => pathname.startsWith(appPaths.savedPrograms) },
       {
         label: '파트너 관리',
         icon: 'users',

@@ -6,6 +6,15 @@ export const supportProgramDetailStyles = {
   page: 'mx-auto w-[min(920px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)] [overflow-wrap:anywhere]',
   unavailablePage: 'mx-auto w-[min(720px,calc(100%_-_2rem))] py-[clamp(1.5rem,5vw,4rem)]',
   header: 'mb-8 flex flex-wrap items-center justify-between gap-4',
+  headerActions: 'flex flex-wrap items-center gap-3',
+  // 관심 공고 저장은 책갈피 아이콘 하나로 둡니다. 담긴 상태는 브랜드색으로 채웁니다.
+  saveIconButton: classes(
+    'inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-sample-border bg-white text-app-ink',
+    'hover:border-brand-primary hover:text-brand-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+    'disabled:cursor-not-allowed disabled:opacity-60 aria-pressed:border-brand-primary aria-pressed:bg-brand-primary aria-pressed:text-white aria-pressed:hover:text-white',
+  ),
+  // 담기·빼기 결과 안내입니다. 잠깐 보이고 닫을 수 있습니다.
+  saveNotice: 'mb-4 flex items-center justify-between gap-3 rounded-[1rem] border border-brand-primary/30 bg-brand-accent px-4 py-3 text-[0.85rem] text-app-ink',
   backLink: classes(
     'inline-flex items-center rounded-full border px-[0.85rem] py-[0.65rem]',
     'border-sample-border bg-white text-[0.85rem] font-bold text-app-ink no-underline',

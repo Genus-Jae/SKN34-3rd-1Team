@@ -350,11 +350,11 @@ describe('작업 화면 사이드바', () => {
     expect(documents.getAttribute('href')).toBe('/app/application-preparations')
     expect(documents.classList.contains('rounded-2xl')).toBe(true)
     expect(documents.getAttribute('aria-current')).toBeNull()
-    const pending = within(sidebar).getByText('관심 공고함').closest('[aria-disabled="true"]') as HTMLElement
-    expect(pending).toBeTruthy()
-    expect(pending.classList.contains('bg-[#f5f6f7]')).toBe(true)
-    expect(within(pending).getByText('준비 중').classList.contains('rounded-full')).toBe(true)
-    expect(within(sidebar).queryByRole('link', { name: /관심 공고함/ })).toBeNull()
+    // 관심 공고함은 화면이 생겨 링크이며, 준비 중 배지가 없습니다.
+    const savedPrograms = within(sidebar).getByRole('link', { name: '관심 공고함' })
+    expect(savedPrograms.getAttribute('href')).toBe('/app/saved-programs')
+    expect(savedPrograms.getAttribute('aria-disabled')).toBeNull()
+    expect(within(sidebar).queryByText('준비 중')).toBeNull()
 
     fireEvent.click(within(sidebar).getByRole('link', { name: '요금제' }))
     expect(within(sidebar).getByRole('link', { name: '요금제' }).getAttribute('aria-current')).toBe('page')
@@ -420,12 +420,12 @@ describe('작업 화면 사이드바', () => {
     expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
   })
 
-  it('아직 화면이 없는 메뉴는 링크로 만들지 않는다', () => {
+  it('모든 메뉴가 화면을 가져 준비 중 표시가 없다', () => {
     renderApp('/app/chat')
 
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
-    expect(within(sidebar).queryByRole('link', { name: /관심 공고함/ })).toBeNull()
-    expect(within(sidebar).getByText('관심 공고함')).toBeTruthy()
+    expect(within(sidebar).getByRole('link', { name: '관심 공고함' }).getAttribute('href')).toBe('/app/saved-programs')
+    expect(within(sidebar).queryByText('준비 중')).toBeNull()
   })
 
   it('사이드바 지원사업 새검색은 작성 중 초안과 대화를 지우고 입력창으로 포커스를 옮긴다', () => {

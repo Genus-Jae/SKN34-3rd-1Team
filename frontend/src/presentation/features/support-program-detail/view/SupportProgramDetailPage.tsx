@@ -1,13 +1,16 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 
+import { loginPathFor } from '../../../shared/auth/returnPath'
 import { appPaths, isAppPath, supportProgramQuestionPath } from '../../../shared/routes/appPaths'
+import { workspacePageStyles } from '../../../shared/workspace/WorkspacePage.styles'
 
 import type { SupportProgram, SupportProgramStatus } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramIdentity } from '../../../../domain/repositories/SupportProgramRepository'
 import { useSupportProgramDetailViewModel } from '../viewmodel/useSupportProgramDetailViewModel'
+import { useSupportProgramSaveViewModel } from '../viewmodel/useSupportProgramSaveViewModel'
 import { supportProgramDetailStyles } from './SupportProgramDetailPage.styles'
-import { getSupportProgramSearchReturnTo, type SupportProgramSearchReturnTo } from './supportProgramNavigation'
+import { getSupportProgramSearchReturnTo, supportProgramBackLabel, type SupportProgramSearchReturnTo } from './supportProgramNavigation'
 
 /** URL의 제공처·원본 공고 ID로 최신 상세 정보를 조회하는 화면입니다. */
 export function SupportProgramDetailPage() {
@@ -71,17 +74,32 @@ function SupportProgramDetailContent({ identity, searchReturnTo }: {
 
 function LoadingSupportProgramDetail({ searchReturnTo }: { searchReturnTo: SupportProgramSearchReturnTo }) {
   return (
-    <main className={supportProgramDetailStyles.unavailablePage} aria-live="polite">
-      <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
-        ← 검색 결과로 돌아가기
-      </Link>
+    <DetailShell searchReturnTo={searchReturnTo} live>
       <section className={supportProgramDetailStyles.unavailableCard}>
-        <p className={supportProgramDetailStyles.eyebrow}>지원사업 상세</p>
         <h1 className={supportProgramDetailStyles.title}>공고 정보를 불러오는 중입니다</h1>
         <p className={supportProgramDetailStyles.unavailableDescription}>
           최신 공고 조건을 확인하고 있습니다.
         </p>
       </section>
+    </DetailShell>
+  )
+}
+
+/**
+ * 불러오는 중·없음·실패 화면의 껍데기입니다. 작업 화면은 다른 화면과 같은 머리글("지원사업 찾기 > 공고 상세")을,
+ * 공개 화면은 공용 헤더 아래 돌아가기 링크를 둡니다.
+ */
+function DetailShell({ children, live = false, searchReturnTo }: {
+  children: ReactNode
+  live?: boolean
+  searchReturnTo: SupportProgramSearchReturnTo
+}) {
+  return (
+    <main className={supportProgramDetailStyles.unavailablePage} aria-live={live ? 'polite' : undefined}>
+      <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
+        {supportProgramBackLabel(searchReturnTo)}
+      </Link>
+      {children}
     </main>
   )
 }
@@ -92,18 +110,59 @@ function SupportProgramDetail({ program, searchReturnTo }: {
 }) {
   // 작업 채팅에서 연 상세는 질문 화면도 사이드바 안(/app)에서 열리도록 현재 경로로 판단합니다.
   const inApp = isAppPath(useLocation().pathname)
+  const save = useSupportProgramSaveViewModel({ sourceCode: program.sourceCode, sourceProgramId: program.id })
+  const applicationPreparationPath = `${appPaths.applicationPreparationNew}?${new URLSearchParams({
+    sourceCode: program.sourceCode,
+    sourceProgramId: program.id,
+  })}`
+  const questionPath = supportProgramQuestionPath({ sourceCode: program.sourceCode, sourceProgramId: program.id }, inApp)
+  // 관심 공고 저장은 책갈피 아이콘 하나입니다. 로그인한 회원은 담기·빼기를 오가고, 비로그인은 로그인 뒤 이 공고로 돌아옵니다.
+  const saveLabel = save.isSaved ? '관심 공고 저장됨' : '관심 공고 저장'
+  const saveControl = save.isAuthenticated ? (
+    <button
+      className={supportProgramDetailStyles.saveIconButton}
+      type="button"
+      aria-label={saveLabel}
+      title={saveLabel}
+      aria-pressed={save.isSaved === true}
+      disabled={save.isBusy}
+      onClick={() => void save.toggle()}
+    >
+      <BookmarkIcon filled={save.isSaved === true} />
+    </button>
+  ) : (
+    <Link
+      className={supportProgramDetailStyles.saveIconButton}
+      to={save.loginPath}
+      aria-label="로그인하고 관심 공고 저장"
+      title="로그인하고 관심 공고 저장"
+    >
+      <BookmarkIcon filled={false} />
+    </Link>
+  )
   return (
+    <>
+    {/* 로그인 여부와 관계없이 위에는 돌아가기 링크와 출처·관심 공고 저장만 둡니다. 작업 화면도 별도 머리글을 쓰지 않습니다. */}
     <main className={supportProgramDetailStyles.page}>
       <header className={supportProgramDetailStyles.header}>
         <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
-          ← 검색 결과로 돌아가기
+          {supportProgramBackLabel(searchReturnTo)}
         </Link>
-        <span className={supportProgramDetailStyles.sourceBadge}>{program.sourceName}</span>
+        <div className={supportProgramDetailStyles.headerActions}>
+          {saveControl}
+          <span className={supportProgramDetailStyles.sourceBadge}>{program.sourceName}</span>
+        </div>
       </header>
+
+      {save.notice ? (
+        <p className={supportProgramDetailStyles.saveNotice} role="status" key={save.notice.id}>
+          <span>{save.notice.text}</span>
+          <button className={workspacePageStyles.quietLink} type="button" onClick={save.dismissNotice}>닫기</button>
+        </p>
+      ) : null}
 
       <section className={supportProgramDetailStyles.hero} aria-labelledby="support-program-title">
         <div>
-          <p className={supportProgramDetailStyles.eyebrow}>지원사업 상세</p>
           <h1 id="support-program-title" className={supportProgramDetailStyles.title}>
             {program.title}
           </h1>
@@ -173,31 +232,37 @@ function SupportProgramDetail({ program, searchReturnTo }: {
             <p className={supportProgramDetailStyles.questionDescription}>
               궁금한 신청 조건을 질문하고 공고 원문에서 답변 근거를 확인하세요.
             </p>
-            <Link
-              className={supportProgramDetailStyles.questionLink}
-              state={{ searchReturnTo }}
-              to={supportProgramQuestionPath(
-                { sourceCode: program.sourceCode, sourceProgramId: program.id },
-                inApp,
-              )}
-            >
-              이 공고에 질문하기
-            </Link>
+            {save.isAuthenticated ? (
+              <Link className={supportProgramDetailStyles.questionLink} state={{ searchReturnTo }} to={questionPath}>
+                이 공고에 질문하기
+              </Link>
+            ) : (
+              // 원문 질문도 회원 기능이라 비로그인에는 로그인 뒤 작업 화면의 질문 화면으로 이어지는 링크를 둡니다.
+              <Link
+                className={supportProgramDetailStyles.questionLink}
+                to={loginPathFor(supportProgramQuestionPath({ sourceCode: program.sourceCode, sourceProgramId: program.id }, true))}
+              >
+                로그인하고 이 공고에 질문하기
+              </Link>
+            )}
           </>
         ) : (
           <p className={supportProgramDetailStyles.questionDescription}>
             이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다. 원문 공고에서 확인해 주세요.
           </p>
         )}
-        {['BIZINFO', 'MSIT'].includes(program.sourceCode) && <Link
-          className={supportProgramDetailStyles.questionLink}
-          to={`${appPaths.applicationPreparationNew}?${new URLSearchParams({
-            sourceCode: program.sourceCode,
-            sourceProgramId: program.id,
-          })}`}
-        >
-          이 공고의 신청 문서 작성하기
-        </Link>}
+        {['BIZINFO', 'MSIT'].includes(program.sourceCode) ? (
+          save.isAuthenticated ? (
+            <Link className={supportProgramDetailStyles.questionLink} to={applicationPreparationPath}>
+              이 공고의 신청 문서 작성하기
+            </Link>
+          ) : (
+            // 신청 문서 작성은 로그인 화면이라 비로그인에는 로그인 뒤 그 화면으로 이어지는 링크를 둡니다.
+            <Link className={supportProgramDetailStyles.questionLink} to={loginPathFor(applicationPreparationPath)}>
+              로그인하고 신청 문서 작성하기
+            </Link>
+          )
+        ) : null}
       </section>
 
       <section className={supportProgramDetailStyles.sourceSection} aria-labelledby="source-information">
@@ -223,6 +288,7 @@ function SupportProgramDetail({ program, searchReturnTo }: {
         </a>
       </section>
     </main>
+    </>
   )
 }
 
@@ -238,12 +304,8 @@ function UnavailableSupportProgramDetail({
   title: string
 }) {
   return (
-    <main className={supportProgramDetailStyles.unavailablePage}>
-      <Link className={supportProgramDetailStyles.backLink} to={searchReturnTo}>
-        ← 검색 결과로 돌아가기
-      </Link>
+    <DetailShell searchReturnTo={searchReturnTo}>
       <section className={supportProgramDetailStyles.unavailableCard}>
-        <p className={supportProgramDetailStyles.eyebrow}>지원사업 상세</p>
         <h1 className={supportProgramDetailStyles.title}>{title}</h1>
         <p className={supportProgramDetailStyles.unavailableDescription}>{description}</p>
         {retry ? (
@@ -252,7 +314,27 @@ function UnavailableSupportProgramDetail({
           </button>
         ) : null}
       </section>
-    </main>
+    </DetailShell>
+  )
+}
+
+/** 관심 공고 저장 버튼의 책갈피입니다. 사이드바 관심 공고함 메뉴와 같은 모양이고 담긴 상태는 채웁니다. */
+function BookmarkIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
   )
 }
 

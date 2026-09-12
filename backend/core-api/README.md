@@ -237,6 +237,7 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `POST /api/v1/admin/accounts/{id}/suspend` `/unsuspend` `/sessions/revoke` | 관리자 전용. 사유(1~500자) 필수. 정지는 모든 세션 삭제, 자기 계정 422 `ADMIN_SELF_ACTION`, 다른 관리자 422 `ADMIN_TARGET_PROTECTED`, 이미 그 상태면 409. `account_admin_action`에 기록 |
 | `GET /api/v1/me/company/lookup` | 로그인한 회원이 사업자등록번호로 국세청 등록 여부·상호·사업자 상태를 미리 보기(Bizno) |
 | `GET` `POST` `PUT /api/v1/me/company` | 내 기업 조회·등록(계속사업자만, 201)·담당자 입력 항목 수정 |
+| `GET` `POST` `DELETE /api/v1/me/saved-programs`, `GET …/status` | 관심 공고함. 로그인 회원이 현재 노출 중인 공고를 담고(같은 공고는 한 번) 빼며 최근 순서로 읽음. 없거나 숨겨진 공고는 404 `SUPPORT_PROGRAM_NOT_FOUND` |
 | `GET` `PUT /api/v1/me/company/partner-profile` | 협업·파트너 설정(참여 역할·관심 분야·한 줄 소개·역량 태그) 조회·저장. 기업당 한 행 UPSERT |
 | `GET /api/v1/partners/recruitments`, `GET .../{id}` | 파트너 모집글 목록(검색·찾는 역할·지역·내 글·정렬·페이지)과 상세. 세션 없이도 읽기 가능 |
 | `POST /api/v1/partners/recruitments` | 기업을 등록한 회원이 접수 중인 공고 하나에 모집글 작성(201). 공고당 하나 |
@@ -507,6 +508,7 @@ supportprogram/
 │   ├── search             # DB 조회 → 의미·키워드 순위 결합 → AI 점수화
 │   ├── conversation       # 대화 변경 인용 검증·초안 병합·확정 조건 대비 변경 계산
 │   ├── detail             # 현재 공고 상세 조회
+│   ├── saved              # 회원의 관심 공고함(담기·빼기·목록)
 │   ├── readiness          # 제공처별 준비 상태와 전체 검색 범위 집계
 │   ├── evidence           # 공식 원문 캐시·청킹 → 근거 검색·답변
 │   ├── sync               # 수집·색인 준비·DB 공개와 별도 벡터 복구

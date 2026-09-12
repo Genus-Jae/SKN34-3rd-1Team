@@ -6,7 +6,9 @@ import { appPaths, publicPaths } from '../routes/appPaths'
 import { appHeaderStyles } from './AppHeader.styles'
 
 /** 경로별 현재 화면 이름입니다. 등록되지 않은 경로는 이름을 표시하지 않습니다. */
-const isLandingPath = (pathname: string) => pathname === publicPaths.landing
+// 공고 상세·원문 질문은 검색 화면 안에 띄우므로 헤더도 검색 화면과 같게 둡니다.
+const isLandingPath = (pathname: string) =>
+  pathname === publicPaths.landing || pathname === publicPaths.supportProgramDetail || pathname === publicPaths.supportProgramQuestion
 const isPricingPath = (pathname: string) => pathname === publicPaths.pricing || pathname === `${publicPaths.pricing}/`
 const isPartnersPath = (pathname: string) => pathname === publicPaths.partners || pathname.startsWith(`${publicPaths.partners}/`)
 
@@ -14,8 +16,6 @@ const pageTitles: Array<{ matches: (pathname: string) => boolean; title: string 
   { matches: isLandingPath, title: 'AI 채팅' },
   { matches: isPricingPath, title: '요금제' },
   { matches: isPartnersPath, title: '파트너 모집' },
-  { matches: (pathname) => pathname === publicPaths.supportProgramDetail, title: '공고 상세' },
-  { matches: (pathname) => pathname === publicPaths.supportProgramQuestion, title: '원문 질문' },
   { matches: (pathname) => pathname.startsWith('/examples/sample-item'), title: '상태관리 비교 예제' },
 ]
 

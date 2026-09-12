@@ -92,16 +92,23 @@ describe('App navigation', () => {
     fireEvent.click(screen.getAllByRole('link', { name: '상세 조건 보기' })[0])
     await screen.findByText('자격 미평가 · 공고 상세 정보')
     expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe(returnPath)
-    fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
-    fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
-    await screen.findByText('자격 미평가 · 공고 상세 정보')
-    expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe(returnPath)
+    if (returnPath === '/') {
+      // 원문 질문은 회원 기능이라 비로그인은 로그인 링크만 봅니다.
+      expect(screen.getByRole('link', { name: '로그인하고 이 공고에 질문하기' }).getAttribute('href')).toMatch(/^\/login\?next=/)
+    } else {
+      fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
+      fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
+      await screen.findByText('자격 미평가 · 공고 상세 정보')
+      expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe(returnPath)
+    }
     fireEvent.click(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }))
     const cards = screen.getByRole('region', { name: '지원사업 검색 결과' }).querySelectorAll('article')
     expect(Array.from(cards).map(card => card.querySelector('h2')?.textContent)).toEqual(programs.map(p => p.title))
     expect(Boolean(screen.queryByRole('complementary', { name: '작업 사이드바' }))).toBe(returnPath === '/app/chat')
     expect(store.getState().chat.messages).toEqual(messages)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // 작업 화면 상세는 관심 공고 저장 여부도 확인하므로 검색·상세 조회만 셉니다.
+    const searchAndDetailCalls = fetchMock.mock.calls.filter(([url]) => !String(url).includes('/me/saved-programs'))
+    expect(searchAndDetailCalls).toHaveLength(returnPath === '/' ? 2 : 3)
   })
 
   it('준비 상태 재확인 중 오류 안내의 버튼을 비활성화한다', () => {
@@ -554,12 +561,14 @@ describe('App navigation', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(screen.queryByRole('textbox', { name: '공고 원문에 질문하기' })).toBeNull()
 
-    const questionLink = screen.getByRole('link', { name: '이 공고에 질문하기' })
-    const questionUrl = new URL(questionLink.getAttribute('href')!, 'http://localhost')
-    expect(questionUrl.pathname).toBe('/support-programs/detail/question')
-    expect(questionUrl.searchParams.get('sourceCode')).toBe(detail.sourceCode)
-    expect(questionUrl.searchParams.get('sourceProgramId')).toBe(detail.id)
-    fireEvent.click(questionLink)
+    // 원문 질문은 회원 기능이라 비로그인 상세는 로그인 뒤 작업 화면의 질문으로 잇고, 공개 질문 화면은 주소로 엽니다.
+    const loginLink = screen.getByRole('link', { name: '로그인하고 이 공고에 질문하기' })
+    const nextUrl = new URL(new URLSearchParams(loginLink.getAttribute('href')!.split('?')[1]).get('next')!, 'http://localhost')
+    expect(nextUrl.pathname).toBe('/app/support-programs/detail/question')
+    expect(nextUrl.searchParams.get('sourceCode')).toBe(detail.sourceCode)
+    expect(nextUrl.searchParams.get('sourceProgramId')).toBe(detail.id)
+    cleanup()
+    renderApp(createAppStore(), `/support-programs/detail/question?sourceCode=${detail.sourceCode}&sourceProgramId=${detail.id}`)
 
     expect(screen.getByRole('heading', { name: '이 공고에 질문하기', level: 1 })).toBeTruthy()
     expect(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' })).toBeTruthy()
@@ -718,9 +727,11 @@ describe('App navigation', () => {
       .mockResolvedValueOnce(jsonResponse(detail))
     vi.stubGlobal('fetch', fetchMock)
 
+    // 상세에서 질문으로 다시 들어가는 왕복은 회원 기능이라 로그인한 작업 화면에서 확인합니다.
+    vi.spyOn(appContainer.resolve('checkSavedSupportProgramUseCase'), 'execute').mockResolvedValue(false)
     renderApp(
       createAppStore(),
-      `/support-programs/detail/question?sourceCode=${detail.sourceCode}&sourceProgramId=${detail.id}`,
+      `/app/support-programs/detail/question?sourceCode=${detail.sourceCode}&sourceProgramId=${detail.id}`,
     )
     const question = screen.getByRole('textbox', { name: '공고 원문에 질문하기' })
     fireEvent.change(question, { target: { value: '이전 질문' } })
@@ -790,20 +801,17 @@ describe('App navigation', () => {
   ])('원문 답변의 응답 상태에 안전한 안내를 표시한다', async (answerResponse, expectedMessage) => {
     const detail = { ...supportPrograms[0], matchedReasons: [], recommendationScore: null }
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(detail))
       .mockResolvedValueOnce(answerResponse instanceof Response ? answerResponse : jsonResponse(answerResponse))
     vi.stubGlobal('fetch', fetchMock)
 
-    // 상세 조회와 질문 페이지 진입의 초기 effect까지 끝내고 사용자 입력을 시작합니다.
+    // 질문 페이지 진입의 초기 effect까지 끝내고 사용자 입력을 시작합니다.
     await act(async () => {
       renderApp(
         createAppStore(),
-        `/support-programs/detail?sourceCode=${detail.sourceCode}&sourceProgramId=${detail.id}`,
+        `/support-programs/detail/question?sourceCode=${detail.sourceCode}&sourceProgramId=${detail.id}`,
       )
     })
 
-    await screen.findByRole('heading', { name: detail.title })
-    fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
     const question = await screen.findByRole('textbox', { name: '공고 원문에 질문하기' })
     fireEvent.change(question, { target: { value: '신청 대상은 누구인가요?' } })
     await waitFor(() => {
@@ -815,7 +823,7 @@ describe('App navigation', () => {
     expect((question as HTMLTextAreaElement).value).toBe('신청 대상은 누구인가요?')
     expect((screen.getByRole('button', { name: '질문하고 근거 받기' }) as HTMLButtonElement).disabled).toBe(false)
     expect(screen.queryByText('private server detail')).toBeNull()
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 
   it.each([
@@ -1365,9 +1373,9 @@ function renderApp(
   appStore: ReturnType<typeof createAppStore>,
   initialEntry = '/',
 ) {
-  // 공개 화면은 비로그인, 작업 채팅(/chat)은 회원 세션으로 시작합니다. 세션 복원 요청은 보내지 않습니다.
+  // 공개 화면은 비로그인, 작업 화면(/app)은 회원 세션으로 시작합니다. 세션 복원 요청은 보내지 않습니다.
   appStore.dispatch(sessionRestored(
-    initialEntry.startsWith('/app/chat')
+    initialEntry.startsWith('/app/')
       ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, hasPassword: true, company: null }
       : null,
   ))
