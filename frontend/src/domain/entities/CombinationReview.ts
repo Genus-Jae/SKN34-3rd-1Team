@@ -44,7 +44,10 @@ export function reviewProgramKey(program: Pick<ReviewProgram, 'sourceCode' | 'so
   return `${program.sourceCode}:${program.sourceProgramId}`
 }
 export function supportsAutomaticReview(program: Pick<ReviewProgram, 'sourceCode' | 'sourceProgramId' | 'subProgramId'>): boolean {
-  return program.sourceCode === 'BIZINFO' && /^PBLN_[0-9]+$/.test(program.sourceProgramId) && program.subProgramId === null
+  const supportedIdentity = program.sourceCode === 'BIZINFO'
+    ? /^PBLN_[0-9]{1,32}$/.test(program.sourceProgramId)
+    : program.sourceCode === 'MSIT' && /^[1-9][0-9]{0,254}$/.test(program.sourceProgramId)
+  return supportedIdentity && program.subProgramId === null
 }
 export function validateReviewDraft(draft: ReviewDraft): ReviewDraft {
   const title = draft.title.trim()

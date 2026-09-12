@@ -64,12 +64,14 @@ V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 
 없어 지원하지 않습니다. 사용자 임의 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색도 지원하지 않습니다.
 같은 공고에 읽을 수 있는 공식 문서가 있으면 크기 제한을 넘거나 텍스트를 추출할 수 없는 첨부는 제외 사유와 파일명을
 `coverageWarnings`에 남기고 분석을 계속합니다. 공고 하나의 모든 지원 형식 첨부가 제외되면 기존처럼 기술 실패로 종료합니다.
+중복 지원 검토 한 실행에서 보존하는 원본은 최대 12개이며, 초과 조합은 일부만 분석하지 않고 `SOURCE_TOO_LARGE`로 종료합니다.
 원문·입력·결과는 실행마다 보존하며 기존 검색 Qdrant 색인과 분리됩니다. 자동 수집 근거를 사람 검수 완료로 표시하지 않습니다.
 같은 요청 키는 AI를 재호출하지 않습니다. 새 실행은 계정 식별자로 기존 공개 요청 제한을 공유하며,
 검토별 DB 동시 실행 1개·Core 프로세스별 중복 검토 2개 한도를 추가로 적용합니다.
 
 `CombinationReviewRunService`는 실행 순서와 저장을, `AiCombinationReviewFacade`는 AI 호출·계약 검증 경계를 담당합니다.
-두 기능이 함께 쓰는 공식 첨부 수집·파싱은 `supportprogram/client/bizinfo/BizInfoAttachmentClient`와
+중복 지원 검토는 기업마당과 과기정통부 공고를 자동 분석하며, 현재 카탈로그의 과기정통부 공식 상세 URL을 다시 검증한 뒤 첨부를 수집합니다.
+두 기능이 함께 쓰는 공식 첨부 수집·파싱은 제공처별 `BizInfoAttachmentClient`·`MsitAttachmentClient`와
 `supportprogram/client/document/SupportProgramDocumentParser`에 두고, AI DTO 변환은 `AiCombinationReviewMapper`가 담당합니다.
 업무 실패는 `domain/exception`, 외부 시스템 실패는 `client/exception`에 두어 Repository·Client가 Service에 역으로 의존하지 않습니다.
 이는 프로젝트의 기능 중심 레이어드 구조이며 범용 port/interface나 전달만 하는 Facade를 추가한 구조는 아닙니다.

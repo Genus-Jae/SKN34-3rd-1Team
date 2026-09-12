@@ -33,7 +33,8 @@ Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 전체 
 분석 POST는 `CombinationReviewRunController → CombinationReviewRunService`로 들어가 다음 경로를 실행합니다.
 
 1. `CombinationReviewRunRepository → MyBatis → MySQL`: 소유자·버전·요청 키 확인 후 RUNNING 입력 스냅샷 예약.
-2. `BizInfoAttachmentClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 수집.
+2. 선택한 제공처에 따라 `BizInfoAttachmentClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 또는
+   `SupportProgramDetailService → MsitAttachmentClient → 과기정통부 공식 상세 → 직접 연결된 첨부`를 수집.
 3. `SupportProgramDocumentParser`: PDFBox 또는 HWPX ZIP/XML의 텍스트·위치를 추출. 신청 문서 발견과 중복 지원 검토가 같은 안전 경계를 사용.
    공고별로 읽을 수 있는 문서가 있으면 크기 제한 초과·텍스트 추출 불가 첨부는 경고와 함께 제외하고, 모두 제외되면 실행을 실패 처리.
 4. `CombinationReviewRunRepository`: 원문 바이트·해시·메타데이터·텍스트를 짧은 transaction에서 보존.

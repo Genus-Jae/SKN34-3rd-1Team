@@ -11,8 +11,12 @@ import ai.govbiz.core.combinationreview.service.exception.*
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.admission.exception.SupportProgramRequestRejectedException
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
+import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
+import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
+import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
 import java.time.Clock
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
@@ -25,7 +29,8 @@ import org.springframework.stereotype.Service
 @Service
 class CombinationReviewRunService(
     private val runs: CombinationReviewRunRepository, private val reviews: CombinationReviewService,
-    private val sources: BizInfoAttachmentClient, private val documentParser: SupportProgramDocumentParser,
+    private val bizInfoAttachments: BizInfoAttachmentClient, private val msitAttachments: MsitAttachmentClient,
+    private val programDetails: SupportProgramDetailService, private val documentParser: SupportProgramDocumentParser,
     private val ai: AiCombinationReviewFacade, private val admission: SupportProgramRequestAdmissionService,
     @param:Qualifier("seoulClock") private val clock: Clock,
 ) {
@@ -59,7 +64,10 @@ class CombinationReviewRunService(
                 if (program.identity.subProgramId != null) {
                     throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
                 }
-                val fetched = sources.collect(program.identity.sourceCode, program.identity.sourceProgramId)
+                val fetched = collectAttachments(program.identity)
+                if (documents.size + fetched.files.size > MAX_REVIEW_SOURCE_DOCUMENTS) {
+                    throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.TOO_LARGE)
+                }
                 warnings.addAll(fetched.warnings.map { "사업 ${index + 1}: $it" })
                 var parsedDocumentCount = 0
                 var rejectedReason: SupportProgramDocumentException.Reason? = null
@@ -130,6 +138,22 @@ class CombinationReviewRunService(
         return doc to bytes
     }
 
+    private fun collectAttachments(identity: ReviewProgramIdentity): SupportProgramAttachments = when (identity.sourceCode) {
+        "BIZINFO" -> bizInfoAttachments.collect(identity.sourceCode, identity.sourceProgramId)
+        "MSIT" -> {
+            if (!MSIT_PROGRAM_ID.matches(identity.sourceProgramId)) {
+                throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
+            }
+            val program = try {
+                programDetails.get(identity.sourceCode, identity.sourceProgramId)
+            } catch (error: SupportProgramNotFoundException) {
+                throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.NOT_FOUND, error)
+            }
+            msitAttachments.collect(identity.sourceCode, identity.sourceProgramId, program.sourceUrl)
+        }
+        else -> throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
+    }
+
     /** 각 하위 경계의 실패를 실행 상태·공개 오류 계약으로 변환한다. */
     private fun failureCode(error: Exception): ReviewRunFailureCode = when (error) {
         is CombinationReviewRunException -> error.code
@@ -146,5 +170,10 @@ class CombinationReviewRunService(
             AiCombinationReviewFacadeException.Reason.CONTEXT_TOO_LARGE -> ReviewRunFailureCode.SOURCE_TOO_LARGE
         }
         else -> ReviewRunFailureCode.RUN_FAILED
+    }
+
+    private companion object {
+        const val MAX_REVIEW_SOURCE_DOCUMENTS = 12
+        val MSIT_PROGRAM_ID = Regex("[1-9][0-9]{0,254}")
     }
 }
