@@ -1,30 +1,59 @@
+function classes(...groups: string[]) {
+  return groups.join(' ')
+}
+
 const focus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary'
 
+// 색상이나 CSS 속성이 아니라 관심 공고함에서 맡는 UI 역할을 이름으로 사용합니다.
+// 머리글·본문 여백·카드·태그·버튼은 shared/workspace의 공용 스타일을 쓰고, 검색 칸·필터 판은 파트너 모집 목록과 같은 모양입니다.
 export const savedCalendarStyles = {
-  page: 'min-h-0 flex-1 overflow-y-auto bg-white text-app-ink',
-  content: 'mx-auto flex w-full max-w-[1500px] flex-col px-6 pt-4 pb-8 max-chat:px-4',
-  filters: 'mt-1 shrink-0 overflow-hidden rounded-2xl border border-sample-border bg-white',
-  filterControls: 'grid grid-cols-[minmax(12rem,1.6fr)_minmax(8rem,0.75fr)_minmax(9rem,0.9fr)_minmax(9rem,0.9fr)_auto] items-end gap-3 p-4 max-[1100px]:grid-cols-2 max-chat:grid-cols-1',
-  searchField: `flex min-h-12 items-center gap-2 rounded-xl border border-sample-border px-3 text-sample-muted focus-within:border-brand-primary ${focus}`,
-  searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-sm text-app-ink placeholder:text-[#9ca3af] focus:outline-0',
-  selectField: 'grid min-w-0 gap-1 text-[0.68rem] font-semibold text-sample-muted [&>select]:min-h-8 [&>select]:w-full [&>select]:cursor-pointer [&>select]:border-0 [&>select]:bg-transparent [&>select]:text-sm [&>select]:font-semibold [&>select]:text-app-ink [&>select]:focus:outline-0 [&>select]:focus-visible:outline-2 [&>select]:focus-visible:outline-brand-primary',
-  appliedFilters: 'flex min-h-14 flex-wrap items-center gap-2 border-t border-sample-border bg-[#f5f7fa] px-4 py-2 text-xs text-sample-muted',
-  filterChip: `inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-sample-border bg-white px-3 text-xs font-medium text-app-ink hover:border-brand-primary hover:text-brand-primary ${focus}`,
-  resetFilters: `ml-auto cursor-pointer border-0 bg-transparent px-1 py-1 text-xs font-semibold text-brand-primary underline-offset-4 hover:underline ${focus}`,
-  noFilters: 'text-xs text-sample-muted',
-  toolbar: 'flex shrink-0 flex-wrap items-center justify-between gap-x-5 gap-y-3 border-b border-sample-border py-4',
-  viewTabs: 'inline-flex overflow-hidden rounded-xl border border-sample-border bg-white p-1',
-  viewTab: `min-h-9 cursor-pointer rounded-lg px-4 text-sm font-semibold text-sample-muted hover:text-brand-primary ${focus}`,
-  activeViewTab: 'bg-brand-accent text-brand-primary',
+  viewTabs: 'flex flex-wrap items-center gap-2',
+  // 검색 칸·선택 상자·적용 조건 띠를 한 카드에 둡니다. 테두리·모서리는 파트너 모집 목록의 필터 판과 같습니다.
+  filterPanel: 'overflow-hidden rounded-[1rem] border border-sample-border bg-white',
+  filterControls: 'grid grid-cols-[minmax(12rem,1.6fr)_minmax(8rem,0.75fr)_minmax(9rem,0.9fr)_minmax(9rem,0.9fr)] items-end gap-3 p-4 max-[1100px]:grid-cols-2 max-chat:grid-cols-1',
+  // 검색 칸도 선택 상자처럼 위에 이름을 두고 아래에 입력 칸을 둡니다.
+  searchField: 'grid min-w-0 gap-1 text-[0.7rem] font-bold text-sample-muted',
+  search: classes(
+    'flex min-h-11 w-full min-w-0 items-center gap-2 rounded-[1rem] border border-sample-border bg-white px-[0.9rem]',
+    'text-[0.85rem] text-[#838a93] focus-within:border-[#087f46] focus-within:shadow-[0_0_0_3px_rgb(8_127_70_/_12%)]',
+  ),
+  searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink outline-0 placeholder:text-sample-muted',
+  selectField: classes(
+    'grid min-w-0 gap-1 text-[0.7rem] font-bold text-sample-muted',
+    '[&>select]:min-h-11 [&>select]:w-full [&>select]:cursor-pointer [&>select]:rounded-[1rem] [&>select]:border [&>select]:border-sample-border [&>select]:bg-white [&>select]:px-3',
+    '[&>select]:text-[0.85rem] [&>select]:font-semibold [&>select]:text-app-ink [&>select]:hover:border-[#087f46] [&>select]:focus:outline-0',
+    '[&>select]:focus-visible:outline-2 [&>select]:focus-visible:outline-brand-primary',
+  ),
+  appliedFilters: 'flex min-h-12 flex-wrap items-center gap-2 border-t border-sample-border bg-[#f6f7f8] px-4 py-2 text-[0.78rem] text-sample-muted',
+  appliedTitle: 'text-[0.78rem] font-bold text-app-ink',
+  filterChip: classes(
+    'inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-sample-border bg-white px-3 text-[0.74rem] font-semibold text-app-ink',
+    'hover:border-[#087f46] hover:text-[#087f46]', focus,
+  ),
+  resetFilters: `ml-auto cursor-pointer border-0 bg-transparent p-0 text-[0.74rem] font-bold text-[#087f46] hover:text-[#066538] ${focus}`,
+  resultCount: 'text-[0.78rem] text-sample-muted',
+  // 달력 위 한 줄: 왼쪽에 연·월 선택과 이동 화살표, 화살표 바로 옆에 이 달의 건수. 옅은 선으로 달력과 나눕니다.
+  toolbar: 'flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-sample-border pb-4',
   navigation: 'flex min-w-0 flex-wrap items-center gap-3',
-  monthSelect: `cursor-pointer rounded-md border border-transparent bg-white py-2 pr-1 text-base font-semibold text-app-ink hover:border-sample-border ${focus}`,
-  arrowGroup: 'inline-flex shrink-0 overflow-hidden rounded-md border border-sample-border',
-  arrow: `grid size-9 cursor-pointer place-items-center border-r border-sample-border bg-white text-sample-muted last:border-r-0 hover:bg-brand-accent hover:text-brand-primary disabled:cursor-not-allowed disabled:bg-app-canvas disabled:text-[#b0b5b9] ${focus} focus-visible:-outline-offset-2`,
-  note: 'flex shrink-0 flex-wrap items-center justify-between gap-2 py-3 text-xs leading-relaxed text-sample-muted',
-  calendarFrame: 'overflow-x-auto rounded-2xl border border-sample-border',
+  arrowGroup: 'inline-flex shrink-0 overflow-hidden rounded-[0.6rem] border border-sample-border',
+  arrow: classes(
+    'grid size-9 cursor-pointer place-items-center border-r border-sample-border bg-white text-sample-muted last:border-r-0',
+    'hover:bg-brand-accent hover:text-brand-primary disabled:cursor-not-allowed disabled:bg-[#f6f7f8] disabled:text-[#b0b5b9]',
+    focus, 'focus-visible:-outline-offset-2',
+  ),
+  // 연도·월은 브라우저 기본 select를 같은 모양으로 씁니다. 평소엔 테두리 없이 굵은 글씨, 올리면 테두리.
+  // `calendar-select`는 index.css에서 펼침 목록을 여섯 줄까지만 보이게 합니다(지원 브라우저에서만).
+  monthSelect: classes(
+    'calendar-select cursor-pointer rounded-[0.6rem] border border-transparent bg-white py-2 pr-1 text-base font-bold text-app-ink hover:border-sample-border', focus,
+  ),
+  note: 'text-[0.78rem] text-sample-muted',
+  calendarFrame: classes(
+    'overflow-x-auto rounded-[1.4rem] border border-sample-border bg-white',
+    'shadow-[0_8px_24px_rgb(32_33_36_/_4%)]',
+  ),
   table: 'w-full min-w-[760px] table-fixed border-separate border-spacing-0',
-  weekday: 'border-b border-sample-border bg-[#f8faf9] px-3 py-3 text-left text-xs font-medium',
-  cell: 'h-[134px] max-w-0 overflow-hidden border-r border-b border-sample-border px-1.5 py-2 align-top last:border-r-0',
+  weekday: 'border-b border-sample-border bg-[#f6f7f8] px-3 py-[0.6rem] text-left text-[0.7rem] font-bold',
+  cell: 'h-[134px] max-w-0 overflow-hidden border-r border-b border-sample-border px-1.5 py-2 align-top last:border-r-0 [tr:last-child_&]:border-b-0',
   date: 'mb-2 ml-2 inline-flex size-6 items-center justify-center rounded-full text-xs',
   events: 'm-0 flex min-w-0 max-w-full list-none flex-col gap-1 overflow-hidden p-0',
   event: 'flex w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-md bg-brand-accent px-1.5 py-1 text-[11px] leading-4 text-[#175d3a]',
@@ -32,22 +61,25 @@ export const savedCalendarStyles = {
   eventTitle: 'block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-medium',
   overflowCount: `block w-full max-w-full cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded px-1.5 py-0.5 text-left text-[11px] font-semibold text-brand-primary hover:bg-brand-accent hover:underline ${focus}`,
   dialogBackdrop: 'fixed inset-0 z-50 grid place-items-center bg-black/30 p-4',
-  dialog: 'flex max-h-[min(680px,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-sample-border bg-white shadow-2xl',
+  dialog: 'flex max-h-[min(680px,calc(100vh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-[1.4rem] border border-sample-border bg-white shadow-2xl',
   dialogHeader: 'flex shrink-0 items-start justify-between gap-4 border-b border-sample-border px-6 py-5',
   dialogClose: `grid size-10 shrink-0 cursor-pointer place-items-center rounded-full text-2xl leading-none text-sample-muted hover:bg-[#f1f3f4] hover:text-app-ink ${focus}`,
   dialogEvents: 'm-0 grid list-none gap-2 overflow-y-auto p-5',
   dialogEvent: 'flex min-w-0 items-start gap-2 rounded-xl border border-sample-border bg-white px-3 py-3 leading-relaxed',
-  listSummary: 'flex flex-wrap items-center justify-between gap-2 py-4 text-sm text-sample-muted',
-  list: 'grid gap-3',
-  listItem: 'grid gap-3 rounded-2xl border border-sample-border bg-white p-5 shadow-[0_3px_16px_rgb(32_33_36_/_3%)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center',
-  listTitle: 'm-0 truncate text-base font-bold text-app-ink',
-  listMeta: 'mt-2 mb-0 text-xs leading-relaxed text-sample-muted',
-  listPeriod: 'flex flex-wrap items-center gap-2 text-xs text-sample-muted sm:justify-end',
-  statusBadge: 'rounded-full bg-brand-accent px-2.5 py-1 font-bold text-brand-primary',
-  closedBadge: 'rounded-full bg-[#f1f3f4] px-2.5 py-1 font-bold text-sample-muted',
-  pagination: 'mt-6 flex flex-wrap justify-center gap-1.5',
-  pageButton: `min-h-9 min-w-9 cursor-pointer rounded-lg border px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${focus}`,
-  inactivePageButton: 'border-sample-border bg-white text-sample-muted hover:border-brand-primary hover:text-brand-primary',
+  // 목록 보기는 파트너 모집과 같은 카드 격자입니다.
+  cardGrid: 'grid gap-4 grid-cols-[repeat(auto-fill,minmax(min(100%,max(300px,calc((100%_-_2rem)/3))),1fr))]',
+  cardTop: 'flex items-center justify-between gap-3',
+  cardPeriod: 'text-[0.72rem] font-bold text-sample-muted',
+  cardTitle: 'm-0 line-clamp-2 text-[1.02rem] font-bold leading-[1.4] tracking-[-0.025em] text-app-ink [overflow-wrap:anywhere]',
+  cardTitleLink: 'text-app-ink no-underline hover:text-brand-primary',
+  cardMeta: 'm-0 line-clamp-2 text-[0.75rem] leading-[1.5] text-sample-muted',
+  tagRow: 'mt-auto flex flex-wrap gap-[0.35rem] pt-1 [&>span]:max-w-full [&>span]:shrink [&>span]:truncate',
+  pagination: 'flex flex-wrap items-center justify-center gap-2 pt-2',
+  pageButton: classes(
+    'inline-flex min-h-9 min-w-9 cursor-pointer items-center justify-center rounded-full border px-3 text-[0.74rem] font-bold',
+    'disabled:cursor-not-allowed disabled:opacity-40', focus,
+  ),
+  inactivePageButton: 'border-sample-border bg-white text-sample-muted hover:border-[#087f46] hover:text-[#087f46]',
   activePageButton: 'border-brand-primary bg-brand-primary text-white',
-  footer: 'm-0 shrink-0 pt-3 text-xs leading-relaxed text-sample-muted',
+  footer: 'm-0 text-[0.72rem] leading-relaxed text-sample-muted',
 } as const
