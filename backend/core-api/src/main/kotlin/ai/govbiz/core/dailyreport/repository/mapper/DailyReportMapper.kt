@@ -28,4 +28,14 @@ interface DailyReportMapper {
     fun finishDelivery(@Param("id") id: Long, @Param("status") status: String, @Param("now") now: LocalDateTime): Int
     fun expireDelivery(@Param("before") before: LocalDateTime): Int
     fun findDueAccountIds(@Param("date") date: LocalDate, @Param("limit") limit: Int): List<Long>
+    fun insertGenerationJob(@Param("reportId") reportId: Long, @Param("key") key: String, @Param("now") now: LocalDateTime, @Param("deadline") deadline: LocalDateTime): Int
+    fun hasUnknownGeneration(@Param("reportId") reportId: Long): Boolean
+    fun findPublishableJobs(@Param("now") now: LocalDateTime): List<Long>
+    fun reserveJobPublication(@Param("id") id: Long, @Param("now") now: LocalDateTime, @Param("retryAt") retryAt: LocalDateTime): Int
+    fun markJobPublished(@Param("id") id: Long, @Param("now") now: LocalDateTime): Int
+    fun claimGenerationJob(@Param("id") id: Long, @Param("now") now: LocalDateTime): Int
+    fun findJobReport(@Param("id") id: Long): DailyReportDbRow?
+    fun finishGenerationJob(@Param("id") id: Long, @Param("key") key: String, @Param("status") status: String, @Param("now") now: LocalDateTime): Int
+    fun expireQueuedJobs(@Param("now") now: LocalDateTime): Int
+    fun expireRunningJobs(@Param("before") before: LocalDateTime, @Param("now") now: LocalDateTime): Int
 }

@@ -22,6 +22,7 @@ class DailyReportPropertiesTest {
     fun springBindsExplicitEnablementAndBudgetSettings() {
         ApplicationContextRunner().withUserConfiguration(DailyReportConfig::class.java).withPropertyValues(
             "app.daily-report.enabled=true", "app.daily-report.mail-enabled=true",
+            "app.daily-report.queue.enabled=true",
             "app.daily-report.from=reports@example.org", "app.daily-report.frontend-base-url=https://govbiz.example",
             "app.daily-report.send-hour=9", "app.daily-report.max-reports-per-day=7",
         ).run { context ->
@@ -41,8 +42,16 @@ class DailyReportPropertiesTest {
             val values = Properties()
             ClassPathResource("application-$profile.properties").inputStream.use(values::load)
             assertEquals("false", values.getProperty("app.daily-report.enabled"))
+            assertEquals("false", values.getProperty("app.daily-report.queue.enabled"))
             assertEquals("false", values.getProperty("app.daily-report.mail-enabled"))
         }
+    }
+
+    @Test
+    fun schedulerWithoutQueueFailsAtStartupInsteadOfPretendingToBeEnabled() {
+        ApplicationContextRunner().withUserConfiguration(DailyReportConfig::class.java)
+            .withPropertyValues("app.daily-report.enabled=true", "app.daily-report.queue.enabled=false")
+            .run { context -> assertTrue(context.startupFailure != null) }
     }
 
     @Test

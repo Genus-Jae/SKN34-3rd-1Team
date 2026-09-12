@@ -56,6 +56,15 @@ V20에 맞추고 미적용 대화용 V19를 한 번만 out-of-order로 적용하
 발송하며 자동 발송은 기본 비활성화입니다. [API·설정·장애 경계와 사용 순서](../../docs/daily-reports.md)를 참고하세요.
 관련도는 선정 확률이 아니며 PDF/HWP 전체 분석·뉴스 브리핑은 포함하지 않습니다.
 
+정기 생성은 `V23`의 `daily_report_generation_job`에 리포트·예산과 함께 예약한 뒤 RabbitMQ로 전달합니다.
+`DailyReportOutboxScheduler → DailyReportQueueClient → RabbitMQ → DailyReportGenerationConsumer → DailyReportService`이며,
+Core 내부 소비자 1개가 기존 AI 경로를 재사용합니다. 웹 미리보기는 기존 동기 계약, SMTP는 기존 발송 경로를 유지합니다.
+직접 Core를 실행할 때 큐는 기본 비활성입니다. 정기 실행에는 `DAILY_REPORT_ENABLED=true`와
+`DAILY_REPORT_QUEUE_ENABLED=true` 모두 필요하며, 큐가 꺼진 정기 실행 설정은 시작 시 거부합니다.
+브로커는 `RABBITMQ_HOST`/`RABBITMQ_PORT`/`RABBITMQ_USERNAME`/`RABBITMQ_PASSWORD`/`RABBITMQ_VHOST`로 연결합니다.
+Compose에서는 큐만 기본 활성이고 새 정기 작업 예약·메일은 기본 비활성입니다. 기존 작업이 있다면 큐만 켜도 처리됩니다.
+[Outbox·중복 처리·실행 불명·설정·검증 상세](../../docs/rabbitmq-daily-report-generation.md)를 참고하세요.
+
 중복 지원 검토는 `ai.govbiz.core.combinationreview`에 세션 인증 기반 생성·목록·상세·입력 수정·삭제 API를 구현했습니다.
 V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합니다. 공식 첨부 자동 수집·PDF/HWPX 파싱과
 단일 Agent 분석을 사용자 화면에 연결했습니다.

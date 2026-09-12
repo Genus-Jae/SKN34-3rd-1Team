@@ -19,6 +19,7 @@ flowchart LR
     Web[React Web] --> Core[Spring Boot Core API]
     Core --> DB[(MySQL 공고 카탈로그)]
     Core --> Redis[(Redis 로그인 복원용 검색 결과·조건)]
+    Core <--> RabbitMQ[RabbitMQ 정기 리포트 생성 큐]
     Core --> AI[FastAPI AI Service]
     AI --> Vector[(Qdrant 공고·원문 근거 벡터 컬렉션)]
     AI --> OpenAI[OpenAI 임베딩·공고 점수화·근거 답변]
@@ -35,6 +36,9 @@ flowchart LR
 Redis는 비회원 검색의 전체 추천 결과·조건을 30분 보관하고 로그인 후 복원할 때 사용합니다.
 첫 AI 검색의 캐시나 대화 기록·회원 세션 저장소로 사용하는 것은 아닙니다.
 저장 구조·만료·계정 소유권·장애 처리는 [Redis 적용 상세](../redis-search-result-restoration.md)를 참고하세요.
+정기 리포트 생성은 MySQL에 예산·작업 Outbox를 함께 저장한 뒤 RabbitMQ로 전달합니다. 소비자는 Core 내부에 있으며,
+DB 상태 전이로 중복 실행을 막습니다. SMTP·수동 미리보기는 기존 경로입니다.
+[RabbitMQ 적용 상세](../rabbitmq-daily-report-generation.md)는 transaction 경계와 재시도·실행 불명 처리를 설명합니다.
 
 ## Frontend: 화면과 데이터 처리 분리
 

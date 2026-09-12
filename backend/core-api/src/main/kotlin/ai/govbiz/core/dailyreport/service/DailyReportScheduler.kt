@@ -3,6 +3,7 @@ package ai.govbiz.core.dailyreport.service
 import ai.govbiz.core.account.repository.AccountRepository
 import ai.govbiz.core.dailyreport.client.DailyReportMailClient
 import ai.govbiz.core.dailyreport.config.DailyReportProperties
+import ai.govbiz.core.dailyreport.config.DailyReportQueueProperties
 import ai.govbiz.core.dailyreport.repository.DailyReportRepository
 import ai.govbiz.core.dailyreport.domain.exception.DailyReportErrorCode
 import ai.govbiz.core.dailyreport.domain.exception.DailyReportException
@@ -23,6 +24,7 @@ class DailyReportScheduler(
     private val reports: DailyReportService, private val repository: DailyReportRepository,
     private val accounts: AccountRepository, private val mail: DailyReportMailClient,
     private val properties: DailyReportProperties, @param:Qualifier("seoulClock") private val clock: Clock,
+    private val queue: DailyReportQueueProperties,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -30,6 +32,10 @@ class DailyReportScheduler(
     @Scheduled(fixedDelayString = "PT5M", initialDelayString = "PT1M")
     fun run() {
         repository.expireStaleWork()
+        if (!queue.enabled) {
+            log.warn("Scheduled daily report generation requires app.daily-report.queue.enabled=true")
+            return
+        }
         if (!mail.isAvailable() || LocalTime.now(clock).hour < properties.sendHour) return
         val runDate = LocalDate.now(clock)
         val due = repository.dueAccountIds(runDate, properties.maxAccountsPerRun + 1)
@@ -38,7 +44,7 @@ class DailyReportScheduler(
             if (LocalDate.now(clock) != runDate || LocalTime.now(clock).hour < properties.sendHour) break
             val account = accounts.findById(id)?.takeUnless { it.isSuspended } ?: continue
             try {
-                val report = reports.preview(account)
+                val report = reports.enqueueScheduled(account)
                 if (LocalDate.now(clock) != runDate) break
                 reports.deliver(report)
             } catch (error: DailyReportException) {

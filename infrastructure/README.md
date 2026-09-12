@@ -1,7 +1,7 @@
 # GovBiz Docker Compose
 
 Docker Compose는 React 개발 서버, Core API, AI Service, 원본 카탈로그용 MySQL과 의미 검색용
-Qdrant, 로그인 후 검색 결과 복원용 Redis를 함께 실행하는 로컬 개발 구성입니다. 회원 세션은 동작하지만 개발용 시드 로그인이 켜져 있고 쿠키 `Secure`가
+Qdrant, 로그인 후 검색 결과 복원용 Redis, 정기 리포트 생성용 RabbitMQ를 함께 실행하는 로컬 개발 구성입니다. 회원 세션은 동작하지만 개발용 시드 로그인이 켜져 있고 쿠키 `Secure`가
 꺼져 있으므로 운영 배포·TLS·운영 인증 구성으로 쓰지 않습니다.
 전체 기술 선택과 데이터 흐름은 [프로젝트 기술 문서](../docs/technology.md)를 참고하세요.
 
@@ -15,6 +15,7 @@ Browser (127.0.0.1:5173)
           → core-api:8080
               ├→ mysql:3306 (사용자 검색 카탈로그)
               ├→ redis:6379 (로그인 전 검색 결과·조건의 30분 임시 보관)
+              ├↔ rabbitmq:5672 (정기 리포트 생성 작업 ID 전달, 소비자는 Core 내부)
               ├→ https://apis.data.go.kr (백그라운드 동기화)
               └→ ai-service:8000
                     ├→ qdrant:6333 (현재 공고의 벡터 색인)
@@ -30,6 +31,7 @@ Browser (127.0.0.1:5173)
 | Core API 컨테이너 | `http://ai-service:8000` | Compose 내부 DNS |
 | Core API 컨테이너 | `jdbc:mysql://mysql:3306/govbiz` | 사용자 검색용 지원사업 카탈로그 MySQL |
 | Core API 컨테이너 | `redis:6379` | 로그인 후 원본 검색 결과 복원. 호스트 포트는 공개하지 않음 |
+| Core API 컨테이너 | `rabbitmq:5672` | 정기 리포트 생성 큐. AMQP·관리 UI 호스트 포트는 공개하지 않음 |
 | Core API 컨테이너 | `https://apis.data.go.kr` | 백그라운드 동기화 전용 실제 기업마당 공고 upstream |
 | AI Service 컨테이너 | `https://api.openai.com/v1` | 공고·질의 임베딩 및 후보 점수화 |
 | AI Service 컨테이너 | `http://qdrant:6333` | 공고 임베딩 저장·의미 검색 |
@@ -37,10 +39,17 @@ Browser (127.0.0.1:5173)
 | Host의 DB 도구 | `127.0.0.1:3306` | loopback으로만 공개한 MySQL 포트 |
 | Host 터미널 | `http://127.0.0.1:6333` | loopback으로만 공개한 개발용 Qdrant API |
 
-`core-api`, `ai-service`, `mysql`, `qdrant`, `redis`는 컨테이너 네트워크 안에서만 해석되는 이름입니다. 브라우저
+`core-api`, `ai-service`, `mysql`, `qdrant`, `redis`, `rabbitmq`는 컨테이너 네트워크 안에서만 해석되는 이름입니다. 브라우저
 JavaScript가 `http://core-api:8080`을 직접 호출하면 실패합니다.
 
 ## 실행
+
+RabbitMQ는 `4.3.5-management-alpine` 단일 노드와 `rabbitmq-data` 볼륨을 사용합니다. Core는 브로커 기동 확인 후 시작합니다.
+Compose는 `DAILY_REPORT_QUEUE_ENABLED=true`이지만 정기 예약·메일은 기존처럼 기본 비활성입니다. 이미 예약된 작업은
+큐 스위치만 켜도 실행될 수 있으므로 새 정기 예약과 기존 작업 처리를 구분하세요. 별도 Worker 서버는 추가하지 않았습니다.
+`RABBITMQ_USERNAME`/`RABBITMQ_PASSWORD`의 공개 기본값은 개발용이며 운영 secret과 네트워크/TLS 설계를 대체하지 않습니다.
+사용자·비밀번호는 새 볼륨 초기화 때 적용됩니다. 기존 볼륨의 비밀번호 변경을 위해 볼륨을 삭제하지 마세요.
+[큐·DB Outbox·장애/중복·운영 확인](../docs/rabbitmq-daily-report-generation.md)을 참고하세요.
 
 Redis는 8.2.9로 고정하고 `redis-data` 볼륨에 AOF(`appendfsync everysec`)를 기록합니다. Core 재시작과
 Redis 컨테이너 재생성에도 만료 전 결과와 최초 복원 계정이 유지되지만, Redis 비정상 종료 시 최근 약 1초는
@@ -198,15 +207,17 @@ Compose 네트워크 내부에서 Core API만 호출합니다. Host나 브라우
 
 ### 백엔드 변경 반영과 화면·API 버전 불일치
 
-Redis 도입 전부터 실행하던 스택은 먼저 아래 명령으로 Redis를 추가한 뒤 갱신 스크립트를 실행합니다.
+Redis/RabbitMQ 도입 전부터 실행하던 스택은 먼저 아래 명령으로 없는 서비스를 추가한 뒤 갱신 스크립트를 실행합니다.
 기존 MySQL·Qdrant 볼륨은 건드리지 않습니다. 전환 전 Core 메모리에 있던 검색 토큰은 이전할 수 없으므로
 해당 사용자만 새로 검색해야 합니다. 이후 Redis에 발급한 토큰부터 Core 재시작을 견딥니다.
 
 ```bash
-docker compose --env-file .env --file infrastructure/compose.yaml up --detach --wait redis
+docker compose --env-file .env --file infrastructure/compose.yaml up --detach --wait redis rabbitmq
 ```
 
-갱신 스크립트는 Redis를 포함한 기존 데이터 서비스가 실행 중인지 확인한 후 Core·AI만 교체합니다.
+갱신 스크립트는 Redis·RabbitMQ를 포함한 기존 데이터 서비스가 실행 중인지 확인한 후 Core·AI만 교체합니다.
+RabbitMQ만 아직 없다면 위 명령의 서비스 목록을 `rabbitmq`로 지정할 수 있습니다. Core 재빌드 후 Flyway `V23`이
+작업 테이블을 추가합니다. `DAILY_REPORT_ENABLED=false` 등 기존 수집·색인·발송 스위치는 확인 후 유지합니다.
 
 Web은 소스 디렉터리를 bind mount하여 Vite가 변경을 바로 반영하지만, Core·AI는 이미지 안의 JAR/Python 코드를
 실행합니다. 소스 수정이나 `docker compose restart`만으로 백엔드 코드가 갱신되지는 않습니다.
@@ -221,10 +232,10 @@ GET만 있다면 실행 중인 Core가 구버전인지 확인합니다. Core만 
 ./infrastructure/scripts/refresh-backend.sh
 ```
 
-스크립트는 기본 `govbiz` 프로젝트의 Compose 설정과 기존 컨테이너·서비스 구성을 먼저 검사합니다. MySQL·Qdrant·Web이
+스크립트는 기본 `govbiz` 프로젝트의 Compose 설정과 기존 컨테이너·서비스 구성을 먼저 검사합니다. MySQL·Qdrant·Redis·RabbitMQ·Web이
 실행 중이면 현재 checkout으로 Core·AI 이미지만 빌드하고, AI 준비 확인 후 두 컨테이너를 순서대로 교체합니다.
 마지막으로 Web 프록시 경유 `/api/v1/health`, `/api/v1/health/ai-service`의 200 응답을 확인합니다. `down`,
-`--volumes` 또는 데이터 컨테이너 재생성은 실행하지 않으므로 기존 MySQL·Qdrant 컨테이너와 named volume은 건드리지 않습니다.
+`--volumes` 또는 데이터 컨테이너 재생성은 실행하지 않으므로 기존 MySQL·Qdrant·Redis·RabbitMQ 컨테이너와 named volume은 건드리지 않습니다.
 스택이 다른 이름으로 시작됐다면 `docker compose ls`로 이름을 먼저 확인한 뒤
 `GOVBIZ_COMPOSE_PROJECT_NAME=확인한이름 ./infrastructure/scripts/refresh-backend.sh`로 명시합니다. 스크립트는 해당 프로젝트가
 없거나 예상 서비스 구성이 아니면 빌드·교체 전에 중단합니다. Core 시작 시 기존 설정에 따라 자동 수집·색인이 동작할 수 있고
@@ -238,7 +249,7 @@ OpenAI 임베딩 비용이 발생할 수 있습니다.
 docker compose --env-file .env --file infrastructure/compose.yaml down --remove-orphans
 ```
 
-로컬 데이터를 의도적으로 초기화할 때만 다음 명령을 사용합니다. `mysql-data`, `qdrant-data`, `redis-data`,
+로컬 데이터를 의도적으로 초기화할 때만 다음 명령을 사용합니다. `mysql-data`, `qdrant-data`, `redis-data`, `rabbitmq-data`,
 `web-node-modules` volume을 삭제하므로 필요한 데이터는 먼저 백업해야 합니다. 삭제한 카탈로그와
 색인은 다시 수집·구축해야 하며, 실제 OpenAI를 쓰는 색인 재구축에는 비용이 발생합니다.
 
@@ -293,6 +304,9 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 11. 익명 검색 토큰을 로그인 후 복원하고 Core 재시작 뒤에도 동일 결과·소유권이 유지되는지 확인합니다.
     Redis 중지 중에는 복원/익명 결과 저장이 503이고 MySQL 카탈로그는 200인지 확인하며,
     같은 AOF 볼륨으로 Redis를 재생성한 뒤 기존 결과가 그대로 복원되는지도 확인합니다.
+    RabbitMQ의 quorum 주 큐/DLQ와 소비자 1개 연결도 확인합니다. 검증용 브로커 중단 중 카탈로그가 200을 유지하고,
+    같은 브로커 볼륨으로 재생성 후 Core 재시작 없이 소비자가 재연결되는지 확인합니다.
+    정기 생성·SMTP는 강제로 끈 상태이며 실제 작업·중복·재발행은 별도의 MySQL·RabbitMQ Testcontainers 테스트에서 검증합니다.
 
 전체 추천·제공처 포함 여부는 테스트 회원 세션으로 확인합니다. 비회원의 공개 2건 제한과 Redis 토큰 발급·복원은
 별도의 익명 요청으로 확인하므로, 숨겨진 공고가 비회원 응답에 나타나야 통과하는 검증을 하지 않습니다.

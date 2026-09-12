@@ -26,6 +26,7 @@
 | 공고 저장 | MySQL 8.4 | 현재 공고와 원본 식별자, 신청 기간 저장 | [Compose 설정](../infrastructure/compose.yaml) |
 | 의미 검색 | Qdrant 1.17.1, qdrant-client 1.17.x | 임베딩 벡터 저장과 유사도 검색 | [Compose 설정](../infrastructure/compose.yaml) |
 | 임시 검색 결과 보관 | Redis 8.2.9, Spring Data Redis·Lettuce | 비회원 검색 후 로그인 복원용 전체 결과·조건·소유 계정, 고정 30분 TTL | [Redis 적용 상세](redis-search-result-restoration.md) |
+| 정기 작업 전달 | RabbitMQ 4.3.5, Spring AMQP | 정기 리포트 생성 전용 quorum queue. 실행 상태·예산·Outbox는 MySQL | [RabbitMQ 적용 상세](rabbitmq-daily-report-generation.md) |
 | 검증·실행 | Vitest, Testing Library, JUnit, Testcontainers, pytest, Docker Compose | 서비스별 테스트와 컨테이너 통합 검증 | [CI 정의](../.github/workflows/ci.yml) |
 
 AI 패키지는 Python `>=3.11,<3.15`를 선언하며, Frontend와 AI Service의 의존성은 각각
@@ -162,11 +163,12 @@ C02의 조건 변경 해석은 공고 검색에 앞서는 별도 구체 Agent입
 
 ## 개발 환경과 검증
 
-Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Qdrant, Redis를 함께 실행합니다.
-AI Service와 Redis는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
+Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Qdrant, Redis, RabbitMQ를 함께 실행합니다.
+AI Service·Redis·RabbitMQ는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
+RabbitMQ 소비자는 Core 내부에 있으며 별도 Worker 서버나 운영 고가용성 구성은 아닙니다.
 이 구성에 운영 인증·배포 자동화가 포함되어 있다고 가정하면 안 됩니다.
 
-[GitHub Actions](../.github/workflows/ci.yml)는 Frontend 테스트·lint·build, Core 빌드·MySQL·Redis 통합 테스트,
+[GitHub Actions](../.github/workflows/ci.yml)는 Frontend 테스트·lint·build, Core 빌드·MySQL·Redis·RabbitMQ 통합 테스트,
 AI 테스트·패키지 빌드·평가 도구 테스트, 컨테이너 통합 검증을 정의합니다. Compose 검증은 실제
-MySQL·Qdrant·Redis와 로컬 공고 제공처·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
+MySQL·Qdrant·Redis·RabbitMQ와 로컬 공고 제공처·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
 실제 공고 검색의 정확도와 원문 인용 답변의 정확도는 각각 별도의 실데이터 평가 대상입니다.

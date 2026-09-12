@@ -1,6 +1,24 @@
 name: govbiz
 
 services:
+  rabbitmq:
+    image: rabbitmq:4.3.5-management-alpine
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-govbiz}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-govbiz-rabbit-local}
+      RABBITMQ_DEFAULT_VHOST: govbiz
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    # 개발망 내부 전용. AMQP와 관리 UI 포트를 호스트에 공개하지 않는다.
+    healthcheck:
+      # 초기 probe가 root 소유 .erlang.cookie를 만들어 서버 기동과 충돌하지 않게 한다.
+      test: ["CMD", "su-exec", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
   redis:
     image: redis:8.2.9-alpine
     init: true
@@ -79,7 +97,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-govbiz}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-govbiz-rabbit-local}
+      RABBITMQ_VHOST: govbiz
+      DAILY_REPORT_QUEUE_ENABLED: ${DAILY_REPORT_QUEUE_ENABLED:-true}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT:-1s}
@@ -235,6 +260,7 @@ services:
       - "8004"
 
 volumes:
+  rabbitmq-data:
   redis-data:
   mysql-data:
   qdrant-data:

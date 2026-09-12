@@ -14,6 +14,7 @@ import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmi
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchState
+import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchReadinessResult
 import ai.govbiz.core.supportprogram.service.evidence.SupportProgramEvidenceService
 import ai.govbiz.core.supportprogram.service.readiness.SupportProgramSearchReadinessService
 import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchService
@@ -44,6 +45,19 @@ class DailyReportService(
 
     fun preview(account: Account): DailyReport = admission.execute("daily-report:${account.id}") { generate(account) }
 
+    /** 정기 실행은 모델을 호출하지 않고 생성 예약과 Outbox만 함께 저장한다. */
+    fun enqueueScheduled(account: Account): DailyReport {
+        val company = companies.findByAccountId(account.id) ?: throw CompanyNotRegisteredException()
+        val date = LocalDate.now(clock)
+        repository.forDay(account.id, date)?.let {
+            if (it.status != DailyReportStatus.FAILED || it.generationAttempts >= 2) return it
+        }
+        if (!readiness.get().indexReady) throw DailyReportException(DailyReportErrorCode.SEARCH_NOT_READY)
+        val input = DailyReportInput(company.companyName, company.profile.region, company.profile.industry,
+            repository.subscription(account.id)?.supportPurpose.orEmpty())
+        return repository.reserveScheduled(account.id, date, input, properties.maxReportsPerDay).report
+    }
+
     private fun generate(account: Account): DailyReport {
         val company = companies.findByAccountId(account.id) ?: throw CompanyNotRegisteredException()
         val date = LocalDate.now(clock)
@@ -61,27 +75,7 @@ class DailyReportService(
             val report = reservation.report
             if (!reservation.acquired) return report
             try {
-                // 재시도도 첫 생성 때 고정한 조건을 사용한다. 정확한 설립일은 보유하지 않아 전송하지 않는다.
-                val conditions = SupportProgramCompanyConditions(region = report.input.region, industry = report.input.industry,
-                    supportPurpose = report.input.supportPurpose.takeIf(String::isNotBlank))
-                val query = listOf(report.input.region, report.input.industry, report.input.supportPurpose, "지원사업")
-                    .filter(String::isNotBlank).joinToString(" ")
-                val programs = search.search(query, true, conditions).programs.take(properties.maxPrograms).map(::analyze)
-                val warnings = buildList {
-                    add("관련도 점수는 검색 조건과 공고의 관련성입니다. 선정확률이나 신청 자격 확정이 아닙니다.")
-                    add("정확한 설립일·매출·인력·제외 요건은 확인하지 않았습니다. 첨부 PDF·HWP와 제출서류 전체는 직접 확인해 주세요.")
-                    if (ready.searchState != SupportProgramSearchState.SEARCHABLE) {
-                        add("일부 제공처가 준비 중이거나 최근 수집에 실패했습니다. 현재 검색 가능한 기존 공고만 포함합니다.")
-                    }
-                    ready.sources.filter { it.indexReady }.forEach {
-                        add("${it.sourceName} 최근 수집 성공: ${it.lastSuccessfulSyncAt ?: "확인할 수 없음"}")
-                    }
-                    if (programs.any { it.evidenceStatus == DailyReportEvidenceStatus.FAILED }) {
-                        add("일부 공고의 원문 근거 분석에 실패했습니다. 해당 공고는 공식 원문에서 확인해 주세요.")
-                    }
-                    if (programs.isEmpty()) add("현재 조건에 추천할 접수 중 공고를 찾지 못했습니다. 전체 공고의 부재를 의미하지는 않습니다.")
-                }
-                repository.succeed(report, DailyReportContent(programs, warnings))
+                repository.succeed(report, generateContent(report, ready))
             } catch (_: Exception) {
                 repository.fail(report)
                 log.warn("Daily report generation failed; reportId={}", report.id)
@@ -90,6 +84,59 @@ class DailyReportService(
         } finally {
             generating.set(false)
         }
+    }
+
+    /** 중복 전달은 DB의 QUEUED → RUNNING 전이로 차단한다. 미리보기와도 프로세스 내 생성 슬롯을 공유한다. */
+    fun generateQueued(jobId: Long): Boolean {
+        if (!generating.compareAndSet(false, true)) return false
+        try {
+            val report = repository.claimGenerationJob(jobId) ?: return true
+            try {
+                val account = accounts.findById(report.accountId)
+                val subscription = repository.subscription(report.accountId)
+                if (account == null || account.isSuspended || report.reportDate != LocalDate.now(clock) ||
+                    subscription?.enabled != true || subscription.confirmedEmail != account.email ||
+                    subscription.confirmedAt == null || subscription.consentAt == null ||
+                    companies.findByAccountId(report.accountId) == null) {
+                    repository.finishGenerationJob(jobId, report, null, skipped = true)
+                    return true
+                }
+                val content = admission.execute("daily-report:${report.accountId}") {
+                    val ready = readiness.get()
+                    if (!ready.indexReady) throw DailyReportException(DailyReportErrorCode.SEARCH_NOT_READY)
+                    generateContent(report, ready)
+                }
+                repository.finishGenerationJob(jobId, report, content)
+            } catch (_: Exception) {
+                repository.finishGenerationJob(jobId, report, null)
+                log.warn("Queued daily report generation failed; jobId={}", jobId)
+            }
+            return true
+        } finally { generating.set(false) }
+    }
+
+    private fun generateContent(report: DailyReport, ready: SupportProgramSearchReadinessResult): DailyReportContent {
+        // 재시도도 첫 생성 때 고정한 조건을 사용한다. 정확한 설립일은 보유하지 않아 전송하지 않는다.
+        val conditions = SupportProgramCompanyConditions(region = report.input.region, industry = report.input.industry,
+            supportPurpose = report.input.supportPurpose.takeIf(String::isNotBlank))
+        val query = listOf(report.input.region, report.input.industry, report.input.supportPurpose, "지원사업")
+            .filter(String::isNotBlank).joinToString(" ")
+        val programs = search.search(query, true, conditions).programs.take(properties.maxPrograms).map(::analyze)
+        val warnings = buildList {
+            add("관련도 점수는 검색 조건과 공고의 관련성입니다. 선정확률이나 신청 자격 확정이 아닙니다.")
+            add("정확한 설립일·매출·인력·제외 요건은 확인하지 않았습니다. 첨부 PDF·HWP와 제출서류 전체는 직접 확인해 주세요.")
+            if (ready.searchState != SupportProgramSearchState.SEARCHABLE) {
+                add("일부 제공처가 준비 중이거나 최근 수집에 실패했습니다. 현재 검색 가능한 기존 공고만 포함합니다.")
+            }
+            ready.sources.filter { it.indexReady }.forEach {
+                add("${it.sourceName} 최근 수집 성공: ${it.lastSuccessfulSyncAt ?: "확인할 수 없음"}")
+            }
+            if (programs.any { it.evidenceStatus == DailyReportEvidenceStatus.FAILED }) {
+                add("일부 공고의 원문 근거 분석에 실패했습니다. 해당 공고는 공식 원문에서 확인해 주세요.")
+            }
+            if (programs.isEmpty()) add("현재 조건에 추천할 접수 중 공고를 찾지 못했습니다. 전체 공고의 부재를 의미하지는 않습니다.")
+        }
+        return DailyReportContent(programs, warnings)
     }
 
     fun deliver(report: DailyReport) {

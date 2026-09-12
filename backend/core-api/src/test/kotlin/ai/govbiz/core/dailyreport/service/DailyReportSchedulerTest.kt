@@ -4,6 +4,7 @@ import ai.govbiz.core.account.helper.AccountTestHelper
 import ai.govbiz.core.account.repository.AccountRepository
 import ai.govbiz.core.dailyreport.client.DailyReportMailClient
 import ai.govbiz.core.dailyreport.config.DailyReportProperties
+import ai.govbiz.core.dailyreport.config.DailyReportQueueProperties
 import ai.govbiz.core.dailyreport.domain.*
 import ai.govbiz.core.dailyreport.domain.exception.DailyReportErrorCode
 import ai.govbiz.core.dailyreport.domain.exception.DailyReportException
@@ -40,7 +41,7 @@ class DailyReportSchedulerTest {
         doReturn(true).`when`(mail).isAvailable()
         doReturn(listOf(1L, 2L)).`when`(repository).dueAccountIds(date, 21)
         doReturn(first).`when`(accounts).findById(1)
-        doAnswer { clock.current = Instant.parse("2026-09-09T15:01:00Z"); report }.`when`(reports).preview(first)
+        doAnswer { clock.current = Instant.parse("2026-09-09T15:01:00Z"); report }.`when`(reports).enqueueScheduled(first)
         scheduler(clock).run()
         verify(reports, never()).deliver(AccountTestHelper.anyValue())
         verify(accounts, never()).findById(2)
@@ -53,14 +54,21 @@ class DailyReportSchedulerTest {
         doReturn(first).`when`(accounts).findById(1)
         doReturn(second).`when`(accounts).findById(2)
         val ready = report.copy(accountId = 2)
-        doReturn(ready).`when`(reports).preview(second)
-        doThrow(DailyReportException(DailyReportErrorCode.REPORT_DAILY_BUDGET_EXCEEDED)).`when`(reports).preview(first)
+        doReturn(ready).`when`(reports).enqueueScheduled(second)
+        doThrow(DailyReportException(DailyReportErrorCode.REPORT_DAILY_BUDGET_EXCEEDED)).`when`(reports).enqueueScheduled(first)
         scheduler(Clock.fixed(Instant.parse("2026-09-09T00:00:00Z"), ZoneId.of("Asia/Seoul"))).run()
         verify(reports).deliver(ready)
         verify(reports, times(1)).deliver(AccountTestHelper.anyValue())
     }
 
-    private fun scheduler(clock: Clock) = DailyReportScheduler(reports, repository, accounts, mail, DailyReportProperties(enabled = true), clock)
+    @Test
+    fun disabledQueueNeverFallsBackToSynchronousAiGeneration() {
+        DailyReportScheduler(reports, repository, accounts, mail, DailyReportProperties(enabled = true),
+            Clock.fixed(Instant.parse("2026-09-09T00:00:00Z"), ZoneId.of("Asia/Seoul")), DailyReportQueueProperties(false)).run()
+        verifyNoInteractions(reports, accounts, mail)
+    }
+
+    private fun scheduler(clock: Clock) = DailyReportScheduler(reports, repository, accounts, mail, DailyReportProperties(enabled = true), clock, DailyReportQueueProperties(true))
     private class MutableClock(var current: Instant) : Clock() {
         override fun instant(): Instant = current
         override fun getZone(): ZoneId = ZoneId.of("Asia/Seoul")

@@ -32,6 +32,8 @@ if [[ "${VERIFY_CHECK_SAFE_UPSTREAM_ENV:-false}" == "true" ]]; then
   [[ "$DATA_GO_KR_SERVICE_KEY" == "compose%2Bverification%2Fkey%3D" ]] || exit 106
   [[ "$DAILY_REPORT_ENABLED" == "false" && "$DAILY_REPORT_MAIL_ENABLED" == "false" ]] || exit 107
   [[ -z "$DAILY_REPORT_FROM$SMTP_HOST$SMTP_USERNAME$SMTP_PASSWORD" ]] || exit 108
+  [[ "$DAILY_REPORT_QUEUE_ENABLED" == "true" ]] || exit 109
+  [[ "$RABBITMQ_USERNAME" == "govbiz-verification" && "$RABBITMQ_PASSWORD" == "govbiz-verification-not-a-secret" ]] || exit 110
 fi
 case "$*" in
   *" config --quiet")
@@ -55,6 +57,11 @@ exit 0
 
 
 class VerifyComposeSafetyTest(unittest.TestCase):
+    def test_rabbit_healthcheck_does_not_create_a_root_owned_cookie_during_startup(self):
+        compose = SCRIPT.parents[1] / "compose.yaml"
+        self.assertIn('["CMD", "su-exec", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_running"]',
+                      compose.read_text(encoding="utf-8"))
+
     def test_http_checks_only_send_member_cookie_when_explicitly_selected(self):
         function = re.search(r"(?ms)^wait_for_http\(\) \{\n.*?^\}", SCRIPT.read_text(encoding="utf-8")).group()
         with tempfile.TemporaryDirectory(prefix="verify-http-test-") as directory:
@@ -160,6 +167,9 @@ printf '%s' '200'
             OPENAI_BASE_URL="https://must-not-call.invalid/v1",
             OPENAI_API_KEY="must-not-use-real-model-key",
             DAILY_REPORT_ENABLED="true",
+            DAILY_REPORT_QUEUE_ENABLED="false",
+            RABBITMQ_USERNAME="must-not-use-real-rabbit-user",
+            RABBITMQ_PASSWORD="must-not-use-real-rabbit-password",
             DAILY_REPORT_MAIL_ENABLED="true",
             DAILY_REPORT_FROM="reports@example.org",
             SMTP_HOST="must-not-call.invalid",

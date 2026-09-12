@@ -66,7 +66,7 @@ class DailyReportRepository(
         mapper.ensureSubscription(accountId, now)
         mapper.lockSubscription(accountId)
         var existing = mapper.lockDay(accountId, date)
-        if (existing != null && (existing.status != "FAILED" || existing.generationAttempts >= 2)) {
+        if (existing != null && (existing.status != "FAILED" || existing.generationAttempts >= 2 || mapper.hasUnknownGeneration(existing.id))) {
             return DailyReportReservation(existing.toDomain(), false)
         }
         // 날짜 행 잠금으로 서버가 여러 개여도 생성 시도 한도를 넘지 않는다. 이후 실패도 예산을 돌려주지 않는다.
@@ -85,6 +85,43 @@ class DailyReportRepository(
         return DailyReportReservation(existing.toDomain(), true)
     }
 
+    /** 리포트·일별 예산·발행 대기 작업을 함께 커밋한다. 브로커는 이 transaction에서 호출하지 않는다. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    fun reserveScheduled(accountId: Long, date: LocalDate, input: DailyReportInput, maximumDailyAttempts: Int): DailyReportReservation {
+        val reserved = reserve(accountId, date, input, maximumDailyAttempts)
+        if (reserved.acquired) {
+            val now = now()
+            check(mapper.insertGenerationJob(reserved.report.id, reserved.report.generationKey, now,
+                minOf(now.plusHours(1), date.plusDays(1).atStartOfDay())) == 1)
+        }
+        return reserved
+    }
+
+    fun publishableJobs(): List<Long> = mapper.findPublishableJobs(now())
+    fun reserveJobPublication(id: Long): Boolean {
+        val now = now()
+        return mapper.reserveJobPublication(id, now, now.plusMinutes(1)) == 1
+    }
+    fun markJobPublished(id: Long) { check(mapper.markJobPublished(id, now()) == 1) }
+
+    @Transactional
+    fun claimGenerationJob(id: Long): DailyReport? {
+        // MySQL multi-table UPDATE는 job와 report 양쪽 변경 행 수를 반환할 수 있다.
+        if (mapper.claimGenerationJob(id, now()) == 0) return null
+        return requireNotNull(mapper.findJobReport(id)).toDomain()
+    }
+
+    @Transactional
+    fun finishGenerationJob(id: Long, report: DailyReport, content: DailyReportContent?, skipped: Boolean = false) {
+        val status = if (skipped) "SKIPPED" else if (content == null) "FAILED" else "SUCCEEDED"
+        check(mapper.finishGenerationJob(id, report.generationKey, status, now()) == 1)
+        check(mapper.finishReport(report.id, report.generationKey, if (content == null) "FAILED" else "READY",
+            content?.let(json::writeValueAsString),
+            if (skipped) "계정·구독·기업 상태가 변경되어 정기 생성을 건너뛰었습니다."
+            else if (content == null) "리포트를 생성하지 못했습니다. 저장된 공고와 검색 서비스 상태를 확인한 뒤 다시 시도해 주세요." else null,
+            now()) == 1)
+    }
+
     fun succeed(report: DailyReport, content: DailyReportContent): Boolean =
         mapper.finishReport(report.id, report.generationKey, "READY", json.writeValueAsString(content), null, now()) == 1
     fun fail(report: DailyReport): Boolean = mapper.finishReport(report.id, report.generationKey, "FAILED", null,
@@ -92,6 +129,8 @@ class DailyReportRepository(
 
     @Transactional
     fun expireStaleWork() {
+        mapper.expireQueuedJobs(now())
+        mapper.expireRunningJobs(now().minusMinutes(20), now())
         mapper.expireGeneration(now().minusMinutes(20))
         mapper.expireDelivery(now().minusMinutes(20))
     }
