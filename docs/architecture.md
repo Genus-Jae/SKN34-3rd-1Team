@@ -100,10 +100,14 @@ Frontend는 확인 후 삭제 요청을 보내고 성공 시에만 목록·메�
 `DailyReportController → DailyReportService`는 저장된 기업 조건·지원 목적을 기존 검색에 전달하고,
 추천 최대 3건 중 기업마당 공고에 기존 근거 답변을 연결합니다. 수집·검색·근거 답변 Agent를 새로 복제하지 않습니다.
 `DailyReportRepository → MyBatis Mapper → XML → MySQL`에서 수신 설정·일별 입력과 결과·생성 시도 예산을 보존합니다.
-스케줄러도 같은 생성 경로를 사용하며 메일은 `DailyReportMailClient → SMTP`로 전송합니다.
+수동 미리보기는 기존 동기 호출을 유지합니다. 정기 스케줄러는 리포트·예산·작업 Outbox를 함께 저장하고,
+`DailyReportOutboxScheduler → DailyReportQueueClient → RabbitMQ → DailyReportGenerationConsumer → DailyReportService`로 생성합니다.
+Core 내부 전용 소비자가 기존 검색·근거 답변을 재사용하며 DB 선점으로 중복 실행을 차단합니다. 별도 Worker 서버는 아닙니다.
+메일은 이후 스케줄러 주기에서 저장된 결과를 `DailyReportMailClient → SMTP`로 전송합니다.
 생성·발송 예약 및 결과 저장만 짧은 transaction에서 수행하고 AI·원문 HTTP·SMTP 호출은 transaction 밖에서 수행합니다.
 프런트엔드는 본인 리포트·설정과 명시적 이메일 확인·해지 화면을 제공합니다. 점수는 검색 관련도이며 선정 확률이 아닙니다.
 [리포트 API·수신 동의·중복/비용 제한·운영 설정](daily-reports.md)에 상세 경계를 정리합니다.
+[RabbitMQ 적용 상세](rabbitmq-daily-report-generation.md)는 예약/발행 transaction, 실패·중복·`UNKNOWN`, 운영 한계를 설명합니다.
 
 ## 검색·상세 조회·원문 근거 질문
 

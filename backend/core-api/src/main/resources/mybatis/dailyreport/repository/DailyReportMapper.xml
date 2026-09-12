@@ -87,8 +87,9 @@
         WHERE id = #{id} AND generation_key = #{key} AND status = 'GENERATING'
     </update>
     <update id="expireGeneration">
-        UPDATE daily_report SET status = 'FAILED', error_message = '생성이 중단되었습니다. 오늘 한 번만 다시 시도할 수 있습니다.'
-        WHERE status = 'GENERATING' AND started_at &lt; #{before}
+        UPDATE daily_report r SET r.status = 'FAILED', r.error_message = '생성이 중단되었습니다. 오늘 한 번만 다시 시도할 수 있습니다.'
+        WHERE r.status = 'GENERATING' AND r.started_at &lt; #{before}
+            AND NOT EXISTS (SELECT 1 FROM daily_report_generation_job j WHERE j.report_id = r.id AND j.generation_key = r.generation_key)
     </update>
     <insert id="ensureBudget">
         INSERT INTO daily_report_generation_budget (report_date, attempts) VALUES (#{date}, 0)
@@ -118,8 +119,57 @@
             JOIN account a ON a.id = s.account_id JOIN company c ON c.account_id = s.account_id
             LEFT JOIN daily_report r ON r.account_id = s.account_id AND r.report_date = #{date}
         WHERE s.enabled = TRUE AND s.confirmed_email = a.email AND a.deleted_at IS NULL AND a.suspended_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM daily_report_generation_job j WHERE j.report_id = r.id AND j.status = 'UNKNOWN')
             AND (r.id IS NULL OR (r.status = 'FAILED' AND r.generation_attempts &lt; 2)
                 OR (r.status = 'READY' AND r.delivery_status = 'NOT_REQUESTED'))
         ORDER BY CASE WHEN r.status = 'READY' THEN 0 ELSE 1 END, s.account_id LIMIT #{limit}
     </select>
+
+    <insert id="insertGenerationJob">
+        INSERT INTO daily_report_generation_job (report_id, generation_key, created_at, deadline_at, next_publish_at)
+        VALUES (#{reportId}, #{key}, #{now}, #{deadline}, #{now})
+    </insert>
+    <select id="hasUnknownGeneration" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM daily_report_generation_job WHERE report_id = #{reportId} AND status = 'UNKNOWN')
+    </select>
+    <select id="findPublishableJobs" resultType="long">
+        SELECT id FROM daily_report_generation_job
+        WHERE status = 'QUEUED' AND next_publish_at &lt;= #{now} AND deadline_at > #{now}
+        ORDER BY next_publish_at, id LIMIT 20
+    </select>
+    <update id="reserveJobPublication">
+        UPDATE daily_report_generation_job SET next_publish_at = #{retryAt}, publish_attempts = publish_attempts + 1
+        WHERE id = #{id} AND status = 'QUEUED' AND next_publish_at &lt;= #{now} AND deadline_at > #{now}
+    </update>
+    <update id="markJobPublished">
+        UPDATE daily_report_generation_job SET last_published_at = #{now} WHERE id = #{id}
+    </update>
+    <update id="claimGenerationJob">
+        UPDATE daily_report_generation_job j JOIN daily_report r ON r.id = j.report_id AND r.generation_key = j.generation_key
+        SET j.status = 'RUNNING', j.started_at = #{now}, r.started_at = #{now}
+        WHERE j.id = #{id} AND j.status = 'QUEUED' AND j.deadline_at > #{now}
+            AND r.status = 'GENERATING' AND r.report_date = DATE(#{now})
+    </update>
+    <select id="findJobReport" resultMap="report">
+        SELECT r.id, r.account_id, r.report_date, r.status, r.delivery_status, r.input_json, r.content_json,
+            r.error_message, r.generation_attempts, r.generation_key, r.started_at, r.generated_at
+        FROM daily_report r JOIN daily_report_generation_job j ON j.report_id = r.id AND j.generation_key = r.generation_key
+        WHERE j.id = #{id}
+    </select>
+    <update id="finishGenerationJob">
+        UPDATE daily_report_generation_job SET status = #{status}, finished_at = #{now}
+        WHERE id = #{id} AND generation_key = #{key} AND status = 'RUNNING'
+    </update>
+    <update id="expireQueuedJobs">
+        UPDATE daily_report_generation_job j JOIN daily_report r ON r.id = j.report_id AND r.generation_key = j.generation_key
+        SET j.status = 'FAILED', j.finished_at = #{now}, r.status = 'FAILED',
+            r.error_message = '정기 리포트 생성 대기 시간이 만료되었습니다. 작업 서비스 상태를 확인해 주세요.'
+        WHERE j.status = 'QUEUED' AND j.deadline_at &lt;= #{now} AND r.status = 'GENERATING'
+    </update>
+    <update id="expireRunningJobs">
+        UPDATE daily_report_generation_job j JOIN daily_report r ON r.id = j.report_id AND r.generation_key = j.generation_key
+        SET j.status = 'UNKNOWN', j.finished_at = #{now}, r.status = 'FAILED',
+            r.error_message = '정기 생성의 실행 결과를 확인할 수 없습니다. 추가 AI 비용을 막기 위해 자동 재실행하지 않습니다. 운영자 확인이 필요합니다.'
+        WHERE j.status = 'RUNNING' AND j.started_at &lt; #{before} AND r.status = 'GENERATING'
+    </update>
 </mapper>

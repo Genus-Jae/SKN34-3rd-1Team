@@ -39,6 +39,9 @@ export OPENAI_API_KEY="compose-verification-key-never-sent"
 export OPENAI_BASE_URL="http://openai-stub:8002/v1"
 # 개발자 .env에 리포트가 켜져 있어도 검증 스택에서 외부 메일을 보내지 않는다.
 export DAILY_REPORT_ENABLED="false"
+export DAILY_REPORT_QUEUE_ENABLED="true"
+export RABBITMQ_USERNAME="govbiz-verification"
+export RABBITMQ_PASSWORD="govbiz-verification-not-a-secret"
 export DAILY_REPORT_MAIL_ENABLED="false"
 export DAILY_REPORT_FROM=""
 export SMTP_HOST=""
@@ -363,6 +366,33 @@ verify_search_result_store() {
   return 1
 }
 
+wait_for_report_consumer() {
+  local deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+  local queues
+  while ((SECONDS < deadline)); do
+    queues="$("${COMPOSE[@]}" exec --user rabbitmq -T rabbitmq rabbitmqctl -q list_queues -p govbiz name type consumers 2>/dev/null || true)"
+    if grep -Eq '^govbiz\.daily-report\.generation\.v1[[:space:]]+quorum[[:space:]]+1$' <<<"${queues}" \
+        && grep -Eq '^govbiz\.daily-report\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}"; then
+      echo "Verified report quorum queues and one connected generation consumer"
+      return 0
+    fi
+    sleep "${WAIT_INTERVAL_SECONDS}"
+  done
+  echo "Report consumer did not connect to the expected quorum queue" >&2
+  return 1
+}
+
+verify_report_broker_recovery() {
+  wait_for_report_consumer
+  # 정기 생성·SMTP는 계속 꺼져 있다. 실제 사용자 작업을 만들거나 AI를 호출하지 않는다.
+  "${COMPOSE[@]}" stop rabbitmq
+  wait_for_http "MySQL catalog remains available during RabbitMQ outage" \
+    "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=KSTARTUP&status=OPEN" "200"
+  "${COMPOSE[@]}" up --detach --force-recreate --no-deps --wait rabbitmq
+  wait_for_report_consumer
+  echo "Verified RabbitMQ volume recreation and Core consumer reconnection without restarting Core"
+}
+
 wait_for_ai_failure() {
   local label=$1
   local url=$2
@@ -574,6 +604,7 @@ wait_for_http \
 
 echo "Stopping Qdrant to verify that a vector outage is not hidden as a successful search"
 verify_search_result_store
+verify_report_broker_recovery
 "${COMPOSE[@]}" stop qdrant
 wait_for_http \
   "Explicit vector search failure while Qdrant is stopped" \
