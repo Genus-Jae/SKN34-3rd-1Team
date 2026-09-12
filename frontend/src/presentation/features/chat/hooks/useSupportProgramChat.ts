@@ -336,7 +336,9 @@ export function useSupportProgramChat(
 
   function confirmInterpretation() {
     return dispatchToStore((dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
-      const current = getState().chat.interpretation
+      const state = getState().chat
+      if (state.draft.trim()) return Promise.resolve()
+      const current = state.interpretation
       if (current.status !== 'ready' || !current.requestId || !current.result?.proposedContext.query) return Promise.resolve()
       dispatch(proposalConfirmed(current.requestId))
       const command = getState().chat.confirmedSearch

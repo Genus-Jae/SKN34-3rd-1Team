@@ -9,7 +9,7 @@ import { usePendingReceivedProposalCount } from '../partner-proposal/useReceived
 import { appPaths, publicPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 
-type MenuIcon = 'document' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more' | 'newChat' | 'panel'
+type MenuIcon = 'search' | 'document' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more' | 'newChat' | 'panel'
 
 /** 사이드바 메뉴 한 줄입니다. `to`가 없으면 아직 화면이 없는 메뉴이므로 링크로 만들지 않습니다. */
 type MenuItem = {
@@ -55,6 +55,7 @@ const menuGroups: MenuGroup[] = [
 ]
 
 const iconPaths: Record<MenuIcon, ReactNode> = {
+  search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   newChat: <><path d="M12 4H6a3 3 0 0 0-3 3v11a3 3 0 0 0 3 3h11a3 3 0 0 0 3-3v-6" /><path d="m16 3 5 5-9 9H7v-5Z" /></>,
   panel: <><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16" /></>,
   pricing: (
@@ -206,9 +207,9 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
       </div>
 
       <div className={appSidebarStyles.scrollArea}>
-        <button type="button" className={`${appSidebarStyles.newChatButton} ${isSearchPage ? appSidebarStyles.activeMenuItem : ''}`}
+        <button type="button" className={`${appSidebarStyles.newChatButton} ${sidebarMenuItemClassName(isSearchPage ? 'active' : 'inactive')}`}
           aria-current={isSearchPage ? 'page' : undefined} title="대화와 적용 조건을 초기화합니다" onClick={onNewChat}>
-          <SidebarActionIcon name="newChat" /><span>지원사업 새검색</span>
+          <MenuIconGraphic name="search" /><span>지원사업 새검색</span>
         </button>
         {menuGroups
           .filter((group) => !group.adminOnly || account?.tier === 'ADMIN')

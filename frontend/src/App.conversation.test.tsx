@@ -29,6 +29,48 @@ beforeEach(() => { readiness.canSearch = true })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('대화 조건 해석·확인 검색 HTTP E2E', () => {
+  it.each(['/', '/app/chat'])('%s에서 후속 메시지를 입력해도 기존 조건 카드를 유지하고 새 해석에 전달한다', async (path) => {
+    const seoul = { ...emptyConversationContext, query: 'AI 창업지원',
+      companyConditions: { ...emptyConversationContext.companyConditions, region: '서울', industry: 'AI', supportPurpose: '창업' } }
+    const busan = { ...seoul, companyConditions: { ...seoul.companyConditions, region: '부산' } }
+    const network = mockConversationNetwork([readyConversationProposal(seoul), readyConversationProposal(busan)])
+    const { store } = renderConversationApp(path)
+    await submitMessage('서울 AI 창업지원 사업 찾아줘')
+    const proposal = screen.getByRole('region', { name: '조건 변경 제안' })
+    const interpretation = store.getState().chat.interpretation
+    const input = screen.getByRole('textbox', { name: '지원사업 검색어' }) as HTMLTextAreaElement
+    const confirm = within(proposal).getByRole('button', { name: '이 조건으로 검색' }) as HTMLButtonElement
+
+    fireEvent.change(input, { target: { value: '부산으로 바꿔줘' } })
+    expect(screen.getByRole('region', { name: '조건 변경 제안' })).toBe(proposal)
+    expect(within(proposal).getByText('현재 소재지: 서울')).toBeTruthy()
+    expect(within(proposal).getByText('업종: AI')).toBeTruthy()
+    expect(store.getState().chat.interpretation).toBe(interpretation)
+    expect(store.getState().chat.pendingProposal).toEqual(seoul)
+    expect(store.getState().chat.conversationQuery).toBeNull()
+    expect(confirm.disabled).toBe(true)
+    expect(within(proposal).getByText(/작성 중인 메시지를 전송/)).toBeTruthy()
+    fireEvent.click(confirm)
+    expect(network.fetch).toHaveBeenCalledOnce()
+
+    fireEvent.change(input, { target: { value: ' ' } })
+    expect(screen.getByRole('region', { name: '조건 변경 제안' })).toBe(proposal)
+    expect(confirm.disabled).toBe(false)
+    expect(network.fetch).toHaveBeenCalledOnce()
+
+    await submitMessage('부산으로 바꿔줘')
+    expect(network.interpretRequests[1]).toMatchObject({
+      message: '부산으로 바꿔줘', context: emptyConversationContext, pendingProposal: seoul,
+    })
+    const updated = screen.getByRole('region', { name: '조건 변경 제안' })
+    expect(within(updated).getByText('현재 소재지: 부산')).toBeTruthy()
+    expect(within(updated).getByText('업종: AI')).toBeTruthy()
+    expect(network.searchRequests).toHaveLength(0)
+    await act(async () => fireEvent.click(within(updated).getByRole('button', { name: '이 조건으로 검색' })))
+    expect(network.searchRequests).toEqual([{ query: 'AI 창업지원', acceptingOnly: true,
+      companyConditions: { region: '부산', industry: 'AI', supportPurpose: '창업' } }])
+  })
+
   it.each([false, true])('로그아웃 후 다른 계정으로 로그인해도 이전 대화·조건·초안이 남지 않는다 (로그아웃 API 실패: %s)', async (logoutFails) => {
     const logout = vi.spyOn(appContainer.resolve('logOutUseCase'), 'execute')
     if (logoutFails) logout.mockRejectedValue(new Error('logout unavailable'))

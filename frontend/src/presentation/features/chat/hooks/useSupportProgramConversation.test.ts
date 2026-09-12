@@ -136,6 +136,28 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     expect(search).toHaveBeenCalledOnce()
   })
 
+  it('새 초안이 있는 제안 확인은 직전 확정 검색을 다시 실행하지 않고 초안을 비우면 확인할 수 있다', async () => {
+    const busan = { ...seoulConversationContext, companyConditions: { ...seoulConversationContext.companyConditions, region: '부산' } }
+    const interpret = vi.fn().mockResolvedValueOnce(readyConversationProposal(seoulConversationContext))
+      .mockResolvedValueOnce(readyConversationProposal(busan))
+    const { result, store, search } = renderConversation(interpret)
+    act(() => result.current.updateDraft('서울 SW'))
+    await act(async () => result.current.submitMessage())
+    await act(async () => result.current.confirmInterpretation())
+    act(() => result.current.updateDraft('부산으로 바꿔줘'))
+    await act(async () => result.current.submitMessage())
+    act(() => result.current.updateDraft('수출도 추가해줘'))
+    await act(async () => result.current.confirmInterpretation())
+    expect(search).toHaveBeenCalledOnce()
+    expect(result.current.draft).toBe('수출도 추가해줘')
+    expect(store.getState().chat.pendingProposal).toEqual(busan)
+    act(() => result.current.updateDraft(''))
+    await act(async () => result.current.confirmInterpretation())
+    expect(search).toHaveBeenCalledTimes(2)
+    expect(result.current.confirmedContext).toEqual(busan)
+    expect(interpret).toHaveBeenCalledTimes(2)
+  })
+
   it('날짜 답변이 READY가 되면 질문은 지우고 완성된 미확정 제안을 다음 입력에 전달한다', async () => {
     const interpret = vi.fn().mockResolvedValueOnce(clarification).mockResolvedValue(readyConversationProposal(seoulConversationContext))
     const { result, search } = renderConversation(interpret)
@@ -144,7 +166,8 @@ describe('해석 → 명시적 확인 → 기존 검색', () => {
     act(() => result.current.updateDraft('2024-01-01'))
     await act(async () => result.current.submitMessage())
     act(() => result.current.updateDraft('수출 공고'))
-    expect(result.current.interpretation.status).toBe('idle')
+    expect(result.current.interpretation.status).toBe('ready')
+    expect(result.current.interpretation.result?.proposedContext).toEqual(seoulConversationContext)
     expect(result.current.pendingClarification).toBeNull()
     await act(async () => result.current.confirmInterpretation())
     expect(search).not.toHaveBeenCalled()

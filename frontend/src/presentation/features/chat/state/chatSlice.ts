@@ -103,7 +103,8 @@ const chatSlice = createSlice({
       if (state.interpretation.status === 'pending') return
       state.draft = action.payload
       state.searchError = null
-      if (state.interpretation.status === 'ready' || state.interpretation.status === 'failed') {
+      // 작성 중인 후속 메시지와 이미 해석한 조건 제안은 별개로 유지합니다.
+      if (state.interpretation.status === 'failed') {
         state.interpretation = { status: 'idle' }
       }
     },
@@ -163,7 +164,7 @@ const chatSlice = createSlice({
     },
     proposalConfirmed(state, action: PayloadAction<string>) {
       const proposal = state.interpretation
-      if (proposal.status !== 'ready' || proposal.requestId !== action.payload || !proposal.result?.proposedContext.query) return
+      if (state.draft.trim() || proposal.status !== 'ready' || proposal.requestId !== action.payload || !proposal.result?.proposedContext.query) return
       const context = proposal.result.proposedContext
       state.conversationQuery = context.query!.trim()
       state.searchOptions = conversationContextToSearchOptions(context)

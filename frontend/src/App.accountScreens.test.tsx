@@ -332,6 +332,34 @@ describe('계정 화면', () => {
 })
 
 describe('작업 화면 사이드바', () => {
+  it('흰색 사이드바에서 선택 메뉴는 초록색, 준비 중 메뉴는 회색으로 표시하고 기존 메뉴 계약을 유지한다', () => {
+    renderApp('/app/chat')
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    expect(sidebar.classList.contains('bg-white')).toBe(true)
+    const search = within(sidebar).getByRole('button', { name: '지원사업 새검색' })
+    expect(search.getAttribute('aria-current')).toBe('page')
+    expect(search.classList.contains('bg-[#e6f5ed]')).toBe(true)
+    expect(search.classList.contains('text-brand-primary')).toBe(true)
+    expect(search.classList.contains('rounded-2xl')).toBe(true)
+    expect(search.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+
+    const documents = within(sidebar).getByRole('link', { name: '신청 문서 작성' })
+    expect(documents.getAttribute('href')).toBe('/app/application-preparations')
+    expect(documents.classList.contains('rounded-2xl')).toBe(true)
+    expect(documents.getAttribute('aria-current')).toBeNull()
+    const pending = within(sidebar).getByText('관심 공고함').closest('[aria-disabled="true"]') as HTMLElement
+    expect(pending).toBeTruthy()
+    expect(pending.classList.contains('bg-[#f5f6f7]')).toBe(true)
+    expect(within(pending).getByText('준비 중').classList.contains('rounded-full')).toBe(true)
+    expect(within(sidebar).queryByRole('link', { name: /관심 공고함/ })).toBeNull()
+
+    fireEvent.click(within(sidebar).getByRole('link', { name: '요금제' }))
+    expect(within(sidebar).getByRole('link', { name: '요금제' }).getAttribute('aria-current')).toBe('page')
+    expect(within(sidebar).getByRole('link', { name: '요금제' }).classList.contains('bg-[#e6f5ed]')).toBe(true)
+    expect(search.getAttribute('aria-current')).toBeNull()
+    expect(search.classList.contains('bg-[#e6f5ed]')).toBe(false)
+  })
+
   it('사이드바로 파트너 모집과 관리자 목록을 오간다', () => {
     renderApp('/app/chat', adminAccount)
 

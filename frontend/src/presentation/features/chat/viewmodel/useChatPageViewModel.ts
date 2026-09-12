@@ -25,6 +25,7 @@ export function useChatPageViewModel() {
     interpretation: chat.interpretation,
     pendingClarification: chat.pendingClarification,
     canSearch: readiness.canSearch,
+    hasUnsentMessage: chat.draft.trim().length > 0,
   })
   const hasConfirmedSearch = chat.confirmedContext.query !== null
   const isComposingInput = useRef(false)
