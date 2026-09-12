@@ -75,6 +75,15 @@ class CombinationReviewApiIntegrationTest {
     }
 
     @Test
+    fun disabledQueueRejectsNewAnalysisWithoutCreatingARun() {
+        val id = create()
+        write(post("$BASE/$id/runs"), """{"expectedRevision":1,"requestKey":"${UUID.randomUUID()}","additionalFacts":""}""")
+            .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("RUN_QUEUE_UNAVAILABLE"))
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM combination_review_run WHERE review_id = ?", Int::class.java, id))
+        mvc.perform(get("$BASE/$id").cookie(owner)).andExpect(status().isOk())
+    }
+
+    @Test
     fun createsAndReadsIndependentFactsWithServerOwnershipAndNoStore() {
         val response = mvc.perform(post(BASE).cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN)
             .contentType(MediaType.APPLICATION_JSON)

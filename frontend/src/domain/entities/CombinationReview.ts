@@ -14,7 +14,7 @@ export type ReviewSummary = { id: number; title: string; inputRevision: number; 
 export type CombinationReview = ReviewSummary & ReviewDraft
 export type ReviewPage<T> = { items: T[]; nextBeforeId: number | null }
 export type RunRequest = { expectedRevision: number; requestKey: string; additionalFacts: string }
-export type RunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'INTERRUPTED'
+export type RunStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'INTERRUPTED' | 'UNKNOWN'
 export type RunSummary = { id: number; inputRevision: number; status: RunStatus; failureCode: string | null; startedAt: string; finishedAt: string | null }
 export type ReviewRun = RunSummary & {
   reviewId: number; requestKey: string

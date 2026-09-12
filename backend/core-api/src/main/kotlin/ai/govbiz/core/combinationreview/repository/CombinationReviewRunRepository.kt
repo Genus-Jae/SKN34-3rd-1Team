@@ -8,6 +8,7 @@ import ai.govbiz.core.combinationreview.repository.mapper.CombinationReviewRunSo
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewNotFoundException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRevisionConflictException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRunConflictException
+import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewCapacityException
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -26,6 +27,7 @@ class CombinationReviewRunRepository(
 ) {
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     fun reserve(ownerId: Long, reviewId: Long, expectedRevision: Long, requestKey: String, additionalFacts: String, runnerInstanceId: String): ReviewRunReservation {
+        mapper.lockActiveAccount(ownerId) ?: throw CombinationReviewNotFoundException()
         val revision = mapper.lockOwnedReview(ownerId, reviewId) ?: throw CombinationReviewNotFoundException()
         val hash = CombinationReviewHashHelper.sha256("$expectedRevision\n$additionalFacts")
         mapper.findRequest(reviewId, requestKey)?.let {
@@ -34,6 +36,9 @@ class CombinationReviewRunRepository(
         }
         if (revision != expectedRevision) throw CombinationReviewRevisionConflictException()
         if (mapper.countRunning(reviewId) != 0) throw CombinationReviewRunConflictException()
+        if (mapper.countAccountPending(ownerId) >= 3) {
+            throw CombinationReviewCapacityException()
+        }
         val review = requireNotNull(reviews.findOwned(ownerId, reviewId))
         val row = CombinationReviewRunDbRow(
             reviewId = reviewId, inputRevision = revision, requestKey = requestKey, requestHash = hash,
@@ -42,6 +47,31 @@ class CombinationReviewRunRepository(
         )
         check(mapper.insertRun(row) == 1 && row.id > 0)
         return ReviewRunReservation(row.toDomain(), true)
+    }
+
+    fun replay(ownerId: Long, reviewId: Long, expectedRevision: Long, requestKey: String, additionalFacts: String): ReviewRunReservation? {
+        reviews.findOwned(ownerId, reviewId) ?: throw CombinationReviewNotFoundException()
+        val row = mapper.findRequest(reviewId, requestKey) ?: return null
+        if (row.requestHash != CombinationReviewHashHelper.sha256("$expectedRevision\n$additionalFacts")) throw CombinationReviewRunConflictException()
+        return ReviewRunReservation(row.toDomain(), false)
+    }
+
+    /** QUEUED에서 한 번만 실행권을 얻는다. RUNNING/UNKNOWN 재전달은 절대 재실행하지 않는다. */
+    @Transactional
+    fun claim(runId: Long, runnerId: String): StoredCombinationReviewRun? {
+        if (mapper.claim(runId, runnerId, now()) != 1) return null
+        return requireNotNull(mapper.findById(runId)).toDomain()
+    }
+
+    fun publishable(): List<Long> = mapper.publishable(now())
+    fun reservePublication(runId: Long): Boolean = mapper.reservePublication(runId, now()) == 1
+    fun markPublished(runId: Long) { mapper.markPublished(runId, now()) }
+
+    @Transactional
+    fun expireStaleWork() {
+        val now = now()
+        mapper.expireQueued(now)
+        mapper.expireRunning(now)
     }
 
     fun findOwned(ownerId: Long, reviewId: Long, runId: Long): StoredCombinationReviewRun? = mapper.findOwned(ownerId, reviewId, runId)?.toDomain()
@@ -70,7 +100,7 @@ class CombinationReviewRunRepository(
 
     @Transactional
     fun saveConfiguration(runId: Long, configuration: ReviewModelConfiguration) {
-        check(mapper.saveConfiguration(runId, json.writeValueAsString(configuration)) == 1)
+        check(mapper.saveConfiguration(runId, json.writeValueAsString(configuration), now()) == 1)
     }
 
     @Transactional
@@ -82,7 +112,11 @@ class CombinationReviewRunRepository(
 
     @Transactional
     fun fail(runId: Long, code: String) {
-        check(mapper.finish(runId, "FAILED", null, code, now()) == 1)
+        mapper.finish(runId, "FAILED", null, code, now())
+    }
+
+    fun markUnknown(runId: Long, code: String) {
+        mapper.finish(runId, "UNKNOWN", null, code, now())
     }
 
     private fun now(): LocalDateTime = LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS)

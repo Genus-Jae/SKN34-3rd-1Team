@@ -77,12 +77,18 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 | `GET /api/v1/combination-reviews/{id}` | 본인 상세 입력·버전 조회 |
 | `DELETE /api/v1/combination-reviews/{id}` | 본인 검토와 선택 공고·실행 이력·보관 원문 삭제. 성공 시 204 |
 | `PUT /api/v1/combination-reviews/{id}/inputs` | 제목·사업 목록 전체 교체. expectedRevision 일치 시 204, 충돌 시 409 |
-| `POST /api/v1/combination-reviews/{id}/runs` | expectedRevision·requestKey·선택적 additionalFacts로 동기 분석. 새 성공 201, 동일 요청 재조회 200 |
+| `POST /api/v1/combination-reviews/{id}/runs` | expectedRevision·requestKey·선택적 additionalFacts로 비동기 분석 접수. 신규 202 QUEUED, 동일 요청 재조회 200 |
 | `GET /api/v1/combination-reviews/{id}/runs` | 본인 실행 목록, size/beforeId 커서 |
 | `GET /api/v1/combination-reviews/{id}/runs/{runId}` | 당시 입력·근거·설정·결과 또는 실패 조회 |
 | `GET /api/v1/combination-reviews/{id}/runs/{runId}/sources/{documentIndex}` | 실행 당시 원본 파일 다운로드. documentIndex는 0부터 시작 |
 
 소유자는 기존 세션 쿠키를 검증한 Account로 결정하며, 관리자도 타인 검토를 조회·수정할 수 없습니다.
+
+V25부터 실행 행이 Outbox이며 `CombinationReviewOutboxScheduler → CombinationReviewQueueClient → RabbitMQ →
+CombinationReviewRunConsumer → CombinationReviewRunService`로 기존 수집·파싱·AI를 실행합니다.
+`COMBINATION_REVIEW_QUEUE_ENABLED`는 직접 실행 false / Compose true이며, false일 때 새 분석은 503으로 거절하고
+동기 실행으로 우회하지 않습니다. 상태는 QUEUED/RUNNING/SUCCEEDED/FAILED/UNKNOWN/INTERRUPTED입니다.
+UNKNOWN은 같은 검토의 새 실행도 차단합니다. [한도·만료·재발행·배포·검증 상세](../../docs/rabbitmq-combination-review.md)를 참고하세요.
 없는 검토와 타인 검토는 같은 404를 반환합니다. 성공 응답은 `Cache-Control: no-store`이며 시각은 `+09:00`입니다.
 쓰기 요청의 기존 Origin 방어를 유지하고 CORS에서 PUT·DELETE를 허용합니다. 상세 JSON·오류 코드는 위 설계 문서에 있습니다.
 

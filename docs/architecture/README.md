@@ -20,7 +20,7 @@ flowchart LR
     Core --> DB[(MySQL 공고 카탈로그)]
     Core --> Lexical[(Elasticsearch Nori·BM25 공고 색인)]
     Core --> Redis[(Redis 로그인 복원용 검색 결과·조건)]
-    Core <--> RabbitMQ[RabbitMQ 정기 리포트 생성 큐]
+    Core <--> RabbitMQ[RabbitMQ 리포트·중복 검토별 작업 큐]
     Core --> AI[FastAPI AI Service]
     AI --> Vector[(Qdrant 공고·원문 근거 벡터 컬렉션)]
     AI --> OpenAI[OpenAI 임베딩·공고 점수화·근거 답변]
@@ -45,6 +45,8 @@ Redis는 비회원 검색의 전체 추천 결과·조건을 30분 보관하고 
 정기 리포트 생성은 MySQL에 예산·작업 Outbox를 함께 저장한 뒤 RabbitMQ로 전달합니다. 소비자는 Core 내부에 있으며,
 DB 상태 전이로 중복 실행을 막습니다. SMTP·수동 미리보기는 기존 경로입니다.
 [RabbitMQ 적용 상세](../rabbitmq-daily-report-generation.md)는 transaction 경계와 재시도·실행 불명 처리를 설명합니다.
+중복 지원·수혜 검토도 별도 큐와 Core 내부 소비자를 사용합니다. 실행 행 자체가 Outbox이며 HTTP 접수와
+수집·파싱·AI 실행을 분리합니다. [중복 검토 비동기 흐름](../rabbitmq-combination-review.md)을 참고하세요.
 
 ## Frontend: 화면과 데이터 처리 분리
 

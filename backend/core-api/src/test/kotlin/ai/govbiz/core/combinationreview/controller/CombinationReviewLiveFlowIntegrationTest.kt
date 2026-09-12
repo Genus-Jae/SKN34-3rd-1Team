@@ -5,6 +5,9 @@ import ai.govbiz.core.account.domain.NewAccount
 import ai.govbiz.core.account.helper.SessionCookieHelper
 import ai.govbiz.core.account.repository.AccountRepository
 import ai.govbiz.core.account.service.AccountSessionService
+import ai.govbiz.core.combinationreview.service.CombinationReviewRunService
+import ai.govbiz.core.combinationreview.service.CombinationReviewOutboxScheduler
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import java.util.UUID
@@ -30,6 +33,7 @@ import tools.jackson.databind.ObjectMapper
 @SpringBootTest(properties = [
     "app.account.jwt-secret=test-jwt-secret-0123456789abcdef0123456789",
     "app.bizinfo.sync.enabled=false", "app.support-program-index.enabled=false", "app.account.cookie-secure=false",
+    "app.combination-review.queue.enabled=true", "spring.rabbitmq.listener.simple.auto-startup=false",
 ])
 @AutoConfigureMockMvc
 @Import(MySqlTestContainerConfig::class)
@@ -38,6 +42,8 @@ class CombinationReviewLiveFlowIntegrationTest {
     @Autowired private lateinit var accounts: AccountRepository
     @Autowired private lateinit var sessions: AccountSessionService
     @Autowired private lateinit var json: ObjectMapper
+    @Autowired private lateinit var service: CombinationReviewRunService
+    @MockitoBean private lateinit var publisher: CombinationReviewOutboxScheduler
 
     @Test
     fun runsAutomaticOfficialSourcesAcrossServicesAndPersistsReplayWithoutAnotherModelCall() {
@@ -55,8 +61,12 @@ class CombinationReviewLiveFlowIntegrationTest {
         val reviewId = json.readTree(created.contentAsString).path("id").asLong()
         val body = """{"expectedRevision":1,"requestKey":"${UUID.randomUUID()}","additionalFacts":"계약 검증용 가상 입력"}"""
         val path = "/api/v1/combination-reviews/$reviewId/runs"
-        val result = mvc.perform(post(path).cookie(cookie).header(HttpHeaders.ORIGIN, ORIGIN).contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("SUCCEEDED"))
+        val accepted = mvc.perform(post(path).cookie(cookie).header(HttpHeaders.ORIGIN, ORIGIN).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("QUEUED")).andReturn().response
+        val acceptedId = json.readTree(accepted.contentAsString).path("id").asLong()
+        service.executeQueued(acceptedId)
+        val result = mvc.perform(get("$path/$acceptedId").cookie(cookie))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SUCCEEDED"))
             .andExpect(jsonPath("$.configuration.model").value("test-model"))
             .andExpect(jsonPath("$.evidence.documents.length()").value(2)).andReturn().response
         val run = json.readTree(result.contentAsString)

@@ -15,7 +15,7 @@ export const reviewSummarySchema = z.object({ id, title: z.string(), inputRevisi
 export const reviewSchema = reviewSummarySchema.extend({ programs })
 export const reviewPageSchema = z.object({ items: z.array(reviewSummarySchema).max(50), nextBeforeId: id.nullable() })
 export const runRequestSchema = z.object({ expectedRevision: id, requestKey: z.string().regex(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/), additionalFacts: z.string().max(8000) })
-export const runSummarySchema = z.object({ id, inputRevision: id, status: z.enum(['RUNNING', 'SUCCEEDED', 'FAILED', 'INTERRUPTED']), failureCode: z.string().nullable(), startedAt: time, finishedAt: time.nullable() })
+export const runSummarySchema = z.object({ id, inputRevision: id, status: z.enum(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'INTERRUPTED', 'UNKNOWN']), failureCode: z.string().nullable(), startedAt: time, finishedAt: time.nullable() })
 export const runPageSchema = z.object({ items: z.array(runSummarySchema).max(50), nextBeforeId: id.nullable() })
 export const runSchema = runSummarySchema.extend({
   reviewId: id, requestKey: runRequestSchema.shape.requestKey,
