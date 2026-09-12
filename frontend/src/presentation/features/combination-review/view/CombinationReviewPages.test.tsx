@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { asValue } from 'awilix/browser'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +18,8 @@ import { useReviewSessionIsolation } from '../viewmodel/useReviewSessionIsolatio
 const original = appContainer.resolve('combinationReviewUseCase')
 const originalCatalog = appContainer.resolve('browseSupportProgramsUseCase')
 const originalDetail = appContainer.resolve('getSupportProgramDetailUseCase')
+const originalSavedPrograms = appContainer.resolve('browseSavedSupportProgramsUseCase')
+const browseSavedPrograms = vi.fn()
 const repository = { list: vi.fn(), get: vi.fn(), create: vi.fn(), delete: vi.fn(), replace: vi.fn(), runs: vi.fn(), run: vi.fn(), start: vi.fn(), source: vi.fn() }
 beforeEach(() => {
   sessionStorage.clear(); vi.resetAllMocks()
@@ -26,12 +28,14 @@ beforeEach(() => {
   repository.run.mockResolvedValue(structuredClone(runFixture))
   repository.list.mockResolvedValue({ items: [], nextBeforeId: null })
   repository.delete.mockResolvedValue(undefined)
+  browseSavedPrograms.mockResolvedValue([])
   appContainer.register({
     combinationReviewUseCase: asValue(new CombinationReviewUseCase(repository)),
+    browseSavedSupportProgramsUseCase: asValue({ execute: browseSavedPrograms }),
     getSupportProgramDetailUseCase: asValue({ execute: vi.fn(async (identity) => ({ ...supportPrograms[0], sourceCode: identity.sourceCode, id: identity.sourceProgramId, title: identity.sourceProgramId === 'PBLN_100' ? '청년창업 사업화 지원 공고' : '딥테크 성장 지원 공고' })) }),
   })
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); appContainer.register({ combinationReviewUseCase: asValue(original), browseSupportProgramsUseCase: asValue(originalCatalog), getSupportProgramDetailUseCase: asValue(originalDetail) }) })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); appContainer.register({ combinationReviewUseCase: asValue(original), browseSupportProgramsUseCase: asValue(originalCatalog), browseSavedSupportProgramsUseCase: asValue(originalSavedPrograms), getSupportProgramDetailUseCase: asValue(originalDetail) }) })
 function Isolation() { useReviewSessionIsolation(); return null }
 function mount(path = '/app/combination-reviews/12?step=analysis') {
   const store = createAppStore()
@@ -44,6 +48,20 @@ function mount(path = '/app/combination-reviews/12?step=analysis') {
   return { store, ...rendered }
 }
 describe('review screens and execution safety', () => {
+  it('adds two saved notices to a new review without a catalog search', async () => {
+    const programs = supportPrograms.slice(0, 2).map((program, index) => ({ ...structuredClone(program), id: `saved-${index + 1}` }))
+    browseSavedPrograms.mockResolvedValueOnce(programs.map((program, index) => ({ savedAt: `2026-09-12T10:0${index}:00+09:00`, program })))
+    mount('/app/combination-reviews/new')
+
+    const savedPrograms = await screen.findByRole('list', { name: '중복 지원 검토 관심 공고 목록' })
+    fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[0]!.title} 관심 공고 선택` }))
+    fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[1]!.title} 관심 공고 선택` }))
+
+    expect(screen.getByText('공고 선택 · 2/3')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '선택한 공고' })).getAllByRole('button', { name: '선택 해제' })).toHaveLength(2)
+    expect(browseSavedPrograms).toHaveBeenCalledWith(expect.any(AbortSignal))
+  })
+
   it.each([201, 404])('handles new review save HTTP %s through the production adapter', async (status) => {
     const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
       if (_url.includes('/catalog')) return Response.json({ programs: supportPrograms.slice(0, 2).map((program) => ({ ...program, recommendationScore: null, eligibilityReview: null, matchedReasons: [] })), total: 2, page: 1, pageSize: 10, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })

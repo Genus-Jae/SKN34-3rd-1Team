@@ -3,14 +3,14 @@
 
 > 2026-09-09 최신 팀 main 통합 시 main의 V6~V9를 보존하고 중복 검토 migration을 V6→V10, V7→V11로 이동했다. SQL 내용은 유지했다. 아래 과거 검증 기록의 V6/V7은 당시 브랜치 버전이다. 이전 브랜치의 V6/V7을 적용한 개발 DB는 새 버전과 이력이 다르므로 그대로 업그레이드하지 말고 별도 DB를 사용해야 한다. 이번 통합에서는 기존 DB를 변경하지 않았다.
 
-- 관련 이슈: [#123 — skn-59](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/123) · [#230 — skn-112 전 제공처 공식 첨부](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/230)
+- 관련 이슈: [#123 — skn-59](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/123) · [#230 — skn-112 전 제공처 공식 첨부](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/230) · [#246 — skn-121 관심 공고 선택](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/246)
 - 상태: **입력 API와 공식 근거 초안에 이어 네 제공처 자동 첨부 수집·PDF/HWP/HWPX 파싱·단일 Agent·실행 이력을 연결했다. 실제 모델 품질·사람 검수·운영 배포는 별도 검증 범위다.**
 - 설계 기준: 2026-09-09, 소스 커밋 `f238d993bd0a4c4f109ff109d39f09e5c0e54c8c`.
 - V10은 검토 입력, V11은 실행 스냅샷·원본 파일을 정의한다. 공식 원문과 AI Service 호출은 분석 POST에서만 실행한다.
 
 ## 1. 기능 범위
 
-사용자가 사업 2~3개와 지원 상태를 입력하면 공식 근거를 대조하여 단계별 제한·허용 범위·미확인 사항을 보여준다.
+사용자가 관심 공고함 또는 전체 공고 검색에서 사업 2~3개와 지원 상태를 입력하면 공식 근거를 대조하여 단계별 제한·허용 범위·미확인 사항을 보여준다.
 메뉴명은 **중복 지원 검토**, 기능 식별 이름은 `combinationreview` / `combination_review`로 제안한다.
 
 | 포함 | 제외 |

@@ -183,7 +183,7 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 Core API 코드도 변경되므로 기존 실행 이미지는 재빌드해야 합니다. [백엔드 변경 반영 안내](../infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)를 참고하세요.
 
 신청 문서 작성 도우미는 `View → ViewModel → ApplicationPreparationUseCase → ApplicationPreparationRepository →
-data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 기존 공고 카탈로그의 모든 제공처를 공고명·기관명으로 검색하고,
+data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 관심 공고함에서 공고를 바로 고르거나 기존 공고 카탈로그의 모든 제공처를 공고명·기관명으로 검색하고,
 공식 첨부 수집을 검증한 기업마당·K-Startup·과기정통부·충남 수출지원 공고를 선택하는 흐름을 기본으로 제공합니다.
 K-Startup은 카탈로그의 공식 상세 URL과 공고 ID를, 충남은 OpenAPI 제목·본문과 공식 게시판 상세의 단일 일치를 검증한 뒤
 PDF/HWP/HWPX 첨부를 분석합니다. 검색에서 찾지 못한 기업마당 공고만 공식 URL·ID 직접 입력을 보조 경로로 제공합니다.
@@ -595,10 +595,10 @@ Node 24.20.0·pnpm 11.22.0에서 전체 **43파일 526개 테스트**, lint·bui
 
 ## 중복 지원·수혜 검토 사용자 화면 (5-1)
 
-`/app/combination-reviews`는 본인 목록·커서 조회, `/new`는 공고 2~3개 선택·저장,
+`/app/combination-reviews`는 본인 목록·커서 조회, `/new`는 관심 공고함 또는 전체 공고 검색에서 공고 2~3개 선택·저장,
 `/:reviewId`는 입력 수정·실행·이력·원본 다운로드를 제공한다. RequireAuth와 WorkspaceLayout을 사용한다.
 호출은 `View → ViewModel → CombinationReviewUseCase → Domain Repository 계약 → Data 구현 → HTTP/Zod → Core API`다.
-공고 선택은 기존 BrowseSupportProgramsUseCase의 무료 카탈로그 API를 재사용하며 접수 종료·미지원 자동 분석을 구분한다.
+공고 선택은 `BrowseSavedSupportProgramsUseCase`의 관심 공고 목록과 기존 `BrowseSupportProgramsUseCase`의 무료 카탈로그 API를 재사용하며 접수 종료·미지원 자동 분석을 구분한다.
 
 저장과 분석은 별도 버튼으로 실행한다. 입력 충돌 시 편집 내용을 유지하고 최신 입력 조회·명시적 적용을 제공한다.
 동기 분석 POST 응답을 최대 120초 기다리며 서버 실행 취소를 보장하지 않는다. 미확인 요청의 키·버전·추가 설명만

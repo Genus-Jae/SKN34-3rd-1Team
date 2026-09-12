@@ -12,6 +12,7 @@ import type {
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCatalog } from '../../../../domain/entities/SupportProgramCatalog'
 import { appPaths } from '../../../shared/routes/appPaths'
+import { useSavedSupportProgramChoices } from '../../../shared/support-program/useSavedSupportProgramChoices'
 
 function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error('신청 문서 정보를 처리하지 못했습니다.')
@@ -23,6 +24,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   const useCase = appContainer.resolve('applicationPreparationUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const navigate = useNavigate()
+  const savedProgramChoices = useSavedSupportProgramChoices(id === null)
   const [forms, setForms] = useState<ApplicationForm[]>([])
   const [selectedFormVersionId, setSelectedFormVersionId] = useState('')
   const [preparation, setPreparation] = useState<ApplicationPreparation | null>(null)
@@ -368,6 +370,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     appliedCatalogKeyword,
     catalogLoading,
     catalogError,
+    savedProgramChoices,
     selectedProgram,
     discoverySourceCode,
     creationStep,

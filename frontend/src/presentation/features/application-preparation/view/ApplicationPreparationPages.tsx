@@ -264,6 +264,43 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
           <p className={s.muted}>선택만으로 분석하지 않습니다. 버튼을 누르면 공식 첨부의 작성 문항을 찾습니다.</p>
         </section>}
 
+        <section className={s.card} aria-labelledby="saved-application-programs-title">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className={s.cardTitle} id="saved-application-programs-title">관심 공고함에서 선택</h2>
+              <p className={s.muted}>미리 담아 둔 공고를 바로 신청 문서에 연결할 수 있습니다.</p>
+            </div>
+            {vm.savedProgramChoices.phase === 'failed' && <button className={s.button} type="button" onClick={vm.savedProgramChoices.retry}>다시 불러오기</button>}
+          </div>
+          {(vm.savedProgramChoices.phase === 'idle' || vm.savedProgramChoices.phase === 'loading') && <p className={s.status} role="status">관심 공고를 불러오는 중입니다.</p>}
+          {vm.savedProgramChoices.phase === 'failed' && <p className={s.notice} role="alert">관심 공고를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>}
+          {vm.savedProgramChoices.phase === 'ready' && vm.savedProgramChoices.programs.length === 0 && <p className={s.notice}>관심 공고함에 담은 공고가 없습니다.</p>}
+          {vm.savedProgramChoices.programs.length > 0 && <ul className="divide-y divide-slate-200" aria-label="신청 문서 관심 공고 목록">
+            {vm.savedProgramChoices.programs.map((program) => {
+              const selected = vm.selectedProgram?.sourceCode === program.sourceCode && vm.selectedProgram.id === program.id
+              const supported = supportedDocumentSources.includes(program.sourceCode)
+              return <li className="py-3" key={`${program.sourceCode}:${program.id}`}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <strong>{program.title}</strong>
+                    <p className={s.muted}>{catalogSourceLabels[program.sourceCode as keyof typeof catalogSourceLabels] ?? program.sourceName} · {program.organization} · {programStatusLabels[program.status]}</p>
+                    <p className={s.muted}>{program.applicationPeriod}</p>
+                  </div>
+                  <button
+                    aria-label={`${program.title} 관심 공고 ${!supported ? '문서 지원 준비 중' : selected ? '선택됨' : '선택'}`}
+                    className={s.button}
+                    disabled={!supported || selected || vm.discovering || vm.submitting}
+                    type="button"
+                    onClick={() => vm.selectProgram(program)}
+                  >
+                    {!supported ? '문서 지원 준비 중' : selected ? '선택됨' : '선택'}
+                  </button>
+                </div>
+              </li>
+            })}
+          </ul>}
+        </section>
+
         <section className={s.card}>
           <h2 className={s.cardTitle} id="create-preparation-title">지원 공고 검색</h2>
           <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색하고 공식 PDF/HWP/HWPX를 분석할 수 있습니다.</p>
