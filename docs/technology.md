@@ -162,11 +162,11 @@ C02의 조건 변경 해석은 공고 검색에 앞서는 별도 구체 Agent입
 
 ## 개발 환경과 검증
 
-Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Qdrant를 함께 실행합니다.
-AI Service는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
+Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Qdrant, Redis를 함께 실행합니다.
+AI Service와 Redis는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
 이 구성에 운영 인증·배포 자동화가 포함되어 있다고 가정하면 안 됩니다.
 
-[GitHub Actions](../.github/workflows/ci.yml)는 Frontend 테스트·lint·build, Core 빌드·MySQL 통합 테스트,
+[GitHub Actions](../.github/workflows/ci.yml)는 Frontend 테스트·lint·build, Core 빌드·MySQL·Redis 통합 테스트,
 AI 테스트·패키지 빌드·평가 도구 테스트, 컨테이너 통합 검증을 정의합니다. Compose 검증은 실제
-MySQL·Qdrant와 로컬 기업마당·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
+MySQL·Qdrant·Redis와 로컬 공고 제공처·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
 실제 공고 검색의 정확도와 원문 인용 답변의 정확도는 각각 별도의 실데이터 평가 대상입니다.
