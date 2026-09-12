@@ -20,11 +20,11 @@ function asError(value: unknown): Error {
 
 const supportedDocumentSources = ['BIZINFO', 'KSTARTUP', 'MSIT', 'CNTRADE_NOTICE']
 
-export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceCode = '', initialSourceProgramId = '') {
+export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceCode = '', initialSourceProgramId = '', loadSavedPrograms = false) {
   const useCase = appContainer.resolve('applicationPreparationUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const navigate = useNavigate()
-  const savedProgramChoices = useSavedSupportProgramChoices(id === null)
+  const savedProgramChoices = useSavedSupportProgramChoices(id === null && loadSavedPrograms)
   const [forms, setForms] = useState<ApplicationForm[]>([])
   const [selectedFormVersionId, setSelectedFormVersionId] = useState('')
   const [preparation, setPreparation] = useState<ApplicationPreparation | null>(null)
