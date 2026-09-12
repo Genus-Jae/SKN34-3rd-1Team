@@ -541,8 +541,8 @@ SDK의 JSON 출력 검증 실패는 `MODEL_OUTPUT_INVALID_JSON`, 스키마·서�
 ```dotenv
 OPENAI_API_KEY=필수
 OPENAI_MODEL=gpt-5.6-luna
-# 랭킹의 정확도·속도 우선 프로필. Fast는 Sol 일반 처리 대비 토큰 단가 2배입니다.
-OPENAI_RANKING_MODEL=gpt-5.6-sol
+# 랭킹도 Luna로 비용을 낮추되 기존 추론 low와 Fast 옵션은 유지합니다.
+OPENAI_RANKING_MODEL=gpt-5.6-luna
 OPENAI_RANKING_REASONING_EFFORT=low
 OPENAI_RANKING_SERVICE_TIER=priority
 LLM_MODEL_TIMEOUT_SECONDS=25.0
@@ -562,21 +562,25 @@ EMBEDDING_TIMEOUT_SECONDS=15
 `OPENAI_MODEL`은 조건 해석·RAG 근거 답변의 모델입니다. 랭킹만 `OPENAI_RANKING_MODEL`로
 별도 지정하며, 미입력·빈 값이면 기존 `OPENAI_MODEL`을 상속합니다. 랭킹 추론 수준은
 `OPENAI_RANKING_REASONING_EFFORT`로 `none` 또는 `low`를 지정합니다. 미입력 기본값은 `none`이며
-지원하지 않는 값은 기동 오류로 거부합니다. 위 예제와 루트 `.env.example`은 정확도 우선 프로필인
-`gpt-5.6-sol`/`low`를 권장하지만, 설정하지 않은 실행의 기존 모델·추론 기본값은 바꾸지 않습니다.
-이 프로필은 Luna/none보다 비용·응답 지연이 증가할 수 있으며, 모델 이름만으로 검색 정확도를
-보장하지 않습니다. 대화·RAG·임베딩 모델과 호출 횟수·재시도 정책은 변경하지 않습니다.
+지원하지 않는 값은 기동 오류로 거부합니다. 위 예제와 루트 `.env.example`은 비용 절감을 위해
+랭킹 모델을 `gpt-5.6-luna`로 통일하고 기존 추론 `low`는 유지합니다. 미설정 실행의 모델·추론 기본값은
+바꾸지 않습니다. 모델 변경은 토큰 단가를 낮추기 위한 것으로, 토큰 수·응답시간 감소나 검색 정확도 유지를
+보장하지 않습니다. 대화·RAG·임베딩 모델과 후보 수·프롬프트·호출 횟수·재시도 정책은 변경하지 않습니다.
+Luna의 Responses·구조화 출력·`low` 지원은 [OpenAI 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-5.6-luna)를
+기준으로 확인했습니다. 무료 스텁 테스트는 요청·출력 계약 검증이며 실제 검색 품질 측정이 아닙니다.
 직접 생성하는 `SupportProgramRecommendationAgent`의 추론 기본값도 `none`으로 유지합니다.
 이는 시작 시 선택하는 명시적 설정이며, 장애 시 다른 모델로 재시도하는 fallback이 아닙니다.
 출력 축약은 미채택이며 기존 후보 ID·필드명·출력 계약을 유지합니다. 실험 구현은 평가 경로에만 보존합니다.
 `OPENAI_RANKING_SERVICE_TIER` 미설정 시 코드·Compose 기본값은 `default`입니다. 위 예제와 루트
 `.env.example`은 사용자 승인에 따른 Fast 상시 사용 프로필인 `priority`를 명시합니다.
-현재 Sol의 Fast 토큰 단가는 대응하는 일반 처리의 2배입니다.
+Fast는 일반 처리보다 추가 요금이 있으며, 모델별 지원 범위와 단가는 공식 문서에서 확인해야 합니다.
 [OpenAI 공식 Fast 문서](https://developers.openai.com/api/docs/guides/fast-mode)를 참고하세요.
 이 설정은 랭킹 요청에만 적용하며 대화 해석·RAG 답변·임베딩 설정은 바꾸지 않습니다.
-모델·추론·후보 수·배점·출력/시간 상한·HTTP 계약도 유지합니다. 일반 처리로 돌아가려면
+추론·후보 수·배점·출력/시간 상한·HTTP 계약도 유지합니다. 일반 처리로 돌아가려면
 `default`를 명시하고 AI Service를 재시작하거나 Compose 컨테이너를 재생성합니다.
-배포·실측 상태는 [지역 충돌·Fast 기록](../../docs/region-conflict-fast-20260908.md)에서 별도로 확인합니다.
+이전 Sol 프로필의 배포·실측은 [지역 충돌·Fast 기록](../../docs/region-conflict-fast-20260908.md)에 보존하며,
+그 결과를 현재 Luna 프로필의 품질·속도 측정값으로 사용하지 않습니다. 기존 `.env`는 예제 변경으로 갱신되지 않으므로
+`OPENAI_RANKING_MODEL=gpt-5.6-luna`를 직접 반영하고 AI Service 컨테이너를 재생성해야 합니다.
 
 순위화만 모델·HTTP `45s` < 전체 Agent `50s` < Core 순위화 읽기 `55s`의 별도 기본 제한을 사용합니다.
 두 `LLM_RANKING_*` 값은 유한한 0초 초과·60초 이하이며 모델 제한이 전체 제한보다 작아야 합니다.
