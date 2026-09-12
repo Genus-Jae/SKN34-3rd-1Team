@@ -65,15 +65,11 @@ class MsitAttachmentClientTest {
     }
 
     @Test
-    fun reportsUnsupportedFormatsAndDoesNotFollowPageRedirects() {
+    fun collectsHwpAndDoesNotFollowPageRedirects() {
         server.expect(requestTo(pageUrl)).andRespond(withSuccess(page(fileName = "신청양식.hwp", extension = "hwp"), MediaType.TEXT_HTML))
+        server.expect(requestTo(downloadUrl)).andRespond(withSuccess(byteArrayOf(1), MediaType.APPLICATION_OCTET_STREAM))
         server.expect(requestTo(pageUrl)).andRespond(withStatus(HttpStatus.FOUND))
-        assertEquals(
-            Reason.UNSUPPORTED,
-            assertThrows(SupportProgramDocumentException::class.java) {
-                client.collect("MSIT", sourceProgramId, pageUrl)
-            }.reason,
-        )
+        assertEquals("HWP", client.collect("MSIT", sourceProgramId, pageUrl).files.single().format)
         assertEquals(
             Reason.UNAVAILABLE,
             assertThrows(SupportProgramDocumentException::class.java) {

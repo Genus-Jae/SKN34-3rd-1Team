@@ -9,8 +9,8 @@
 
 ## 서비스 경계
 
-신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 기업마당·과기정통부 공고를
-`ApplicationFormDiscoveryService → 제공처별 BizInfoAttachmentClient/MsitAttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
+신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 네 제공처 공고를
+`ApplicationFormDiscoveryService → 제공처별 AttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
 AiApplicationPreparationFacade → AI Service`로 분석합니다. 검증된 응답은 `ApplicationFormSnapshotRepository → MyBatis → MySQL`에
 파일 hash·파서·모델·프롬프트 버전과 함께 저장해 동일 추출 버전에서 재사용합니다. 발견 양식을 선택한 뒤
 `ApplicationPreparationService → ApplicationPreparationRepository`가 계정 소유 준비 건을 생성합니다. 화면 진입과 목록·상세
@@ -33,9 +33,9 @@ Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 전체 
 분석 POST는 `CombinationReviewRunController → CombinationReviewRunService`로 들어가 다음 경로를 실행합니다.
 
 1. `CombinationReviewRunRepository → MyBatis → MySQL`: 소유자·버전·요청 키 확인 후 RUNNING 입력 스냅샷 예약.
-2. 선택한 제공처에 따라 `BizInfoAttachmentClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 또는
-   `SupportProgramDetailService → MsitAttachmentClient → 과기정통부 공식 상세 → 직접 연결된 첨부`를 수집.
-3. `SupportProgramDocumentParser`: PDFBox 또는 HWPX ZIP/XML의 텍스트·위치를 추출. 신청 문서 발견과 중복 지원 검토가 같은 안전 경계를 사용.
+2. 선택한 제공처에 따라 `BizInfoAttachmentClient`, `MsitAttachmentClient`, `KStartupAttachmentClient`,
+   `CnTradeNoticeAttachmentClient`가 검증된 공식 상세의 직접 연결 첨부를 수집. 충남은 API 제목·본문과 게시판 상세를 교차 검증.
+3. `SupportProgramDocumentParser`: PDFBox, Apache Tika HWP5 또는 HWPX ZIP/XML로 텍스트·위치를 추출. 신청 문서 발견과 중복 지원 검토가 같은 안전 경계를 사용.
    공고별로 읽을 수 있는 문서가 있으면 크기 제한 초과·텍스트 추출 불가 첨부는 경고와 함께 제외하고, 모두 제외되면 실행을 실패 처리.
 4. `CombinationReviewRunRepository`: 원문 바이트·해시·메타데이터·텍스트를 짧은 transaction에서 보존.
 5. `AiCombinationReviewFacade → AiCombinationReviewClient → AI Router → CombinationReviewService → CombinationReviewAgent → OpenAI` 단일 호출.

@@ -12,4 +12,8 @@ class CnTradeNoticeClientConfig {
     @Bean
     fun cnTradeNoticeRestClient(builder: RestClient.Builder, properties: CnTradeNoticeClientProperties): RestClient =
         buildRestClient(builder, properties.baseUrl, properties.connectTimeout, properties.readTimeout)
+
+    @Bean
+    fun cnTradeNoticeSourceDocumentRestClient(builder: RestClient.Builder, properties: CnTradeNoticeClientProperties): RestClient =
+        buildRestClient(builder, null, properties.connectTimeout, properties.readTimeout)
 }

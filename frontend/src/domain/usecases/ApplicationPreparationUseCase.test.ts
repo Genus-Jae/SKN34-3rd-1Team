@@ -26,12 +26,16 @@ describe('ApplicationPreparationUseCase', () => {
 
   it('accepts supported catalog identities and a manually entered BizInfo URL', () => {
     useCase.discover('BIZINFO', 'PBLN_123')
+    useCase.discover('KSTARTUP', '177911')
     useCase.discover('MSIT', '3186573')
+    useCase.discover('CNTRADE_NOTICE', '3862')
     useCase.discoverBizInfo('https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=PBLN_456')
     expect(repository.discover).toHaveBeenNthCalledWith(1, 'BIZINFO', 'PBLN_123', undefined)
-    expect(repository.discover).toHaveBeenNthCalledWith(2, 'MSIT', '3186573', undefined)
-    expect(repository.discover).toHaveBeenNthCalledWith(3, 'BIZINFO', 'PBLN_456', undefined)
-    expect(() => useCase.discover('KSTARTUP', '123')).toThrow('지원하는 공식 공고')
+    expect(repository.discover).toHaveBeenNthCalledWith(2, 'KSTARTUP', '177911', undefined)
+    expect(repository.discover).toHaveBeenNthCalledWith(3, 'MSIT', '3186573', undefined)
+    expect(repository.discover).toHaveBeenNthCalledWith(4, 'CNTRADE_NOTICE', '3862', undefined)
+    expect(repository.discover).toHaveBeenNthCalledWith(5, 'BIZINFO', 'PBLN_456', undefined)
+    expect(() => useCase.discover('KSTARTUP', 'PBLN_123')).toThrow('지원하는 공식 공고')
     expect(() => useCase.discoverBizInfo('https://evil.example/?pblancId=PBLN_123')).toThrow('기업마당')
   })
 

@@ -46,7 +46,7 @@ export function reviewProgramKey(program: Pick<ReviewProgram, 'sourceCode' | 'so
 export function supportsAutomaticReview(program: Pick<ReviewProgram, 'sourceCode' | 'sourceProgramId' | 'subProgramId'>): boolean {
   const supportedIdentity = program.sourceCode === 'BIZINFO'
     ? /^PBLN_[0-9]{1,32}$/.test(program.sourceProgramId)
-    : program.sourceCode === 'MSIT' && /^[1-9][0-9]{0,254}$/.test(program.sourceProgramId)
+    : ['KSTARTUP', 'MSIT', 'CNTRADE_NOTICE'].includes(program.sourceCode) && /^[1-9][0-9]{0,254}$/.test(program.sourceProgramId)
   return supportedIdentity && program.subProgramId === null
 }
 export function validateReviewDraft(draft: ReviewDraft): ReviewDraft {

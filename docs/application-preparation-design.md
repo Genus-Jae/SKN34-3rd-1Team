@@ -2,8 +2,8 @@
 
 [문서 목록](README.md) · [시스템 구조](architecture/README.md) · [계정·인증 계약](account-auth-contract.md)
 
-- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189) · [#199 — skn-96 공고 기반 양식 발견](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/199) · [#207 — skn-100 작성 도우미 공고 검색](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/207) · [#210 — skn-102 오류·삭제·선택 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/210) · [#212 — skn-103 단계 분리·제공처 확장](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/212)
-- 상태: **작성 도우미 안에서 전체 제공처 공고를 검색하고, 기업마당·과기정통부 공식 PDF/HWPX의 신청 문서와 문항을 동적으로 발견해 기존 질문·사실 확인 흐름에 연결한다. 공고 선택과 발견 문서 확인은 두 단계로 분리한다. 초안 생성·수정·확인은 미구현이다.**
+- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189) · [#199 — skn-96 공고 기반 양식 발견](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/199) · [#207 — skn-100 작성 도우미 공고 검색](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/207) · [#210 — skn-102 오류·삭제·선택 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/210) · [#212 — skn-103 단계 분리·제공처 확장](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/212) · [#230 — skn-112 전 제공처 공식 첨부](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/230)
+- 상태: **작성 도우미 안에서 전체 제공처 공고를 검색하고, 기업마당·K-Startup·과기정통부·충남 수출지원 공식 PDF/HWP/HWPX의 신청 문서와 문항을 동적으로 발견해 기존 질문·사실 확인 흐름에 연결한다. 공고 선택과 발견 문서 확인은 두 단계로 분리한다. 초안 생성·수정·확인은 미구현이다.**
 - 설계 기준: 2026-09-11, 팀 `main` 커밋 `6fc41bc`에서 `skn-96` 전환.
 - 기능 이름: 화면에서는 **신청 문서 작성 도우미**, 코드에서는 `applicationpreparation` / `application_preparation` / `application-preparation`을 사용한다.
 
@@ -29,8 +29,8 @@ AI가 만든 문장은 제출 완료나 사실 확인을 의미하지 않는다.
 ## 2. 최초 검수 기준과 동적 지원 범위
 
 기업마당의 **2026년 2차 중소기업 혁신바우처 사업 지원계획 공고** 한 건은 자동 추출 결과를 비교할 최초 검수 기준이다.
-사용자 기능은 이 한 건에 제한하지 않고, 기업마당 숫자형 `PBLN_...` 공고와 과기정통부 숫자형 사업공고가 직접 연결한
-PDF/HWPX를 명시적 요청에서 분석한다.
+사용자 기능은 이 한 건에 제한하지 않고, 네 제공처의 검증된 공고 식별자와 공식 상세가 직접 연결한
+PDF/HWP/HWPX를 명시적 요청에서 분석한다.
 
 | 항목 | 고정 값 |
 |---|---|
@@ -59,7 +59,7 @@ PDF/HWPX를 명시적 요청에서 분석한다.
 | 포함 | 제외 |
 |---|---|
 | 로그인 회원의 신청 준비 건 생성·저장·이어쓰기 | 정부 사이트 로그인·자동 입력·자동 제출 |
-| 기업마당·과기정통부 공식 PDF/HWPX의 신청 문서·문항 발견과 사용자 확인 | K-Startup·충남 수출지원 첨부, HWP·스캔 PDF/OCR·임의 파일 업로드 |
+| 네 제공처 공식 PDF/HWP/HWPX의 신청 문서·문항 발견과 사용자 확인 | 스캔 PDF/OCR·암호화 문서·임의 파일 업로드 |
 | 문항별 질문, 사용자 답변의 사실·미정 구분 | 사용자에게 없는 실적·수치·인증·일정 생성 |
 | 사용자 확인 사실로 문항 초안 생성 | 선정 가능성·기관 수용 여부·법률 적합성 보장 |
 | 직접 수정, 버전 저장, 특정 버전 사용자 확인 | 원본 HWPX의 표·글꼴·페이지 완전 재현 |
@@ -72,10 +72,10 @@ PDF/HWPX를 명시적 요청에서 분석한다.
 
 ## 4. 사용자 흐름과 화면 경계
 
-1. 로그인 사용자가 작성 도우미 안에서 공고명·기관명으로 전체 제공처 공고를 검색하고, 지원되는 기업마당·과기정통부 공고를 선택하거나 공고 상세에서 진입한다.
+1. 로그인 사용자가 작성 도우미 안에서 공고명·기관명으로 전체 제공처 공고를 검색하고 공고를 선택하거나 공고 상세에서 진입한다.
    선택 공고는 검색 결과 위에 표시하고 같은 카드의 `신청 문서 찾기` 버튼으로 다음 행동을 이어간다.
 2. 검색에서 찾지 못한 경우에만 기업마당 공식 URL·공고 ID를 직접 입력한다.
-3. 사용자가 분석 버튼을 누르면 공식 PDF/HWPX를 수집하고 신청 문서·문항 후보를 추출한다.
+3. 사용자가 분석 버튼을 누르면 공식 PDF/HWP/HWPX를 수집하고 신청 문서·문항 후보를 추출한다.
 4. 분석이 끝나면 별도 `신청 문서 확인` 단계로 전환한다. 사용자가 원문 위치와 발견 양식을 확인하고 생성 버튼을 누른다.
 5. 공식 문항 목록과 문항별 작성 상태를 본다.
 6. 선택 문항에서 AI 질문에 답하고 제안 사실·미정 정보를 확인하거나 정정한다.
@@ -183,7 +183,7 @@ AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초�
 | 메서드·경로 | 역할 |
 |---|---|
 | GET `/application-preparations/forms` | 기존 검수 기준 양식 조회. 이전 작업 호환용이며 새 작성 진입에서는 자동 호출하지 않음 |
-| POST `/application-preparations/forms/discover` | 선택한 기업마당·과기정통부 공고의 공식 PDF/HWPX에서 신청 문서·문항을 발견하고 버전 스냅샷 저장·재사용 |
+| POST `/application-preparations/forms/discover` | 선택한 네 제공처 공고의 공식 PDF/HWP/HWPX에서 신청 문서·문항을 발견하고 버전 스냅샷 저장·재사용 |
 | POST `/application-preparations` | 공고·지원 분야·양식 버전으로 신청 준비 건 생성 |
 | GET `/application-preparations` | 본인 신청 준비 목록 |
 | GET `/application-preparations/{id}` | 본인 현재 입력·문항·작성 상태 조회 |
@@ -309,7 +309,7 @@ Core는 AI 응답에서 다음을 검증한다.
 - 요청 취소만으로 OpenAI 실행 중단을 보장하지 않으며 늦은 결과는 입력 revision으로 격리한다.
 - 공식 첨부 다운로드·파싱·AI 호출을 하나의 DB transaction 안에서 수행하지 않는다.
 - 사용자가 직접 입력한 URL은 Frontend에서 기업마당 상세 URL의 공고 ID로만 정규화하며 Core는 임의 URL을 다운로드하지 않는다.
-- Core는 카탈로그에서 제공처별 공식 상세를 다시 조회하고, 제공처·공고 ID·허용 호스트가 모두 일치하는 페이지가 직접 연결한 PDF/HWPX만 받는다.
+- Core는 카탈로그에서 제공처별 공식 상세를 다시 조회하고, 제공처·공고 ID·허용 호스트가 모두 일치하는 페이지가 직접 연결한 PDF/HWP/HWPX만 받는다. 충남은 API 제목·본문과 공식 게시판 상세가 하나로 일치할 때만 채택한다.
 - 공식 파일 hash가 기존 값과 다르면 새 스냅샷으로 분석하고 사용자가 다시 선택하게 하며 기존 manifest를 덮어쓰지 않는다.
 - 기관이 검수하지 않은 AI 초안을 공식 작성 지침이나 선정 가능성 판단으로 표시하지 않는다.
 

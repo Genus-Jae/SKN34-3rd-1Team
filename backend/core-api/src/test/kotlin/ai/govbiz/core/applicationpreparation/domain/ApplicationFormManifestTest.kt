@@ -32,6 +32,26 @@ class ApplicationFormManifestTest {
     }
 
     @Test
+    fun acceptsNewProviderManifestsOnlyWithTheirMatchingOfficialHosts() {
+        assertEquals("KSTARTUP", form(
+            sourceCode = "KSTARTUP",
+            sourceProgramId = "177911",
+            sourceUrl = "https://www.k-startup.go.kr/web/contents/bizpbanc-deadline.do?pbancSn=177911",
+        ).sourceCode)
+        assertEquals("CNTRADE_NOTICE", form(
+            sourceCode = "CNTRADE_NOTICE",
+            sourceProgramId = "3862",
+            sourceUrl = "https://cntrade.chungnam.go.kr/home/kor/M102638244/board.do",
+        ).sourceCode)
+        assertThrows(IllegalArgumentException::class.java) {
+            form(sourceCode = "KSTARTUP", sourceProgramId = "177911", sourceUrl = "https://cntrade.chungnam.go.kr/form")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            form(sourceCode = "CNTRADE_NOTICE", sourceProgramId = "3862", sourceUrl = "https://www.k-startup.go.kr/form")
+        }
+    }
+
+    @Test
     fun rejectsDuplicateSectionsUnsafeSourcesAndInstitutionReviewClaims() {
         assertThrows(IllegalArgumentException::class.java) { form(sections = listOf(section("same"), section("same"))) }
         assertThrows(IllegalArgumentException::class.java) { form(sourceUrl = "http://example.com/form") }

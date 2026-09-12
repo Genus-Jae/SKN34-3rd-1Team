@@ -251,7 +251,7 @@ function SupportProgramDetail({ program, searchReturnTo }: {
             이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다. 원문 공고에서 확인해 주세요.
           </p>
         )}
-        {['BIZINFO', 'MSIT'].includes(program.sourceCode) ? (
+        {['BIZINFO', 'KSTARTUP', 'MSIT', 'CNTRADE_NOTICE'].includes(program.sourceCode) ? (
           save.isAuthenticated ? (
             <Link className={supportProgramDetailStyles.questionLink} to={applicationPreparationPath}>
               이 공고의 신청 문서 작성하기

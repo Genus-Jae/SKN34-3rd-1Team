@@ -27,6 +27,13 @@ const programStatusLabels = {
   CLOSED: '접수 종료',
   UNKNOWN: '접수 상태 미확인',
 } as const
+const supportedDocumentSources = ['BIZINFO', 'KSTARTUP', 'MSIT', 'CNTRADE_NOTICE']
+const directInputLabels: Record<string, string> = {
+  BIZINFO: '기업마당 공식 공고 URL 또는 공고 ID',
+  KSTARTUP: 'K-Startup 공식 공고 ID',
+  MSIT: '과학기술정보통신부 공식 공고 ID',
+  CNTRADE_NOTICE: '충남 온라인수출지원시스템 공식 공고 ID',
+}
 
 function readableTime(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -199,7 +206,7 @@ export function ApplicationPreparationEditorPage({ create = false }: { create?: 
     </>
   }
   const requestedSourceCode = create ? searchParams.get('sourceCode') ?? '' : ''
-  const initialSourceCode = ['BIZINFO', 'MSIT'].includes(requestedSourceCode) ? requestedSourceCode : ''
+  const initialSourceCode = supportedDocumentSources.includes(requestedSourceCode) ? requestedSourceCode : ''
   const initialSourceProgramId = initialSourceCode ? searchParams.get('sourceProgramId') ?? '' : ''
   return <ApplicationPreparationEditor
     key={`${account.email}:${id ?? 'new'}`}
@@ -253,13 +260,13 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
               {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
             </button>
           </div>
-          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
+          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWP/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
           <p className={s.muted}>선택만으로 분석하지 않습니다. 버튼을 누르면 공식 첨부의 작성 문항을 찾습니다.</p>
         </section>}
 
         <section className={s.card}>
           <h2 className={s.cardTitle} id="create-preparation-title">지원 공고 검색</h2>
-          <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색할 수 있습니다. 현재 기업마당과 과학기술정보통신부 공고의 PDF/HWPX를 분석합니다.</p>
+          <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색하고 공식 PDF/HWP/HWPX를 분석할 수 있습니다.</p>
           <div className="flex flex-wrap items-end gap-2">
             <label className="min-w-0 flex-1 text-sm font-bold text-app-ink" htmlFor="application-program-search">
               공고명·기관명
@@ -290,7 +297,7 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
             <ul className="divide-y divide-slate-200" aria-label="신청 문서 공고 검색 결과">
               {vm.catalog.programs.map((program) => {
                 const selected = vm.selectedProgram?.sourceCode === program.sourceCode && vm.selectedProgram.id === program.id
-                const supported = ['BIZINFO', 'MSIT'].includes(program.sourceCode)
+                const supported = supportedDocumentSources.includes(program.sourceCode)
                 return <li className="py-3" key={`${program.sourceCode}:${program.id}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -315,7 +322,7 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
         <details className={s.card}>
           <summary className="cursor-pointer text-sm font-bold text-app-ink">검색에서 공고를 찾지 못했나요?</summary>
           <label className={s.label} htmlFor="application-program">
-            {vm.discoverySourceCode === 'MSIT' ? '과학기술정보통신부 공식 공고 ID' : '기업마당 공식 공고 URL 또는 공고 ID'}
+            {directInputLabels[vm.discoverySourceCode] ?? directInputLabels.BIZINFO}
           </label>
           <input
             className={s.input}
@@ -323,7 +330,7 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
             id="application-program"
             value={vm.discoveryInput}
             onChange={(event) => vm.setManualDiscoveryInput(event.target.value)}
-            placeholder={vm.discoverySourceCode === 'MSIT' ? '예: 3186573' : 'https://www.bizinfo.go.kr/…?pblancId=PBLN_… 또는 PBLN_…'}
+            placeholder={vm.discoverySourceCode && vm.discoverySourceCode !== 'BIZINFO' ? '예: 177911' : 'https://www.bizinfo.go.kr/…?pblancId=PBLN_… 또는 PBLN_…'}
           />
         </details>
 
@@ -331,8 +338,8 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
           <button className={s.primary} disabled={vm.discovering || vm.submitting || !vm.discoveryInput.trim()} type="button" onClick={() => { void vm.discoverForms() }}>
             {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
           </button>
-          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
-          <p className={s.muted}>공식 페이지가 직접 연결한 PDF/HWPX만 분석합니다. 분석 결과는 확인 전 AI 제안이며 자동 제출되지 않습니다.</p>
+          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWP/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
+          <p className={s.muted}>공식 페이지가 직접 연결한 PDF/HWP/HWPX만 분석합니다. 분석 결과는 확인 전 AI 제안이며 자동 제출되지 않습니다.</p>
         </section>}
         </>}
 

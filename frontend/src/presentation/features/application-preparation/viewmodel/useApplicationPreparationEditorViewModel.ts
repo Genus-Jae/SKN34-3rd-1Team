@@ -17,6 +17,8 @@ function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error('신청 문서 정보를 처리하지 못했습니다.')
 }
 
+const supportedDocumentSources = ['BIZINFO', 'KSTARTUP', 'MSIT', 'CNTRADE_NOTICE']
+
 export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceCode = '', initialSourceProgramId = '') {
   const useCase = appContainer.resolve('applicationPreparationUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
@@ -136,7 +138,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   }, [catalogKeyword, catalogUseCase])
 
   const selectProgram = useCallback((program: SupportProgram) => {
-    if (!['BIZINFO', 'MSIT'].includes(program.sourceCode)) return
+    if (!supportedDocumentSources.includes(program.sourceCode)) return
     setSelectedProgram(program)
     setDiscoverySourceCode(program.sourceCode)
     setDiscoveryInput(program.id)
@@ -168,7 +170,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     setError(null)
     setDiscoveryWarnings([])
     try {
-      const result = selectedProgram || discoverySourceCode === 'MSIT'
+      const result = selectedProgram || discoverySourceCode
         ? await useCase.discover(discoverySourceCode, discoveryInput, controller.signal)
         : await useCase.discoverBizInfo(discoveryInput, controller.signal)
       if (controller.signal.aborted || discoveryController.current !== controller) return

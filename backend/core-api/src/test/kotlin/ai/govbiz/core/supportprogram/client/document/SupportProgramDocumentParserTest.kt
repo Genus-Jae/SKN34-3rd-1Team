@@ -2,10 +2,15 @@ package ai.govbiz.core.supportprogram.client.document
 
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException.Reason
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
+import org.apache.poi.hpsf.PropertySetFactory
+import org.apache.poi.poifs.filesystem.POIFSFileSystem
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
@@ -44,8 +49,13 @@ class SupportProgramDocumentParserTest {
     }
 
     @Test
-    fun refusesUnsupportedHwpAndInvalidFiles() {
-        assertEquals(Reason.UNSUPPORTED, assertThrows(SupportProgramDocumentException::class.java) { mapper.parse(byteArrayOf(1), "HWP") }.reason)
+    fun readsHwpFiveParagraphsAndRejectsInvalidHwp() {
+        val first = "첫 번째 신청 문항을 구체적으로 작성해 주세요. ".repeat(2).trim()
+        val second = "두 번째 신청 문항에는 지원 필요성을 작성해 주세요. ".repeat(2).trim()
+        val blocks = mapper.parse(hwp(first, second), "HWP")
+        assertEquals(listOf("HWP paragraphs 1-2"), blocks.map { it.locator })
+        assertEquals("$first\n$second", blocks.single().text)
+        assertEquals(Reason.INVALID, assertThrows(SupportProgramDocumentException::class.java) { mapper.parse(byteArrayOf(1), "HWP") }.reason)
         assertEquals(Reason.INVALID, assertThrows(SupportProgramDocumentException::class.java) { mapper.parse("html error page".toByteArray(), "PDF") }.reason)
     }
 
@@ -87,5 +97,27 @@ class SupportProgramDocumentParserTest {
 
     private fun zip(name: String, bytes: ByteArray): ByteArray = ByteArrayOutputStream().also { output ->
         ZipOutputStream(output).use { it.putNextEntry(ZipEntry(name)); it.write(bytes); it.closeEntry() }
+    }.toByteArray()
+
+    private fun hwp(vararg paragraphs: String): ByteArray = ByteArrayOutputStream().also { output ->
+        POIFSFileSystem().use { fileSystem ->
+            val header = ByteArray(256)
+            "HWP Document File".toByteArray(Charsets.US_ASCII).copyInto(header)
+            fileSystem.root.createDocument("FileHeader", ByteArrayInputStream(header))
+
+            val summary = ByteArrayOutputStream().also { PropertySetFactory.newSummaryInformation().write(it) }.toByteArray()
+            fileSystem.root.createDocument("\u0005HwpSummaryInformation", ByteArrayInputStream(summary))
+
+            val section = ByteArrayOutputStream()
+            paragraphs.forEach { paragraph ->
+                val text = paragraph.toByteArray(Charsets.UTF_16LE)
+                val recordHeader = 0x43 or (text.size shl 20)
+                section.write(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(recordHeader).array())
+                section.write(text)
+            }
+            fileSystem.root.createDirectory("BodyText")
+                .createDocument("Section0", ByteArrayInputStream(section.toByteArray()))
+            fileSystem.writeFilesystem(output)
+        }
     }.toByteArray()
 }
