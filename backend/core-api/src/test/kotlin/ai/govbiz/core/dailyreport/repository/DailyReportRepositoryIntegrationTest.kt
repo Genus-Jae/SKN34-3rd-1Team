@@ -219,6 +219,106 @@ class DailyReportRepositoryIntegrationTest {
         assertTrue(reports.unsubscribe("6".repeat(64)))
     }
 
+    @Test
+    fun scheduledReservationAndOutboxRollbackTogetherWithDailyBudget() {
+        val owner = account("outbox-rollback")
+        val today = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+        TransactionTemplate(transactions).executeWithoutResult { status ->
+            reports.reserveScheduled(owner.id, today, input, 20)
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM daily_report_generation_job", Int::class.java))
+            status.setRollbackOnly()
+        }
+        assertNull(reports.forDay(owner.id, today))
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM daily_report_generation_job", Int::class.java))
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM daily_report_generation_budget", Int::class.java))
+    }
+
+    @Test
+    fun repeatedScheduledReservationCreatesOneJobAndPublicationReservationsAreExclusive() {
+        val owner = account("outbox-dedup")
+        val today = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+        val reserved = reports.reserveScheduled(owner.id, today, input, 20)
+        assertFalse(reports.reserveScheduled(owner.id, today, input.copy(region = "부산"), 20).acquired)
+        val id = reports.publishableJobs().single()
+        assertTrue(reports.reserveJobPublication(id))
+        assertFalse(reports.reserveJobPublication(id))
+        reports.markJobPublished(id)
+        assertTrue(reports.publishableJobs().isEmpty())
+        val claimed = requireNotNull(reports.claimGenerationJob(id))
+        assertEquals(reserved.report.input, claimed.input)
+        assertNull(reports.claimGenerationJob(id))
+        val content = DailyReportContent(listOf(item("BIZINFO")), listOf("근거 확인 🧪"))
+        reports.finishGenerationJob(id, claimed, content)
+        assertEquals(content, reports.forDay(owner.id, today)?.content)
+        assertEquals("SUCCEEDED", jobStatus(id))
+        assertEquals(1, jdbc.queryForObject("SELECT attempts FROM daily_report_generation_budget WHERE report_date = ?", Int::class.java, today))
+    }
+
+    @Test
+    fun independentWorkersCannotClaimTheSameJob() {
+        val owner = account("job-concurrent")
+        reports.reserveScheduled(owner.id, LocalDate.now(java.time.ZoneId.of("Asia/Seoul")), input, 20)
+        val id = reports.publishableJobs().single()
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val claimed = executor.invokeAll(List(2) { Callable { reports.claimGenerationJob(id) } }).map { it.get() }
+            assertEquals(1, claimed.count { it != null })
+        } finally { executor.shutdownNow() }
+    }
+
+    @Test
+    fun queuedWorkDoesNotUseTheManualPreviewTimeoutButHasItsOwnDeadline() {
+        val owner = account("queue-expiry")
+        val today = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+        val report = reports.reserveScheduled(owner.id, today, input, 20).report
+        val id = reports.publishableJobs().single()
+        jdbc.update("UPDATE daily_report SET started_at = '2020-01-01' WHERE id = ?", report.id)
+        reports.expireStaleWork()
+        assertEquals(DailyReportStatus.GENERATING, reports.forDay(owner.id, today)?.status)
+        jdbc.update("UPDATE daily_report_generation_job SET created_at = '2020-01-01', deadline_at = '2020-01-02' WHERE id = ?", id)
+        reports.expireStaleWork()
+        assertEquals("FAILED", jobStatus(id))
+        assertNull(reports.claimGenerationJob(id))
+        assertEquals(DailyReportStatus.FAILED, reports.forDay(owner.id, today)?.status)
+    }
+
+    @Test
+    fun uncertainRunningWorkBlocksAutomaticAndManualReexecutionAndRejectsLateCompletion() {
+        val owner = subscribed("job-uncertain", "7")
+        val today = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+        reports.reserveScheduled(owner.id, today, input, 20)
+        val id = reports.publishableJobs().single()
+        val report = requireNotNull(reports.claimGenerationJob(id))
+        jdbc.update("UPDATE daily_report_generation_job SET started_at = '2020-01-01' WHERE id = ?", id)
+        reports.expireStaleWork()
+        assertEquals("UNKNOWN", jobStatus(id))
+        assertFalse(reports.reserveScheduled(owner.id, today, input, 20).acquired)
+        assertFalse(reports.reserve(owner.id, today, input, 20).acquired)
+        assertFalse(reports.dueAccountIds(today, 20).contains(owner.id))
+        assertThrows(IllegalStateException::class.java) { reports.finishGenerationJob(id, report, DailyReportContent(emptyList(), emptyList())) }
+        assertEquals(DailyReportStatus.FAILED, reports.forDay(owner.id, today)?.status)
+        assertEquals(1, reports.forDay(owner.id, today)?.generationAttempts)
+    }
+
+    @Test
+    fun confirmedFailureAllowsOnlyOneBudgetedRetryAndOldMessageCannotRunNewGeneration() {
+        val owner = account("job-retry")
+        val today = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+        reports.reserveScheduled(owner.id, today, input, 20)
+        val firstId = reports.publishableJobs().single()
+        reports.finishGenerationJob(firstId, requireNotNull(reports.claimGenerationJob(firstId)), null)
+        assertTrue(reports.reserveScheduled(owner.id, today, input.copy(region = "부산"), 20).acquired)
+        val secondId = reports.publishableJobs().single()
+        assertNotEquals(firstId, secondId)
+        assertNull(reports.claimGenerationJob(firstId))
+        val second = requireNotNull(reports.claimGenerationJob(secondId))
+        assertEquals(input, second.input)
+        reports.finishGenerationJob(secondId, second, null)
+        assertFalse(reports.reserveScheduled(owner.id, today, input, 20).acquired)
+        assertEquals(2, reports.forDay(owner.id, today)?.generationAttempts)
+    }
+
+    private fun jobStatus(id: Long): String? = jdbc.queryForObject("SELECT status FROM daily_report_generation_job WHERE id = ?", String::class.java, id)
     private fun account(label: String): Account = accounts.createAccount(NewAccount("$label@daily-report.test", "hash", LocalDateTime.now()))
     private fun subscribed(label: String, hashChar: String): Account {
         val account = account(label)

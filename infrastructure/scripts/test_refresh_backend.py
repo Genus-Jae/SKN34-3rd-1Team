@@ -12,10 +12,10 @@ BASH = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$REFRESH_DOCKER_CALLS"
 case "$*" in
-  *" config --services") printf '%s\n' ${REFRESH_CONFIGURED_SERVICES-mysql qdrant redis ai-service core-api web};;
+  *" config --services") printf '%s\n' ${REFRESH_CONFIGURED_SERVICES-mysql qdrant redis rabbitmq ai-service core-api web};;
   "ps --all --quiet --filter label=com.docker.compose.project="*) printf '%s\n' "${REFRESH_PROJECT_CONTAINERS-container-id}";;
-  *" ps --all --services") printf '%s\n' ${REFRESH_EXISTING_SERVICES-mysql qdrant redis ai-service core-api web};;
-  *" ps --services --status running") printf '%s\n' ${REFRESH_RUNNING_SERVICES-mysql qdrant redis ai-service core-api web};;
+  *" ps --all --services") printf '%s\n' ${REFRESH_EXISTING_SERVICES-mysql qdrant redis rabbitmq ai-service core-api web};;
+  *" ps --services --status running") printf '%s\n' ${REFRESH_RUNNING_SERVICES-mysql qdrant redis rabbitmq ai-service core-api web};;
   *" port web 5173") printf '%s\n' '127.0.0.1:5173';;
 esac
 exit 0
@@ -82,6 +82,7 @@ class RefreshBackendSafetyTest(unittest.TestCase):
         self.assertNotIn(" up --detach --no-deps --no-build mysql", calls)
         self.assertNotIn(" up --detach --no-deps --no-build qdrant", calls)
         self.assertNotIn(" up --detach --no-deps --no-build redis", calls)
+        self.assertNotIn(" up --detach --no-deps --no-build rabbitmq", calls)
         self.assertIn("Existing MySQL, Qdrant and Redis containers and volumes were not recreated or removed", result.stdout)
 
     def test_missing_target_project_stops_before_build_or_replacement(self):
@@ -92,7 +93,7 @@ class RefreshBackendSafetyTest(unittest.TestCase):
         self.assert_no_mutation(calls)
 
     def test_unexpected_compose_configuration_stops_before_inspecting_or_mutating(self):
-        result, calls = self.run_script(REFRESH_CONFIGURED_SERVICES="mysql qdrant redis core-api web")
+        result, calls = self.run_script(REFRESH_CONFIGURED_SERVICES="mysql qdrant redis rabbitmq core-api web")
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("does not contain expected service 'ai-service'", result.stderr)
@@ -111,6 +112,15 @@ class RefreshBackendSafetyTest(unittest.TestCase):
                 result, calls = self.run_script(**{setting: "mysql qdrant ai-service core-api web"})
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn("'redis'", result.stderr)
+                self.assert_no_mutation(calls)
+
+    def test_missing_or_stopped_rabbitmq_prevents_deploying_a_broken_job_queue(self):
+        for setting in ("REFRESH_EXISTING_SERVICES", "REFRESH_RUNNING_SERVICES"):
+            with self.subTest(setting=setting):
+                result, calls = self.run_script(**{setting: "mysql qdrant redis ai-service core-api web"})
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("'rabbitmq'", result.stderr)
+                self.assertNotIn(" build ", calls)
                 self.assert_no_mutation(calls)
 
 
