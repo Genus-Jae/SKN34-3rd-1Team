@@ -151,7 +151,6 @@ export const chatPageStyles = {
   ),
   composerFooter: 'flex min-h-[4.25rem] flex-wrap items-center gap-x-4 gap-y-2 pt-1 pr-[5.5rem] pb-5 pl-7 max-chat:pl-5',
   composerHint: 'block text-[0.75rem] leading-relaxed text-sample-muted max-chat:text-[0.68rem]',
-  privacyHint: 'mx-4 mt-3 block text-center text-[0.7rem] leading-relaxed text-sample-muted',
   sourceHint: 'mx-4 mt-7 mb-0 flex flex-wrap items-center justify-center gap-2 text-center text-xs leading-relaxed text-sample-muted',
   programCard:
     'rounded-2xl border border-sample-border bg-white p-5 shadow-[0_8px_24px_rgb(32_33_36_/_4%)]',

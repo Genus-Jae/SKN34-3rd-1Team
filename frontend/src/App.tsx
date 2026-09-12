@@ -38,7 +38,7 @@ import { useRestoreAuthSession } from './presentation/shared/auth/hooks/useAuthS
 import { GuestOnly, PublicOnly, RequireAuth } from './presentation/shared/auth/RouteGuards'
 import { APP_PREFIX, appPaths, publicPaths } from './presentation/shared/routes/appPaths'
 
-/** 공개 검색은 대화 상태에 맞춘 자체 레이아웃을 사용하고, 나머지 공개 화면은 공용 헤더를 사용합니다. */
+/** 공개 검색은 공용 헤더와 검색 탭을 포함한 자체 레이아웃을 사용하고, 나머지 공개 화면은 공용 헤더를 사용합니다. */
 function PublicLayout() {
   const { pathname } = useLocation()
   return (

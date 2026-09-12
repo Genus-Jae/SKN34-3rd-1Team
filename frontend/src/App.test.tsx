@@ -352,7 +352,7 @@ describe('App navigation', () => {
     fireEvent.change(searchInput, { target: { value: '제주 소프트웨어 개발업 2024-02-29 설립 사업화 지원금' } })
     await submitConfirmedSearch(searchInput)
     expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('제주')
-    fireEvent.click(screen.getByRole('button', { name: '새 채팅' }))
+    fireEvent.click(screen.getByRole('button', { name: '새 AI 대화 검색' }))
     expect((searchInput as HTMLTextAreaElement).value).toBe('')
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
