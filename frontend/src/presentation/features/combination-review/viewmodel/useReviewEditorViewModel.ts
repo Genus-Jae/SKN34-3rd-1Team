@@ -8,6 +8,14 @@ import type { SupportProgramCatalog } from '../../../../domain/entities/SupportP
 import { useReviewScope } from './useReviewScope'
 import { useSavedSupportProgramChoices } from '../../../shared/support-program/useSavedSupportProgramChoices'
 
+// 자동 조회보다 늦게 도착한 과거 응답이 완료 상태를 대기/분석 중으로 되돌리지 않게 한다.
+function isEarlierState(current: RunSummary, next: RunSummary) {
+  return current.id === next.id && (
+    (current.status === 'RUNNING' && next.status === 'QUEUED') ||
+    (!['QUEUED', 'RUNNING'].includes(current.status) && ['QUEUED', 'RUNNING'].includes(next.status))
+  )
+}
+
 export function useReviewEditorViewModel(id: number | null, account: string) {
   const useCase = appContainer.resolve('combinationReviewUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
@@ -29,6 +37,7 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
   const [pending, setPending] = useState<RunRequest | null>(null)
   const [journalReady, setJournalReady] = useState(false)
   const [notice, setNotice] = useState('')
+  const [pollingPaused, setPollingPaused] = useState(false)
   const { setError } = scope
 
   const load = useCallback(() => {
@@ -81,12 +90,33 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
   const history = useCallback((before?: number) => {
     if (id) void perform('history', (signal) => useCase.runs(id, before, signal), (value) => setRuns((old) => ({ ...value, items: before ? [...(old?.items ?? []), ...value.items] : value.items })))
   }, [id, perform, useCase])
-  const acceptRun = (value: ReviewRun) => {
-    setRun(value)
-    setRuns((old) => ({ items: [value, ...(old?.items ?? []).filter((item) => item.id !== value.id)].sort((a, b) => b.id - a.id), nextBeforeId: old?.nextBeforeId ?? null }))
-    if (value.status !== 'RUNNING' && pending?.requestKey === value.requestKey && id) { journal.remove(account, id); setPending(null) }
+  const acceptRun = useCallback((value: ReviewRun, select = true) => {
+    setRun((old) => old && isEarlierState(old, value) ? old : select || !old || old.id === value.id ? value : old)
+    setRuns((old) => {
+      const current = old?.items.find((item) => item.id === value.id)
+      return { items: [current && isEarlierState(current, value) ? current : value, ...(old?.items ?? []).filter((item) => item.id !== value.id)].sort((a, b) => b.id - a.id), nextBeforeId: old?.nextBeforeId ?? null }
+    })
+    if (pending?.requestKey === value.requestKey && id) { journal.remove(account, id); setPending(null) }
+  }, [pending, id, account, journal])
+  const selectRun = (runId: number) => {
+    if (id) void perform('run', (signal) => useCase.run(id, runId, signal), (value) => { acceptRun(value); setPollingPaused(false) })
   }
-  const selectRun = (runId: number) => { if (id) void perform('run', (signal) => useCase.run(id, runId, signal), acceptRun) }
+  const activeRunId = runs?.items.find((item) => item.status === 'QUEUED' || item.status === 'RUNNING')?.id
+  useEffect(() => {
+    if (!id || !activeRunId || pollingPaused) return
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      const accepted = await perform('poll', (signal) => useCase.run(id, activeRunId, signal), (value) => {
+        if (!stopped) acceptRun(value, false)
+      })
+      if (stopped) return
+      if (accepted) timer = setTimeout(() => void poll(), 3000)
+      else setPollingPaused(true)
+    }
+    timer = setTimeout(() => void poll(), 3000)
+    return () => { stopped = true; clearTimeout(timer) }
+  }, [id, activeRunId, pollingPaused, perform, useCase, acceptRun])
   const dirty = review !== null && JSON.stringify(draft) !== JSON.stringify({ title: review.title, programs: review.programs })
   const rejectedRevision = scope.error?.status === 409 && scope.error.code === 'COMBINATION_REVIEW_REVISION_CONFLICT' && !scope.error.runId
   const clearRejectedRequest = () => {
@@ -96,7 +126,7 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
   }
   const start = (retry: boolean) => {
     if (!id || !review || !journalReady || scope.busy.includes('analysis')) return
-    if (!retry && (pending || dirty || runs?.items.some((item) => item.status === 'RUNNING') || !review.programs.every(supportsAutomaticReview))) return
+    if (!retry && (pending || dirty || runs?.items.some((item) => ['QUEUED', 'RUNNING', 'UNKNOWN'].includes(item.status)) || !review.programs.every(supportsAutomaticReview))) return
     if (retry && !pending) return
     const request = retry ? pending! : { expectedRevision: review.inputRevision, requestKey: crypto.randomUUID(), additionalFacts: facts }
     try {
@@ -106,8 +136,8 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     setPending(request)
     void perform('analysis', (signal) => useCase.start(id, request, signal), (value) => {
       acceptRun(value)
-      if (value.status !== 'RUNNING') { journal.remove(account, id); setPending(null) }
-      setNotice(value.status === 'RUNNING' ? '서버에 실행 중으로 저장되어 있습니다. 실행 조회로 상태를 확인해 주세요.' : '저장된 실행을 확인했습니다. 새 분석은 자동으로 시작하지 않습니다.')
+      journal.remove(account, id); setPending(null); setPollingPaused(false)
+      setNotice(['QUEUED', 'RUNNING'].includes(value.status) ? '분석 요청이 접수되었습니다. 상태는 자동으로 갱신되며, 다른 화면으로 이동해도 작업은 유지됩니다.' : '저장된 실행을 확인했습니다. 새 분석은 자동으로 시작하지 않습니다.')
     })
   }
   const download = (documentIndex: number) => {
@@ -120,5 +150,5 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     })
   }
   return { ...scope, review, latest, draft, setDraft, catalog, savedProgramChoices, keyword, setKeyword, appliedKeyword, names, runs, run, facts, setFacts,
-    pending, notice, dirty, rejectedRevision, clearRejectedRequest, load, search, add, save, reloadLatest, adoptLatest, history, selectRun, start, download }
+    pending, notice, dirty, pollingPaused, rejectedRevision, clearRejectedRequest, load, search, add, save, reloadLatest, adoptLatest, history, selectRun, start, download }
 }

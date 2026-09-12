@@ -3,7 +3,7 @@ package ai.govbiz.core.combinationreview.domain
 import java.time.LocalDate
 import java.time.LocalDateTime
 
-enum class ReviewRunStatus { RUNNING, SUCCEEDED, FAILED, INTERRUPTED }
+enum class ReviewRunStatus { QUEUED, RUNNING, SUCCEEDED, FAILED, INTERRUPTED, UNKNOWN }
 enum class ReviewStage { APPLICATION, SELECTION, COMMITMENT, AGREEMENT, EXECUTION, FUNDING }
 enum class ReviewJudgment { RESTRICTION_APPLIES, PERMISSION_IN_SCOPE, NEEDS_FACTS, INSUFFICIENT_EVIDENCE, CONFLICTING_EVIDENCE }
 

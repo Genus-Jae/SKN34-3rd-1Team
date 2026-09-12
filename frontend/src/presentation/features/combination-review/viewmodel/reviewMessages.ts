@@ -3,6 +3,7 @@ import { CombinationReviewError } from '../../../../domain/errors/CombinationRev
 export function reviewFailureMessage(error: unknown): string {
   if (!(error instanceof CombinationReviewError)) return '요청 결과를 확인하지 못했습니다. 조회는 다시 시도할 수 있습니다. 분석 응답이 유실됐다면 같은 요청 확인을 이용하세요.'
   if (error.code === 'COMBINATION_REVIEW_API_UNAVAILABLE') return '현재 연결된 서버에서 검토 API를 찾을 수 없습니다. Core API 실행 버전과 연결 주소를 확인해야 합니다. 입력은 유지됩니다.'
+  if (error.code === 'RUN_QUEUE_UNAVAILABLE') return '분석 작업 접수가 비활성화되어 있습니다. 운영자가 RabbitMQ와 분석 큐 설정을 확인해야 합니다. 새 작업은 접수되지 않았습니다.'
   if (error.status === 401) return '로그인 세션이 만료되었습니다. 개인 화면을 닫고 다시 로그인해 주세요.'
   if (error.status === 403) return '계정 상태 또는 요청 권한을 확인해 주세요.'
   if (error.status === 404) return '검토 또는 실행을 찾을 수 없습니다. 본인에게 저장된 항목인지 확인해 주세요.'

@@ -72,7 +72,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
   const inputBusy = vm.busy.includes('save') || vm.busy.includes('load')
   const analysisBusy = vm.busy.includes('analysis')
   const unsupported = vm.draft.programs.some((p) => !supportsAutomaticReview(p))
-  const running = vm.runs?.items.some((run) => run.status === 'RUNNING')
+  const running = vm.runs?.items.some((run) => ['QUEUED', 'RUNNING', 'UNKNOWN'].includes(run.status))
   const goToParticipation = () => {
     try { validateReviewDraft(vm.draft); setStep('participation') }
     catch (error) { vm.setError({ message: (error as Error).message }) }
@@ -156,8 +156,9 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
           <label className="block text-sm font-semibold">이번 실행의 추가 설명<textarea className={s.input} rows={4} maxLength={8000} value={vm.facts} disabled={analysisBusy || !!vm.pending} onChange={(e) => vm.setFacts(e.target.value)} /></label>
           <p className={s.muted}>{vm.facts.length}/8000 · 추가 설명은 실행에만 저장됩니다.</p>
           {vm.dirty && <p className={s.warning}>저장하지 않은 입력이 있습니다. 저장한 뒤 분석해 주세요.</p>}
-          {analysisBusy && <p role="status" className={s.warning}>분석 요청의 응답을 기다리고 있습니다. 창을 닫아도 서버 실행이 취소되지는 않습니다.</p>}
-          {running && <p className={s.warning}>저장된 실행 중 항목이 있습니다. 실행 상태를 조회하세요.</p>}
+          {analysisBusy && <p role="status" className={s.warning}>분석 요청을 접수하고 있습니다. 창을 닫아도 접수된 서버 작업은 취소되지 않습니다.</p>}
+          {running && <p className={s.warning}>대기·분석 중이거나 결과 확인이 필요한 실행이 있습니다. 중복 분석은 시작하지 않습니다.</p>}
+          {vm.pollingPaused && <p className={s.warning}>상태 자동 조회가 중단되었습니다. 실행 이력에서 항목을 눌러 다시 확인해 주세요. 서버 작업은 취소되지 않습니다.</p>}
           {vm.pending ? <div className={s.warning}><p>미확인 요청을 보관하고 있습니다. 같은 키·버전·추가 설명으로만 다시 확인합니다.</p><p>요청 입력 버전 {vm.pending.expectedRevision}</p><p className="whitespace-pre-wrap">추가 설명: {vm.pending.additionalFacts || '없음'}</p><button className={`${s.button} mt-2`} disabled={analysisBusy} onClick={() => vm.start(true)}>같은 요청 확인</button></div>
             : <button className={s.primary} disabled={analysisBusy || inputBusy || vm.dirty || !!running || unsupported} onClick={() => vm.start(false)}>새 분석 실행</button>}
         </section>

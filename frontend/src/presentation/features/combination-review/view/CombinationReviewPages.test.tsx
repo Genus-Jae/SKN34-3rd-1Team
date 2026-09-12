@@ -35,7 +35,7 @@ beforeEach(() => {
     getSupportProgramDetailUseCase: asValue({ execute: vi.fn(async (identity) => ({ ...supportPrograms[0], sourceCode: identity.sourceCode, id: identity.sourceProgramId, title: identity.sourceProgramId === 'PBLN_100' ? '청년창업 사업화 지원 공고' : '딥테크 성장 지원 공고' })) }),
   })
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); appContainer.register({ combinationReviewUseCase: asValue(original), browseSupportProgramsUseCase: asValue(originalCatalog), browseSavedSupportProgramsUseCase: asValue(originalSavedPrograms), getSupportProgramDetailUseCase: asValue(originalDetail) }) })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); appContainer.register({ combinationReviewUseCase: asValue(original), browseSupportProgramsUseCase: asValue(originalCatalog), browseSavedSupportProgramsUseCase: asValue(originalSavedPrograms), getSupportProgramDetailUseCase: asValue(originalDetail) }) })
 function Isolation() { useReviewSessionIsolation(); return null }
 function mount(path = '/app/combination-reviews/12?step=analysis') {
   const store = createAppStore()
@@ -48,6 +48,63 @@ function mount(path = '/app/combination-reviews/12?step=analysis') {
   return { store, ...rendered }
 }
 describe('review screens and execution safety', () => {
+  it('submits once then polls queued and running work until completion without another POST', async () => {
+    vi.useFakeTimers()
+    const queued = { ...runFixture, status: 'QUEUED', analysis: null, evidence: null, configuration: null, finishedAt: null }
+    repository.start.mockImplementation(async (_id, request) => ({ ...queued, requestKey: request.requestKey }))
+    repository.run.mockResolvedValueOnce({ ...queued, status: 'RUNNING' }).mockResolvedValue(runFixture)
+    await act(async () => { mount() })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '새 분석 실행' })) })
+    expect(screen.getByRole('heading', { name: /실행 #30 · 대기 중/ })).toBeTruthy()
+    expect(screen.queryByText('같은 요청 확인')).toBeNull()
+    expect((screen.getByRole('button', { name: '새 분석 실행' }) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: /실행 #30 · 분석 중/ })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: /실행 #30 · 분석 완료/ })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+    expect(repository.run).toHaveBeenCalledTimes(2)
+    expect(repository.start).toHaveBeenCalledTimes(1)
+  })
+  it('resumes status checks from persisted history after reopening and stops on logout', async () => {
+    vi.useFakeTimers()
+    const queued = { ...runFixture, status: 'QUEUED', analysis: null, finishedAt: null }
+    repository.runs.mockResolvedValue({ items: [queued], nextBeforeId: null })
+    repository.run.mockResolvedValue(queued)
+    let mounted!: ReturnType<typeof mount>
+    await act(async () => { mounted = mount() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: /실행 #30 · 대기 중/ })).toBeTruthy()
+    expect(repository.start).not.toHaveBeenCalled()
+    act(() => mounted.store.dispatch(signedOut()))
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+    expect(repository.run).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('heading', { name: /실행 #30/ })).toBeNull()
+  })
+  it('pauses failed polling until the user checks the saved run again', async () => {
+    vi.useFakeTimers()
+    repository.runs.mockResolvedValue({ items: [{ ...runFixture, status: 'QUEUED', analysis: null }], nextBeforeId: null })
+    repository.run.mockRejectedValueOnce(new TypeError('offline')).mockResolvedValue(runFixture)
+    await act(async () => { mount() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000) })
+    expect(repository.run).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(/상태 자동 조회가 중단/)).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /#30 · 입력 버전/ })) })
+    expect(screen.getByRole('heading', { name: /실행 #30 · 분석 완료/ })).toBeTruthy()
+    expect(repository.start).not.toHaveBeenCalled()
+  })
+  it('blocks a new analysis for an unknown outcome without polling or resubmitting', async () => {
+    vi.useFakeTimers()
+    repository.runs.mockResolvedValue({ items: [{ ...runFixture, status: 'UNKNOWN', analysis: null }], nextBeforeId: null })
+    repository.run.mockResolvedValue({ ...runFixture, status: 'UNKNOWN', analysis: null, failureCode: 'RUN_OUTCOME_UNKNOWN' })
+    await act(async () => { mount() })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /#30 · 입력 버전/ })) })
+    expect(screen.getByText(/중복 과금을 방지/)).toBeTruthy()
+    expect((screen.getByRole('button', { name: '새 분석 실행' }) as HTMLButtonElement).disabled).toBe(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
+    expect(repository.run).toHaveBeenCalledTimes(1)
+    expect(repository.start).not.toHaveBeenCalled()
+  })
   it('adds two saved notices to a new review without a catalog search', async () => {
     const programs = supportPrograms.slice(0, 2).map((program, index) => ({ ...structuredClone(program), id: `saved-${index + 1}` }))
     browseSavedPrograms.mockResolvedValueOnce(programs.map((program, index) => ({ savedAt: `2026-09-12T10:0${index}:00+09:00`, program })))

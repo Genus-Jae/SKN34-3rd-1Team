@@ -130,6 +130,23 @@ Core 내부 소비자 1개가 기존 검색·근거 답변을 재사용합니다
 확인하는 것입니다. 웹 수동 미리보기·실시간 검색·SMTP 경로, 별도 Worker 서버·운영 고가용성·운영자 복구 도구는
 이번에 변경하거나 추가하지 않았습니다. [코드 위치·설정·장애 대응·검증 결과](rabbitmq-daily-report-generation.md)를 참고하세요.
 
+## RabbitMQ 중복 지원·수혜 검토 분석 후속 반영 (2026-09-12)
+
+중복 지원·수혜 검토 분석을 동기 HTTP 처리에서 **202 접수 → RabbitMQ → Core 내부 검토 소비자 → DB 결과 조회**로
+전환했습니다. `V25`의 실행 행 자체를 Outbox로 사용해 입력 스냅샷과 발행 대기를 함께 저장하며, 기존 리포트와
+다른 큐·소비자를 사용합니다. 새 Worker 서버나 추가 production 의존성은 없습니다.
+
+화면은 대기/분석 중 실행을 자동 조회하고 새로고침·재로그인 후 이력에서 이어 봅니다. 동일 요청·중복 메시지는
+새 분석을 만들지 않으며, AI 호출 이후 완료 여부를 모르면 `UNKNOWN`으로 보존하고 자동 재실행과 같은 검토의
+새 실행을 차단합니다. 계정별 활성 작업 3건과 기존 공유 동시 실행 한도를 적용합니다.
+
+최종 코드 검증은 JDK 21·실제 MySQL 8.4/RabbitMQ를 포함한 Core 전체 **1,247건**, Frontend 전체 **1,051건**,
+인프라 스크립트 **25건**이 통과했습니다. Core는 클린 빌드, Frontend는 lint·production build도 완료했습니다.
+격리 Compose에서도 두 quorum 큐/DLQ·소비자 연결과 브로커 재생성 후 재연결, 기존 서비스의 장애/복구를 확인했습니다.
+기존 개발 Docker·실제 DB의 새 버전 배포와 유료 실데이터 분석은 별도입니다. 실행하려면 RabbitMQ 연결과
+`COMBINATION_REVIEW_QUEUE_ENABLED`, 기존 대기/실행 작업을 먼저 확인해야 합니다.
+설정·상태·중복 방지·장애 대응과 검증 결과는 [상세 문서](rabbitmq-combination-review.md)를 참고하세요.
+
 ## 사용자 기능
 
 | 기능 | 상태 | 현재 동작 |
@@ -165,6 +182,7 @@ Core 내부 소비자 1개가 기존 검색·근거 답변을 재사용합니다
 | 관심 공고함 | 구현됨 | `GET/POST/DELETE /api/v1/me/saved-programs`, `GET …/status`. 로그인 회원이 공고 상세에서 담고 빼며 `/app/saved-programs`가 최근 순서로 목록을 보여 줌(V22 `saved_support_program`). 공고 내용은 저장하지 않고 조회 때 현재 공고를 읽어 접수 상태가 같고, 숨겨진 공고는 목록에서 빠짐. 비로그인 상세는 로그인 링크만 둠. 마감 알림·목록에서 빼기는 후속 |
 | 모집글 수정·마감, 숨김·신고, 제안 알림 | 미구현 | 화면에 준비 중으로 표시 |
 | 기업 맞춤 일일 리포트 | 구현됨·실전달 검증 별도 | 저장 기업의 지역·업종·지원 목적 기반 최대 3건 추천, 기업마당 HTML 근거·서류 확인, 웹 미리보기·SMTP 정기 발송·수신 확인/동의/해지. 자동 발송 기본 비활성. 선정 확률·뉴스·첨부 전체 분석은 제외. [사용·설정·검증 경계](daily-reports.md) |
+| 중복 지원·수혜 검토 비동기 분석 | 구현됨·배포 별도 | 공식 첨부 수집·근거 분석을 RabbitMQ로 처리. 202 접수, DB 이력·진행 상태 복원, 중복 실행 차단, 결과 불명 UNKNOWN 보존. [설정·운영·검증 경계](rabbitmq-combination-review.md) |
 | 비밀번호 변경·계정 삭제 | 구현됨 | `PUT /api/v1/me/password`, `GET /api/v1/me/deletion-preview`, `DELETE /api/v1/me`. 변경은 로그인 세션만으로 본인을 확인해 새 비밀번호만 받고 요청한 세션만 남기며, 삭제는 현재 비밀번호를 다시 확인(불일치 422, 비밀번호가 없는 소셜 가입 계정은 세션만으로 확인하고 프로필에서 비밀번호 항목을 숨김)하고 삭제는 보낸 대기 제안 철회·내 모집글 마감·기업 삭제·세션 삭제·`deleted_at`을 한 transaction으로 처리. 프로필 계정 카드의 두 모달(공용 `WorkspaceModal`)이 연결됨(삭제 모달의 정리 항목 목록은 문구 확정 전까지 숨김). 삭제 시 이메일을 익명화해 같은 이메일로 다시 가입 가능 |
 | 비밀번호 재설정(찾기) | 구현됨 | `POST /api/v1/auth/password-reset`(가입 여부와 무관하게 204)·`/confirm`. 30분 일회용 토큰의 SHA-256 해시만 V14 `account_password_reset`에 저장하고 원문은 메일 링크 `/reset-password#token=`에만 실음. 확인하면 새 해시 저장 후 남은 토큰·모든 세션 삭제. 계정당 시간당 3회, SMTP 없으면 개발용 로그인 환경에서 링크를 로그로 대체. 프런트 `/forgot-password`·`/reset-password` 화면과 로그인의 `비밀번호 찾기` 링크 |
 | 소셜 로그인·가입(카카오·Google) | 구현됨·실제 공급자 연결 검증 별도 | `GET /api/v1/auth/oauth/providers`, `GET /api/v1/auth/oauth/{kakao\|google}/authorize`·`/callback`. OAuth 2.0 인가 코드 흐름 + OpenID Connect를 Core가 `RestClient`로 직접 처리(Spring Security 미사용). state·nonce·PKCE verifier(Google)를 서명한 10분 쿠키로 콜백까지 들고 가고, 토큰 endpoint에서 받은 ID 토큰의 iss·aud·exp·nonce를 확인. 계정은 V17 `account_oauth_identity`의 `sub`로만 찾고, 처음 온 계정은 공급자가 인증한 이메일로 비밀번호 없는 인증 완료 회원을 만들며, 같은 이메일의 기존 계정에는 자동 연결하지 않음(`account-exists`). 로그인·가입 화면의 공급자 디자인 가이드 버튼, `/oauth/complete` 완료 화면, 탈퇴 시 연결 삭제와 커밋 뒤 카카오 연결 끊기. 비밀번호 없는 계정은 응답의 `hasPassword=false`로 프로필의 비밀번호 항목을 숨기고 계정 삭제를 비밀번호 없이 처리. 로그인 상태에서 계정에 소셜 로그인을 연결·해제하는 화면은 후속 |

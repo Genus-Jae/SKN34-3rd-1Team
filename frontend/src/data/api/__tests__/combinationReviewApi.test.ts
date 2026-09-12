@@ -19,9 +19,13 @@ describe('combination review HTTP boundary', () => {
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toMatchObject({ expectedRevision: 2, programs: reviewFixture.programs })
     expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual(request)
   })
-  it.each(['RUNNING', 'FAILED', 'INTERRUPTED'] as const)('does not turn HTTP 200 %s into success', async (status) => {
+  it.each(['QUEUED', 'RUNNING', 'FAILED', 'INTERRUPTED', 'UNKNOWN'] as const)('does not turn HTTP 200 %s into success', async (status) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ...runFixture, status, analysis: null })))
     expect((await repository.start(12, request)).status).toBe(status)
+  })
+  it('accepts HTTP 202 as a queued run, not a completed analysis', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ...runFixture, status: 'QUEUED', analysis: null, evidence: null, configuration: null, finishedAt: null }, { status: 202 })))
+    expect((await repository.start(12, request)).status).toBe('QUEUED')
   })
   it.each([401, 403, 404, 409, 422, 429, 503])('keeps HTTP %s and failure runId separate', async (status) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ code: 'SOURCE_UNSUPPORTED', runId: 30 }, { status, headers: { 'Retry-After': '60' } })))

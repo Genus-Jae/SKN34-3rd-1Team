@@ -32,11 +32,11 @@
         SELECT <include refid="allColumns" /> FROM combination_review_run r WHERE r.review_id = #{reviewId} AND r.request_key = #{requestKey}
     </select>
     <select id="countRunning" resultType="int">
-        SELECT COUNT(*) FROM combination_review_run WHERE review_id = #{reviewId} AND status = 'RUNNING'
+        SELECT COUNT(*) FROM combination_review_run WHERE review_id = #{reviewId} AND status IN ('QUEUED', 'RUNNING', 'UNKNOWN')
     </select>
     <insert id="insertRun" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO combination_review_run (review_id, input_revision, request_key, request_hash, status, input_json, runner_instance_id, started_at)
-        VALUES (#{reviewId}, #{inputRevision}, #{requestKey}, #{requestHash}, #{status}, #{inputJson}, #{runnerInstanceId}, #{startedAt})
+        INSERT INTO combination_review_run (review_id, input_revision, request_key, request_hash, status, input_json, runner_instance_id, started_at, queue_expires_at, next_publish_at)
+        VALUES (#{reviewId}, #{inputRevision}, #{requestKey}, #{requestHash}, #{status}, #{inputJson}, #{runnerInstanceId}, #{startedAt}, DATE_ADD(#{startedAt}, INTERVAL 1 HOUR), #{startedAt})
     </insert>
     <select id="findOwned" resultMap="runRow">
         SELECT <include refid="allColumns" /> FROM combination_review_run r
@@ -65,11 +65,56 @@
         WHERE r.review_id = #{reviewId} AND r.id = #{runId} AND c.owner_account_id = #{ownerId} AND s.document_index = #{documentIndex}
     </select>
     <update id="saveConfiguration">
-        UPDATE combination_review_run SET configuration_json = #{configurationJson}
-        WHERE id = #{runId} AND status = 'RUNNING' AND configuration_json IS NULL
+        UPDATE combination_review_run r INNER JOIN combination_review c ON c.id = r.review_id
+        INNER JOIN account a ON a.id = c.owner_account_id
+        SET r.configuration_json = #{configurationJson}
+        WHERE r.id = #{runId} AND r.status = 'RUNNING' AND r.configuration_json IS NULL
+          AND a.deleted_at IS NULL AND a.suspended_at IS NULL
+          AND r.execution_started_at &gt; DATE_SUB(#{now}, INTERVAL 20 MINUTE)
     </update>
     <update id="finish">
         UPDATE combination_review_run SET status = #{status}, analysis_json = #{analysisJson}, failure_code = #{failureCode}, finished_at = #{finishedAt}
         WHERE id = #{runId} AND status = 'RUNNING'
+        <if test="status == 'SUCCEEDED'">AND execution_started_at &gt; DATE_SUB(#{finishedAt}, INTERVAL 20 MINUTE)</if>
+    </update>
+    <select id="lockActiveAccount" resultType="long">
+        SELECT id FROM account WHERE id = #{ownerId} AND deleted_at IS NULL AND suspended_at IS NULL FOR UPDATE
+    </select>
+    <select id="countAccountPending" resultType="int">
+        SELECT COUNT(*) FROM combination_review_run r INNER JOIN combination_review c ON c.id = r.review_id
+        WHERE c.owner_account_id = #{ownerId} AND r.status IN ('QUEUED', 'RUNNING', 'UNKNOWN')
+    </select>
+    <select id="findById" resultMap="runRow">
+        SELECT <include refid="allColumns" /> FROM combination_review_run r WHERE r.id = #{runId}
+    </select>
+    <select id="publishable" resultType="long">
+        SELECT id FROM combination_review_run
+        WHERE status = 'QUEUED' AND queue_expires_at &gt; #{now} AND next_publish_at &lt;= #{now}
+        ORDER BY id LIMIT 20
+    </select>
+    <update id="reservePublication">
+        UPDATE combination_review_run SET next_publish_at = DATE_ADD(#{now}, INTERVAL 1 MINUTE)
+        WHERE id = #{runId} AND status = 'QUEUED' AND queue_expires_at &gt; #{now} AND next_publish_at &lt;= #{now}
+    </update>
+    <update id="markPublished">
+        UPDATE combination_review_run SET last_published_at = #{now} WHERE id = #{runId}
+    </update>
+    <update id="claim">
+        UPDATE combination_review_run r INNER JOIN combination_review c ON c.id = r.review_id
+        INNER JOIN account a ON a.id = c.owner_account_id
+        SET r.status = 'RUNNING', r.runner_instance_id = #{runnerId}, r.execution_started_at = #{now}
+        WHERE r.id = #{runId} AND r.status = 'QUEUED' AND r.queue_expires_at &gt; #{now}
+          AND a.deleted_at IS NULL AND a.suspended_at IS NULL
+    </update>
+    <update id="expireQueued">
+        UPDATE combination_review_run r INNER JOIN combination_review c ON c.id = r.review_id
+        INNER JOIN account a ON a.id = c.owner_account_id
+        SET r.status = 'FAILED', r.failure_code = CASE WHEN a.deleted_at IS NOT NULL OR a.suspended_at IS NOT NULL THEN 'ACCOUNT_INACTIVE' ELSE 'QUEUE_EXPIRED' END,
+            r.finished_at = #{now}
+        WHERE r.status = 'QUEUED' AND (r.queue_expires_at &lt;= #{now} OR a.deleted_at IS NOT NULL OR a.suspended_at IS NOT NULL)
+    </update>
+    <update id="expireRunning">
+        UPDATE combination_review_run SET status = 'UNKNOWN', failure_code = 'RUN_OUTCOME_UNKNOWN', finished_at = #{now}
+        WHERE status = 'RUNNING' AND COALESCE(execution_started_at, started_at) &lt;= DATE_SUB(#{now}, INTERVAL 20 MINUTE)
     </update>
 </mapper>

@@ -20,6 +20,28 @@ class SupportProgramRequestAdmissionServiceTest {
     private val now = AtomicLong(0)
 
     @Test
+    fun backgroundWorkSharesConcurrentCapacityWithoutChargingRateAgain() {
+        val service = service(perClient = 1, global = 2, concurrent = 1)
+        service.execute("client") {
+            val failure = assertThrows(SupportProgramRequestRejectedException::class.java) { service.executeBackground {} }
+            assertEquals(Reason.BUSY, failure.reason)
+        }
+        repeat(3) {
+            service.executeBackground { assertEquals(Reason.BUSY, rejected(service, "other").reason) }
+        }
+        assertEquals("allowed", service.execute("other") { "allowed" })
+        assertEquals(Reason.RATE_LIMITED, rejected(service, "client").reason)
+    }
+
+    @Test
+    fun backgroundFailureReleasesTheSharedSlot() {
+        val service = service(concurrent = 1)
+        assertThrows(IllegalStateException::class.java) { service.executeBackground { error("failed") } }
+        assertEquals("released", service.executeBackground { "released" })
+        assertEquals("foreground", service.execute("client") { "foreground" })
+    }
+
+    @Test
     fun returnsTheActionResult() {
         assertEquals("result", service().execute("client") { "result" })
     }

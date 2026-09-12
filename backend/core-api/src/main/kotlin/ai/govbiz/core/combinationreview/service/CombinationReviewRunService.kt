@@ -6,6 +6,7 @@ import ai.govbiz.core.combinationreview.facade.exception.AiCombinationReviewFaca
 import ai.govbiz.core.combinationreview.helper.CombinationReviewHashHelper
 import ai.govbiz.core.combinationreview.domain.*
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewNotFoundException
+import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewCapacityException
 import ai.govbiz.core.combinationreview.repository.CombinationReviewRunRepository
 import ai.govbiz.core.combinationreview.service.exception.*
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
@@ -23,11 +24,11 @@ import java.time.Clock
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.util.UUID
-import java.util.concurrent.Semaphore
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 
-/** 명시적인 POST 한 번의 동기 실행. DB transaction 밖에서 수집·파싱·AI를 호출한다. */
+/** HTTP는 입력 스냅샷만 접수한다. 큐 소비자가 DB transaction 밖에서 수집·파싱·AI를 실행한다. */
 @Service
 class CombinationReviewRunService(
     private val runs: CombinationReviewRunRepository, private val reviews: CombinationReviewService,
@@ -37,28 +38,37 @@ class CombinationReviewRunService(
     private val programDetails: SupportProgramDetailService, private val documentParser: SupportProgramDocumentParser,
     private val ai: AiCombinationReviewFacade, private val admission: SupportProgramRequestAdmissionService,
     @param:Qualifier("seoulClock") private val clock: Clock,
+    @param:Value("\${app.combination-review.queue.enabled:false}") private val queueEnabled: Boolean,
 ) {
     private val runnerInstanceId = UUID.randomUUID().toString()
-    private val slots = Semaphore(2)
 
     fun start(account: Account, reviewId: Long, expectedRevision: Long, requestKey: String, additionalFacts: String): ReviewRunReservation {
-        val reservation = runs.reserve(account.id, reviewId, expectedRevision, requestKey, additionalFacts, runnerInstanceId)
-        if (!reservation.created) return reservation
+        runs.replay(account.id, reviewId, expectedRevision, requestKey, additionalFacts)?.let { return it }
+        if (!queueEnabled) throw CombinationReviewRunException(ReviewRunFailureCode.RUN_QUEUE_UNAVAILABLE)
         try {
-            return admission.execute("combination-review-account:${account.id}") { executeRun(reservation) }
+            return admission.execute("combination-review-account:${account.id}") {
+                runs.reserve(account.id, reviewId, expectedRevision, requestKey, additionalFacts, runnerInstanceId)
+            }
+        } catch (_: CombinationReviewCapacityException) {
+            throw CombinationReviewRunException(ReviewRunFailureCode.RUN_CAPACITY_EXCEEDED, retryAfterSeconds = 60)
         } catch (error: SupportProgramRequestRejectedException) {
             val code = if (error.reason == SupportProgramRequestRejectedException.Reason.RATE_LIMITED) ReviewRunFailureCode.RUN_RATE_LIMITED else ReviewRunFailureCode.RUN_CAPACITY_EXCEEDED
-            runs.fail(reservation.run.id, code.name)
-            throw CombinationReviewRunException(code, reservation.run.id, error, error.retryAfterSeconds)
+            throw CombinationReviewRunException(code, cause = error, retryAfterSeconds = error.retryAfterSeconds)
         }
     }
 
-    private fun executeRun(reservation: ReviewRunReservation): ReviewRunReservation {
-        val run = reservation.run
-        if (!slots.tryAcquire()) {
-            runs.fail(run.id, "RUN_CAPACITY_EXCEEDED")
-            throw CombinationReviewRunException(ReviewRunFailureCode.RUN_CAPACITY_EXCEEDED, run.id)
+    fun executeQueued(runId: Long) {
+        try {
+            admission.executeBackground { executeClaimed(runId) }
+        } catch (error: SupportProgramRequestRejectedException) {
+            if (error.reason != SupportProgramRequestRejectedException.Reason.BUSY) throw error
+            // 아직 선점하지 않은 QUEUED 작업이다. ACK 후 Outbox가 다시 전달하며 과금 호출은 하지 않았다.
         }
+    }
+
+    private fun executeClaimed(runId: Long) {
+        val run = runs.claim(runId, runnerInstanceId) ?: return
+        var analysisStarted = false
         try {
             val documents = mutableListOf<ReviewSourceDocument>()
             val blocks = mutableListOf<ReviewEvidenceBlock>()
@@ -114,16 +124,17 @@ class CombinationReviewRunService(
             runs.saveEvidence(run.id, evidence, raw)
             val configuration = ai.configuration()
             runs.saveConfiguration(run.id, configuration)
+            analysisStarted = true
             val analysis = ai.analyze(run.input, evidence, configuration)
-            val finishedAt = runs.succeed(run.id, analysis)
-            return ReviewRunReservation(run.copy(status = ReviewRunStatus.SUCCEEDED, evidence = evidence,
-                configuration = configuration, analysis = analysis, finishedAt = finishedAt), true)
+            runs.succeed(run.id, analysis)
         } catch (error: Exception) {
             val code = failureCode(error)
-            runs.fail(run.id, code.name)
-            throw CombinationReviewRunException(code, run.id, error)
-        } finally {
-            slots.release()
+            // 검증 실패는 확정 실패다. 호출/결과 저장 중 단절은 과금 여부를 알 수 없어 자동 재호출하지 않는다.
+            if (analysisStarted && code !in setOf(ReviewRunFailureCode.ANALYSIS_INVALID, ReviewRunFailureCode.SOURCE_TOO_LARGE)) {
+                runs.markUnknown(run.id, "RUN_OUTCOME_UNKNOWN")
+            } else {
+                runs.fail(run.id, code.name)
+            }
         }
     }
 

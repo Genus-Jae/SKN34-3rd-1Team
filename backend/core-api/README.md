@@ -77,12 +77,18 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 | `GET /api/v1/combination-reviews/{id}` | 본인 상세 입력·버전 조회 |
 | `DELETE /api/v1/combination-reviews/{id}` | 본인 검토와 선택 공고·실행 이력·보관 원문 삭제. 성공 시 204 |
 | `PUT /api/v1/combination-reviews/{id}/inputs` | 제목·사업 목록 전체 교체. expectedRevision 일치 시 204, 충돌 시 409 |
-| `POST /api/v1/combination-reviews/{id}/runs` | expectedRevision·requestKey·선택적 additionalFacts로 동기 분석. 새 성공 201, 동일 요청 재조회 200 |
+| `POST /api/v1/combination-reviews/{id}/runs` | expectedRevision·requestKey·선택적 additionalFacts로 비동기 분석 접수. 신규 202 QUEUED, 동일 요청 재조회 200 |
 | `GET /api/v1/combination-reviews/{id}/runs` | 본인 실행 목록, size/beforeId 커서 |
 | `GET /api/v1/combination-reviews/{id}/runs/{runId}` | 당시 입력·근거·설정·결과 또는 실패 조회 |
 | `GET /api/v1/combination-reviews/{id}/runs/{runId}/sources/{documentIndex}` | 실행 당시 원본 파일 다운로드. documentIndex는 0부터 시작 |
 
 소유자는 기존 세션 쿠키를 검증한 Account로 결정하며, 관리자도 타인 검토를 조회·수정할 수 없습니다.
+
+V25부터 실행 행이 Outbox이며 `CombinationReviewOutboxScheduler → CombinationReviewQueueClient → RabbitMQ →
+CombinationReviewRunConsumer → CombinationReviewRunService`로 기존 수집·파싱·AI를 실행합니다.
+`COMBINATION_REVIEW_QUEUE_ENABLED`는 직접 실행 false / Compose true이며, false일 때 새 분석은 503으로 거절하고
+동기 실행으로 우회하지 않습니다. 상태는 QUEUED/RUNNING/SUCCEEDED/FAILED/UNKNOWN/INTERRUPTED입니다.
+UNKNOWN은 같은 검토의 새 실행도 차단합니다. [한도·만료·재발행·배포·검증 상세](../../docs/rabbitmq-combination-review.md)를 참고하세요.
 없는 검토와 타인 검토는 같은 404를 반환합니다. 성공 응답은 `Cache-Control: no-store`이며 시각은 `+09:00`입니다.
 쓰기 요청의 기존 Origin 방어를 유지하고 CORS에서 PUT·DELETE를 허용합니다. 상세 JSON·오류 코드는 위 설계 문서에 있습니다.
 
@@ -116,8 +122,9 @@ K-Startup은 API의 `detl_pg_url`과 같은 공고 ID의 모집중·마감 상�
 `coverageWarnings`에 남기고 분석을 계속합니다. 공고 하나의 모든 지원 형식 첨부가 제외되면 기존처럼 기술 실패로 종료합니다.
 중복 지원 검토 한 실행에서 보존하는 원본은 최대 12개이며, 초과 조합은 일부만 분석하지 않고 `SOURCE_TOO_LARGE`로 종료합니다.
 원문·입력·결과는 실행마다 보존하며 기존 검색 Qdrant 색인과 분리됩니다. 자동 수집 근거를 사람 검수 완료로 표시하지 않습니다.
-같은 요청 키는 AI를 재호출하지 않습니다. 새 실행은 계정 식별자로 기존 공개 요청 제한을 공유하며,
-검토별 DB 동시 실행 1개·Core 프로세스별 중복 검토 2개 한도를 추가로 적용합니다.
+같은 요청 키는 AI를 재호출하지 않습니다. 새 접수는 계정 식별자로 기존 공개 요청 제한을 공유하며,
+검토별 활성 실행 1개·계정별 활성 작업 3개를 제한합니다. 검토 큐는 소비자 1개로 처리하고,
+worker도 기존 검색·AI 기능의 공유 동시 실행 슬롯을 사용합니다.
 
 `CombinationReviewRunService`는 실행 순서와 저장을, `AiCombinationReviewFacade`는 AI 호출·계약 검증 경계를 담당합니다.
 중복 지원 검토는 네 제공처 공고를 자동 분석하며, 현재 카탈로그의 공식 상세와 공고 식별자를 다시 검증한 뒤 첨부를 수집합니다.

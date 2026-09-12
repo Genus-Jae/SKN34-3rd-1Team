@@ -46,6 +46,21 @@ class SupportProgramRequestAdmissionService(
             activeRequests += 1
         }
 
+        return runWithReservedSlot(action)
+    }
+
+    /** 이미 접수 횟수를 계산한 큐 작업은 공유 실행 슬롯만 사용한다. 대기는 작업 Outbox가 담당한다. */
+    fun <T> executeBackground(action: () -> T): T {
+        synchronized(lock) {
+            if (activeRequests >= properties.maxConcurrent) {
+                throw SupportProgramRequestRejectedException(Reason.BUSY, 1)
+            }
+            activeRequests += 1
+        }
+        return runWithReservedSlot(action)
+    }
+
+    private fun <T> runWithReservedSlot(action: () -> T): T {
         try {
             return action()
         } finally {

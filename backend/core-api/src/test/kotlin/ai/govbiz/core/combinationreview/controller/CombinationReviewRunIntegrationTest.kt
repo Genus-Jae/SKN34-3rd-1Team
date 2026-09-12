@@ -14,6 +14,9 @@ import ai.govbiz.core.combinationreview.helper.CombinationReviewHashHelper
 import ai.govbiz.core.combinationreview.repository.CombinationReviewRepository
 import ai.govbiz.core.combinationreview.repository.CombinationReviewRunRepository
 import ai.govbiz.core.combinationreview.service.exception.*
+import ai.govbiz.core.combinationreview.service.CombinationReviewRunService
+import ai.govbiz.core.combinationreview.service.CombinationReviewOutboxScheduler
+import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
 import ai.govbiz.core.supportprogram.client.cntradenotice.CnTradeNoticeAttachmentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachment
@@ -60,6 +63,7 @@ import tools.jackson.databind.ObjectMapper
 @SpringBootTest(properties = [
     "app.account.jwt-secret=test-jwt-secret-0123456789abcdef0123456789",
     "app.ai-service.base-url=http://127.0.0.1:1", "app.ai-service.connect-timeout=10ms", "app.ai-service.read-timeout=10ms",
+    "app.combination-review.queue.enabled=true", "spring.rabbitmq.listener.simple.auto-startup=false",
     "app.bizinfo.sync.enabled=false", "app.support-program-index.enabled=false", "app.account.cookie-secure=false",
 ])
 @AutoConfigureMockMvc
@@ -72,6 +76,9 @@ class CombinationReviewRunIntegrationTest {
     @Autowired private lateinit var sessions: AccountSessionService
     @Autowired private lateinit var reviews: CombinationReviewRepository
     @Autowired private lateinit var runs: CombinationReviewRunRepository
+    @Autowired private lateinit var service: CombinationReviewRunService
+    @MockitoBean private lateinit var publisher: CombinationReviewOutboxScheduler
+    @Autowired private lateinit var admission: SupportProgramRequestAdmissionService
     @MockitoBean private lateinit var source: BizInfoAttachmentClient
     @MockitoBean private lateinit var msitSource: MsitAttachmentClient
     @MockitoBean private lateinit var kStartupSource: KStartupAttachmentClient
@@ -114,8 +121,94 @@ class CombinationReviewRunIntegrationTest {
     }
 
     @Test
+    fun busySharedAiSlotsKeepTheJobQueuedUntilCapacityReturns() {
+        val runId = id(submit().andExpect(status().isAccepted()))
+        fun occupy(remaining: Int) {
+            if (remaining == 0) { service.executeQueued(runId); return }
+            admission.executeBackground { occupy(remaining - 1) }
+        }
+        occupy(4)
+        assertEquals(ReviewRunStatus.QUEUED, runs.findOwned(ownerId, reviewId, runId)!!.status)
+        verifyNoInteractions(source, ai)
+        service.executeQueued(runId)
+        assertEquals(ReviewRunStatus.SUCCEEDED, runs.findOwned(ownerId, reviewId, runId)!!.status)
+        verify(ai, times(1)).analyze(any(AiCombinationReviewRequest::class.java) ?: request)
+    }
+
+    @Test
+    fun acceptsWithoutCallingSourcesAndReplaysTheSameQueuedSnapshot() {
+        val key = UUID.randomUUID().toString()
+        val submitted = submit(key).andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.status").value("QUEUED"))
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+        val runId = id(submitted)
+        assertNotNull(jdbc.queryForObject("SELECT next_publish_at FROM combination_review_run WHERE id = ?", LocalDateTime::class.java, runId))
+        assertNotNull(jdbc.queryForObject("SELECT queue_expires_at FROM combination_review_run WHERE id = ?", LocalDateTime::class.java, runId))
+        repeat(8) { submit(key).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(runId)) }
+        submit().andExpect(status().isConflict())
+        verifyNoInteractions(source, ai)
+        reviews.replaceOwned(ownerId, reviewId, 1, draft.copy(title = "접수 후 변경"))
+        service.executeQueued(runId)
+        service.executeQueued(runId)
+        mvc.perform(get("$path/$runId").cookie(owner)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("SUCCEEDED")).andExpect(jsonPath("$.input.title").value("처음 검토"))
+        verify(ai, times(1)).analyze(any(AiCombinationReviewRequest::class.java) ?: request)
+    }
+
+    @Test
+    fun accountCanReserveOnlyThreePendingReviewsAndOtherAccountsAreIndependent() {
+        repeat(3) {
+            reviewId = reviews.create(ownerId, draft).id
+            submit().andExpect(status().isAccepted())
+        }
+        reviewId = reviews.create(ownerId, draft).id
+        submit().andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("RUN_CAPACITY_EXCEEDED"))
+        reviewId = reviews.create(otherId, draft).id
+        submit(cookie = other).andExpect(status().isAccepted())
+        verifyNoInteractions(source, ai)
+    }
+
+    @Test
+    fun expiredQueuedWorkAndSuspendedOwnersNeverReachAi() {
+        val expired = id(submit().andExpect(status().isAccepted()))
+        jdbc.update("UPDATE combination_review_run SET queue_expires_at = '2000-01-01' WHERE id = ?", expired)
+        service.executeQueued(expired)
+        runs.expireStaleWork()
+        assertEquals("QUEUE_EXPIRED", runs.findOwned(ownerId, reviewId, expired)!!.failureCode)
+        val suspended = id(submit().andExpect(status().isAccepted()))
+        jdbc.update("UPDATE account SET suspended_at = NOW() WHERE id = ?", ownerId)
+        service.executeQueued(suspended)
+        runs.expireStaleWork()
+        assertEquals("ACCOUNT_INACTIVE", runs.findOwned(ownerId, reviewId, suspended)!!.failureCode)
+        verifyNoInteractions(source, ai)
+    }
+
+    @Test
+    fun timedOutExecutionBlocksNewWorkAndRejectsLateCompletionAndRedelivery() {
+        val runId = id(submit().andExpect(status().isAccepted()))
+        assertNotNull(runs.claim(runId, UUID.randomUUID().toString()))
+        jdbc.update("UPDATE combination_review_run SET execution_started_at = '2000-01-01' WHERE id = ?", runId)
+        runs.expireStaleWork()
+        assertEquals(ReviewRunStatus.UNKNOWN, runs.findOwned(ownerId, reviewId, runId)!!.status)
+        service.executeQueued(runId)
+        runs.fail(runId, "LATE_FAILURE")
+        assertEquals(ReviewRunStatus.UNKNOWN, runs.findOwned(ownerId, reviewId, runId)!!.status)
+        submit().andExpect(status().isConflict())
+        verifyNoInteractions(source, ai)
+    }
+
+    @Test
+    fun deletedQueuedReviewCannotBeExecuted() {
+        val runId = id(submit().andExpect(status().isAccepted()))
+        assertTrue(reviews.deleteOwned(ownerId, reviewId))
+        service.executeQueued(runId)
+        assertFalse(runs.publishable().contains(runId))
+        verifyNoInteractions(source, ai)
+    }
+
+    @Test
     fun executesThroughAuthenticatedHttpParserServiceAndRealMysqlAndDownloadsOwnedOriginalBytes() {
-        val result = start().andExpect(status().isCreated())
+        val result = start().andExpect(status().isOk())
             .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
             .andExpect(jsonPath("$.status").value("SUCCEEDED"))
             .andExpect(jsonPath("$.inputRevision").value(1))
@@ -151,7 +244,7 @@ class CombinationReviewRunIntegrationTest {
             fetched(deep, "과기정통부-공고.hwpx", attachmentUrl)
         }
 
-        val runId = id(start().andExpect(status().isCreated())
+        val runId = id(start().andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("SUCCEEDED"))
             .andExpect(jsonPath("$.evidence.documents[1].programIndex").value(1))
             .andExpect(jsonPath("$.evidence.documents[1].sourceUrl").value(attachmentUrl)))
@@ -182,7 +275,7 @@ class CombinationReviewRunIntegrationTest {
         `when`(cnTradeNoticeSource.collect(cnTrade.sourceCode, cnTrade.sourceProgramId, cnTradeProgram.title, cnTradeProgram.targetDescription))
             .thenReturn(fetched(deep, "충남-신청서.hwpx"))
 
-        val runId = id(start().andExpect(status().isCreated())
+        val runId = id(start().andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("SUCCEEDED"))
             .andExpect(jsonPath("$.evidence.documents[0].programIndex").value(0))
             .andExpect(jsonPath("$.evidence.documents[1].programIndex").value(1)))
@@ -201,10 +294,10 @@ class CombinationReviewRunIntegrationTest {
         ).id
         `when`(programDetails.get(msit.sourceCode, msit.sourceProgramId)).thenThrow(SupportProgramNotFoundException())
 
-        val response = start().andExpect(status().isServiceUnavailable())
-            .andExpect(jsonPath("$.code").value("SOURCE_NOT_FOUND")).andReturn().response
+        val response = start().andExpect(status().isOk())
+            .andExpect(jsonPath("$.failureCode").value("SOURCE_NOT_FOUND")).andReturn().response
 
-        val runId = json.readTree(response.contentAsString).path("runId").asLong()
+        val runId = json.readTree(response.contentAsString).path("id").asLong()
         assertEquals(ReviewRunStatus.FAILED, runs.findOwned(ownerId, reviewId, runId)!!.status)
         verifyNoInteractions(msitSource)
         verifyNoInteractions(ai)
@@ -237,10 +330,10 @@ class CombinationReviewRunIntegrationTest {
             )
         }
 
-        val response = start().andExpect(status().isUnprocessableContent())
-            .andExpect(jsonPath("$.code").value("SOURCE_TOO_LARGE")).andReturn().response
+        val response = start().andExpect(status().isOk())
+            .andExpect(jsonPath("$.failureCode").value("SOURCE_TOO_LARGE")).andReturn().response
 
-        val runId = json.readTree(response.contentAsString).path("runId").asLong()
+        val runId = json.readTree(response.contentAsString).path("id").asLong()
         assertEquals(ReviewRunStatus.FAILED, runs.findOwned(ownerId, reviewId, runId)!!.status)
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM combination_review_run_source WHERE run_id = ?", Int::class.java, runId))
         verifyNoInteractions(ai)
@@ -258,7 +351,7 @@ class CombinationReviewRunIntegrationTest {
             emptyList(),
         ))
 
-        val runId = id(start().andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("SUCCEEDED")))
+        val runId = id(start().andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SUCCEEDED")))
         val stored = requireNotNull(runs.findOwned(ownerId, reviewId, runId))
         assertEquals(2, stored.evidence!!.documents.size)
         assertTrue(stored.evidence.coverageWarnings.any {
@@ -275,9 +368,9 @@ class CombinationReviewRunIntegrationTest {
             emptyList(),
         ))
 
-        val response = start().andExpect(status().isUnprocessableContent())
-            .andExpect(jsonPath("$.code").value("SOURCE_UNSUPPORTED")).andReturn().response
-        val runId = json.readTree(response.contentAsString).path("runId").asLong()
+        val response = start().andExpect(status().isOk())
+            .andExpect(jsonPath("$.failureCode").value("SOURCE_UNSUPPORTED")).andReturn().response
+        val runId = json.readTree(response.contentAsString).path("id").asLong()
         assertEquals(ReviewRunStatus.FAILED, runs.findOwned(ownerId, reviewId, runId)!!.status)
         verifyNoInteractions(ai)
     }
@@ -285,7 +378,7 @@ class CombinationReviewRunIntegrationTest {
     @Test
     fun replayDoesNotCallAiAgainEvenAfterInputRevisionChangedAndDifferentPayloadConflicts() {
         val key = UUID.randomUUID().toString()
-        val id = id(start(key = key).andExpect(status().isCreated()))
+        val id = id(start(key = key).andExpect(status().isOk()))
         reviews.replaceOwned(ownerId, reviewId, 1, draft.copy(title = "새 입력"))
         start(key = key).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id)).andExpect(jsonPath("$.inputRevision").value(1))
         start(key = key, facts = "다른 내용").andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("COMBINATION_REVIEW_RUN_CONFLICT"))
@@ -300,7 +393,7 @@ class CombinationReviewRunIntegrationTest {
             assertTrue(reviews.replaceOwned(ownerId, reviewId, 1, draft.copy(title = "분석 중 수정")))
             answer
         }
-        val id = id(start().andExpect(status().isCreated()).andExpect(jsonPath("$.input.title").value("처음 검토")))
+        val id = id(start().andExpect(status().isOk()).andExpect(jsonPath("$.input.title").value("처음 검토")))
         assertEquals(1L, runs.findOwned(ownerId, reviewId, id)!!.inputRevision)
         assertEquals(2L, reviews.findOwned(ownerId, reviewId)!!.inputRevision)
         assertEquals("분석 중 수정", reviews.findOwned(ownerId, reviewId)!!.draft.title)
@@ -310,11 +403,12 @@ class CombinationReviewRunIntegrationTest {
     fun aiFailurePersistsEvidenceAndMetadataAndSameKeyDoesNotRetry() {
         `when`(ai.analyze(any(AiCombinationReviewRequest::class.java) ?: request)).thenThrow(AiServiceCallException.unavailable(null))
         val key = UUID.randomUUID().toString()
-        val failure = start(key = key).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("ANALYSIS_UNAVAILABLE")).andReturn().response
-        val id = json.readTree(failure.contentAsString).path("runId").asLong()
-        mvc.perform(get("$path/$id").cookie(owner)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"))
+        val failure = start(key = key).andExpect(status().isOk()).andExpect(jsonPath("$.failureCode").value("RUN_OUTCOME_UNKNOWN")).andReturn().response
+        val id = json.readTree(failure.contentAsString).path("id").asLong()
+        mvc.perform(get("$path/$id").cookie(owner)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UNKNOWN"))
             .andExpect(jsonPath("$.analysis").isEmpty()).andExpect(jsonPath("$.evidence.documents.length()").value(2))
-        start(key = key).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("FAILED"))
+        start(key = key).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UNKNOWN"))
+        start().andExpect(status().isConflict())
         verify(ai, times(1)).analyze(any(AiCombinationReviewRequest::class.java) ?: request)
         assertArrayEquals(general, runs.findSource(ownerId, reviewId, id, 0))
     }
@@ -325,8 +419,8 @@ class CombinationReviewRunIntegrationTest {
         answer = answer.copy(pairs = listOf(first.copy(stages = first.stages.mapIndexed { i, s ->
             if (i == 0) s.copy(citations = listOf(AiReviewCitationPayload("E0", "조작된 존재하지 않는 인용"))) else s
         })))
-        val response = start().andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("ANALYSIS_INVALID")).andReturn().response
-        val runId = json.readTree(response.contentAsString).path("runId").asLong()
+        val response = start().andExpect(status().isOk()).andExpect(jsonPath("$.failureCode").value("ANALYSIS_INVALID")).andReturn().response
+        val runId = json.readTree(response.contentAsString).path("id").asLong()
         assertNull(runs.findOwned(ownerId, reviewId, runId)!!.analysis)
         assertEquals(ReviewRunStatus.FAILED, runs.findOwned(ownerId, reviewId, runId)!!.status)
     }
@@ -334,8 +428,8 @@ class CombinationReviewRunIntegrationTest {
     @Test
     fun sourceFailureIsStoredAndDoesNotReachAi() {
         `when`(source.collect(g.sourceCode, g.sourceProgramId)).thenThrow(SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED))
-        val result = start().andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("SOURCE_UNSUPPORTED")).andReturn().response
-        val runId = json.readTree(result.contentAsString).path("runId").asLong()
+        val result = start().andExpect(status().isOk()).andExpect(jsonPath("$.failureCode").value("SOURCE_UNSUPPORTED")).andReturn().response
+        val runId = json.readTree(result.contentAsString).path("id").asLong()
         val run = requireNotNull(runs.findOwned(ownerId, reviewId, runId))
         assertEquals(ReviewRunStatus.FAILED, run.status)
         assertNull(run.analysis); assertNull(run.evidence)
@@ -344,7 +438,7 @@ class CombinationReviewRunIntegrationTest {
 
     @Test
     fun allRunAndRawSourceRoutesEnforceOwnerEvenForAdmin() {
-        val runId = id(start().andExpect(status().isCreated()))
+        val runId = id(start().andExpect(status().isOk()))
         jdbc.update("UPDATE account SET role = 'ADMIN' WHERE id = ?", otherId)
         for (url in listOf(path, "$path/$runId", "$path/$runId/sources/0")) {
             mvc.perform(get(url).cookie(other)).andExpect(status().isNotFound())
@@ -359,7 +453,7 @@ class CombinationReviewRunIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = ["expired", "suspended", "deleted", "logged-out"])
     fun inactiveSessionsCannotReadOrStartRuns(state: String) {
-        val runId = id(start().andExpect(status().isCreated()))
+        val runId = id(start().andExpect(status().isOk()))
         when (state) {
             "expired" -> jdbc.update("UPDATE account_session SET expires_at = '2000-01-01' WHERE account_id = ?", ownerId)
             "suspended" -> jdbc.update("UPDATE account SET suspended_at = NOW() WHERE id = ?", ownerId)
@@ -405,6 +499,7 @@ class CombinationReviewRunIntegrationTest {
     @Test
     fun failedSourceIntegrityCheckRollsBackEvidenceAndAllSourceWrites() {
         val run = runs.reserve(ownerId, reviewId, 1, UUID.randomUUID().toString(), "", UUID.randomUUID().toString()).run
+        requireNotNull(runs.claim(run.id, UUID.randomUUID().toString()))
         val doc = ReviewSourceDocument(0, "https://www.mss.go.kr/example", "test.hwpx", "HWPX", "0".repeat(64), "0".repeat(64), "test", LocalDateTime.now())
         assertThrows(IllegalArgumentException::class.java) { runs.saveEvidence(run.id, ReviewEvidenceSnapshot(listOf(doc), emptyList(), emptyList()), listOf(general)) }
         assertNull(runs.findOwned(ownerId, reviewId, run.id)!!.evidence)
@@ -413,7 +508,7 @@ class CombinationReviewRunIntegrationTest {
 
     @Test
     fun limitsNewRunsByAuthenticatedAccountBeforeCallingSourcesOrAi() {
-        repeat(6) { start().andExpect(status().isCreated()) }
+        repeat(6) { start().andExpect(status().isOk()) }
         start().andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("RUN_RATE_LIMITED"))
             .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
         verify(ai, times(6)).analyze(any(AiCombinationReviewRequest::class.java) ?: request)
@@ -433,7 +528,7 @@ class CombinationReviewRunIntegrationTest {
             start(key = key).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RUNNING"))
             start().andExpect(status().isConflict())
             release.countDown()
-            assertEquals(201, job.get(20, TimeUnit.SECONDS))
+            assertEquals(200, job.get(20, TimeUnit.SECONDS))
         } finally { release.countDown(); executor.shutdownNow() }
     }
 
@@ -461,7 +556,15 @@ class CombinationReviewRunIntegrationTest {
         return account.id to Cookie(SessionCookieHelper.COOKIE_NAME, issued.sessionToken)
     }
     private fun body(key: String = UUID.randomUUID().toString(), revision: Long = 1, facts: String = "") = json.writeValueAsString(mapOf("requestKey" to key, "expectedRevision" to revision, "additionalFacts" to facts))
-    private fun start(key: String = UUID.randomUUID().toString(), facts: String = "", cookie: Cookie = owner) = mvc.perform(post(path).cookie(cookie).header(HttpHeaders.ORIGIN, ORIGIN).contentType(MediaType.APPLICATION_JSON).content(body(key = key, facts = facts)))
+    private fun submit(key: String = UUID.randomUUID().toString(), facts: String = "", cookie: Cookie = owner) = mvc.perform(post(path).cookie(cookie).header(HttpHeaders.ORIGIN, ORIGIN).contentType(MediaType.APPLICATION_JSON).content(body(key = key, facts = facts)))
+    /** 분석 본문 회귀 테스트에서는 큐 실행을 직접 구동하고 공개 GET으로 저장 결과를 확인한다. */
+    private fun start(key: String = UUID.randomUUID().toString(), facts: String = "", cookie: Cookie = owner): org.springframework.test.web.servlet.ResultActions {
+        val submitted = submit(key, facts, cookie)
+        if (submitted.andReturn().response.status != 202) return submitted
+        val runId = id(submitted)
+        service.executeQueued(runId)
+        return mvc.perform(get("$path/$runId").cookie(cookie))
+    }
     private fun id(result: org.springframework.test.web.servlet.ResultActions) = json.readTree(result.andReturn().response.contentAsString).path("id").asLong()
     companion object { const val ORIGIN = "http://localhost:5173" }
 }

@@ -11,11 +11,13 @@ export function ReviewRunResult({ run, currentRevision, download, downloading }:
   return <section className="space-y-4" aria-label={`실행 ${run.id} 결과`}>
     <div className={s.card}>
       <h2 className="text-xl font-bold">실행 #{run.id} · {runLabels[run.status]}</h2>
-      <p className={s.muted}>입력 버전 {run.inputRevision} · 기준일 {run.input.asOfDate} · 시작 {run.startedAt}</p>
+      <p className={s.muted}>입력 버전 {run.inputRevision} · 기준일 {run.input.asOfDate} · 접수 {run.startedAt}</p>
       <p className="mt-2 font-semibold">당시 제목: {run.input.title}</p>
       {run.inputRevision !== currentRevision && <p className={`${s.warning} mt-3`}>과거 입력 버전의 결과입니다. 현재 저장 입력(버전 {currentRevision})에 대한 결과가 아닙니다.</p>}
       <p className="mt-3 whitespace-pre-wrap text-sm">실행별 추가 설명: {run.input.additionalFacts || '없음'}</p>
-      {run.status === 'RUNNING' && <p className={`${s.warning} mt-3`}>서버에 실행 중으로 저장되어 있습니다. 오래 걸려도 자동 재실행하지 않습니다. 실행 상태를 다시 조회하세요. 실행 주체가 종료된 경우 운영자의 확인과 복구가 필요합니다.</p>}
+      {run.status === 'QUEUED' && <p role="status" className={`${s.warning} mt-3`}>분석 대기 중입니다. 처리 가능한 순서에 따라 시작하며 새로고침해도 작업은 유지됩니다.</p>}
+      {run.status === 'RUNNING' && <p role="status" className={`${s.warning} mt-3`}>공식 문서 수집·분석 중입니다. 상태를 자동으로 확인하며 새 분석을 중복 실행하지 않습니다.</p>}
+      {run.status === 'UNKNOWN' && <p role="status" className={`${s.warning} mt-3`}>분석 완료 여부를 확인할 수 없습니다. 중복 과금을 방지하기 위해 자동 재실행과 같은 검토의 새 분석을 차단했습니다. 운영자 확인이 필요합니다.</p>}
       {(run.status === 'FAILED' || run.status === 'INTERRUPTED') && <p className={`${s.warning} mt-3`}>분석이 정상 완료되지 않았습니다. 근거 부족 판단이나 허용 결과가 아닙니다. 오류 코드: {run.failureCode ?? '확인 필요'}</p>}
       <details className="mt-4"><summary className="cursor-pointer font-semibold">실행 당시 사업 순서·참여 상태</summary>
         <div className="mt-4 space-y-4">{run.input.programs.map((p, i) => <ReviewParticipation key={i} program={p} index={i} />)}</div>

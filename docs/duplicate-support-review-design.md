@@ -1,6 +1,11 @@
 # 중복 지원·중복 수혜 검토 설계
 [문서 목록](README.md) · [시스템 구조](architecture/README.md) · [계정·인증 계약](account-auth-contract.md)
 
+> **2026-09-12 비동기 전환:** 현재 실행 계약은 [RabbitMQ 중복 검토 분석](rabbitmq-combination-review.md)을 따른다.
+> 아래 최초 설계·검증 시점의 동기 POST/201·120초 대기·프로세스당 2개·RUNNING 복구 설명은 과거 기록이다.
+> 현재는 202 QUEUED 접수, DB Outbox, 검토 큐 소비자 1개, 계정별 미완료 최대 3개, 상태 자동 조회를 사용한다.
+> UNKNOWN은 자동 재실행 및 같은 검토의 새 실행을 막으며 운영 확인이 필요하다. 최초 모델 품질·사람 검수 기록은 그대로 보존한다.
+
 > 2026-09-09 최신 팀 main 통합 시 main의 V6~V9를 보존하고 중복 검토 migration을 V6→V10, V7→V11로 이동했다. SQL 내용은 유지했다. 아래 과거 검증 기록의 V6/V7은 당시 브랜치 버전이다. 이전 브랜치의 V6/V7을 적용한 개발 DB는 새 버전과 이력이 다르므로 그대로 업그레이드하지 말고 별도 DB를 사용해야 한다. 이번 통합에서는 기존 DB를 변경하지 않았다.
 
 - 관련 이슈: [#123 — skn-59](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/123) · [#230 — skn-112 전 제공처 공식 첨부](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/230) · [#246 — skn-121 관심 공고 선택](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/246)

@@ -23,7 +23,7 @@ export function useReviewScope() {
     const controller = new AbortController()
     requests.current.set(name, controller); setBusy([...requests.current.keys()]); setError(null)
     const current = () => active.current && !controller.signal.aborted && store.getState().auth === owner.current
-    try { const value = await operation(controller.signal); if (current()) accept(value) }
+    try { const value = await operation(controller.signal); if (current()) { accept(value); return true } }
     catch (failure) { if (current()) setError({ message: reviewFailureMessage(failure), ...(failure instanceof CombinationReviewError ? { status: failure.status, code: failure.code, runId: failure.runId } : {}) }) }
     finally {
       if (requests.current.get(name) === controller) requests.current.delete(name)

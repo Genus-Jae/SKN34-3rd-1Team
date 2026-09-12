@@ -30,11 +30,13 @@ Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 전체 
 목록은 소유자·생성 ID 커서로 조회하고, 수정은 소유자·입력 버전 조건으로 원자적으로 교체합니다. 삭제도 소유자 조건으로 수행하며
 선택 공고·실행 이력·보관 원문은 외래 키로 함께 삭제됩니다.
 타인 검토와 없는 검토는 404, 본인 검토의 버전 충돌은 409입니다. 세션 쿠키 쓰기 요청의 Origin 검사는 유지합니다.
-분석 POST는 `CombinationReviewRunController → CombinationReviewRunService`로 들어가 다음 경로를 실행합니다.
+분석 POST는 `CombinationReviewRunController → CombinationReviewRunService`로 들어가 입력을 접수합니다.
 
-1. `CombinationReviewRunRepository → MyBatis → MySQL`: 소유자·버전·요청 키 확인 후 RUNNING 입력 스냅샷 예약.
-2. 선택한 제공처에 따라 `BizInfoAttachmentClient`, `MsitAttachmentClient`, `KStartupAttachmentClient`,
-   `CnTradeNoticeAttachmentClient`가 검증된 공식 상세의 직접 연결 첨부를 수집. 충남은 API 제목·본문과 게시판 상세를 교차 검증.
+1. `CombinationReviewRunRepository → MyBatis → MySQL`: 소유자·버전·요청 키 확인 후 QUEUED 입력 스냅샷 예약.
+   실행 행 자체가 Outbox이며 새 POST는 202로 반환합니다. `CombinationReviewOutboxScheduler → CombinationReviewQueueClient
+   → RabbitMQ → CombinationReviewRunConsumer → CombinationReviewRunService`가 DB에서 실행을 한 번 선점합니다.
+2. 소비자는 선택한 제공처에 따라 `BizInfoAttachmentClient`, `MsitAttachmentClient`, `KStartupAttachmentClient`,
+   `CnTradeNoticeAttachmentClient`를 통해 검증된 공식 상세의 직접 연결 첨부를 수집. 충남은 API 제목·본문과 게시판 상세를 교차 검증.
 3. `SupportProgramDocumentParser`: PDFBox, Apache Tika HWP5 또는 HWPX ZIP/XML로 텍스트·위치를 추출. 신청 문서 발견과 중복 지원 검토가 같은 안전 경계를 사용.
    공고별로 읽을 수 있는 문서가 있으면 크기 제한 초과·텍스트 추출 불가 첨부는 경고와 함께 제외하고, 모두 제외되면 실행을 실패 처리.
 4. `CombinationReviewRunRepository`: 원문 바이트·해시·메타데이터·텍스트를 짧은 transaction에서 보존.
@@ -43,9 +45,10 @@ Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 전체 
    코드가 정확한 원문과 근거 ID를 복원한다. 다른 사업쌍의 선택지나 범위 밖 번호는 실패 처리. 현재 입력은 덮어쓰지 않음.
 
 네트워크 호출은 DB transaction 밖에서 수행합니다. 같은 요청 키는 기존 실행을 반환하고 새 키의 동시 실행은 DB에서 막습니다.
-계정별 새 분석은 기존 공개 요청량 제한을 공유하며 자체 동시 실행 한도도 적용합니다. 기존 Qdrant 검색은 사용하지 않습니다.
+계정별 새 접수는 기존 공개 요청량 제한을 공유하며, 계정 전체 미완료 작업은 최대 3건입니다. 검토 큐 소비자는 1개이며
+RUNNING과 UNKNOWN 재전달은 재실행하지 않습니다. 기존 Qdrant 검색은 사용하지 않습니다.
 자동 수집 원문은 사람 검수 전으로 표시합니다. 사용자 화면은 3단계 입력·분석 흐름으로 연결되어 있으며
-[계약·원문 관리·중단 복구](duplicate-support-review-design.md)를 참고하세요.
+[비동기 접수·원문 관리·결과 불명·운영](rabbitmq-combination-review.md)을 참고하세요.
 
 Core의 Run Service는 실행 순서·근거 묶음 구성·상태 저장을 맡습니다. AI Facade는 요청 변환·Client 호출·응답 검증을 감추고,
 `client/mapper/AiCombinationReviewMapper`가 전송 DTO와 내부 모델 사이를 변환합니다. Facade는 상위 Service나 DB를 호출하지 않습니다.
@@ -723,11 +726,14 @@ PDF·첨부·다른 제공처 확장은 후속 범위입니다.
 저장된 원본 식별자는 상세 API로 공고명과 기관명을 보완해 참여 상태 화면에서 `사업 1`이 어떤 공고인지 함께 표시한다.
 
 두 번째 단계 완료 시 입력을 저장하고 분석 단계로 이동하되 분석은 자동 실행하지 않는다. 입력 충돌 시 편집 내용을 유지하고 최신 입력 조회·명시적 적용을 제공한다.
-동기 분석 POST 응답을 최대 120초 기다리며 서버 실행 취소를 보장하지 않는다. 미확인 요청의 키·버전·추가 설명만
+비동기 접수 POST 응답을 최대 15초 기다리며 서버 작업 취소를 보장하지 않는다. 미확인 요청의 키·버전·추가 설명만
 계정별 탭 sessionStorage에 보관하고, 같은 요청 확인으로 재전송한다. 조회·마운트·로그인으로 POST하지 않는다.
 저장소를 쓸 수 없으면 분석을 시작하지 않으며 일반 입력 초안·결과는 브라우저에 영속 저장하지 않는다.
 계정 변경·로그아웃 시 기록을 지우고 이전 요청을 취소하며 세션 참조 검사로 늦은 응답을 차단한다.
-RUNNING을 시간만으로 실패 처리하거나 새 유료 요청으로 교체하지 않는다. FAILED/INTERRUPTED는 정상 근거 부족과 구분한다.
+QUEUED/RUNNING은 3초 간격 GET으로 상태를 확인하고 새로고침 후에도 DB 이력으로 조회를 재개한다.
+조회 실패·완료·로그아웃에는 자동 조회를 중지한다. RUNNING이 20분을 넘으면 서버는 UNKNOWN으로 표시하지만
+새 유료 요청으로 자동 교체하지 않는다. UNKNOWN은 같은 검토의 새 실행도 차단하며 운영 확인이 필요하다.
+FAILED/INTERRUPTED 역시 정상 근거 부족과 구분한다.
 
 결과의 사업 순서·참여 상태·인용은 해당 Run의 스냅샷으로 표시한다. 여섯 단계의 판단 범위·질문·기관 확인·수집 한계와
 자동 수집/사람 미검수 상태를 표시하며, 단계별 상세는 한 번에 하나만 펼쳐 확인한다. 원본은 세션을 포함한 GET으로 내려받는다. 5-2의 비로그인 선택 유지·작업 이어보기,

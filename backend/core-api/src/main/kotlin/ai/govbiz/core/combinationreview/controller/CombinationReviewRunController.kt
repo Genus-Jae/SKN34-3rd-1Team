@@ -19,7 +19,7 @@ class CombinationReviewRunController(private val service: CombinationReviewRunSe
     @PostMapping
     fun start(account: Account, @PathVariable @Min(1) reviewId: Long, @RequestBody @Valid request: StartCombinationReviewRunRequest): ResponseEntity<CombinationReviewRunResponse> {
         val result = service.start(account, reviewId, request.expectedRevision, request.requestKey, request.additionalFacts)
-        return ResponseEntity.status(if (result.created) 201 else 200).cacheControl(CacheControl.noStore())
+        return ResponseEntity.status(if (result.created) 202 else 200).cacheControl(CacheControl.noStore())
             .location(URI.create("/api/v1/combination-reviews/$reviewId/runs/${result.run.id}"))
             .body(CombinationReviewRunResponse.from(result.run))
     }
