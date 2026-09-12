@@ -126,6 +126,7 @@ export class AccountRepositoryImpl implements AccountRepository {
       this.sessionHintStorage.clear()
       return { outcome: 'deleted' }
     } catch (error) {
+      if (error instanceof AccountApiError && error.status === 422 && error.code === 'LAST_ADMIN_DELETION') return { outcome: 'last-admin' }
       const outcome = toPasswordFailure(error)
       if (outcome !== null) return outcome
       throw error

@@ -24,6 +24,7 @@ export const accountSecurityMessages = {
   requestFailed: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   passwordChanged: '비밀번호를 변경했습니다. 일부 기기에서는 다시 로그인해야 할 수 있습니다.',
   deletePasswordRequired: '확인을 위해 현재 비밀번호를 입력해 주세요.',
+  lastAdmin: '마지막 관리자 계정은 삭제할 수 없습니다. 다른 관리자를 먼저 지정해 주세요.',
 } as const
 
 type PasswordField = 'newPassword' | 'confirmation'
@@ -171,6 +172,10 @@ export function useAccountSecurityViewModel(useCases: Partial<SecurityUseCases> 
       }
       if (result.outcome === 'rate-limited') {
         setDeleteError(accountSecurityMessages.rateLimited(result.retryAfterSeconds))
+        return
+      }
+      if (result.outcome === 'last-admin') {
+        setDeleteError(accountSecurityMessages.lastAdmin)
         return
       }
       setIsDeleteModalOpen(false)

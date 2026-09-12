@@ -40,7 +40,7 @@ Browser
 | (익명) | 세션 없음 | 공개 화면: 검색·상세·원문 질문·요금제·파트너 모집 읽기(`/`, `/pricing`, `/partners`), 로그인·회원가입 |
 | `MEMBER` | 로그인 | 사이드바 작업 화면(`/app/chat` `/app/pricing` `/app/partners` `/app/profile` …) |
 | `COMPANY` | 사업자등록번호 조회(Bizno)로 확인한 기업 등록 | 파트너 모집글 작성. 이메일 인증 조건은 인증 기능이 생길 때 더함 |
-| `ADMIN` | `account.role = ADMIN` | 위 전부 + `/app/admin/*` |
+| `ADMIN` | `account.role = ADMIN` | 위 전부 + `/app/admin/*`(계정 관리). 서버는 `/api/v1/admin/*`마다 역할을 다시 확인 |
 
 ## 세션 쿠키
 
@@ -443,7 +443,7 @@ GET /api/v1/auth/oauth/providers
 | 상황 | 결과 |
 |---|---|
 | 연결된 `sub` | 그 계정으로 로그인. 공급자 쪽 이메일이 바뀌어도 같은 계정 |
-| 처음 온 `sub`, 공급자가 인증한 이메일이 아직 없는 이메일 | 새 회원. 비밀번호 없음, `emailVerified=true`, 약관 동의 시각은 가입 시각(로그인 버튼 아래 안내로 갈음) |
+| 처음 온 `sub`, 공급자가 인증한 이메일이 아직 없는 이메일 | 새 회원. 비밀번호 없음, `emailVerified=true`, 약관 동의 시각은 가입 시각(가입 화면 안내로 갈음) |
 | 처음 온 `sub`, 그 이메일로 이미 가입한 계정이 있음 | **연결하지 않음** → `account-exists`. 미인증 계정을 먼저 만들어 두는 사전 탈취(pre-account hijacking) 방지 |
 | 공급자가 인증한 이메일이 없음 | `email-required` |
 
@@ -472,6 +472,32 @@ client secret과 nonce로 막습니다.
 화면이 뜨자마자 그리며, 버튼은 `/api/v1/auth/oauth/{provider}/authorize` 링크입니다. 키가 없는 공급자를 누르면 서버가
 `oauthError=unavailable`로 돌려보내 로그인 화면이 "키가 설정되지 않아 사용할 수 없습니다"를 안내합니다. 목록 endpoint는 설정
 확인용입니다. Google 인가 요청에는 `prompt`를 두지 않아, 이미 로그인·동의한 계정은 선택 화면 없이 돌아옵니다. 서버가 보내는 `/oauth/complete`는 세션 힌트를 남기고 `/auth/me`로 계정을 확인한 뒤 `next`로 이동합니다.
+
+## 관리자 계정 관리
+
+`/api/v1/admin/accounts` 아래는 관리자 전용입니다. Controller가 `AdminPrincipal` 파라미터를 받으므로 세션이 없으면 401,
+관리자가 아니면 403 `ADMIN_ACCESS_DENIED`입니다. 역할은 요청마다 DB에서 다시 읽어 권한을 내리면 같은 세션도 다음 요청부터
+막힙니다. 조치(POST)는 세션 쿠키가 붙은 상태 변경이라 Origin 검사도 거칩니다. 삭제된 계정은 목록·상세에 나오지 않습니다.
+
+| 메서드·경로 | 용도 | 성공 |
+|---|---|---|
+| `GET /summary` | 요약 수치 | 200 `total` `companyRegistered` `socialLinked` `suspended` `admins` `joinedRecently` `recentJoinDays`(7) |
+| `GET /` | 목록. `keyword`(이메일·기업명, 숫자 3~10자리면 사업자등록번호 일부도, 100자) `status`(ACTIVE·SUSPENDED) `role`(USER·ADMIN) `loginMethod`(EMAIL·KAKAO·GOOGLE) `sort`(RECENT·OLDEST·LAST_LOGIN) `page` `pageSize`(1~50, 기본 20) | 200 `accounts[]` `total` `page` `pageSize` `totalPages` |
+| `GET /{id}` | 상세 | 200 `account` `company` `activity` `actions[]`(최근 20건) `isSelf` |
+| `POST /{id}/suspend` | 정지. 모든 세션을 지워 바로 로그아웃 | 200 상세 |
+| `POST /{id}/unsuspend` | 정지 해제. 지운 세션은 돌아오지 않음 | 200 상세 |
+| `POST /{id}/sessions/revoke` | 강제 로그아웃. 계정은 그대로 | 200 상세 |
+
+조치 본문은 `{ "reason": "스팸 제안 반복" }`이고 사유는 앞뒤 공백을 뺀 1~500자입니다. 조치는 대상 계정 행을 잠근 한
+transaction에서 상태를 바꾸고 `account_admin_action`(대상·관리자·종류·사유·시각)에 남깁니다. 자기 계정은 422
+`ADMIN_SELF_ACTION`, 다른 관리자 계정은 422 `ADMIN_TARGET_PROTECTED`, 이미 그 상태면 409 `ADMIN_ACCOUNT_STATE_CONFLICT`입니다.
+그래서 정지로 관리자가 모두 사라지지 않고, 활성 관리자가 한 명뿐이면 그 관리자의 탈퇴(`DELETE /api/v1/me`)도 422
+`LAST_ADMIN_DELETION`입니다.
+
+목록 한 줄은 `id` `email` `role` `tier` `status` `emailVerified` `hasPassword` `loginMethods[]`(비밀번호가 있으면 EMAIL, 연결된
+소셜 공급자) `company`(`companyName` `businessNumber` 또는 null) `createdAt` `lastLoginAt` `suspendedAt`입니다. 시각은 서울 기준
+ISO 로컬 시각(`2026-09-11T17:49:09.591286`, 초 아래 자리는 있을 때만)이며, `lastLoginAt`은 가입·로그인·소셜 로그인·개발 로그인으로 세션을 받을 때 V19의 `account.last_login_at`에
+남깁니다(그 전의 로그인은 기록이 없어 null). 비밀번호 해시와 세션 토큰은 응답에 싣지 않습니다.
 
 ## 오류
 
@@ -506,6 +532,12 @@ client secret과 nonce로 막습니다.
 | Bizno 조회 키 미설정 / 연결 실패 / 시간 초과 / 응답 오류 | 503 / 503 / 504 / 502 | `BIZNO_NOT_CONFIGURED` `BIZNO_UNAVAILABLE` `BIZNO_TIMEOUT` `BIZNO_UPSTREAM_ERROR`·`BIZNO_INVALID_RESPONSE` |
 | 세션 쿠키 없음·서명 오류·절대/유휴 만료·로그아웃된 세션·삭제된 계정 | 401 | `AUTHENTICATION_REQUIRED` (`WWW-Authenticate: Bearer`) |
 | 정지된 계정의 로그인 또는 세션 사용 | 403 | `ACCOUNT_SUSPENDED` |
+| 활성 관리자가 한 명뿐인데 그 관리자가 탈퇴 | 422 | `LAST_ADMIN_DELETION` |
+| 관리자가 아닌 계정의 관리자 API 호출 | 403 | `ADMIN_ACCESS_DENIED` |
+| 관리자 API의 대상 계정이 없거나 삭제됨 | 404 | `ADMIN_ACCOUNT_NOT_FOUND` |
+| 관리자가 자기 계정을 정지·강제 로그아웃 | 422 | `ADMIN_SELF_ACTION` |
+| 다른 관리자 계정을 정지·강제 로그아웃 | 422 | `ADMIN_TARGET_PROTECTED` |
+| 이미 정지된 계정 정지, 정지되지 않은 계정 정지 해제 | 409 | `ADMIN_ACCOUNT_STATE_CONFLICT` |
 | 세션 쿠키가 붙은 상태 변경 요청의 Origin이 없거나 허용 목록에 없음 | 403 | `SESSION_ORIGIN_REJECTED` |
 | 로그인·회원가입 시도 한도 초과 | 429 | `LOGIN_RATE_LIMITED` (`Retry-After`, `retryAfterSeconds`) |
 

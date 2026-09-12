@@ -150,7 +150,7 @@ class AccountOAuthService(
         return try {
             Resolution.Found(
                 repository.createAccountWithOAuthIdentity(
-                    // 약관 동의는 로그인 버튼 아래 안내로 갈음하고 가입 시각을 기록합니다. 이메일은 공급자가 인증했습니다.
+                    // 약관 동의는 가입 화면 안내로 갈음하고 가입 시각을 기록합니다. 이메일은 공급자가 인증했습니다.
                     NewAccount(email = email, passwordHash = null, termsAgreedAt = now, emailVerifiedAt = now),
                     profile.provider,
                     profile.subject,
