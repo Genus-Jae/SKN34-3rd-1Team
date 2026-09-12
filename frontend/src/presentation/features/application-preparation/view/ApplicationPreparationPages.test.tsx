@@ -260,8 +260,13 @@ describe('application preparation creation and detail', () => {
     mount('/app/application-preparations/new')
     expect(browseSavedPrograms).not.toHaveBeenCalled()
     expect(screen.queryByText('관심 공고함에 담은 공고가 없습니다.')).toBeNull()
+    const searchHeading = screen.getByRole('heading', { name: '전체 공고 검색' })
+    const savedProgramsButton = screen.getByRole('button', { name: '관심 공고함에서 선택' })
+    const searchInput = screen.getByLabelText('공고명·기관명')
+    expect(searchHeading.compareDocumentPosition(savedProgramsButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(savedProgramsButton.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: '관심 공고함에서 선택' }))
+    fireEvent.click(savedProgramsButton)
 
     const dialog = await screen.findByRole('dialog', { name: '관심 공고함에서 선택' })
     expect(await within(dialog).findByText('관심 공고함에 담은 공고가 없습니다.')).toBeTruthy()

@@ -269,6 +269,7 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
         </section>}
 
         <section className={s.card}>
+          <h2 className={s.cardTitle} id="create-preparation-title">전체 공고 검색</h2>
           <button ref={savedProgramsButtonRef} type="button" className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-semibold hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label="관심 공고함에서 선택" aria-haspopup="dialog" aria-expanded={savedProgramsOpen} onClick={() => setSavedProgramsOpen(true)}><span>관심 공고함에서 선택</span><span className="text-emerald-800">열기 ›</span></button>
           <SavedSupportProgramPickerDialog
             open={savedProgramsOpen}
@@ -288,8 +289,6 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
             onRetry={vm.savedProgramChoices.retry}
             onClose={closeSavedPrograms}
           />
-          <h2 className={`${s.cardTitle} mt-2`} id="create-preparation-title">전체 공고 검색</h2>
-          <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색하고 공식 PDF/HWP/HWPX를 분석할 수 있습니다.</p>
           <div className="flex flex-wrap items-end gap-2">
             <label className="min-w-0 flex-1 text-sm font-bold text-app-ink" htmlFor="application-program-search">
               공고명·기관명
@@ -312,6 +311,7 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
               {vm.catalogLoading ? '공고 검색 중…' : '공고 검색'}
             </button>
           </div>
+          <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색하고 공식 PDF/HWP/HWPX를 분석할 수 있습니다.</p>
           {vm.catalogLoading && <p className={s.status} role="status" aria-live="polite">전체 제공처의 공고를 검색하고 있습니다.</p>}
           {vm.catalogError && <ErrorNotice message={vm.catalogError.message} retryLabel="공고 다시 검색" onRetry={() => { void vm.searchPrograms(vm.catalog?.page ?? 1, vm.appliedCatalogKeyword || vm.catalogKeyword) }} />}
           {vm.catalog?.programs.length === 0 && <p className={s.notice}>검색 결과가 없습니다. 다른 검색어를 입력하거나 아래에서 공식 URL·공고 ID를 직접 입력해 주세요.</p>}
