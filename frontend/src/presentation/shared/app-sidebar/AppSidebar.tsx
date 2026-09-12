@@ -9,7 +9,7 @@ import { usePendingReceivedProposalCount } from '../partner-proposal/useReceived
 import { appPaths, publicPaths } from '../routes/appPaths'
 import { appSidebarStyles, sidebarMenuItemClassName } from './AppSidebar.styles'
 
-type MenuIcon = 'search' | 'document' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more'
+type MenuIcon = 'search' | 'document' | 'bookmark' | 'users' | 'inbox' | 'building' | 'shield' | 'pricing' | 'logout' | 'more' | 'newChat' | 'panel'
 
 /** 사이드바 메뉴 한 줄입니다. `to`가 없으면 아직 화면이 없는 메뉴이므로 링크로 만들지 않습니다. */
 type MenuItem = {
@@ -20,18 +20,12 @@ type MenuItem = {
   matches?: (pathname: string) => boolean
 }
 
-type MenuGroup = { title: string; items: MenuItem[]; adminOnly?: boolean }
+type MenuGroup = { title: string; items: MenuItem[] }
 
 const menuGroups: MenuGroup[] = [
   {
     title: '메뉴',
     items: [
-      {
-        label: '지원사업 검색',
-        icon: 'search',
-        to: appPaths.chat,
-        matches: (pathname) => pathname === appPaths.chat || pathname.startsWith(appPaths.supportProgramDetail),
-      },
       { label: '신청 문서 작성', icon: 'document', to: appPaths.applicationPreparations, matches: (pathname) => pathname.startsWith(appPaths.applicationPreparations) },
       { label: '중복 지원·수혜 검토', icon: 'shield', to: appPaths.combinationReviews, matches: (pathname) => pathname.startsWith(appPaths.combinationReviews) },
       { label: '기업 맞춤 리포트', icon: 'inbox', to: appPaths.reports, matches: (pathname) => pathname === appPaths.reports },
@@ -46,21 +40,12 @@ const menuGroups: MenuGroup[] = [
       { label: '요금제', icon: 'pricing', to: appPaths.pricing, matches: (pathname) => pathname === appPaths.pricing },
     ],
   },
-  {
-    title: '관리자',
-    adminOnly: true,
-    items: [
-      {
-        label: '회원·기업',
-        icon: 'shield',
-        to: appPaths.adminMembers,
-        matches: (pathname) => pathname.startsWith(appPaths.admin),
-      },
-    ],
-  },
 ]
 
 const iconPaths: Record<MenuIcon, ReactNode> = {
+  search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
+  newChat: <><path d="M12 4H6a3 3 0 0 0-3 3v11a3 3 0 0 0 3 3h11a3 3 0 0 0 3-3v-6" /><path d="m16 3 5 5-9 9H7v-5Z" /></>,
+  panel: <><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16" /></>,
   pricing: (
     <>
       <rect x="3" y="5" width="18" height="14" rx="3" />
@@ -71,12 +56,6 @@ const iconPaths: Record<MenuIcon, ReactNode> = {
     <>
       <path d="M4 5h16v14H4z" />
       <path d="M4 13h5l1.5 2h3L15 13h5" />
-    </>
-  ),
-  search: (
-    <>
-      <circle cx="11" cy="11" r="8" />
-      <path d="M21 21l-4.35-4.35" />
     </>
   ),
   document: (
@@ -120,12 +99,13 @@ const iconPaths: Record<MenuIcon, ReactNode> = {
 function MenuIconGraphic({ name }: { name: MenuIcon }) {
   return (
     <svg
-      width="16"
-      height="16"
+      width="20"
+      height="20"
+      className="shrink-0"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.7"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -133,6 +113,10 @@ function MenuIconGraphic({ name }: { name: MenuIcon }) {
       {iconPaths[name]}
     </svg>
   )
+}
+
+export function SidebarActionIcon({ name }: { name: 'newChat' | 'panel' }) {
+  return <MenuIconGraphic name={name} />
 }
 
 /** 계정 카드에 보여 줄 단계 문구입니다. 기업을 등록하면 상호를, 아니면 등록 안내를 봅니다. */
@@ -147,12 +131,19 @@ function tierLabel(account: Account): string {
  * 계정 정보는 세션에서 읽고, 관리자 메뉴는 관리자에게만 그리며, 화면이 없는 메뉴는 링크로 만들지 않습니다.
  * 로그인한 사용자는 `/app` 아래에만 머무르므로 공개 화면으로 가는 링크는 두지 않습니다.
  */
-export function AppSidebar() {
+export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
+  onClose: () => void
+  onNewChat: () => void
+  closeLabel: string
+  onNavigate: () => void
+}) {
   const { pathname } = useLocation()
   const { account, logOut } = useAuthSession()
   const navigate = useNavigate()
   const pendingProposalCount = usePendingReceivedProposalCount()
-  // 계정 카드를 누르면 내 프로필·로그아웃이 열립니다. 화면을 옮기거나 Esc·바깥 클릭이면 닫힙니다.
+  const isSearchPage = pathname === appPaths.chat || pathname.startsWith(appPaths.supportProgramDetail)
+  // 계정 카드를 누르면 내 프로필·로그아웃과 관리자 전용 회원·기업 메뉴가 열립니다.
+  // 화면을 옮기거나 Esc·바깥 클릭이면 닫힙니다.
   const accountMenuId = useId()
   const accountRef = useRef<HTMLDivElement>(null)
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
@@ -193,48 +184,55 @@ export function AppSidebar() {
   }
 
   return (
-    <aside className={appSidebarStyles.sidebar} aria-label="작업 사이드바">
-      <Link className={appSidebarStyles.brand} to={appPaths.chat}>
-        <span className={appSidebarStyles.brandMark} aria-hidden="true">G</span>
-        <span>
+    <aside className={appSidebarStyles.sidebar} aria-label="작업 사이드바"
+      onClick={(event) => { if ((event.target as Element).closest('a')) onNavigate() }}>
+      <div className={appSidebarStyles.brandRow}>
+        <Link className={appSidebarStyles.brand} to={appPaths.chat}>
+          <span className={appSidebarStyles.brandMark} aria-hidden="true">G</span>
           <strong className={appSidebarStyles.brandTitle}>GovBiz</strong>
-          <span className={appSidebarStyles.brandSubtitle}>지원사업 탐색 도우미</span>
-        </span>
-      </Link>
+        </Link>
+        <button type="button" className={appSidebarStyles.iconButton} aria-label={closeLabel} title={closeLabel}
+          onClick={onClose}><SidebarActionIcon name="panel" /></button>
+      </div>
 
-      {menuGroups
-        .filter((group) => !group.adminOnly || account?.tier === 'ADMIN')
-        .map((group) => (
-          <nav className={appSidebarStyles.menuGroup} key={group.title} aria-label={group.title}>
-            <p className={appSidebarStyles.menuGroupTitle}>{group.title}</p>
-            {group.items.map((item) =>
-              item.to ? (
-                <Link
-                  className={sidebarMenuItemClassName(
-                    item.matches?.(pathname) ? 'active' : 'inactive',
-                  )}
-                  key={item.label}
-                  to={item.to}
-                  aria-current={item.matches?.(pathname) ? 'page' : undefined}
-                >
-                  <MenuIconGraphic name={item.icon} />
-                  <span>{item.label}</span>
-                  {badgeFor(item) ? <span className={appSidebarStyles.menuBadge}>{badgeFor(item)}</span> : null}
-                </Link>
-              ) : (
-                <span
-                  className={sidebarMenuItemClassName('pending')}
-                  key={item.label}
-                  aria-disabled="true"
-                >
-                  <MenuIconGraphic name={item.icon} />
-                  <span>{item.label}</span>
-                  {item.badge ? <span className={appSidebarStyles.pendingBadge}>{item.badge}</span> : null}
-                </span>
-              ),
-            )}
-          </nav>
-        ))}
+      <div className={appSidebarStyles.scrollArea}>
+        <button type="button" className={`${appSidebarStyles.newChatButton} ${sidebarMenuItemClassName(isSearchPage ? 'active' : 'inactive')}`}
+          aria-current={isSearchPage ? 'page' : undefined} title="대화와 적용 조건을 초기화합니다" onClick={onNewChat}>
+          <MenuIconGraphic name="search" /><span>지원사업 새검색</span>
+        </button>
+        {menuGroups
+          .map((group) => (
+            <nav className={appSidebarStyles.menuGroup} key={group.title} aria-label={group.title}>
+              <p className="sr-only">{group.title}</p>
+              {group.items.map((item) =>
+                item.to ? (
+                  <Link
+                    className={sidebarMenuItemClassName(
+                      item.matches?.(pathname) ? 'active' : 'inactive',
+                    )}
+                    key={item.label}
+                    to={item.to}
+                    aria-current={item.matches?.(pathname) ? 'page' : undefined}
+                  >
+                    <MenuIconGraphic name={item.icon} />
+                    <span>{item.label}</span>
+                    {badgeFor(item) ? <span className={appSidebarStyles.menuBadge}>{badgeFor(item)}</span> : null}
+                  </Link>
+                ) : (
+                  <span
+                    className={sidebarMenuItemClassName('pending')}
+                    key={item.label}
+                    aria-disabled="true"
+                  >
+                    <MenuIconGraphic name={item.icon} />
+                    <span>{item.label}</span>
+                    {item.badge ? <span className={appSidebarStyles.pendingBadge}>{item.badge}</span> : null}
+                  </span>
+                ),
+              )}
+            </nav>
+          ))}
+      </div>
 
       {account ? (
         <div className={appSidebarStyles.account} ref={accountRef}>
@@ -248,6 +246,16 @@ export function AppSidebar() {
                 <MenuIconGraphic name="building" />
                 <span>내 프로필</span>
               </Link>
+              {account.tier === 'ADMIN' ? (
+                <Link
+                  className={sidebarMenuItemClassName(pathname.startsWith(appPaths.admin) ? 'active' : 'inactive')}
+                  to={appPaths.adminMembers}
+                  aria-current={pathname.startsWith(appPaths.admin) ? 'page' : undefined}
+                >
+                  <MenuIconGraphic name="shield" />
+                  <span>회원·기업</span>
+                </Link>
+              ) : null}
               <button className={appSidebarStyles.accountMenuButton} type="button" onClick={signOutToLanding}>
                 <MenuIconGraphic name="logout" />
                 <span>로그아웃</span>
@@ -265,11 +273,11 @@ export function AppSidebar() {
             <span className={appSidebarStyles.accountAvatar} aria-hidden="true">
               {account.email.slice(0, 1).toUpperCase()}
             </span>
-            <span className="min-w-0 text-left">
+            <span className="min-w-0 flex-1 text-left">
               <strong className={appSidebarStyles.accountName} title={account.email}>{account.email}</strong>
               <span className={appSidebarStyles.accountCompany}>{tierLabel(account)}</span>
             </span>
-            {/* ⋮ 아이콘으로 이 카드가 계정 메뉴(내 프로필·로그아웃)를 여는 버튼임을 알립니다. */}
+            {/* ⋮ 아이콘으로 이 카드가 계정 메뉴를 여는 버튼임을 알립니다. */}
             <span className={appSidebarStyles.accountMenuIcon} aria-hidden="true">
               <MenuIconGraphic name="more" />
             </span>

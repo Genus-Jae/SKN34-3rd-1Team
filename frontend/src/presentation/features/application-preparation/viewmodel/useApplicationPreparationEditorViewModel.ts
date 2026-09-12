@@ -3,29 +3,55 @@ import { useNavigate } from 'react-router'
 import { appContainer } from '../../../../app/appContainer'
 import type {
   ApplicationForm,
+  ApplicationInterpretation,
   ApplicationPreparation,
+  ApplicationFormSection,
+  NewApplicationPreparationFact,
   ApplicationServiceField,
 } from '../../../../domain/entities/ApplicationPreparation'
+import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
+import type { SupportProgramCatalog } from '../../../../domain/entities/SupportProgramCatalog'
 import { appPaths } from '../../../shared/routes/appPaths'
 
 function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error('신청 문서 정보를 처리하지 못했습니다.')
 }
 
-export function useApplicationPreparationEditorViewModel(id: number | null) {
+export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceProgramId = '') {
   const useCase = appContainer.resolve('applicationPreparationUseCase')
+  const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const navigate = useNavigate()
   const [forms, setForms] = useState<ApplicationForm[]>([])
   const [selectedFormVersionId, setSelectedFormVersionId] = useState('')
   const [preparation, setPreparation] = useState<ApplicationPreparation | null>(null)
-  const [serviceField, setServiceField] = useState<ApplicationServiceField>('TECHNICAL_SUPPORT')
+  const [serviceField, setServiceField] = useState<ApplicationServiceField>('GENERAL')
+  const [discoveryInput, setDiscoveryInput] = useState(initialSourceProgramId)
+  const [discovering, setDiscovering] = useState(false)
+  const [discoveryWarnings, setDiscoveryWarnings] = useState<string[]>([])
+  const [catalog, setCatalog] = useState<SupportProgramCatalog | null>(null)
+  const [catalogKeyword, setCatalogKeyword] = useState('')
+  const [appliedCatalogKeyword, setAppliedCatalogKeyword] = useState('')
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<Error | null>(null)
+  const [selectedProgram, setSelectedProgram] = useState<SupportProgram | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const loadController = useRef<AbortController | null>(null)
   const createController = useRef<AbortController | null>(null)
+  const discoveryController = useRef<AbortController | null>(null)
+  const catalogController = useRef<AbortController | null>(null)
   const loadSequence = useRef(0)
   const submittingGuard = useRef(false)
+  const actionController = useRef<AbortController | null>(null)
+  const [sectionMessages, setSectionMessages] = useState<Record<string, string>>({})
+  const [interpretations, setInterpretations] = useState<Record<string, {
+    result: ApplicationInterpretation
+    sourceMessage: string
+    selected: Record<string, boolean>
+    values: Record<string, string>
+  }>>({})
+  const [busySection, setBusySection] = useState<{ key: string; action: 'interpret' | 'save' } | null>(null)
 
   const selectedForm = useMemo(
     () => forms.find(({ formVersionId }) => formVersionId === selectedFormVersionId) ?? null,
@@ -37,21 +63,14 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
     const controller = new AbortController()
     const sequence = ++loadSequence.current
     loadController.current = controller
+    if (id === null) return controller
     setLoading(true)
     setError(null)
 
-    const request = id === null ? useCase.forms(controller.signal) : useCase.get(id, controller.signal)
+    const request = useCase.get(id, controller.signal)
     void request.then((result) => {
       if (controller.signal.aborted || sequence !== loadSequence.current) return
-      if (id === null) {
-        const loadedForms = result as ApplicationForm[]
-        const firstForm = loadedForms[0]
-        setForms(loadedForms)
-        setSelectedFormVersionId(firstForm?.formVersionId ?? '')
-        if (firstForm?.supportedServiceFields[0]) setServiceField(firstForm.supportedServiceFields[0])
-      } else {
-        setPreparation(result as ApplicationPreparation)
-      }
+      setPreparation(result as ApplicationPreparation)
     }).catch((caught: unknown) => {
       if (controller.signal.aborted || sequence !== loadSequence.current) return
       setError(asError(caught))
@@ -75,8 +94,95 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
 
   useEffect(() => () => {
     createController.current?.abort()
+    discoveryController.current?.abort()
+    catalogController.current?.abort()
+    actionController.current?.abort()
     submittingGuard.current = false
   }, [])
+
+  const searchPrograms = useCallback(async (page = 1, keyword = catalogKeyword) => {
+    catalogController.current?.abort()
+    const controller = new AbortController()
+    catalogController.current = controller
+    setCatalogLoading(true)
+    setCatalogError(null)
+    try {
+      const result = await catalogUseCase.execute({
+        keyword: keyword.trim(),
+        region: '',
+        category: '',
+        sourceCode: 'BIZINFO',
+        startupStage: '',
+        applicantType: '',
+        founderAge: '',
+        status: 'ALL',
+        sort: 'RECENT',
+        page,
+        pageSize: 10,
+      }, controller.signal)
+      if (controller.signal.aborted || catalogController.current !== controller) return
+      setCatalog({ ...result, programs: result.programs.filter((program) => program.sourceCode === 'BIZINFO') })
+      setAppliedCatalogKeyword(keyword)
+    } catch (caught) {
+      if (!controller.signal.aborted && catalogController.current === controller) setCatalogError(asError(caught))
+    } finally {
+      if (catalogController.current === controller) {
+        catalogController.current = null
+        setCatalogLoading(false)
+      }
+    }
+  }, [catalogKeyword, catalogUseCase])
+
+  const selectProgram = useCallback((program: SupportProgram) => {
+    if (program.sourceCode !== 'BIZINFO') return
+    setSelectedProgram(program)
+    setDiscoveryInput(program.id)
+    setForms([])
+    setSelectedFormVersionId('')
+    setDiscoveryWarnings([])
+    setError(null)
+  }, [])
+
+  const setManualDiscoveryInput = useCallback((value: string) => {
+    setSelectedProgram(null)
+    setDiscoveryInput(value)
+    setForms([])
+    setSelectedFormVersionId('')
+    setDiscoveryWarnings([])
+  }, [])
+
+  const discoverForms = useCallback(async () => {
+    if (discovering || !discoveryInput.trim()) {
+      if (!discoveryInput.trim()) setError(new Error('기업마당 공식 공고 URL 또는 PBLN 공고 ID를 입력해 주세요.'))
+      return
+    }
+    discoveryController.current?.abort()
+    const controller = new AbortController()
+    discoveryController.current = controller
+    setDiscovering(true)
+    setError(null)
+    setDiscoveryWarnings([])
+    try {
+      const result = await useCase.discover(discoveryInput, controller.signal)
+      if (controller.signal.aborted || discoveryController.current !== controller) return
+      const firstForm = result.items[0]
+      setForms(result.items)
+      setSelectedFormVersionId(firstForm?.formVersionId ?? '')
+      if (firstForm?.supportedServiceFields[0]) setServiceField(firstForm.supportedServiceFields[0])
+      setDiscoveryWarnings(result.warnings)
+    } catch (caught) {
+      if (!controller.signal.aborted && discoveryController.current === controller) {
+        setForms([])
+        setSelectedFormVersionId('')
+        setError(asError(caught))
+      }
+    } finally {
+      if (discoveryController.current === controller) {
+        discoveryController.current = null
+        setDiscovering(false)
+      }
+    }
+  }, [discovering, discoveryInput, useCase])
 
   const selectForm = useCallback((formVersionId: string) => {
     const form = forms.find((candidate) => candidate.formVersionId === formVersionId)
@@ -120,18 +226,153 @@ export function useApplicationPreparationEditorViewModel(id: number | null) {
     }
   }, [navigate, selectedForm, serviceField, useCase])
 
+  const setSectionMessage = useCallback((sectionKey: string, message: string) => {
+    setSectionMessages((current) => ({ ...current, [sectionKey]: message }))
+  }, [])
+
+  const interpretSection = useCallback(async (section: ApplicationFormSection) => {
+    if (!preparation || busySection) return
+    const message = (sectionMessages[section.key] ?? '').trim()
+    if (!message) {
+      setError(new Error('AI가 확인할 답변을 입력해 주세요.'))
+      return
+    }
+    const controller = new AbortController()
+    actionController.current?.abort()
+    actionController.current = controller
+    setBusySection({ key: section.key, action: 'interpret' })
+    setError(null)
+    try {
+      const result = await useCase.interpret(preparation.id, section.key, {
+        expectedRevision: preparation.inputRevision,
+        requestKey: crypto.randomUUID(),
+        message,
+      }, controller.signal)
+      if (controller.signal.aborted || actionController.current !== controller) return
+      setInterpretations((current) => ({
+        ...current,
+        [section.key]: {
+          result,
+          sourceMessage: message,
+          selected: Object.fromEntries(result.suggestions.map(({ fieldKey }) => [fieldKey, true])),
+          values: Object.fromEntries(result.suggestions.map(({ fieldKey, value }) => [fieldKey, value ?? ''])),
+        },
+      }))
+    } catch (caught) {
+      if (!controller.signal.aborted && actionController.current === controller) setError(asError(caught))
+    } finally {
+      if (actionController.current === controller) {
+        actionController.current = null
+        setBusySection(null)
+      }
+    }
+  }, [busySection, preparation, sectionMessages, useCase])
+
+  const toggleSuggestion = useCallback((sectionKey: string, fieldKey: string) => {
+    setInterpretations((current) => {
+      const state = current[sectionKey]
+      if (!state) return current
+      return { ...current, [sectionKey]: { ...state, selected: { ...state.selected, [fieldKey]: !state.selected[fieldKey] } } }
+    })
+  }, [])
+
+  const setSuggestionValue = useCallback((sectionKey: string, fieldKey: string, value: string) => {
+    setInterpretations((current) => {
+      const state = current[sectionKey]
+      if (!state) return current
+      return { ...current, [sectionKey]: { ...state, values: { ...state.values, [fieldKey]: value } } }
+    })
+  }, [])
+
+  const saveSuggestions = useCallback(async (section: ApplicationFormSection) => {
+    if (!preparation || busySection) return
+    const interpretation = interpretations[section.key]
+    if (!interpretation || interpretation.result.inputRevision !== preparation.inputRevision) {
+      setError(new Error('현재 입력 버전의 AI 제안을 먼저 받아 주세요.'))
+      return
+    }
+    const merged = new Map<string, NewApplicationPreparationFact>(section.facts.map((fact) => [fact.fieldKey, {
+      fieldKey: fact.fieldKey,
+      status: fact.status,
+      value: fact.value,
+      sourceText: fact.sourceText,
+    }]))
+    for (const suggestion of interpretation.result.suggestions) {
+      if (!interpretation.selected[suggestion.fieldKey]) continue
+      const value = suggestion.status === 'PROVIDED' ? (interpretation.values[suggestion.fieldKey] ?? '').trim() : null
+      if (suggestion.status === 'PROVIDED' && !value) {
+        setError(new Error('확인할 사실의 값을 입력해 주세요.'))
+        return
+      }
+      merged.set(suggestion.fieldKey, {
+        fieldKey: suggestion.fieldKey,
+        status: suggestion.status,
+        value,
+        sourceText: interpretation.sourceMessage,
+      })
+    }
+    if (![...interpretation.result.suggestions].some(({ fieldKey }) => interpretation.selected[fieldKey])) {
+      setError(new Error('저장할 AI 제안을 하나 이상 선택해 주세요.'))
+      return
+    }
+    const controller = new AbortController()
+    actionController.current = controller
+    setBusySection({ key: section.key, action: 'save' })
+    setError(null)
+    try {
+      const updated = await useCase.replaceInputs(preparation.id, section.key, {
+        expectedRevision: preparation.inputRevision,
+        facts: [...merged.values()],
+      }, controller.signal)
+      if (controller.signal.aborted || actionController.current !== controller) return
+      setPreparation(updated)
+      // inputRevision is global to the preparation, so every older proposal becomes stale.
+      setInterpretations({})
+      setSectionMessages((current) => ({ ...current, [section.key]: '' }))
+    } catch (caught) {
+      if (!controller.signal.aborted && actionController.current === controller) setError(asError(caught))
+    } finally {
+      if (actionController.current === controller) {
+        actionController.current = null
+        setBusySection(null)
+      }
+    }
+  }, [busySection, interpretations, preparation, useCase])
+
   return {
     forms,
     selectedForm,
     selectedFormVersionId,
     preparation,
     serviceField,
+    discoveryInput,
+    discovering,
+    discoveryWarnings,
+    catalog,
+    catalogKeyword,
+    appliedCatalogKeyword,
+    catalogLoading,
+    catalogError,
+    selectedProgram,
     loading,
     submitting,
     error,
     setServiceField,
+    setCatalogKeyword,
+    searchPrograms,
+    selectProgram,
+    setManualDiscoveryInput,
+    discoverForms,
     selectForm,
     load,
     create,
+    sectionMessages,
+    interpretations,
+    busySection,
+    setSectionMessage,
+    interpretSection,
+    toggleSuggestion,
+    setSuggestionValue,
+    saveSuggestions,
   }
 }

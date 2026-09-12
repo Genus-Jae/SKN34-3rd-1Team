@@ -143,14 +143,14 @@ describe('App navigation', () => {
       outcome: 'session',
       session: {
         expiresAt: '2026-10-06T12:00:00+09:00',
-        account: { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null },
+        account: { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, hasPassword: true, company: null },
       },
     })
     renderApp(createAppStore(), '/login')
 
     fireEvent.change(screen.getByLabelText('이메일'), { target: { value: 'member@govbiz.local' } })
     fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'govbiz-admin1' } })
-    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+    fireEvent.click(screen.getByRole('button', { name: '이메일로 로그인' }))
 
     await waitFor(() => expect(screen.getByRole('complementary', { name: '작업 사이드바' })).toBeTruthy())
     expect(screen.queryByRole('banner', { name: '앱 헤더' })).toBeNull()
@@ -352,7 +352,7 @@ describe('App navigation', () => {
     fireEvent.change(searchInput, { target: { value: '제주 소프트웨어 개발업 2024-02-29 설립 사업화 지원금' } })
     await submitConfirmedSearch(searchInput)
     expect(store.getState().chat.searchOptions.companyConditions?.region).toBe('제주')
-    fireEvent.click(screen.getByRole('button', { name: '새 채팅' }))
+    fireEvent.click(screen.getByRole('button', { name: '새 AI 대화 검색' }))
     expect((searchInput as HTMLTextAreaElement).value).toBe('')
     expect(screen.queryByText(/검색 당시 조건:/)).toBeNull()
     expect(store.getState().chat.searchOptions).toEqual({ acceptingOnly: true })
@@ -1368,7 +1368,7 @@ function renderApp(
   // 공개 화면은 비로그인, 작업 채팅(/chat)은 회원 세션으로 시작합니다. 세션 복원 요청은 보내지 않습니다.
   appStore.dispatch(sessionRestored(
     initialEntry.startsWith('/app/chat')
-      ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null }
+      ? { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true, hasPassword: true, company: null }
       : null,
   ))
   return render(

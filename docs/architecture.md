@@ -9,13 +9,20 @@
 
 ## 서비스 경계
 
-신청 문서 작성 도우미의 기본 흐름은 `기존 세션 Account 해석 → ApplicationPreparationController →
-ApplicationPreparationService → ApplicationPreparationRepository → ApplicationPreparationMapper → Mapper XML → MySQL`로
-신청 준비 건을 생성·조회합니다. `ApplicationFormService`는 원격 파일을 runtime에 다시 수집하지 않고 classpath의 고정
-manifest 한 건에서 공고·양식 버전·지원 분야·공식 문항을 읽습니다. 양식 목록과 준비 목록·상세 조회만으로 DB 쓰기나
-AI 호출을 실행하지 않으며, 생성은 사용자의 명시적 POST에서만 수행합니다. 타인 준비 건과 없는 건은 같은 404입니다.
-Frontend는 `/app/application-preparations`의 목록, `/new`의 양식·지원 분야 확인, `/:preparationId`의 공식 문항
-상세를 연결합니다. 문항 입력·AI 질문·초안 생성은 후속 사용자 기능입니다.
+신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 기업마당 공고를
+`ApplicationFormDiscoveryService → BizInfoAttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
+AiApplicationPreparationFacade → AI Service`로 분석합니다. 검증된 응답은 `ApplicationFormSnapshotRepository → MyBatis → MySQL`에
+파일 hash·파서·모델·프롬프트 버전과 함께 저장해 동일 추출 버전에서 재사용합니다. 발견 양식을 선택한 뒤
+`ApplicationPreparationService → ApplicationPreparationRepository`가 계정 소유 준비 건을 생성합니다. 화면 진입과 목록·상세
+조회만으로 DB 쓰기나 AI 호출을 실행하지 않으며, 기존 classpath manifest는 검수 기준과 이전 준비 건 복원에 사용합니다.
+문항 답변은 `ApplicationPreparationService → AiApplicationPreparationFacade → AiApplicationPreparationClient → AI Service`로
+DB transaction 밖에서 해석합니다. 요청 키와 당시 입력을 먼저 짧은 transaction으로 예약하고, 검증된 제안 또는 실패 상태를
+별도 transaction으로 저장합니다. 사용자가 제안을 확인한 PUT만 문항 사실을 전체 교체하고 입력 revision을 증가시킵니다.
+본인 준비 건의 DELETE는 `ApplicationPreparationRepository → MyBatis → MySQL`에서 소유자 조건으로 한 행을 지우고,
+확인 사실·AI 실행 기록은 FK cascade로 삭제하지만 공용 `application_form_snapshot`은 유지합니다.
+Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 기존 카탈로그 공고 검색·선택과 보조 URL·ID 입력·첨부 분석·발견 양식 확인, `/:preparationId`의 공식 문항
+상세와 질문·사실 확인을 연결합니다. AI 제안은 저장하지 않고 사용자가 선택·수정한 전체 문항 입력만 revision을 올려 저장합니다.
+초안 생성·직접 수정·사용자 확인은 후속 사용자 기능입니다.
 
 중복 지원 검토의 현재 입력은 `기존 세션 Account 해석 → CombinationReviewController → CombinationReviewService
 → CombinationReviewRepository → CombinationReviewMapper → Mapper XML → MySQL`로 생성·조회·수정·삭제합니다.
@@ -25,8 +32,8 @@ Frontend는 `/app/application-preparations`의 목록, `/new`의 양식·지원 
 분석 POST는 `CombinationReviewRunController → CombinationReviewRunService`로 들어가 다음 경로를 실행합니다.
 
 1. `CombinationReviewRunRepository → MyBatis → MySQL`: 소유자·버전·요청 키 확인 후 RUNNING 입력 스냅샷 예약.
-2. `CombinationReviewSourceClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 수집.
-3. `client/mapper/CombinationReviewDocumentMapper`: PDFBox 또는 HWPX ZIP/XML의 텍스트·위치를 추출하고 첨부 DTO를 내부 문서 모델로 변환.
+2. `BizInfoAttachmentClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 수집.
+3. `SupportProgramDocumentParser`: PDFBox 또는 HWPX ZIP/XML의 텍스트·위치를 추출. 신청 문서 발견과 중복 지원 검토가 같은 안전 경계를 사용.
    공고별로 읽을 수 있는 문서가 있으면 크기 제한 초과·텍스트 추출 불가 첨부는 경고와 함께 제외하고, 모두 제외되면 실행을 실패 처리.
 4. `CombinationReviewRunRepository`: 원문 바이트·해시·메타데이터·텍스트를 짧은 transaction에서 보존.
 5. `AiCombinationReviewFacade → AiCombinationReviewClient → AI Router → CombinationReviewService → CombinationReviewAgent → OpenAI` 단일 호출.
@@ -434,10 +441,13 @@ MySQL의 `support_program`은 `(source_code, source_program_id)` 고유키로 �
 원문 질문을 제공하지 않습니다. 이 테이블은 정기 목록 동기화에서 채우지 않고 명시적 원문 질문의 수집·검증이
 성공했을 때 UPSERT합니다.
 
-`application_preparation`은 신청 문서 작성 도우미의 계정별 작업 ID, 고정 양식 버전, 선택 지원 분야와 입력 revision을
-저장합니다. 공식 양식 원문이나 문항을 이 테이블에 복제하지 않고 배포된 manifest 버전으로 결합합니다. 첫 manifest는
-기업마당 공식 HWPX의 파일 크기·SHA-256과 문항 위치를 기록하며 `institutionReviewed=false`를 공개 응답에도 유지합니다.
+`application_form_snapshot`은 동적으로 발견한 공식 첨부의 양식 manifest JSON과 파일 hash, 파서·추출 모델·프롬프트 버전을
+공고별 불변 버전으로 저장합니다. `application_preparation`은 계정별 작업 ID, 선택한 양식 버전·분야와 입력 revision을 저장하고
+스냅샷 또는 기존 배포 manifest와 결합합니다. 모든 공개 응답은 `institutionReviewed=false`를 유지합니다.
 현재 공고 카탈로그 행에 FK를 걸지 않아 접수 종료 후 카탈로그에서 빠진 공고의 저장 작업도 다시 읽습니다.
+`application_preparation_fact`는 문항·고정 필드별 현재 사용자 확인 값과 원문, PROVIDED/UNKNOWN, 입력 revision을 저장합니다.
+`application_preparation_interpretation_run`은 요청 키의 중복 실행을 막고 당시 입력과 AI 제안·모델·프롬프트 버전, 성공·실패를
+JSON 스냅샷으로 보존합니다. 두 테이블은 준비 건 삭제 시 함께 삭제되며, AI 호출 자체는 이 transaction들 사이에서 수행됩니다.
 
 `support_program_sync_status`는 제공처별 스냅샷의 공개 세대·지문·공고 수를 기록합니다.
 V4 적용 전부터 있던 공고는 과거 공개 세대를 복원하지 않습니다. 대신 해당 제공처의 현재 공개 공고가 1건 이상인 경우에

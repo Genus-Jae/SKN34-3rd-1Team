@@ -1,4 +1,5 @@
 import type { AccountRole } from '../../domain/entities/Account'
+import type { OAuthProviderId } from '../../domain/entities/OAuthProvider'
 import type { AccountLogIn, AccountSignUp } from '../../domain/repositories/AccountRepository'
 import { getCoreApiBaseUrl } from './coreApiConfig'
 import {
@@ -11,6 +12,7 @@ import {
 } from '../models/AccountDto'
 
 const SIGNUP_PATH = '/api/v1/auth/signup'
+const OAUTH_PATH = '/api/v1/auth/oauth'
 const LOGIN_PATH = '/api/v1/auth/login'
 const DEV_LOGIN_PATH = '/api/v1/auth/dev-login'
 const PASSWORD_RESET_PATH = '/api/v1/auth/password-reset'
@@ -134,11 +136,12 @@ export async function getAccountDeletionPreviewApi(signal?: AbortSignal) {
   return accountDeletionPreviewDtoSchema.parse(await response.json())
 }
 
-export async function deleteAccountApi(password: string, signal?: AbortSignal): Promise<void> {
+/** 비밀번호가 없는 소셜 가입 계정은 `password` 없이 빈 본문 객체를 보냅니다. */
+export async function deleteAccountApi(password: string | null, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`${getCoreApiBaseUrl()}${ACCOUNT_PATH}`, {
     method: 'DELETE',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify(password === null ? {} : { password }),
     credentials: withSessionCookie,
     signal,
   })
@@ -187,4 +190,9 @@ async function readProblem(response: Response): Promise<{ code: string | null; r
   } catch {
     return { code: null, retryAfterSeconds: null }
   }
+}
+
+/** 소셜 로그인 시작 주소입니다. 브라우저가 최상위로 이동하는 링크라 요청하지 않고 주소만 만듭니다. */
+export function oauthStartUrl(provider: OAuthProviderId): string {
+  return `${getCoreApiBaseUrl()}${OAUTH_PATH}/${provider}/authorize`
 }

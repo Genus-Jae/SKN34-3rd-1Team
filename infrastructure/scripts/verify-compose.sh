@@ -202,6 +202,91 @@ wait_for_json_post() {
   return 1
 }
 
+verify_application_preparation_flow() {
+  local cookie_jar="${RESPONSE_DIR}/application-preparation-cookie"
+  local actual_status
+  local preparation_id
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --request POST --cookie-jar "${cookie_jar}" --header 'Accept: application/json' \
+    --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data '{"role":"USER"}' "${WEB_BASE_URL}/api/v1/auth/dev-login")"
+  if [[ "${actual_status}" != "200" ]]; then
+    echo "Application preparation smoke could not create a development session: HTTP ${actual_status}" >&2
+    return 1
+  fi
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --cookie "${cookie_jar}" "${WEB_BASE_URL}/api/v1/application-preparations/forms")"
+  if [[ "${actual_status}" != "200" ]] \
+      || ! grep -Eq '"formVersionId"[[:space:]]*:[[:space:]]*"bizinfo-pbln-000000000118979-innovation-voucher-2026-v1"' "${LAST_RESPONSE_FILE}"; then
+    echo "Application preparation smoke could not load forms through Web: HTTP ${actual_status}" >&2
+    sed -n '1,40p' "${LAST_RESPONSE_FILE}" >&2
+    return 1
+  fi
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --cookie "${cookie_jar}" "${WEB_BASE_URL}/api/v1/application-preparations")"
+  if [[ "${actual_status}" != "200" ]] \
+      || ! grep -Eq '"items"[[:space:]]*:[[:space:]]*\[[[:space:]]*\]' "${LAST_RESPONSE_FILE}"; then
+    echo "Application preparation smoke expected an empty preparation list before explicit creation: HTTP ${actual_status}" >&2
+    sed -n '1,40p' "${LAST_RESPONSE_FILE}" >&2
+    return 1
+  fi
+  echo "Verified application preparation forms and empty list through Web without creating a preparation"
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --request POST --cookie "${cookie_jar}" --header 'Accept: application/json' \
+    --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data '{"sourceCode":"BIZINFO","sourceProgramId":"PBLN_000000000118979","formVersionId":"bizinfo-pbln-000000000118979-innovation-voucher-2026-v1","serviceField":"TECHNICAL_SUPPORT"}' \
+    "${WEB_BASE_URL}/api/v1/application-preparations")"
+  if [[ "${actual_status}" != "201" ]]; then
+    echo "Application preparation smoke could not create a preparation: HTTP ${actual_status}" >&2
+    sed -n '1,40p' "${LAST_RESPONSE_FILE}" >&2
+    return 1
+  fi
+  preparation_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "${LAST_RESPONSE_FILE}" | head -n 1)"
+  if [[ -z "${preparation_id}" ]]; then
+    echo "Application preparation smoke could not read the created id" >&2
+    return 1
+  fi
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 45 \
+    --request POST --cookie "${cookie_jar}" --header 'Accept: application/json' \
+    --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data '{"expectedRevision":1,"requestKey":"0a504895-77bd-4d34-bc61-3e6d12389042","message":"\uc5c5\uccb4\uba85\uc740 \uc0c8\ubd04\ud14c\ud06c\uc785\ub2c8\ub2e4."}' \
+    "${WEB_BASE_URL}/api/v1/application-preparations/${preparation_id}/sections/company-overview/messages")"
+  if [[ "${actual_status}" != "200" ]] \
+      || ! grep -Eq '"fieldKey"[[:space:]]*:[[:space:]]*"company-name"' "${LAST_RESPONSE_FILE}" \
+      || ! grep -Eq '"value"[[:space:]]*:[[:space:]]*"새봄테크"' "${LAST_RESPONSE_FILE}"; then
+    echo "Application preparation smoke did not receive the expected unconfirmed AI suggestion: HTTP ${actual_status}" >&2
+    sed -n '1,40p' "${LAST_RESPONSE_FILE}" >&2
+    return 1
+  fi
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --request PUT --cookie "${cookie_jar}" --header 'Accept: application/json' \
+    --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data '{"expectedRevision":1,"facts":[{"fieldKey":"company-name","status":"PROVIDED","value":"\uc0c8\ubd04\ud14c\ud06c","sourceText":"\uc5c5\uccb4\uba85\uc740 \uc0c8\ubd04\ud14c\ud06c\uc785\ub2c8\ub2e4."}]}' \
+    "${WEB_BASE_URL}/api/v1/application-preparations/${preparation_id}/sections/company-overview/inputs")"
+  if [[ "${actual_status}" != "200" ]] \
+      || ! grep -Eq '"inputRevision"[[:space:]]*:[[:space:]]*2' "${LAST_RESPONSE_FILE}" \
+      || ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"IN_PROGRESS"' "${LAST_RESPONSE_FILE}"; then
+    echo "Application preparation smoke did not persist the confirmed fact snapshot: HTTP ${actual_status}" >&2
+    sed -n '1,40p' "${LAST_RESPONSE_FILE}" >&2
+    return 1
+  fi
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --cookie "${cookie_jar}" "${WEB_BASE_URL}/api/v1/application-preparations/${preparation_id}")"
+  if [[ "${actual_status}" != "200" ]] \
+      || ! grep -Eq '"sourceText"[[:space:]]*:[[:space:]]*"업체명은 새봄테크입니다\."' "${LAST_RESPONSE_FILE}"; then
+    echo "Application preparation smoke could not reload the confirmed fact: HTTP ${actual_status}" >&2
+    return 1
+  fi
+  echo "Verified application preparation question and confirmed fact flow through Web, Core, AI stub and MySQL"
+}
+
 wait_for_ai_failure() {
   local label=$1
   local url=$2
@@ -291,6 +376,7 @@ echo "Building and starting the GovBiz verification stack (${PROJECT_NAME})"
 wait_for_http "Vite web" "${WEB_BASE_URL}/" "200"
 wait_for_http "Vite-proxied Core API health" "${WEB_BASE_URL}/api/v1/health" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-core-api"'
 wait_for_http "Vite-proxied Core to AI Service health" "${WEB_BASE_URL}/api/v1/health/ai-service" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-ai-service"'
+verify_application_preparation_flow
 wait_for_synchronized_catalog_program
 wait_for_synchronized_startup_programs
 wait_for_http \
@@ -467,4 +553,4 @@ wait_for_http \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_OLD_AI"'
 
-echo "Compose verification passed: four-source fixture synchronization, unknown-status notice boundaries, startup filters, mixed-source semantic results, MySQL listing, Qdrant/AI failure isolation and recovery. CNTRADE_NOTICE uses a documentation fixture, not live API validation."
+echo "Compose verification passed: application preparation question/fact flow, four-source fixture synchronization, unknown-status notice boundaries, startup filters, mixed-source semantic results, MySQL listing, Qdrant/AI failure isolation and recovery. CNTRADE_NOTICE uses a documentation fixture, not live API validation."

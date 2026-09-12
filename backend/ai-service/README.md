@@ -20,6 +20,14 @@ FastAPI, OpenAI 임베딩, Qdrant로 전체 공고에서 관련 후보를 찾고
 구조화 출력의 형태 준수와 실제 판단 품질은 다르며 [공식 안내](https://developers.openai.com/api/docs/guides/structured-outputs)를 참고합니다.
 [실행·원문 관리 계약](../../docs/duplicate-support-review-design.md)과 [무료 검증](../../evaluation/combination-review/README.md)에 범위를 정리했습니다.
 
+신청 문서 기능은 `app/application_preparation`에서 역할이 분리된 양식 발견 Agent와 입력 해석 Agent를 사용합니다.
+양식 발견 Agent는 Core가 공식 PDF/HWPX에서 추출한 위치 포함 블록만 받아 작성 대상 문서와 문항을 제안하고, 모든 필드는
+허용된 블록의 정확한 원문 인용을 가져야 합니다. 모델이 원문의 줄바꿈을 공백으로 표현한 경우에만 실제 원문 구간으로
+정규화하며, 같은 문서·문항 식별자가 반복되면 데이터 손실 없이 안전한 고유 키로 바꿉니다. 입력 해석 Agent는 선택된 문항 필드와 현재 사용자 확인 사실, 이번 답변만
+전달받으며 두 Agent 모두 Qdrant나 외부 원문을 직접 조회하지 않습니다. 입력 해석 Agent는 이번 답변의
+정확한 부분 문자열을 근거로 `PROVIDED` 또는 명시적인 `UNKNOWN` 제안과 다음 질문을 반환합니다. Service는 허용 필드,
+중복, 정확 인용, 필수 미입력 순서를 검증하며 제안을 사용자 확인 사실로 표시하거나 저장하지 않습니다.
+
 AI Service가 하는 일:
 
 - 사용자의 자연어 질문과 Core가 검증한 공고 후보를 함께 읽음
@@ -48,6 +56,10 @@ AI Service가 하지 않는 일:
 GET /internal/v1/health
 GET /internal/v1/combination-reviews/configuration
 POST /internal/v1/combination-reviews/analyze
+GET /internal/v1/application-preparations/configuration
+POST /internal/v1/application-preparations/interpret
+GET /internal/v1/application-preparations/discovery/configuration
+POST /internal/v1/application-preparations/discovery
 POST /internal/v1/support-program-rankings/rank
 PUT /internal/v1/support-program-index/batch
 POST /internal/v1/support-program-index/prune

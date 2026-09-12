@@ -10,9 +10,10 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
 
+/** [baseUrl]이 null이면 호출마다 절대 주소를 씁니다. 여러 호스트를 부르는 Client(소셜 로그인 공급자)가 그렇습니다. */
 internal fun buildRestClient(
     builder: RestClient.Builder,
-    baseUrl: URI,
+    baseUrl: URI?,
     connectTimeout: Duration,
     readTimeout: Duration,
 ): RestClient {
@@ -26,8 +27,9 @@ internal fun buildRestClient(
         }
         .build(settings)
 
+    if (baseUrl != null) builder.baseUrl(baseUrl.toString())
+
     return builder
-        .baseUrl(baseUrl.toString())
         .requestFactory(requestFactory)
         .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
         .build()

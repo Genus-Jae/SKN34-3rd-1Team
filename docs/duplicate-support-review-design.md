@@ -585,9 +585,9 @@ V6/V7은 분리된 테스트 DB에서만 적용했다. 이번 변경은 미커�
 - 검토 없음·입력 버전·실행 예약 충돌은 `domain/exception`의 프레임워크 독립적인 업무 예외로 옮겼다.
   Repository는 원자적인 예약 조건을 검사하고, 공개 HTTP 상태는 기존 ApiExceptionHandler가 매핑한다.
 - 입력 DTO의 변환 실패는 `controller/exception`이 소유한다.
-- 원문 수집·디코딩 오류는 `client/exception/CombinationReviewSourceClientException`으로 표현한다.
+- 원문 수집·디코딩 오류는 공용 `supportprogram/client/document/SupportProgramDocumentException`으로 표현한다.
   바이트 상한은 첨부 전송 계약에 두고 Client가 Service의 파서 상수를 참조하지 않게 했다.
-- PDFBox/HWPX 처리와 첨부 DTO→문서 변환은 `client/mapper/CombinationReviewDocumentMapper`로 옮겼다.
+- PDFBox/HWPX 처리는 신청 문서 발견도 함께 사용하는 `supportprogram/client/document/SupportProgramDocumentParser`가 담당한다.
 - `AiCombinationReviewFacade`가 AI 설정/분석 호출·응답 검증을 감추고, `client/mapper/AiCombinationReviewMapper`가 요청/응답 변환을 맡는다.
   Facade의 공개 메서드는 내부 모델을 받고 반환하며 상위 Service·Repository를 호출하지 않는다.
 - Run Service는 실행 예약·근거 묶음 구성·상태 저장과 하위 경계 실패의 공개 코드 변환을 담당한다.

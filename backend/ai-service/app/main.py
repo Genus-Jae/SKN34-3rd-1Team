@@ -4,6 +4,8 @@ import logging
 
 from fastapi import FastAPI
 from app.combination_review.router import router as combination_review_router
+from app.application_preparation.agent import ApplicationPreparationAgent
+from app.application_preparation.router import router as application_preparation_router
 
 from app.health.router import router as health_router
 from app.support_program_evidence.agent import SupportProgramEvidenceAnswerAgent
@@ -23,6 +25,7 @@ def create_app(
     support_program_recommendation_agent: SupportProgramRecommendationAgent | None = None,
     support_program_evidence_answer_agent: SupportProgramEvidenceAnswerAgent | None = None,
     support_program_conversation_agent: SupportProgramConversationAgent | None = None,
+    application_preparation_agent: ApplicationPreparationAgent | None = None,
 ) -> FastAPI:
     """FastAPI 객체를 조립하는 애플리케이션 팩토리다."""
     container = build_application_container(
@@ -30,6 +33,7 @@ def create_app(
         support_program_recommendation_agent=support_program_recommendation_agent,
         support_program_evidence_answer_agent=support_program_evidence_answer_agent,
         support_program_conversation_agent=support_program_conversation_agent,
+        application_preparation_agent=application_preparation_agent,
     )
 
     @asynccontextmanager
@@ -57,6 +61,7 @@ def create_app(
     application.state.container = container
     application.include_router(health_router)
     application.include_router(combination_review_router)
+    application.include_router(application_preparation_router)
     application.include_router(support_program_rankings_router)
     application.include_router(support_program_index_router)
     application.include_router(support_program_evidence_router)

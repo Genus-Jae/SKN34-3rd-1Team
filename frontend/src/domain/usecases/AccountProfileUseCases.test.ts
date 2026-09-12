@@ -21,5 +21,8 @@ describe('account profile use cases', () => {
     expect(() => useCase.execute('')).toThrow(RangeError)
     await expect(useCase.execute('password1')).resolves.toEqual({ outcome: 'deleted' })
     expect(deleteAccount).toHaveBeenCalledWith('password1', undefined)
+    // 비밀번호가 없는 소셜 가입 계정은 null로 부릅니다.
+    await expect(useCase.execute(null)).resolves.toEqual({ outcome: 'deleted' })
+    expect(deleteAccount).toHaveBeenLastCalledWith(null, undefined)
   })
 })

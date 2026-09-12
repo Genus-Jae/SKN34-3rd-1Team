@@ -34,7 +34,7 @@ describe('partnerRecruitmentApi', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(listResponse))
     vi.stubGlobal('fetch', fetchMock)
 
-    const list = await browsePartnerRecruitmentsApi({ keyword: '스마트', seekingRoles: ['LEAD'], regions: ['서울', '부산'], mineOnly: true, sort: 'RECENT', page: 1 })
+    const list = await browsePartnerRecruitmentsApi({ keyword: '스마트', seekingRoles: ['LEAD'], regions: ['서울', '부산'], mineOnly: true, sourceCode: '', sort: 'RECENT', page: 1 })
     expect(list.recruitments).toHaveLength(4)
 
     const [requestUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -49,7 +49,7 @@ describe('partnerRecruitmentApi', () => {
     expect(init.credentials).toBe('include')
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...listResponse, page: 2 }))
-    await expect(browsePartnerRecruitmentsApi({ keyword: '', seekingRoles: [], regions: [], mineOnly: false, sort: 'DEADLINE', page: 1 }))
+    await expect(browsePartnerRecruitmentsApi({ keyword: '', seekingRoles: [], regions: [], mineOnly: false, sourceCode: '', sort: 'DEADLINE', page: 1 }))
       .rejects.toThrow('요청한 페이지와 응답이 다릅니다.')
     const [secondUrl] = fetchMock.mock.calls[1] as [string]
     expect(new URL(secondUrl).searchParams.has('seekingRole')).toBe(false)

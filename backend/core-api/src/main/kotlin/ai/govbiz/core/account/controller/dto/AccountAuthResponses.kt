@@ -37,6 +37,8 @@ data class AccountResponse(
     val emailVerified: Boolean,
     /** 등록한 기업 요약. 없으면 null이며 사이드바가 이메일만 보여 줍니다. */
     val company: CompanySummaryResponse?,
+    /** 거짓이면 소셜 로그인으로만 가입한 계정이라 프로필이 비밀번호 항목을 숨기고 계정 삭제에 비밀번호를 묻지 않습니다. */
+    val hasPassword: Boolean,
 ) {
     companion object {
         fun from(account: Account): AccountResponse =
@@ -46,6 +48,7 @@ data class AccountResponse(
                 tier = account.tier,
                 emailVerified = account.isEmailVerified,
                 company = account.company?.let(CompanySummaryResponse::from),
+                hasPassword = account.hasPassword,
             )
     }
 }

@@ -1,13 +1,16 @@
 # 계정·인증 HTTP 계약
 
-이메일 로그인과 세션 확인·로그아웃, 개발용 시드 로그인의 공개 API를 정리합니다. 회원가입·이메일 인증·기업 등록은
-다음 단계에서 추가합니다. 구현 범위는 [구현 현황](implementation-status.md)을 참고하세요.
+이메일 로그인과 세션 확인·로그아웃, 소셜 로그인(카카오·Google), 개발용 시드 로그인의 공개 API를 정리합니다. 계정 이메일
+인증은 다음 단계에서 추가합니다. 구현 범위는 [구현 현황](implementation-status.md)을 참고하세요.
 
 ```text
 Browser
   → POST /api/v1/auth/login · /logout, GET /api/v1/auth/me   (세션은 HttpOnly 쿠키 govbiz_session)
       → AccountAuthController → AccountLoginService · AccountSessionService
           → AccountRepository → MySQL (account, account_session)
+  → GET /api/v1/auth/oauth/{provider}/authorize · /callback   (브라우저 최상위 이동, 302)
+      → AccountOAuthController → AccountOAuthService → GoogleOAuthClient · KakaoOAuthClient → 공급자
+          → AccountRepository → MySQL (account, account_oauth_identity, account_session)
   → POST /api/v1/auth/dev-login   (app.account.dev-login.enabled=true 일 때만 등록)
       → AccountDevLoginController → AccountDevLoginService
 ```
@@ -15,6 +18,9 @@ Browser
 | Method·Path | 인증 | 성공 |
 |---|---|---|
 | `POST /api/v1/auth/login` | 없음 | 200 세션 응답 + `Set-Cookie` |
+| `GET /api/v1/auth/oauth/providers` | 없음 | 200 설정된 소셜 로그인 공급자와 시작 주소 |
+| `GET /api/v1/auth/oauth/{kakao\|google}/authorize` | 없음 | 302 공급자 로그인 화면 + 로그인 상태 쿠키 |
+| `GET /api/v1/auth/oauth/{kakao\|google}/callback` | 로그인 상태 쿠키 | 302 프런트 + `Set-Cookie` (실패는 `/login?oauthError=`) |
 | `POST /api/v1/auth/dev-login` | 없음 | 200 세션 응답 + `Set-Cookie` (개발 환경 전용) |
 | `GET /api/v1/auth/me` | 세션 쿠키 | 200 계정 |
 | `POST /api/v1/auth/logout` | 세션 쿠키 | 204 + 쿠키 만료 |
@@ -118,7 +124,7 @@ Content-Type: application/json
 ```json
 {
   "expiresAt": "2026-10-06T12:00:00+09:00",
-  "account": { "email": "manager@company.co.kr", "role": "USER", "tier": "MEMBER", "emailVerified": false }
+  "account": { "email": "manager@company.co.kr", "role": "USER", "tier": "MEMBER", "emailVerified": false, "hasPassword": true }
 }
 ```
 
@@ -128,6 +134,7 @@ Content-Type: application/json
 | `account.role` | `USER` 또는 `ADMIN`. 가입 시에는 항상 `USER` |
 | `account.tier` | 권한 단계 `MEMBER`·`COMPANY`·`ADMIN` |
 | `account.emailVerified` | 이메일 인증 완료 여부. 가입 직후에는 `false`이고 시드 계정만 `true` |
+| `account.hasPassword` | 비밀번호를 만든 계정인지. 소셜 로그인으로만 가입한 계정은 `false`이며 프로필이 비밀번호 항목을 숨기고 계정 삭제에 비밀번호를 묻지 않음 |
 
 ### 로그인 시도 제한
 
@@ -232,7 +239,7 @@ Cookie: govbiz_session=<JWT>
 
 | 메서드·경로 | 용도 | 성공 |
 |---|---|---|
-| `GET /api/v1/partners/recruitments` | 목록. `keyword`(제목·공고·기관·기업명, 100자) `seekingRole`(LEAD·PARTICIPANT·DEMAND, 여러 번 보내 함께 고름) `region`(시·도 또는 전국, 여러 번 보내 함께 고름) `mine`(세션 필요) `sort`(DEADLINE·RECENT) `page` `pageSize`(1~50, 기본 20) | 200 `recruitments[]` `total` `page` `pageSize` `totalPages` |
+| `GET /api/v1/partners/recruitments` | 목록. `keyword`(제목·공고·기관·기업명, 100자) `seekingRole`(LEAD·PARTICIPANT·DEMAND, 여러 번 보내 함께 고름) `region`(시·도 또는 전국, 여러 번 보내 함께 고름) `sourceCode`(묶인 공고의 출처, 예: BIZINFO. 비우면 전체) `mine`(세션 필요) `sort`(DEADLINE·RECENT) `page` `pageSize`(1~50, 기본 20) | 200 `recruitments[]` `total` `page` `pageSize` `totalPages` |
 | `GET /api/v1/partners/recruitments/{id}` | 상세 | 200 모집글 응답, 없으면 404 `RECRUITMENT_NOT_FOUND` |
 | `POST /api/v1/partners/recruitments` | 작성. 서버가 공고 존재·접수 상태·마감일·중복을 확인 | 201 모집글 응답 |
 | `PUT /api/v1/partners/recruitments/{id}` | 수정. 작성자만, 모집 중인 글만. 묶인 공고는 바꾸지 않으므로 본문은 작성 요청에서 `sourceCode`·`sourceProgramId`를 뺀 것. 마감일 규칙은 작성과 같음 | 200 모집글 응답. 남의 글 403 `RECRUITMENT_ACTION_FORBIDDEN`, 마감된 글 422 `RECRUITMENT_CLOSED` |
@@ -304,7 +311,7 @@ Cookie: govbiz_session=<JWT>
 ```
 
 ```json
-{ "account": { "email": "manager@company.co.kr", "role": "USER", "tier": "MEMBER", "emailVerified": false } }
+{ "account": { "email": "manager@company.co.kr", "role": "USER", "tier": "MEMBER", "emailVerified": false, "hasPassword": true } }
 ```
 
 `POST /api/v1/auth/logout`은 세션 행을 삭제하고 `Max-Age=0` 쿠키로 브라우저의 쿠키를 지운 뒤 204를
@@ -357,8 +364,11 @@ Origin: http://127.0.0.1:5173
 ```
 
 성공은 204와 `Max-Age=0` 쿠키입니다. 한 transaction에서 내가 보낸 대기 제안 철회, 내 모집글 수동 마감(받은 제안은
-만료로 계산), 기업 행 삭제, 모든 세션 삭제, `deleted_at` 표시를 합니다. 계정 행은 모집글·제안이 참조하므로 남기되 이메일을
-`deleted+<id>+<시각>@deleted.invalid`로 바꿉니다. 그래서 같은 이메일로 다시 가입하면 새 계정이 되고, 옛 계정으로는 로그인할 수 없습니다.
+만료로 계산), 기업 행 삭제, 소셜 로그인 연결 삭제, 모든 세션 삭제, `deleted_at` 표시를 합니다. 계정 행은 모집글·제안이 참조하므로 남기되 이메일을
+`deleted+<id>+<시각>@deleted.invalid`로 바꿉니다. 그래서 같은 이메일(또는 같은 소셜 계정)로 다시 가입하면 새 계정이 되고, 옛 계정으로는 로그인할 수 없습니다.
+카카오로 연결된 계정은 삭제가 커밋된 뒤 어드민 키로 카카오 연결 끊기를 호출합니다(키가 없거나 실패하면 경고 로그만 남기고 삭제는 유지).
+소셜 로그인으로만 가입해 비밀번호가 없는 계정(`account.hasPassword=false`)은 `password` 없이 `{}`를 보내 세션만으로 삭제합니다.
+비밀번호가 있는 계정은 `password`가 없거나 틀리면 422 `CURRENT_PASSWORD_MISMATCH`입니다.
 
 ## 비밀번호 재설정
 
@@ -394,6 +404,75 @@ POST /api/v1/auth/password-reset/confirm
 합니다. 토큰이 없거나 만료됐거나 이미 쓴 토큰이면 422 `PASSWORD_RESET_TOKEN_INVALID`이며 셋을 구분하지 않습니다. 정지된
 계정은 403 `ACCOUNT_SUSPENDED`입니다. 프런트의 `/forgot-password`는 이메일 하나를 받고, 메일 링크가 여는 `/reset-password`는
 주소의 토큰과 새 비밀번호를 보냅니다.
+
+## 소셜 로그인(카카오·Google)
+
+OAuth 2.0 인가 코드 흐름과 OpenID Connect입니다. Core가 client secret을 가진 confidential client로 코드를 교환하고 공급자
+토큰은 저장하지 않으며, 끝나면 이메일 로그인과 같은 `govbiz_session` 쿠키를 발급합니다. 공급자마다 클라이언트 ID와 시크릿이
+둘 다 설정돼야 켜지고, 꺼진 공급자는 목록에 나오지 않습니다. Spring Security OAuth2 Client는 쓰지 않고 `RestClient`로 공식
+endpoint를 직접 부릅니다.
+
+```text
+Browser  → GET /api/v1/auth/oauth/providers                         설정된 공급자와 시작 주소(카카오·Google 순)
+         → GET /api/v1/auth/oauth/{provider}/authorize?next=&rememberMe=
+              ← 302 공급자 로그인 화면 + Set-Cookie govbiz_oauth (state·nonce·PKCE verifier·복귀 경로, 10분, HMAC 서명)
+Provider → 302 GET /api/v1/auth/oauth/{provider}/callback?code=&state=
+              → state를 쿠키와 대조 → 코드 교환(client secret, Google은 PKCE S256) → ID 토큰 iss·aud·exp·iat·nonce 확인
+              → sub로 계정 찾기 또는 새 회원 → 302 <frontend>/oauth/complete?next= + Set-Cookie govbiz_session
+              → 실패하면 302 <frontend>/login?oauthError=<사유>&next=
+```
+
+```json
+GET /api/v1/auth/oauth/providers
+
+{ "providers": [{ "provider": "kakao", "startUrl": "http://127.0.0.1:5173/api/v1/auth/oauth/kakao/authorize" }] }
+```
+
+| 요청 값 | 규칙 |
+|---|---|
+| `next` | 로그인 뒤 돌아갈 앱 안의 절대 경로. `//`로 시작하거나 역슬래시·제어 문자가 있으면 `/app/chat` |
+| `rememberMe` | `true`면 이메일 로그인의 "로그인 상태 유지"와 같은 30일 세션. 기본은 브라우저 세션 |
+
+**Redirect URI.** 공급자 콘솔에는 `<ACCOUNT_OAUTH_CALLBACK_BASE_URL>/api/v1/auth/oauth/{kakao|google}/callback`을 글자 그대로
+등록합니다. callback base는 브라우저가 `/api`에 닿는 origin이며, 로컬 Compose는 Vite가 `/api`를 Core로 넘기므로
+`http://127.0.0.1:5173`(`APP_CORS_ALLOWED_ORIGIN`과 같은 호스트)입니다. 시작 주소도 같은 호스트라 로그인 상태 쿠키와 세션
+쿠키가 그 호스트에 붙습니다. 모두 GET이라 세션 쿠키 Origin 검사 대상이 아니고, CSRF는 쿠키에 묶인 일회용 state가 막습니다.
+
+**계정 규칙.** 계정은 공급자 계정의 `sub`로만 찾습니다(`account_oauth_identity`, `(provider, subject)` UNIQUE).
+
+| 상황 | 결과 |
+|---|---|
+| 연결된 `sub` | 그 계정으로 로그인. 공급자 쪽 이메일이 바뀌어도 같은 계정 |
+| 처음 온 `sub`, 공급자가 인증한 이메일이 아직 없는 이메일 | 새 회원. 비밀번호 없음, `emailVerified=true`, 약관 동의 시각은 가입 시각(로그인 버튼 아래 안내로 갈음) |
+| 처음 온 `sub`, 그 이메일로 이미 가입한 계정이 있음 | **연결하지 않음** → `account-exists`. 미인증 계정을 먼저 만들어 두는 사전 탈취(pre-account hijacking) 방지 |
+| 공급자가 인증한 이메일이 없음 | `email-required` |
+
+비밀번호가 없는 계정은 이메일 로그인이 `INVALID_CREDENTIALS`이며, 응답의 `account.hasPassword=false`로 프로필이 비밀번호 항목을 숨깁니다.
+비밀번호가 필요하면 비밀번호 재설정으로 더할 수 있습니다(API `PUT /api/v1/me/password`도 세션만으로 동작).
+
+**ID 토큰 검증.** 토큰 endpoint에서 TLS로 직접 받은 ID 토큰이라 OpenID Connect Core 3.1.3.7(6)에 따라 서명(JWKS) 대신 TLS 서버
+검증을 쓰고, 발급자(Google `https://accounts.google.com`·`accounts.google.com`, 카카오 `https://kauth.kakao.com`)·대상(여럿이면
+`azp`)·만료·발급 시각(±60초)·nonce는 항상 확인합니다. 이메일은 Google이 ID 토큰의 `email_verified=true`일 때만, 카카오는 ID
+토큰에 인증 여부가 없어 사용자 정보 API의 `is_email_valid`·`is_email_verified`가 둘 다 true일 때만 인정합니다. 요청 scope는
+Google `openid email`(앱 검수가 필요 없는 범위), 카카오 `openid,account_email`입니다. 카카오 REST 문서에 PKCE가 없어 카카오는
+client secret과 nonce로 막습니다.
+
+| `oauthError` | 뜻 |
+|---|---|
+| `cancelled` | 공급자 화면에서 사용자가 취소(`error=access_denied`) |
+| `expired` | 로그인 상태 쿠키가 없거나 10분이 지났거나 state·공급자가 다름 |
+| `unavailable` | 모르거나 설정되지 않은 공급자 |
+| `failed` | 공급자 오류, 코드 교환 거절, ID 토큰 검증 실패 |
+| `email-required` | 인증된 이메일을 받지 못함(카카오 이메일 미동의·미인증, Google `email_verified=false`) |
+| `account-exists` | 그 이메일로 가입한 계정이 있어 연결하지 않음 |
+| `suspended` | 정지된 계정 |
+| `rate-limited` | 로그인·회원가입과 같은 접속 주소 한도(분당 20회) 초과 |
+
+프런트의 `/login`·`/signup`은 이 목록을 기다리지 않고 카카오·Google 버튼(두 공급자 디자인 가이드, "…계정으로 로그인/시작하기")을
+화면이 뜨자마자 그리며, 버튼은 `/api/v1/auth/oauth/{provider}/authorize` 링크입니다. 키가 없는 공급자를 누르면 서버가
+`oauthError=unavailable`로 돌려보내 로그인 화면이 "키가 설정되지 않아 사용할 수 없습니다"를 안내합니다. 목록 endpoint는 설정
+확인용입니다. Google 인가 요청에는 `prompt`를 두지 않아, 이미 로그인·동의한 계정은 선택 화면 없이 돌아옵니다. 서버가 보내는 `/oauth/complete`는 세션 힌트를 남기고 `/auth/me`로 계정을 확인한 뒤 `next`로 이동합니다.
+
 ## 오류
 
 모든 오류는 `application/problem+json`이며 `code` 속성으로 구분합니다. 비밀번호와 토큰 원문은 응답·로그에
@@ -462,5 +541,11 @@ POST /api/v1/auth/password-reset/confirm
 | `ACCOUNT_PASSWORD_RESET_FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | 메일 링크의 프런트 origin. 운영은 HTTPS |
 | `ACCOUNT_PASSWORD_RESET_TOKEN_TTL` | `PT30M` | 재설정 토큰 유효 시간(최대 24시간) |
 | `ACCOUNT_PASSWORD_RESET_MAX_REQUESTS_PER_HOUR` | `3` | 계정당 시간당 재설정 요청 한도. 넘기면 조용히 건너뜀 |
+| `ACCOUNT_OAUTH_CALLBACK_BASE_URL` | `http://127.0.0.1:5173` | 브라우저가 `/api`에 닿는 origin. 공급자 콘솔 Redirect URI는 이 값 + `/api/v1/auth/oauth/{provider}/callback`. 운영은 HTTPS |
+| `ACCOUNT_OAUTH_FRONTEND_BASE_URL` | `http://127.0.0.1:5173` | 소셜 로그인을 마친 뒤 돌아갈 프런트 origin |
+| `ACCOUNT_OAUTH_GOOGLE_CLIENT_ID` / `ACCOUNT_OAUTH_GOOGLE_CLIENT_SECRET` | 빈 값 | Google Cloud Console 웹 애플리케이션 클라이언트. 둘 다 있어야 Google 버튼이 켜짐 |
+| `ACCOUNT_OAUTH_KAKAO_CLIENT_ID` / `ACCOUNT_OAUTH_KAKAO_CLIENT_SECRET` | 빈 값 | 카카오 REST API 키와 Client Secret. 둘 다 있어야 카카오 버튼이 켜짐(OpenID Connect·이메일 동의항목 설정 필요) |
+| `ACCOUNT_OAUTH_KAKAO_ADMIN_KEY` | 빈 값 | 탈퇴 때 카카오 연결 끊기에 쓰는 어드민 키. 비어 있으면 연결 끊기를 건너뛰고 경고 로그 |
+| `ACCOUNT_OAUTH_CONNECT_TIMEOUT` / `ACCOUNT_OAUTH_READ_TIMEOUT` | `2s` / `10s` | 공급자 호출 연결·응답 제한시간 |
 | `BIZNO_API_KEY` | 빈 값 | 사업자등록번호 조회용 Bizno(bizno.net) API 키. 비어 있으면 기업 조회·등록이 503 |
 | `BIZNO_URL` | `https://bizno.net/api/fapi` | Bizno 조회 endpoint. 경로는 `/api/fapi` 고정 |

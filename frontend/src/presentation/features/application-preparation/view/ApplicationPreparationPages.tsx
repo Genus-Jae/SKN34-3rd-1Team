@@ -1,9 +1,10 @@
-import { useLayoutEffect, useRef } from 'react'
-import { Link, useParams } from 'react-router'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { useAppSelector } from '../../../../app/hooks'
 import {
   applicationServiceFieldLabels,
   type ApplicationForm,
+  type ApplicationFormSection,
 } from '../../../../domain/entities/ApplicationPreparation'
 import { selectCurrentAccount } from '../../../shared/auth/state/authSlice'
 import { appPaths } from '../../../shared/routes/appPaths'
@@ -14,6 +15,17 @@ import { useApplicationPreparationListViewModel } from '../viewmodel/useApplicat
 import { applicationPreparationStyles as s } from './ApplicationPreparation.styles'
 
 const listTitle = '신청 문서 작성 도우미'
+const sectionStatus = {
+  NOT_STARTED: { label: '작성 전', className: s.notStarted },
+  IN_PROGRESS: { label: '입력 중', className: s.inProgress },
+  INPUT_CONFIRMED: { label: '사실 확인됨', className: s.confirmed },
+} as const
+const programStatusLabels = {
+  OPEN: '접수 중',
+  UPCOMING: '접수 예정',
+  CLOSED: '접수 종료',
+  UNKNOWN: '접수 상태 미확인',
+} as const
 
 function readableTime(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -34,12 +46,92 @@ function OfficialFormSummary({ form }: { form: ApplicationForm }) {
     <dl className={s.details}>
       <div><dt>공고명</dt><dd>{form.programTitle}</dd></div>
       <div><dt>양식명</dt><dd>{form.formTitle}</dd></div>
+      <div><dt>공식 첨부</dt><dd>{form.attachmentFileName}</dd></div>
+      <div><dt>파일 SHA-256</dt><dd className="break-all font-mono text-xs">{form.attachmentSha256}</dd></div>
     </dl>
-    <p className={s.muted}>공식 파일 해시와 문항 위치를 확인한 양식입니다. 기관 검수 완료나 선정 가능성을 뜻하지 않습니다.</p>
+    <p className={s.muted}>{form.verificationStatus === 'SOURCE_DOCUMENT_EXTRACTED'
+      ? '공식 첨부에서 AI가 추출한 작성 문항입니다. 문항 위치와 원문을 직접 대조해 주세요.'
+      : '공식 파일 해시와 문항 위치를 확인한 양식입니다.'} 기관 검수 완료나 선정 가능성을 뜻하지 않습니다.</p>
     <a className={s.officialLink} href={form.sourceUrl} target="_blank" rel="noreferrer">
       공식 공고 열기<span className="sr-only">: {form.programTitle} (새 창)</span>
     </a>
   </section>
+}
+
+function SectionInputEditor({ section, vm }: {
+  section: ApplicationFormSection
+  vm: ReturnType<typeof useApplicationPreparationEditorViewModel>
+}) {
+  const state = vm.interpretations[section.key]
+  const busy = vm.busySection?.key === section.key
+  const status = sectionStatus[section.status]
+  const labels = new Map(section.fields.map((field) => [field.key, field.label]))
+  return <li className={s.sectionItem}>
+    <div className={s.sectionHeading}>
+      <strong>{section.title}</strong>
+      <span className={status.className} aria-label={`작성 상태: ${status.label}`}>{status.label}</span>
+    </div>
+    <p className={s.muted}>{section.description}</p>
+    <ul className={s.fieldList} aria-label={`${section.title} 필수 입력`}>
+      {section.fields.map((field) => <li className={s.notice} key={field.key}>
+        <strong>{field.label}{field.required ? ' · 필수' : ''}</strong>
+        <p className={s.muted}>{field.guidance}</p>
+      </li>)}
+    </ul>
+    {section.facts.length > 0 && <div>
+      <h3 className={s.label}>사용자가 확인한 사실</h3>
+      <ul className={s.fieldList}>
+        {section.facts.map((fact) => <li className={s.factItem} key={fact.id}>
+          <strong>{labels.get(fact.fieldKey) ?? fact.fieldKey}</strong>
+          <p>{fact.status === 'UNKNOWN' ? '미정으로 확인함' : fact.value}</p>
+        </li>)}
+      </ul>
+    </div>}
+    <label className={s.label} htmlFor={`section-answer-${section.key}`}>AI가 사실 항목을 구분할 수 있도록 답변하기</label>
+    <textarea
+      className={s.textarea}
+      disabled={vm.busySection !== null}
+      id={`section-answer-${section.key}`}
+      maxLength={4000}
+      value={vm.sectionMessages[section.key] ?? ''}
+      onChange={(event) => vm.setSectionMessage(section.key, event.target.value)}
+      placeholder="확인된 사실만 적어 주세요. 모르는 값은 미정이라고 밝혀 주세요."
+    />
+    <div className={s.moreActions}>
+      <button className={s.button} disabled={vm.busySection !== null || !(vm.sectionMessages[section.key] ?? '').trim()} type="button" onClick={() => { void vm.interpretSection(section) }}>
+        {busy && vm.busySection?.action === 'interpret' ? 'AI가 답변 확인 중…' : 'AI로 답변 확인'}
+      </button>
+      {busy && <p className={s.status} role="status" aria-live="polite">답변에서 사실과 미정 항목을 구분하고 있습니다.</p>}
+    </div>
+    {state && <section className={s.notice} aria-label={`${section.title} AI 제안`}>
+      <h3 className={s.label}>확인 전 AI 제안</h3>
+      <p className={s.muted}>자동 저장되지 않습니다. 값과 근거를 확인하고 필요한 항목만 선택해 저장하세요.</p>
+      {state.result.suggestions.length === 0 && <p className={s.muted}>이번 답변에서 저장할 사실을 찾지 못했습니다.</p>}
+      <div className="flex flex-col gap-3">
+        {state.result.suggestions.map((suggestion) => <div className={s.suggestion} key={suggestion.fieldKey}>
+          <label className={s.checkboxLabel}>
+            <input checked={state.selected[suggestion.fieldKey] ?? false} type="checkbox" onChange={() => vm.toggleSuggestion(section.key, suggestion.fieldKey)} />
+            <span>{labels.get(suggestion.fieldKey) ?? suggestion.fieldKey}</span>
+          </label>
+          {suggestion.status === 'UNKNOWN'
+            ? <p className={s.muted}>미정으로 저장할 제안입니다.</p>
+            : <input
+              aria-label={`${labels.get(suggestion.fieldKey) ?? suggestion.fieldKey} 확인 값`}
+              className={s.input}
+              maxLength={2000}
+              value={state.values[suggestion.fieldKey] ?? ''}
+              onChange={(event) => vm.setSuggestionValue(section.key, suggestion.fieldKey, event.target.value)}
+            />}
+          <blockquote className={s.quote}>사용자 답변 근거: “{suggestion.evidenceQuote}”</blockquote>
+        </div>)}
+      </div>
+      {state.result.nextQuestion && <p className={s.warning}><strong>다음 질문:</strong> {state.result.nextQuestion}</p>}
+      {state.result.suggestions.length > 0 && <button className={s.primary} disabled={vm.busySection !== null} type="button" onClick={() => { void vm.saveSuggestions(section) }}>
+        {busy && vm.busySection?.action === 'save' ? '확인 사실 저장 중…' : '선택한 사실 확인하고 저장'}
+      </button>}
+    </section>}
+    <p className={s.locator}>공식 양식 위치: {section.locator}</p>
+  </li>
 }
 
 export function ApplicationPreparationListPage() {
@@ -49,6 +141,7 @@ export function ApplicationPreparationListPage() {
 
 function ApplicationPreparationList() {
   const vm = useApplicationPreparationListViewModel()
+  const [confirmingId, setConfirmingId] = useState<number | null>(null)
   return <>
     <WorkspacePageHeader
       title={listTitle}
@@ -64,11 +157,22 @@ function ApplicationPreparationList() {
       </section>}
       {vm.page && vm.page.items.length > 0 && <ul className={s.list} aria-label="신청 준비 목록">
         {vm.page.items.map((item) => <li className={s.card} key={item.id}>
-          <Link className={s.listLink} to={`${appPaths.applicationPreparations}/${item.id}`}>
-            <strong>{item.programTitle}</strong>
-            <span className={s.muted}>{item.formTitle} · {applicationServiceFieldLabels[item.serviceField]}</span>
-            <span className={s.muted}>입력 버전 {item.inputRevision} · {readableTime(item.updatedAt)} 수정</span>
-          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link className={`${s.listLink} min-w-0 flex-1`} to={`${appPaths.applicationPreparations}/${item.id}`}>
+              <strong>{item.programTitle}</strong>
+              <span className={s.muted}>{item.formTitle} · {applicationServiceFieldLabels[item.serviceField]}</span>
+              <span className={s.muted}>입력 버전 {item.inputRevision} · {readableTime(item.updatedAt)} 수정</span>
+            </Link>
+            {confirmingId === item.id
+              ? <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`${item.programTitle} 삭제 확인`}>
+                <span className="text-sm text-red-800">작성 내용과 AI 실행 기록을 삭제할까요?</span>
+                <button className={s.danger} disabled={vm.deletingId !== null} type="button" onClick={() => {
+                  void vm.deletePreparation(item.id).then((deleted) => { if (deleted) setConfirmingId(null) })
+                }}>{vm.deletingId === item.id ? '삭제 중…' : '정말 삭제'}</button>
+                <button className={s.button} disabled={vm.deletingId !== null} type="button" onClick={() => setConfirmingId(null)}>취소</button>
+              </div>
+              : <button className={s.button} disabled={vm.deletingId !== null} type="button" onClick={() => setConfirmingId(item.id)}>삭제</button>}
+          </div>
         </li>)}
       </ul>}
       {vm.page && vm.page.nextBeforeId !== null && !vm.error && <div className={s.moreActions}>
@@ -84,6 +188,7 @@ function ApplicationPreparationList() {
 export function ApplicationPreparationEditorPage({ create = false }: { create?: boolean }) {
   const account = useAppSelector(selectCurrentAccount)
   const { preparationId } = useParams()
+  const [searchParams] = useSearchParams()
   const id = create ? null : Number(preparationId)
   if (!account) return null
   if (!create && (id === null || !Number.isSafeInteger(id) || id <= 0)) {
@@ -92,11 +197,14 @@ export function ApplicationPreparationEditorPage({ create = false }: { create?: 
       <main className={workspacePageStyles.content}><ErrorNotice message="올바른 신청 준비 주소가 아닙니다." /></main>
     </>
   }
-  return <ApplicationPreparationEditor key={`${account.email}:${id ?? 'new'}`} id={id} />
+  const initialSourceProgramId = create && searchParams.get('sourceCode') === 'BIZINFO'
+    ? searchParams.get('sourceProgramId') ?? ''
+    : ''
+  return <ApplicationPreparationEditor key={`${account.email}:${id ?? 'new'}`} id={id} initialSourceProgramId={initialSourceProgramId} />
 }
 
-function ApplicationPreparationEditor({ id }: { id: number | null }) {
-  const vm = useApplicationPreparationEditorViewModel(id)
+function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: number | null; initialSourceProgramId: string }) {
+  const vm = useApplicationPreparationEditorViewModel(id, initialSourceProgramId)
   const detail = id === null ? null : vm.preparation
   return <>
     <WorkspacePageHeader
@@ -107,15 +215,111 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
       {vm.loading && <p className={s.status} role="status" aria-live="polite">
         {id === null ? '지원 가능한 공식 양식을 불러오는 중입니다.' : '신청 문서 정보를 불러오는 중입니다.'}
       </p>}
-      {vm.error && <ErrorNotice message={vm.error.message} onRetry={vm.submitting ? undefined : vm.load} />}
+      {vm.error && <ErrorNotice message={vm.error.message} onRetry={vm.submitting || vm.discovering ? undefined : id === null ? vm.discoverForms : vm.load} />}
 
-      {id === null && vm.selectedForm && <form className={s.form} aria-labelledby="create-preparation-title" onSubmit={(event) => {
+      {id === null && <form className={s.form} aria-labelledby="create-preparation-title" onSubmit={(event) => {
         event.preventDefault()
-        void vm.create()
+        if (vm.selectedForm) void vm.create()
       }}>
+        {vm.selectedProgram && <section className={s.card} aria-labelledby="selected-application-program-title">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className={s.cardTitle} id="selected-application-program-title">선택한 공고</h2>
+              <strong>{vm.selectedProgram.title}</strong>
+              <p className={s.muted}>{vm.selectedProgram.organization} · {programStatusLabels[vm.selectedProgram.status]}</p>
+              <p className={s.muted}>{vm.selectedProgram.applicationPeriod}</p>
+            </div>
+            <button className={s.primary} disabled={vm.discovering || vm.submitting} type="button" onClick={() => { void vm.discoverForms() }}>
+              {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
+            </button>
+          </div>
+          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
+          <p className={s.muted}>선택만으로 분석하지 않습니다. 버튼을 누르면 공식 첨부의 작성 문항을 찾습니다.</p>
+        </section>}
+
         <section className={s.card}>
-          <h2 className={s.cardTitle} id="create-preparation-title">공식 양식 선택</h2>
-          <label className={s.label} htmlFor="application-form">작성할 공식 양식</label>
+          <h2 className={s.cardTitle} id="create-preparation-title">지원 공고 검색</h2>
+          <p className={s.muted}>공고명이나 기관명으로 검색하고 작성할 공고를 선택하세요. 현재 기업마당 공고의 PDF/HWPX를 분석할 수 있습니다.</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="min-w-0 flex-1 text-sm font-bold text-app-ink" htmlFor="application-program-search">
+              공고명·기관명
+              <input
+                className={`${s.input} mt-2`}
+                disabled={vm.catalogLoading || vm.discovering || vm.submitting}
+                id="application-program-search"
+                maxLength={100}
+                value={vm.catalogKeyword}
+                onChange={(event) => vm.setCatalogKeyword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void vm.searchPrograms()
+                  }
+                }}
+              />
+            </label>
+            <button className={s.button} disabled={vm.catalogLoading || vm.discovering || vm.submitting} type="button" onClick={() => { void vm.searchPrograms() }}>
+              {vm.catalogLoading ? '공고 검색 중…' : '공고 검색'}
+            </button>
+          </div>
+          {vm.catalogLoading && <p className={s.status} role="status" aria-live="polite">기업마당 공고를 검색하고 있습니다.</p>}
+          {vm.catalogError && <ErrorNotice message={vm.catalogError.message} retryLabel="공고 다시 검색" onRetry={() => { void vm.searchPrograms(vm.catalog?.page ?? 1, vm.appliedCatalogKeyword || vm.catalogKeyword) }} />}
+          {vm.catalog?.programs.length === 0 && <p className={s.notice}>검색 결과가 없습니다. 다른 검색어를 입력하거나 아래에서 공식 URL·공고 ID를 직접 입력해 주세요.</p>}
+          {vm.catalog && vm.catalog.programs.length > 0 && <>
+            <p className={s.muted}>검색 결과 {vm.catalog.total}건 · {vm.catalog.page}/{vm.catalog.totalPages}페이지</p>
+            <ul className="divide-y divide-slate-200" aria-label="신청 문서 공고 검색 결과">
+              {vm.catalog.programs.map((program) => {
+                const selected = vm.selectedProgram?.sourceCode === program.sourceCode && vm.selectedProgram.id === program.id
+                return <li className="py-3" key={`${program.sourceCode}:${program.id}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <strong>{program.title}</strong>
+                      <p className={s.muted}>{program.organization} · {programStatusLabels[program.status]}</p>
+                      <p className={s.muted}>{program.applicationPeriod}</p>
+                    </div>
+                    <button className={s.button} disabled={selected || vm.discovering || vm.submitting} type="button" onClick={() => vm.selectProgram(program)}>
+                      {selected ? '선택됨' : '선택'}
+                    </button>
+                  </div>
+                </li>
+              })}
+            </ul>
+            {vm.catalog.totalPages > 1 && <div className={s.moreActions}>
+              <button className={s.button} disabled={vm.catalogLoading || vm.catalog.page <= 1} type="button" onClick={() => { void vm.searchPrograms(vm.catalog!.page - 1, vm.appliedCatalogKeyword) }}>이전</button>
+              <button className={s.button} disabled={vm.catalogLoading || vm.catalog.page >= vm.catalog.totalPages} type="button" onClick={() => { void vm.searchPrograms(vm.catalog!.page + 1, vm.appliedCatalogKeyword) }}>다음</button>
+            </div>}
+          </>}
+        </section>
+
+        <details className={s.card}>
+          <summary className="cursor-pointer text-sm font-bold text-app-ink">검색에서 공고를 찾지 못했나요?</summary>
+          <label className={s.label} htmlFor="application-program">기업마당 공식 공고 URL 또는 공고 ID</label>
+          <input
+            className={s.input}
+            disabled={vm.discovering || vm.submitting}
+            id="application-program"
+            value={vm.discoveryInput}
+            onChange={(event) => vm.setManualDiscoveryInput(event.target.value)}
+            placeholder="https://www.bizinfo.go.kr/…?pblancId=PBLN_… 또는 PBLN_…"
+          />
+        </details>
+
+        {!vm.selectedProgram && vm.discoveryInput.trim() && <section className={s.card} aria-label="입력한 공고 분석">
+          <button className={s.primary} disabled={vm.discovering || vm.submitting || !vm.discoveryInput.trim()} type="button" onClick={() => { void vm.discoverForms() }}>
+            {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
+          </button>
+          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
+          <p className={s.muted}>공식 페이지가 직접 연결한 PDF/HWPX만 분석합니다. 분석 결과는 확인 전 AI 제안이며 자동 제출되지 않습니다.</p>
+        </section>}
+
+        {vm.discoveryWarnings.length > 0 && <section className={s.notice} aria-label="공고 분석 안내">
+          <ul className="list-disc space-y-1 pl-5">{vm.discoveryWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+        </section>}
+
+        {vm.selectedForm && <>
+        <section className={s.card}>
+          <h2 className={s.cardTitle}>작성 문서 선택</h2>
+          <label className={s.label} htmlFor="application-form">작성할 공식 첨부</label>
           <select
             aria-describedby="application-form-hint"
             className={s.input}
@@ -128,13 +332,14 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
               {form.programTitle} — {form.formTitle}
             </option>)}
           </select>
-          <p className={s.muted} id="application-form-hint">Core API가 제공하는 검증된 공식 양식만 선택할 수 있습니다.</p>
+          <p className={s.muted} id="application-form-hint">발견한 문서와 문항 위치를 원문에서 확인한 뒤 시작해 주세요.</p>
         </section>
 
         <OfficialFormSummary form={vm.selectedForm} />
 
         <section className={s.card} aria-labelledby="service-field-title">
-          <h2 className={s.cardTitle} id="service-field-title">지원 분야 선택</h2>
+          <h2 className={s.cardTitle} id="service-field-title">작성 시작</h2>
+          {!(vm.selectedForm.supportedServiceFields.length === 1 && vm.selectedForm.supportedServiceFields[0] === 'GENERAL') && <>
           <label className={s.label} htmlFor="application-service-field">작성할 지원 분야</label>
           <select
             className={s.input}
@@ -147,12 +352,14 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
               {applicationServiceFieldLabels[field]}
             </option>)}
           </select>
-          <p className={s.muted}>선택한 공식 양식이 지원하는 분야만 표시합니다. 생성만 수행하며 이 단계에서는 AI를 호출하지 않습니다.</p>
+          </>}
+          <p className={s.muted}>추출된 문항을 확인했습니다. 작성 시작은 신청 준비 건만 만들며 추가 AI 호출은 하지 않습니다.</p>
           <button className={s.primary} disabled={vm.submitting} type="submit">
             {vm.submitting ? '신청 준비 생성 중…' : '신청 문서 작성 시작'}
           </button>
           {vm.submitting && <p className={s.status} role="status" aria-live="polite">신청 준비를 생성하고 있습니다. 잠시만 기다려 주세요.</p>}
         </section>
+        </>}
       </form>}
 
       {detail && <>
@@ -168,16 +375,13 @@ function ApplicationPreparationEditor({ id }: { id: number | null }) {
         <section className={s.card} aria-labelledby="official-sections-title">
           <h2 className={s.cardTitle} id="official-sections-title">공식 작성 항목</h2>
           <ol className={s.sectionList}>
-            {detail.form.sections.map((section, index) => <li className={s.sectionItem} key={section.key}>
-              <div className={s.sectionHeading}>
-                <strong>{index + 1}. {section.title}</strong>
-                <span className={s.notStarted} aria-label="작성 상태: 작성 전">작성 전</span>
-              </div>
-              <p className={s.muted}>{section.description}</p>
-              <p className={s.locator}>공식 양식 위치: {section.locator}</p>
-            </li>)}
+            {detail.form.sections.map((section, index) => <SectionInputEditor
+              key={section.key}
+              section={{ ...section, title: `${index + 1}. ${section.title}` }}
+              vm={vm}
+            />)}
           </ol>
-          <p className={s.notice}>문항 답변 작성과 AI 도움 기능은 아직 제공하지 않습니다. 현재는 공식 작성 항목과 상태만 확인할 수 있습니다.</p>
+          <p className={s.notice}>AI 제안은 사용자가 확인해 저장하기 전까지 입력 사실이 아닙니다. 초안 생성·직접 편집·최종 확인은 다음 단계에서 제공합니다.</p>
         </section>
       </>}
     </main>

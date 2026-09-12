@@ -3,15 +3,16 @@ package ai.govbiz.core.combinationreview.service
 import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.combinationreview.facade.AiCombinationReviewFacade
 import ai.govbiz.core.combinationreview.facade.exception.AiCombinationReviewFacadeException
-import ai.govbiz.core.combinationreview.client.CombinationReviewSourceClient
-import ai.govbiz.core.combinationreview.client.mapper.CombinationReviewDocumentMapper
-import ai.govbiz.core.combinationreview.client.exception.CombinationReviewSourceClientException
+import ai.govbiz.core.combinationreview.helper.CombinationReviewHashHelper
 import ai.govbiz.core.combinationreview.domain.*
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewNotFoundException
 import ai.govbiz.core.combinationreview.repository.CombinationReviewRunRepository
 import ai.govbiz.core.combinationreview.service.exception.*
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.admission.exception.SupportProgramRequestRejectedException
+import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
+import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
 import java.time.Clock
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
@@ -24,7 +25,7 @@ import org.springframework.stereotype.Service
 @Service
 class CombinationReviewRunService(
     private val runs: CombinationReviewRunRepository, private val reviews: CombinationReviewService,
-    private val sources: CombinationReviewSourceClient, private val documentMapper: CombinationReviewDocumentMapper,
+    private val sources: BizInfoAttachmentClient, private val documentParser: SupportProgramDocumentParser,
     private val ai: AiCombinationReviewFacade, private val admission: SupportProgramRequestAdmissionService,
     @param:Qualifier("seoulClock") private val clock: Clock,
 ) {
@@ -55,32 +56,44 @@ class CombinationReviewRunService(
             val raw = mutableListOf<ByteArray>()
             val warnings = mutableListOf<String>()
             run.input.programs.forEachIndexed { index, program ->
-                val fetched = sources.collect(program.identity)
+                if (program.identity.subProgramId != null) {
+                    throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
+                }
+                val fetched = sources.collect(program.identity.sourceCode, program.identity.sourceProgramId)
                 warnings.addAll(fetched.warnings.map { "사업 ${index + 1}: $it" })
                 var parsedDocumentCount = 0
-                var rejectedReason: CombinationReviewSourceClientException.Reason? = null
+                var rejectedReason: SupportProgramDocumentException.Reason? = null
                 fetched.files.forEach { file ->
                     val parsed = try {
-                        documentMapper.fromBytes(file.bytes, file.format)
-                    } catch (error: CombinationReviewSourceClientException) {
+                        documentParser.parse(file.bytes, file.format)
+                    } catch (error: SupportProgramDocumentException) {
                         if (error.reason !in setOf(
-                                CombinationReviewSourceClientException.Reason.UNSUPPORTED,
-                                CombinationReviewSourceClientException.Reason.TOO_LARGE,
+                                SupportProgramDocumentException.Reason.UNSUPPORTED,
+                                SupportProgramDocumentException.Reason.TOO_LARGE,
                             )
                         ) throw error
                         rejectedReason = error.reason
                         warnings.add("사업 ${index + 1}: 자동 분석 제외 첨부(SOURCE_${error.reason.name}): ${file.fileName.take(250)}. 원본 대조가 필요합니다.")
                         return@forEach
                     }
-                    val document = documentMapper.toDocument(file, index, parsed, LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS))
+                    val document = ReviewSourceDocument(
+                        index,
+                        file.sourceUrl,
+                        file.fileName,
+                        file.format,
+                        CombinationReviewHashHelper.sha256(file.bytes),
+                        CombinationReviewHashHelper.sha256(parsed.joinToString("\n") { it.text }),
+                        SupportProgramDocumentParser.VERSION,
+                        LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS),
+                    )
                     documents.add(document)
                     parsed.forEach { block -> blocks.add(ReviewEvidenceBlock("E${blocks.size}", index, document.rawHash, block.locator, block.text)) }
                     raw.add(file.bytes)
                     parsedDocumentCount++
                 }
                 if (parsedDocumentCount == 0) {
-                    throw CombinationReviewSourceClientException(
-                        rejectedReason ?: CombinationReviewSourceClientException.Reason.UNSUPPORTED,
+                    throw SupportProgramDocumentException(
+                        rejectedReason ?: SupportProgramDocumentException.Reason.UNSUPPORTED,
                     )
                 }
             }
@@ -120,12 +133,12 @@ class CombinationReviewRunService(
     /** 각 하위 경계의 실패를 실행 상태·공개 오류 계약으로 변환한다. */
     private fun failureCode(error: Exception): ReviewRunFailureCode = when (error) {
         is CombinationReviewRunException -> error.code
-        is CombinationReviewSourceClientException -> when (error.reason) {
-            CombinationReviewSourceClientException.Reason.UNSUPPORTED -> ReviewRunFailureCode.SOURCE_UNSUPPORTED
-            CombinationReviewSourceClientException.Reason.NOT_FOUND -> ReviewRunFailureCode.SOURCE_NOT_FOUND
-            CombinationReviewSourceClientException.Reason.UNAVAILABLE -> ReviewRunFailureCode.SOURCE_UNAVAILABLE
-            CombinationReviewSourceClientException.Reason.INVALID -> ReviewRunFailureCode.SOURCE_INVALID
-            CombinationReviewSourceClientException.Reason.TOO_LARGE -> ReviewRunFailureCode.SOURCE_TOO_LARGE
+        is SupportProgramDocumentException -> when (error.reason) {
+            SupportProgramDocumentException.Reason.UNSUPPORTED -> ReviewRunFailureCode.SOURCE_UNSUPPORTED
+            SupportProgramDocumentException.Reason.NOT_FOUND -> ReviewRunFailureCode.SOURCE_NOT_FOUND
+            SupportProgramDocumentException.Reason.UNAVAILABLE -> ReviewRunFailureCode.SOURCE_UNAVAILABLE
+            SupportProgramDocumentException.Reason.INVALID -> ReviewRunFailureCode.SOURCE_INVALID
+            SupportProgramDocumentException.Reason.TOO_LARGE -> ReviewRunFailureCode.SOURCE_TOO_LARGE
         }
         is AiCombinationReviewFacadeException -> when (error.reason) {
             AiCombinationReviewFacadeException.Reason.UNAVAILABLE -> ReviewRunFailureCode.ANALYSIS_UNAVAILABLE

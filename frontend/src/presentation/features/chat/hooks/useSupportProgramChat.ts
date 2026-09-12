@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import { appContainer } from '../../../../app/appContainer'
 import { useAppDispatch, useAppSelector } from '../../../../app/hooks'
 import type { AppDispatch, RootState } from '../../../../app/store'
+import type { RestoreSupportProgramSearchUseCase } from '../../../../domain/usecases/RestoreSupportProgramSearchUseCase'
+import { SupportProgramSearchRestoreError } from '../../../../domain/errors/SupportProgramSearchRestoreError'
 import type { SearchSupportProgramsUseCase } from '../../../../domain/usecases/SearchSupportProgramsUseCase'
 import type { InterpretSupportProgramConversationUseCase } from '../../../../domain/usecases/InterpretSupportProgramConversationUseCase'
 import type { SupportProgramInterpretRequest } from '../../../../domain/entities/SupportProgramConversation'
@@ -54,6 +56,7 @@ type SupportProgramSearchUseCase = Pick<SearchSupportProgramsUseCase, 'execute'>
 export function useSupportProgramChat(
   searchSupportProgramsUseCase: SupportProgramSearchUseCase = appContainer.resolve('searchSupportProgramsUseCase'),
   interpretConversationUseCase: Pick<InterpretSupportProgramConversationUseCase, 'execute'> = appContainer.resolve('interpretSupportProgramConversationUseCase'),
+  restoreSearchUseCase: Pick<RestoreSupportProgramSearchUseCase, 'execute'> = appContainer.resolve('restoreSupportProgramSearchUseCase'),
 ) {
   const dispatchToStore = useAppDispatch()
   const activeSearchRequest = useRef<{
@@ -181,6 +184,7 @@ export function useSupportProgramChat(
     ): Promise<void> {
       const currentState = readCurrentState()
       const currentChatState = selectChatState(currentState)
+      const accountEmail = currentState.auth.status === 'authenticated' ? currentState.auth.account?.email : null
       const searchQuery = command.query.trim()
 
       if (searchQuery.length === 0) return
@@ -213,12 +217,24 @@ export function useSupportProgramChat(
       }
 
       try {
-        const searchResult = await searchSupportProgramsUseCase.execute(
+        let searchResult = await searchSupportProgramsUseCase.execute(
           { ...command, query: searchQuery },
           requestController.signal,
         )
 
-        if (requestController.signal.aborted) return
+        if (requestController.signal.aborted || readCurrentState().chat.activeRequestId !== requestId) return
+
+        // 회원 화면에 비회원 미리보기가 도착해도 잠금으로 확정하지 않습니다.
+        // 같은 결과 토큰을 서버 세션으로 복원하므로 검색·모델 호출을 반복하지 않습니다.
+        const latestAuth = readCurrentState().auth
+        if (accountEmail && latestAuth.status === 'authenticated'
+          && latestAuth.account?.email === accountEmail && searchResult.resultToken) {
+          const restored = await restoreSearchUseCase.execute(searchResult.resultToken, requestController.signal)
+          if (restored.query !== searchResult.query) throw new SupportProgramSearchRestoreError('unavailable')
+          searchResult = restored
+        }
+
+        if (requestController.signal.aborted || readCurrentState().chat.activeRequestId !== requestId) return
 
         const searchSucceededAction = searchSucceeded({
           programs: searchResult.programs,
@@ -234,11 +250,15 @@ export function useSupportProgramChat(
         const searchFailedAction = searchFailed({
           query: searchQuery,
           requestId,
-          message: error instanceof SupportProgramRequestError
-            ? supportProgramRequestFailureMessage(error)
-            : error instanceof SupportProgramSearchTimeoutError
-              ? '서버의 지원사업 검색 시간이 초과되었습니다. 확인한 조건으로 다시 검색해 주세요.'
-              : undefined,
+          message: error instanceof SupportProgramSearchRestoreError
+            ? error.reason === 'unauthorized'
+              ? '로그인 상태를 확인하지 못했습니다. 새로고침한 뒤 다시 로그인해 주세요.'
+              : error.message
+            : error instanceof SupportProgramRequestError
+              ? supportProgramRequestFailureMessage(error)
+              : error instanceof SupportProgramSearchTimeoutError
+                ? '서버의 지원사업 검색 시간이 초과되었습니다. 확인한 조건으로 다시 검색해 주세요.'
+                : undefined,
         })
         dispatchAction(searchFailedAction)
       } finally {
@@ -316,7 +336,9 @@ export function useSupportProgramChat(
 
   function confirmInterpretation() {
     return dispatchToStore((dispatch: AppDispatch, getState: () => RootState): Promise<void> => {
-      const current = getState().chat.interpretation
+      const state = getState().chat
+      if (state.draft.trim()) return Promise.resolve()
+      const current = state.interpretation
       if (current.status !== 'ready' || !current.requestId || !current.result?.proposedContext.query) return Promise.resolve()
       dispatch(proposalConfirmed(current.requestId))
       const command = getState().chat.confirmedSearch

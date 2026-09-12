@@ -53,6 +53,55 @@ def conversation_output(payload: dict) -> dict | None:
             "updates": updates, "clarificationQuestion": question}
 
 
+def application_preparation_output(payload: dict) -> dict | None:
+    """신청 문서 입력의 한 가지 연결 smoke만 제공하며 자연어 품질을 대신하지 않는다."""
+    if payload.get("userMessage") != "업체명은 새봄테크입니다.":
+        return None
+    options = payload["fieldOptions"]
+    allowed = {item["fieldKey"] for item in options}
+    if "company-name" not in allowed:
+        return None
+    answered = {item["fieldKey"] for item in payload["currentFacts"]} | {"company-name"}
+    missing = [item["fieldKey"] for item in options if item["required"] and item["fieldKey"] not in answered]
+    return {
+        "suggestions": [{
+            "fieldKey": "company-name",
+            "status": "PROVIDED",
+            "value": "새봄테크",
+            "evidenceQuote": "업체명은 새봄테크",
+        }],
+        "missingFields": missing,
+        "nextQuestion": "다음 필수 정보를 알려주세요." if missing else None,
+    }
+
+
+def application_form_discovery_output(payload: dict) -> dict | None:
+    """공식 첨부 문항 발견의 계약 연결만 검증하는 고정 응답입니다."""
+    documents = payload.get("documents", [])
+    if not documents:
+        return None
+    document = documents[0]
+    block = next((item for item in document.get("blocks", []) if "사업 개요" in item.get("text", "")), None)
+    if block is None:
+        return {"forms": []}
+    return {"forms": [{
+        "documentIndex": document["documentIndex"],
+        "sections": [{
+            "sectionKey": "business-plan",
+            "title": "사업 계획",
+            "description": "사업 개요를 작성합니다.",
+            "fields": [{
+                "fieldKey": "business-overview",
+                "label": "사업 개요",
+                "guidance": "사업의 목적과 내용을 입력합니다.",
+                "required": False,
+                "evidenceBlockId": block["blockId"],
+                "evidenceQuote": "사업 개요",
+            }],
+        }],
+    }]}
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self.respond(200, {"status": "up"})
@@ -88,6 +137,20 @@ class Handler(BaseHTTPRequestHandler):
                 output = conversation_output(payload)
                 if output is None:
                     self.respond(400, {"error": {"message": "unsupported conversation fixture message"}})
+                    return
+                self.respond_model_output(request, output)
+                return
+            if payload.get("contractVersion") == "application-preparation-interpret-v1":
+                output = application_preparation_output(payload)
+                if output is None:
+                    self.respond(400, {"error": {"message": "unsupported application preparation fixture message"}})
+                    return
+                self.respond_model_output(request, output)
+                return
+            if payload.get("contractVersion") == "application-form-discovery-v1":
+                output = application_form_discovery_output(payload)
+                if output is None:
+                    self.respond(400, {"error": {"message": "unsupported application form discovery fixture"}})
                     return
                 self.respond_model_output(request, output)
                 return

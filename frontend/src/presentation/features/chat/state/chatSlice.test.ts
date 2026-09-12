@@ -26,9 +26,31 @@ import {
 } from './chatSlice'
 
 const account: Account = {
-  email: 'first@example.test', role: 'USER', tier: 'MEMBER', emailVerified: true, company: null,
+  email: 'first@example.test', role: 'USER', tier: 'MEMBER', emailVerified: true, hasPassword: true, company: null,
 }
 const otherAccount: Account = { ...account, email: 'second@example.test' }
+
+describe('검색 조건 제안과 작성 중 메시지', () => {
+  it('초안을 수정해도 제안을 유지하고 미전송 초안을 비운 뒤에만 같은 제안을 확정한다', () => {
+    const store = createAppStore()
+    const started = interpretationStarted({ message: '서울 AI 창업지원 사업 찾아줘', context: emptyConversationContext })
+    store.dispatch(started)
+    store.dispatch(interpretationSucceeded({ requestId: started.payload.requestId, result: readyConversationProposal(seoulConversationContext) }))
+    const proposal = store.getState().chat.interpretation
+    for (const draft of ['부', '부산으로 바꿔줘', '가'.repeat(501)]) {
+      store.dispatch(draftChanged(draft))
+      expect(store.getState().chat.interpretation).toBe(proposal)
+      expect(store.getState().chat.pendingProposal).toEqual(seoulConversationContext)
+      store.dispatch(proposalConfirmed(started.payload.requestId))
+      expect(store.getState().chat.confirmedSearch).toBeNull()
+      expect(selectConversationContext(store.getState())).toEqual(emptyConversationContext)
+    }
+    store.dispatch(draftChanged(' '))
+    store.dispatch(proposalConfirmed(started.payload.requestId))
+    expect(selectConversationContext(store.getState())).toEqual(seoulConversationContext)
+    expect(store.getState().chat.pendingProposal).toBeNull()
+  })
+})
 
 describe('대화의 로그인 세션 경계', () => {
   it.each([

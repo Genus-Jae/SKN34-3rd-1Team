@@ -33,6 +33,8 @@ export const publicPaths = {
   landing: '/',
   login: '/login',
   signup: '/signup',
+  /** 소셜 로그인 뒤 서버가 보내는 완료 화면입니다. 세션을 확인하고 복귀 경로로 옮깁니다. */
+  oauthComplete: '/oauth/complete',
   pricing: '/pricing',
   partners: '/partners',
   partnerDetail: '/partners/detail',

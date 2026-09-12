@@ -19,8 +19,13 @@ data class PartnerRecruitmentQuery(
     val sort: PartnerRecruitmentSort,
     val page: Int,
     val pageSize: Int,
+    /** 묶인 공고의 출처(`BIZINFO` 등)입니다. null이면 모든 출처입니다. */
+    val sourceCode: String? = null,
 ) {
     init {
+        require(sourceCode == null || SOURCE_CODE_PATTERN.matches(sourceCode)) {
+            "sourceCode must be an uppercase source code of at most 40 characters"
+        }
         require(keyword == keyword.trim() && keyword.length <= MAX_KEYWORD_LENGTH) {
             "keyword must be a trimmed text of at most $MAX_KEYWORD_LENGTH characters"
         }
@@ -38,6 +43,8 @@ data class PartnerRecruitmentQuery(
         const val MAX_KEYWORD_LENGTH = 100
         const val MAX_PAGE_SIZE = 50
         const val NATIONWIDE_REGION = "전국"
+        const val SOURCE_CODE_REGEX = "^[A-Z][A-Z0-9_]{0,39}$"
+        private val SOURCE_CODE_PATTERN = Regex(SOURCE_CODE_REGEX)
     }
 }
 

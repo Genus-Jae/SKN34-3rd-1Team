@@ -18,7 +18,11 @@ import ai.govbiz.core.account.service.exception.LoginRateLimitedException
 import ai.govbiz.core.account.service.exception.SessionOriginRejectedException
 import ai.govbiz.core.applicationpreparation.controller.exception.InvalidApplicationPreparationInputException
 import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPreparationNotFoundException
+import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPreparationRevisionConflictException
+import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPreparationRunConflictException
+import ai.govbiz.core.applicationpreparation.domain.exception.ApplicationPreparationSectionNotFoundException
 import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormNotSupportedException
+import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormDiscoveryException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewNotFoundException
 import ai.govbiz.core.combinationreview.domain.exception.CombinationReviewRevisionConflictException
 import ai.govbiz.core.combinationreview.controller.exception.InvalidCombinationReviewInputException
@@ -66,6 +70,30 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice
 class ApiExceptionHandler {
 
+    @ExceptionHandler(ApplicationFormDiscoveryException::class)
+    fun handleApplicationFormDiscovery(
+        exception: ApplicationFormDiscoveryException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val status = when (exception.reason) {
+            ApplicationFormDiscoveryException.Reason.SOURCE_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE
+            ApplicationFormDiscoveryException.Reason.SOURCE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE
+            ApplicationFormDiscoveryException.Reason.SOURCE_NOT_FOUND -> HttpStatus.NOT_FOUND
+            else -> HttpStatus.UNPROCESSABLE_CONTENT
+        }
+        val code = "APPLICATION_FORM_${exception.reason.name}"
+        return problemResponse(
+            ProblemDefinition(
+                status,
+                URI.create("urn:govbiz:problem:${code.lowercase().replace('_', '-')}"),
+                "Application Form Discovery Failed",
+                "The official application form could not be discovered for this support program.",
+                code,
+            ),
+            request,
+        )
+    }
+
     @ExceptionHandler(ApplicationPreparationNotFoundException::class)
     fun handleApplicationPreparationNotFound(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
         problemResponse(
@@ -101,6 +129,45 @@ class ApiExceptionHandler {
             "The application preparation input is invalid.",
             "REQUEST_VALIDATION_FAILED",
             emptyList(),
+            request,
+        )
+
+    @ExceptionHandler(ApplicationPreparationSectionNotFoundException::class)
+    fun handleApplicationPreparationSectionNotFound(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.NOT_FOUND,
+                URI.create("urn:govbiz:problem:application-preparation-section-not-found"),
+                "Application Preparation Section Not Found",
+                "The requested official form section is not supported.",
+                "APPLICATION_PREPARATION_SECTION_NOT_FOUND",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ApplicationPreparationRevisionConflictException::class)
+    fun handleApplicationPreparationRevisionConflict(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:application-preparation-revision-conflict"),
+                "Application Preparation Revision Conflict",
+                "Reload the current application input before editing again.",
+                "APPLICATION_PREPARATION_REVISION_CONFLICT",
+            ),
+            request,
+        )
+
+    @ExceptionHandler(ApplicationPreparationRunConflictException::class)
+    fun handleApplicationPreparationRunConflict(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.CONFLICT,
+                URI.create("urn:govbiz:problem:application-preparation-run-conflict"),
+                "Application Preparation Run Conflict",
+                "The request key has another payload or the previous execution did not complete.",
+                "APPLICATION_PREPARATION_RUN_CONFLICT",
+            ),
             request,
         )
 
@@ -811,7 +878,9 @@ class ApiExceptionHandler {
         return ResponseEntity.status(definition.status)
             .contentType(MediaType.APPLICATION_PROBLEM_JSON)
             .headers { headers ->
-                if (request.requestURI == "/api/v1/combination-reviews" ||
+                if (request.requestURI == "/api/v1/application-preparations" ||
+                    request.requestURI.startsWith("/api/v1/application-preparations/") ||
+                    request.requestURI == "/api/v1/combination-reviews" ||
                     request.requestURI.startsWith("/api/v1/combination-reviews/") ||
                     request.requestURI == "/api/v1/support-programs/search" ||
                     request.requestURI == "/api/v1/support-programs/search/results") {

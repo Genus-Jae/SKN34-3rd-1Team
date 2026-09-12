@@ -58,7 +58,11 @@ export function ConversationProposal({ proposal, onConfirm, onCancel }: {
           onClick={onConfirm}>이 조건으로 검색 <span aria-hidden="true">→</span></button> : null}
         <button type="button" className={chatPageStyles.proposalCancelButton} onClick={onCancel}>제안 취소</button>
       </div>
-      {ready && !canConfirm ? <p className={chatPageStyles.conditionsHint}>공고 검색 준비가 완료되면 확인한 조건으로 검색할 수 있습니다.</p> : null}
+      {ready && !canConfirm ? <p className={chatPageStyles.conditionsHint}>
+        {proposal.hasUnsentMessage
+          ? '기존 조건은 유지됩니다. 작성 중인 메시지를 전송해 조건을 변경하거나, 입력을 비우고 이 조건으로 검색해 주세요.'
+          : '공고 검색 준비가 완료되면 확인한 조건으로 검색할 수 있습니다.'}
+      </p> : null}
     </section>
   )
 }

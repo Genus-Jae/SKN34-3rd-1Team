@@ -15,6 +15,7 @@ import ai.govbiz.core.partner.service.exception.RecruitmentRegionFilterInvalidEx
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -45,7 +46,7 @@ class PartnerRecruitmentController(
 
     /**
      * 목록은 비로그인도 읽을 수 있습니다. 검색어·찾는 역할·지역·정렬은 화면 조건과 같고 역할·지역은 같은 이름의
-     * 파라미터를 여러 번 보내 함께 고를 수 있습니다(`region=서울&region=부산`).
+     * 파라미터를 여러 번 보내 함께 고를 수 있습니다(`region=서울&region=부산`). `sourceCode`는 묶인 공고의 출처로 좁힙니다.
      * `mine=true`는 세션이 있어야 하며 마감된 내 글도 포함합니다.
      */
     @GetMapping
@@ -58,6 +59,7 @@ class PartnerRecruitmentController(
         @RequestParam(defaultValue = "DEADLINE") sort: PartnerRecruitmentSort,
         @RequestParam(defaultValue = "1") @Min(1) @Max(100_000) page: Int,
         @RequestParam(defaultValue = "20") @Min(1) @Max(50) pageSize: Int,
+        @RequestParam(required = false) @Pattern(regexp = "^$|" + PartnerRecruitmentQuery.SOURCE_CODE_REGEX) sourceCode: String?,
     ): PartnerRecruitmentListResponse {
         // 세션 쿠키 유무는 웹 계층만 알 수 있으므로 내 글 조회의 로그인 요구는 여기서 판단합니다.
         if (mine && account == null) throw AuthenticationRequiredException()
@@ -72,6 +74,7 @@ class PartnerRecruitmentController(
             sort = sort,
             page = page,
             pageSize = pageSize,
+            sourceCode = sourceCode?.ifEmpty { null },
         )
         return PartnerRecruitmentListResponse.from(recruitmentService.findPage(query), account?.id)
     }

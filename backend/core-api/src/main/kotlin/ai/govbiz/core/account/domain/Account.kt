@@ -29,6 +29,8 @@ data class Account(
     val createdAt: LocalDateTime,
     /** 등록한 기업 요약입니다. 없으면 회원(MEMBER) 단계입니다. */
     val company: CompanySummary? = null,
+    /** 비밀번호를 만든 계정인지입니다. 소셜 로그인으로만 가입한 계정은 거짓이며 화면이 비밀번호 항목을 숨깁니다. */
+    val hasPassword: Boolean = true,
 ) {
     init {
         requireEmail(email)

@@ -114,21 +114,26 @@ export function DeleteAccountModal({ vm, email }: { vm: SecurityViewModel['delet
         </div>
         */}
 
-        <div className={workspaceModalStyles.field}>
-          <label className={workspaceModalStyles.label} htmlFor="delete-password">확인을 위해 비밀번호를 입력하세요</label>
-          <input
-            className={workspaceModalStyles.input}
-            id="delete-password"
-            type="password"
-            autoComplete="current-password"
-            placeholder="현재 비밀번호"
-            aria-invalid={vm.error !== null}
-            aria-describedby={vm.error ? 'delete-password-error' : undefined}
-            value={vm.password}
-            onChange={(event) => vm.updatePassword(event.target.value)}
-          />
-          {vm.error ? <p id="delete-password-error" className={workspaceModalStyles.error} role="alert">{vm.error}</p> : null}
-        </div>
+        {/* 소셜 로그인으로만 가입한 계정은 비밀번호가 없어 확인 칸 없이 삭제합니다. */}
+        {vm.requiresPassword ? (
+          <div className={workspaceModalStyles.field}>
+            <label className={workspaceModalStyles.label} htmlFor="delete-password">확인을 위해 비밀번호를 입력하세요</label>
+            <input
+              className={workspaceModalStyles.input}
+              id="delete-password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="현재 비밀번호"
+              aria-invalid={vm.error !== null}
+              aria-describedby={vm.error ? 'delete-password-error' : undefined}
+              value={vm.password}
+              onChange={(event) => vm.updatePassword(event.target.value)}
+            />
+            {vm.error ? <p id="delete-password-error" className={workspaceModalStyles.error} role="alert">{vm.error}</p> : null}
+          </div>
+        ) : vm.error ? (
+          <p className={workspaceModalStyles.error} role="alert">{vm.error}</p>
+        ) : null}
 
         <div className={workspaceModalStyles.actions}>
           <button className={workspaceModalStyles.ghostButton} type="button" onClick={vm.close}>취소</button>

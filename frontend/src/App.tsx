@@ -15,6 +15,7 @@ import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
 import { ForgotPasswordPage } from './presentation/features/auth/view/ForgotPasswordPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
+import { OAuthCompletePage } from './presentation/features/auth/view/OAuthCompletePage'
 import { ResetPasswordPage } from './presentation/features/auth/view/ResetPasswordPage'
 import { SignupPage } from './presentation/features/auth/view/SignupPage'
 import { SupportProgramSearchPage } from './presentation/features/support-program-catalog/view/SupportProgramSearchPage'
@@ -38,7 +39,7 @@ import { useRestoreAuthSession } from './presentation/shared/auth/hooks/useAuthS
 import { GuestOnly, PublicOnly, RequireAuth } from './presentation/shared/auth/RouteGuards'
 import { APP_PREFIX, appPaths, publicPaths } from './presentation/shared/routes/appPaths'
 
-/** 공개 검색은 대화 상태에 맞춘 자체 레이아웃을 사용하고, 나머지 공개 화면은 공용 헤더를 사용합니다. */
+/** 공개 검색은 공용 헤더와 검색 탭을 포함한 자체 레이아웃을 사용하고, 나머지 공개 화면은 공용 헤더를 사용합니다. */
 function PublicLayout() {
   const { pathname } = useLocation()
   return (
@@ -89,6 +90,9 @@ function App() {
         <Route path="/examples/sample-item/hook" element={<SampleItemPage />} />
         <Route path="/examples/sample-item/redux" element={<ReduxSampleItemPage />} />
       </Route>
+
+      {/* 소셜 로그인 완료 화면은 세션을 막 받은 순간이라 로그인 여부로 가르지 않고 스스로 복귀 경로로 옮깁니다. */}
+      <Route path={publicPaths.oauthComplete} element={<OAuthCompletePage />} />
 
       <Route element={<GuestOnly />}>
         <Route path="/login" element={<LoginPage />} />

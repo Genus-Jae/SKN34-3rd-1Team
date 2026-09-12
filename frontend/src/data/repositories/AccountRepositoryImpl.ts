@@ -2,6 +2,7 @@ import type { AppCradle } from '../../app/di/types'
 import type { Account, AccountRole } from '../../domain/entities/Account'
 import type { AccountDeletionPreview } from '../../domain/entities/AccountDeletionPreview'
 import type { AuthSession } from '../../domain/entities/AuthSession'
+import type { OAuthProviderId } from '../../domain/entities/OAuthProvider'
 import type {
   AccountLogIn,
   AccountRepository,
@@ -24,6 +25,7 @@ import {
   logOutApi,
   requestPasswordResetApi,
   resetPasswordApi,
+  oauthStartUrl,
   signUpApi,
 } from '../api/accountApi'
 import { toAccount, toAccountDeletionPreview, toAuthSession, type AuthSessionResponseDto } from '../models/AccountDto'
@@ -118,7 +120,7 @@ export class AccountRepositoryImpl implements AccountRepository {
   }
 
   /** 서버가 세션 쿠키를 만료시키므로 성공하면 힌트도 지워 다음 시작에 복원을 시도하지 않게 합니다. */
-  async deleteAccount(password: string, signal?: AbortSignal): Promise<DeleteAccountResult> {
+  async deleteAccount(password: string | null, signal?: AbortSignal): Promise<DeleteAccountResult> {
     try {
       await deleteAccountApi(password, signal)
       this.sessionHintStorage.clear()
@@ -156,6 +158,17 @@ export class AccountRepositoryImpl implements AccountRepository {
       }
       throw error
     }
+  }
+
+  /** 브라우저가 최상위로 이동하는 링크라 요청 없이 주소만 만듭니다. 키가 없는 공급자는 서버가 로그인 화면으로 돌려보냅니다. */
+  oauthStartUrl(provider: OAuthProviderId): string {
+    return oauthStartUrl(provider)
+  }
+
+  /** 서버 콜백이 세션 쿠키를 심었으므로 힌트를 남기고 계정을 확인합니다. 세션이 없으면 힌트를 다시 지우고 null입니다. */
+  async completeOAuthSignIn(signal?: AbortSignal): Promise<Account | null> {
+    this.sessionHintStorage.markSignedIn()
+    return this.getCurrentAccount(signal)
   }
 
   private rememberSession(dto: AuthSessionResponseDto): AuthSession {

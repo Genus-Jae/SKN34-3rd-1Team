@@ -1,7 +1,8 @@
-export const applicationServiceFields = ['CONSULTING', 'TECHNICAL_SUPPORT', 'MARKETING'] as const
+export const applicationServiceFields = ['GENERAL', 'CONSULTING', 'TECHNICAL_SUPPORT', 'MARKETING'] as const
 export type ApplicationServiceField = typeof applicationServiceFields[number]
 
 export const applicationServiceFieldLabels: Record<ApplicationServiceField, string> = {
+  GENERAL: '일반 신청',
   CONSULTING: '컨설팅',
   TECHNICAL_SUPPORT: '기술지원',
   MARKETING: '마케팅',
@@ -12,7 +13,50 @@ export type ApplicationFormSection = {
   title: string
   locator: string
   description: string
-  status: 'NOT_STARTED'
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'INPUT_CONFIRMED'
+  fields: ApplicationFormField[]
+  facts: ApplicationPreparationFact[]
+}
+
+export type ApplicationFormField = { key: string; label: string; guidance: string; required: boolean }
+export type ApplicationFactStatus = 'PROVIDED' | 'UNKNOWN'
+export type ApplicationPreparationFact = {
+  id: number
+  fieldKey: string
+  status: ApplicationFactStatus
+  value: string | null
+  sourceText: string
+  inputRevision: number
+  updatedAt: string
+}
+
+export type NewApplicationPreparationFact = Omit<ApplicationPreparationFact, 'id' | 'inputRevision' | 'updatedAt'>
+
+export type ApplicationFactSuggestion = {
+  fieldKey: string
+  status: ApplicationFactStatus
+  value: string | null
+  evidenceQuote: string
+}
+
+export type ApplicationInterpretation = {
+  runId: number
+  inputRevision: number
+  sectionKey: string
+  suggestions: ApplicationFactSuggestion[]
+  missingFields: string[]
+  nextQuestion: string | null
+}
+
+export type InterpretApplicationPreparation = {
+  expectedRevision: number
+  requestKey: string
+  message: string
+}
+
+export type ReplaceApplicationPreparationInputs = {
+  expectedRevision: number
+  facts: NewApplicationPreparationFact[]
 }
 
 export type ApplicationForm = {
@@ -22,7 +66,9 @@ export type ApplicationForm = {
   programTitle: string
   formTitle: string
   sourceUrl: string
-  verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED'
+  attachmentFileName: string
+  attachmentSha256: string
+  verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED' | 'SOURCE_DOCUMENT_EXTRACTED'
   institutionReviewed: false
   supportedServiceFields: ApplicationServiceField[]
   sections: ApplicationFormSection[]
@@ -56,6 +102,12 @@ export type NewApplicationPreparation = {
   sourceProgramId: string
   formVersionId: string
   serviceField: ApplicationServiceField
+}
+
+export type DiscoveredApplicationForms = {
+  items: ApplicationForm[]
+  warnings: string[]
+  cached: boolean
 }
 
 export function validateNewApplicationPreparation(input: NewApplicationPreparation): NewApplicationPreparation {

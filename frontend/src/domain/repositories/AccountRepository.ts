@@ -1,6 +1,7 @@
 import type { Account, AccountRole } from '../entities/Account'
 import type { AccountDeletionPreview } from '../entities/AccountDeletionPreview'
 import type { AuthSession } from '../entities/AuthSession'
+import type { OAuthProviderId } from '../entities/OAuthProvider'
 
 export type AccountLogIn = {
   email: string
@@ -63,9 +64,14 @@ export interface AccountRepository {
   /** 삭제 확인 모달에 보여 줄, 함께 사라지는 것들의 수입니다. */
   getDeletionPreview(signal?: AbortSignal): Promise<AccountDeletionPreview>
   /** 현재 비밀번호를 확인하고 계정을 삭제합니다. 성공하면 세션 힌트를 지웁니다. */
-  deleteAccount(password: string, signal?: AbortSignal): Promise<DeleteAccountResult>
+  /** 비밀번호가 없는 소셜 가입 계정은 `null`로 부르며 세션만으로 삭제합니다. */
+  deleteAccount(password: string | null, signal?: AbortSignal): Promise<DeleteAccountResult>
   /** 가입 이메일로 비밀번호 재설정 링크를 요청합니다. 로그인 없이 부릅니다. */
   requestPasswordReset(email: string, signal?: AbortSignal): Promise<RequestPasswordResetResult>
   /** 메일 링크의 토큰으로 새 비밀번호를 저장합니다. 성공하면 서버가 모든 세션을 끝냅니다. */
   resetPassword(token: string, newPassword: string, signal?: AbortSignal): Promise<ResetPasswordResult>
+  /** 소셜 로그인을 시작하는 Core API 주소입니다. 화면이 바로 링크로 그리도록 요청 없이 계산합니다. */
+  oauthStartUrl(provider: OAuthProviderId): string
+  /** 소셜 로그인 콜백이 세션 쿠키를 심은 뒤 부릅니다. 세션 힌트를 남기고 계정을 읽으며, 세션이 없으면 null입니다. */
+  completeOAuthSignIn(signal?: AbortSignal): Promise<Account | null>
 }

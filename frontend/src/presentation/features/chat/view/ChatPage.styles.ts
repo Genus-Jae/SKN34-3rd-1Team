@@ -45,7 +45,7 @@ export const chatPageStyles = {
   conversationWorkspace: 'overflow-hidden',
   // 로그인 뒤 작업 화면은 사이드바 껍데기가 정한 높이를 그대로 채웁니다.
   // 대화만 안에서 스크롤되고 입력창은 화면 아래에 붙어 있게 하려면 높이가 늘어나면 안 됩니다.
-  workspacePage: 'relative flex min-h-0 flex-1 flex-col bg-white text-app-ink max-chat:min-h-svh',
+  workspacePage: 'relative flex min-h-0 flex-1 flex-col bg-white text-app-ink',
   workspaceShell: 'flex min-h-0 min-w-0 flex-1 flex-col',
   timeline: classes(
     'relative mx-auto min-h-0 w-[min(1040px,calc(100%_-_3rem))] flex-1 overflow-y-auto overscroll-contain px-1 pt-8 pb-6',
@@ -119,7 +119,6 @@ export const chatPageStyles = {
   composerInputGroup: 'relative overflow-hidden rounded-[1.65rem] border border-[#b8dfc9] bg-white shadow-[0_3px_5px_rgb(23_68_45_/_5%),0_16px_48px_rgb(23_68_45_/_3%)] focus-within:border-[#23805a] focus-within:ring-2 focus-within:ring-[#23805a]/10',
   searchContextControls: 'mb-2',
   currentConditions: 'm-0 min-w-0 flex-1 text-xs leading-relaxed text-sample-muted [overflow-wrap:anywhere]',
-  newSearchButton: 'shrink-0 cursor-pointer rounded-full border border-[#cce1d4] bg-white px-3 py-2 text-xs font-bold text-app-ink hover:border-brand-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
   searchStatus: 'sr-only',
   searchError: classes(
     'mt-0 mb-[0.55rem] flex items-center justify-between gap-3 rounded-[0.7rem] border px-[0.8rem] py-[0.65rem] text-[0.76rem]',
@@ -152,7 +151,6 @@ export const chatPageStyles = {
   ),
   composerFooter: 'flex min-h-[4.25rem] flex-wrap items-center gap-x-4 gap-y-2 pt-1 pr-[5.5rem] pb-5 pl-7 max-chat:pl-5',
   composerHint: 'block text-[0.75rem] leading-relaxed text-sample-muted max-chat:text-[0.68rem]',
-  privacyHint: 'mx-4 mt-3 block text-center text-[0.7rem] leading-relaxed text-sample-muted',
   sourceHint: 'mx-4 mt-7 mb-0 flex flex-wrap items-center justify-center gap-2 text-center text-xs leading-relaxed text-sample-muted',
   programCard:
     'rounded-2xl border border-sample-border bg-white p-5 shadow-[0_8px_24px_rgb(32_33_36_/_4%)]',

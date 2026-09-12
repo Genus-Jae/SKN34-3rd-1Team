@@ -55,6 +55,12 @@ class ApplicationPreparationRepository(
         }
     }
 
+    @Transactional
+    fun deleteOwned(ownerAccountId: Long, preparationId: Long): Boolean {
+        require(ownerAccountId > 0 && preparationId > 0) { "ownerAccountId and preparationId must be positive" }
+        return mapper.deleteOwned(ownerAccountId, preparationId) == 1
+    }
+
     private fun ApplicationPreparationDbRow.toStored(): StoredApplicationPreparation = StoredApplicationPreparation(
         id = id,
         ownerAccountId = ownerAccountId,

@@ -5,6 +5,8 @@ import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.account.domain.AccountRole
 import ai.govbiz.core.account.domain.NewAccount
 import ai.govbiz.core.account.domain.NewAccountSession
+import ai.govbiz.core.account.domain.OAuthLink
+import ai.govbiz.core.account.domain.OAuthProvider
 import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -174,6 +176,53 @@ class AccountRepositoryIntegrationTest {
         }
     }
 
+    @Test
+    fun storesPasswordlessSocialAccountsWithTheirProviderLinks() {
+        val account = repository.createAccountWithOAuthIdentity(socialAccount("social@kakao.com"), OAuthProvider.KAKAO, KAKAO_SUBJECT)
+
+        assertTrue(account.isEmailVerified)
+        assertEquals(account, repository.findByOAuthIdentity(OAuthProvider.KAKAO, KAKAO_SUBJECT))
+        assertNull(repository.findByOAuthIdentity(OAuthProvider.GOOGLE, KAKAO_SUBJECT))
+        // 비밀번호가 없는 계정은 이메일 로그인 검증 조회에 나오지 않습니다.
+        assertNull(repository.findCredentialByEmail("social@kakao.com"))
+        assertEquals(listOf(OAuthLink(OAuthProvider.KAKAO, KAKAO_SUBJECT)), repository.findOAuthLinks(account.id))
+
+        assertEquals(1, repository.deleteOAuthIdentities(account.id))
+        assertNull(repository.findByOAuthIdentity(OAuthProvider.KAKAO, KAKAO_SUBJECT))
+        assertEquals(emptyList<OAuthLink>(), repository.findOAuthLinks(account.id))
+    }
+
+    @Test
+    fun rollsBackTheNewAccountWhenTheProviderSubjectOrEmailIsAlreadyTaken() {
+        repository.createAccountWithOAuthIdentity(socialAccount("first@kakao.com"), OAuthProvider.KAKAO, KAKAO_SUBJECT)
+        repository.createAccount(newAccount(email = "taken@company.co.kr"))
+
+        assertThrows(DuplicateKeyException::class.java) {
+            repository.createAccountWithOAuthIdentity(socialAccount("second@kakao.com"), OAuthProvider.KAKAO, KAKAO_SUBJECT)
+        }
+        assertThrows(DuplicateKeyException::class.java) {
+            repository.createAccountWithOAuthIdentity(socialAccount("taken@company.co.kr"), OAuthProvider.GOOGLE, "110169484474386276334")
+        }
+
+        assertNull(repository.findByEmail("second@kakao.com"))
+        assertEquals(2, countRows("account"))
+        assertEquals(1, countRows("account_oauth_identity"))
+    }
+
+    @Test
+    fun hidesTheLinkedAccountOnceDeletedAndCascadesHardDeletesToLinks() {
+        val deleted = repository.createAccountWithOAuthIdentity(socialAccount("gone@kakao.com"), OAuthProvider.KAKAO, KAKAO_SUBJECT)
+        repository.markDeleted(deleted.id, SUSPENDED_AT)
+        assertNull(repository.findByOAuthIdentity(OAuthProvider.KAKAO, KAKAO_SUBJECT))
+
+        jdbcTemplate.update("DELETE FROM account WHERE id = ?", deleted.id)
+
+        assertEquals(0, countRows("account_oauth_identity"))
+    }
+
+    private fun socialAccount(email: String): NewAccount =
+        NewAccount(email = email, passwordHash = null, termsAgreedAt = VERIFIED_AT, emailVerifiedAt = VERIFIED_AT)
+
     private fun countRows(table: String): Int =
         requireNotNull(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM $table", Int::class.java))
 
@@ -211,5 +260,6 @@ class AccountRepositoryIntegrationTest {
         val PAST: LocalDateTime = LocalDateTime.of(2000, 1, 1, 0, 0)
         val VERIFIED_AT: LocalDateTime = LocalDateTime.of(2026, 9, 6, 12, 30)
         val SUSPENDED_AT: LocalDateTime = LocalDateTime.of(2026, 9, 7, 8, 0)
+        const val KAKAO_SUBJECT = "4012345678"
     }
 }

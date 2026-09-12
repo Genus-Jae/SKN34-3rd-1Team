@@ -1,54 +1,32 @@
-function classes(...groups: string[]) {
-  return groups.join(' ')
-}
-
-// 색상이나 CSS 속성이 아니라 로그인 뒤 작업 화면에서 사이드바가 맡는 UI 역할을 이름으로 사용합니다.
-// 아직 화면이 없는 메뉴는 링크와 다른 variant를 써서 눌러도 이동하지 않는다는 것을 시각적으로 구분합니다.
+// 로그인 작업 화면은 메뉴만 스크롤하고 로고와 계정 영역은 위아래에 고정합니다.
 export const appSidebarStyles = {
-  // 사이드바와 화면 머리말이 항상 보이도록 껍데기를 뷰포트 높이에 고정하고, 본문 칸만 스크롤합니다.
-  // 한 칸으로 접히는 좁은 화면에서는 화면을 다 덮지 않도록 고정을 풀고 문서 전체가 스크롤되게 둡니다.
-  layout: classes(
-    'grid h-screen grid-cols-[278px_minmax(0,1fr)] overflow-hidden bg-app-canvas text-app-ink',
-    'max-chat:h-auto max-chat:min-h-svh max-chat:grid-cols-1 max-chat:grid-rows-[auto_minmax(0,1fr)] max-chat:overflow-visible',
-  ),
-  sidebar: classes(
-    'flex h-full flex-col gap-[1.35rem] overflow-y-auto px-5 py-[1.6rem] text-app-ink',
-    'border-r border-sample-border bg-white',
-    'max-chat:h-auto max-chat:gap-4 max-chat:overflow-visible max-chat:border-r-0 max-chat:border-b max-chat:py-4',
-  ),
-  brand: classes(
-    'flex items-center gap-3 border-b border-sample-border px-[0.35rem] pt-1 pb-5 no-underline',
-    'text-app-ink max-chat:pb-3',
-  ),
-  brandMark:
-    'grid size-[2.35rem] shrink-0 place-items-center rounded-[0.8rem] bg-brand-accent text-[1.25rem] font-black text-brand-primary',
-  brandTitle: 'block text-[1.12rem] font-extrabold tracking-[-0.04em]',
-  brandSubtitle: 'mt-[0.2rem] block text-[0.72rem] font-normal text-sample-muted',
-  menuGroup: 'flex flex-col gap-2',
-  menuGroupTitle:
-    'mt-0 mb-1 text-[0.72rem] font-extrabold tracking-[0.1em] text-sample-muted uppercase',
-  menuItem: 'flex items-center gap-[0.6rem] rounded-[0.85rem] px-3 py-[0.68rem] text-[0.8rem] no-underline',
-  activeMenuItem: 'bg-brand-accent font-bold text-brand-primary',
-  inactiveMenuItem: 'bg-white font-semibold text-app-ink hover:bg-[#f6f7f8] hover:text-brand-primary',
-  pendingMenuItem: 'cursor-default bg-[#f6f7f8] font-semibold text-sample-muted',
-  menuBadge:
-    'ml-auto inline-flex rounded-full bg-brand-accent px-[0.45rem] py-[0.1rem] text-[0.68rem] font-extrabold text-brand-primary',
-  pendingBadge:
-    'ml-auto inline-flex rounded-full bg-[#e9ecef] px-[0.45rem] py-[0.1rem] text-[0.62rem] font-bold text-sample-muted',
-  account: 'mt-auto flex flex-col gap-[0.6rem] max-chat:mt-4',
-  // 계정 카드는 내 프로필·로그아웃을 여는 버튼입니다.
-  accountCard:
-    'flex w-full cursor-pointer items-center gap-[0.65rem] rounded-[0.7rem] border-0 bg-[#f6f7f8] p-3 text-left hover:bg-[#eef1f3] aria-expanded:bg-[#eef1f3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+  layout: 'flex h-dvh overflow-hidden bg-white text-app-ink',
+  sidebar: 'flex h-full min-h-0 flex-col border-r border-[#ececec] bg-white px-3 pt-2.5 pb-2 text-app-ink',
+  brandRow: 'mb-4 flex h-10 shrink-0 items-center justify-between gap-2 px-1',
+  brand: 'flex min-w-0 items-center gap-2.5 rounded-lg text-app-ink no-underline focus-visible:outline-2 focus-visible:outline-brand-primary',
+  brandMark: 'grid size-8 shrink-0 place-items-center rounded-xl bg-brand-accent text-lg font-black text-brand-primary',
+  brandTitle: 'block text-xl font-semibold tracking-tight',
+  iconButton: 'grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-[#777] hover:bg-black/5 hover:text-app-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary',
+  scrollArea: 'min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4',
+  newChatButton: 'mb-1 w-full cursor-pointer border-0 text-left',
+  menuGroup: 'flex flex-col gap-1',
+  menuItem: 'flex min-h-11 min-w-0 items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary [&_svg]:size-[18px]',
+  activeMenuItem: 'bg-[#e6f5ed] text-brand-primary hover:bg-[#dcefe5]',
+  inactiveMenuItem: 'bg-transparent text-app-ink hover:bg-[#f5f6f7]',
+  pendingMenuItem: 'cursor-default bg-[#f5f6f7] text-[#727b86]',
+  menuBadge: 'ml-auto inline-flex shrink-0 rounded-full bg-brand-accent px-1.5 py-0.5 text-[0.65rem] font-semibold text-brand-primary',
+  pendingBadge: 'ml-auto inline-flex shrink-0 rounded-full bg-[#e9ecef] px-2 py-1 text-[0.6rem] font-semibold leading-none text-[#727b86]',
+  account: 'relative mt-auto shrink-0 border-t border-[#e7e7e7] pt-2',
+  accountCard: 'flex min-h-14 w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-2 py-2 text-left hover:bg-black/5 aria-expanded:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary',
   accountMenuIcon: 'ml-auto shrink-0 text-sample-muted',
-  accountMenu: 'flex flex-col gap-1 rounded-[0.7rem] border border-sample-border bg-white p-1.5 shadow-[0_12px_32px_rgb(32_33_36_/_10%)]',
-  accountMenuButton:
-    'flex w-full cursor-pointer items-center gap-[0.65rem] rounded-[0.55rem] border-0 bg-transparent px-3 py-2 text-left text-[0.82rem] font-semibold text-sample-muted hover:bg-[#f6f7f8] hover:text-app-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary',
-  accountAvatar:
-    'grid size-8 shrink-0 place-items-center rounded-[0.6rem] bg-brand-primary text-[0.85rem] font-extrabold text-white',
-  accountName: 'block text-[0.8rem] font-bold text-app-ink',
-  accountCompany:
-    'mt-[0.1rem] block overflow-hidden text-[0.68rem] text-ellipsis whitespace-nowrap text-sample-muted',
-  workspace: '@container/workspace flex min-h-0 min-w-0 flex-col overflow-y-auto max-chat:overflow-visible',
+  accountMenu: 'absolute inset-x-0 bottom-full z-20 mb-2 flex flex-col gap-1 rounded-xl border border-sample-border bg-white p-1.5 shadow-[0_8px_28px_rgb(0_0_0_/_10%)]',
+  accountMenuButton: 'flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2 text-left text-sm text-app-ink hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-brand-primary',
+  accountAvatar: 'grid size-8 shrink-0 place-items-center rounded-full bg-brand-primary text-sm font-medium text-white',
+  accountName: 'block truncate text-sm font-medium text-app-ink',
+  accountCompany: 'mt-0.5 block truncate text-xs text-[#888]',
+  workspace: '@container/workspace flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto',
+  compactHeader: 'flex h-14 shrink-0 items-center gap-2 bg-white px-3',
+  mobileDialog: 'fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(280px,85vw)] max-w-none border-0 p-0 backdrop:bg-black/30',
 } as const
 
 export function sidebarMenuItemClassName(state: 'active' | 'inactive' | 'pending') {

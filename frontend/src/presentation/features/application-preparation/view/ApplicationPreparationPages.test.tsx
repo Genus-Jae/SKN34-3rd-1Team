@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { appContainer } from '../../../../app/appContainer'
 import { createAppStore } from '../../../../app/store'
+import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
 import type { ApplicationForm, ApplicationPreparation, ApplicationPreparationPage } from '../../../../domain/entities/ApplicationPreparation'
 import { ApplicationPreparationError } from '../../../../domain/errors/ApplicationPreparationError'
 import { ApplicationPreparationUseCase } from '../../../../domain/usecases/ApplicationPreparationUseCase'
@@ -13,6 +14,8 @@ import { signedIn } from '../../../shared/auth/state/authSlice'
 import { ApplicationPreparationEditorPage, ApplicationPreparationListPage } from './ApplicationPreparationPages'
 
 const original = appContainer.resolve('applicationPreparationUseCase')
+const originalCatalog = appContainer.resolve('browseSupportProgramsUseCase')
+const browsePrograms = vi.fn()
 const firstForm: ApplicationForm = {
   formVersionId: 'verified-form-v1',
   sourceCode: 'BIZINFO',
@@ -20,12 +23,20 @@ const firstForm: ApplicationForm = {
   programTitle: '혁신바우처 지원사업',
   formTitle: '혁신바우처 사업계획서',
   sourceUrl: 'https://www.bizinfo.go.kr/form',
+  attachmentFileName: '혁신바우처 사업계획서.hwpx',
+  attachmentSha256: 'a'.repeat(64),
   verificationStatus: 'SOURCE_HASH_AND_LOCATORS_VERIFIED',
   institutionReviewed: false,
   supportedServiceFields: ['CONSULTING', 'TECHNICAL_SUPPORT', 'MARKETING'],
   sections: [
-    { key: 'company-overview', title: '기업 개요', locator: 'HWPX 문단 1', description: '기업을 설명합니다.', status: 'NOT_STARTED' },
-    { key: 'voucher-plan', title: '바우처 활용 계획', locator: 'HWPX 문단 2', description: '계획을 설명합니다.', status: 'NOT_STARTED' },
+    {
+      key: 'company-overview', title: '기업 개요', locator: 'HWPX 문단 1', description: '기업을 설명합니다.', status: 'NOT_STARTED',
+      fields: [{ key: 'company-name', label: '업체명', guidance: '공식 업체명을 입력합니다.', required: true }], facts: [],
+    },
+    {
+      key: 'voucher-plan', title: '바우처 활용 계획', locator: 'HWPX 문단 2', description: '계획을 설명합니다.', status: 'NOT_STARTED',
+      fields: [{ key: 'project-title', label: '과제명', guidance: '과제명을 입력합니다.', required: true }], facts: [],
+    },
   ],
 }
 const secondForm: ApplicationForm = {
@@ -45,7 +56,7 @@ const detail = {
   updatedAt: '2026-09-11T01:00:00+09:00',
   form: structuredClone(firstForm),
 }
-const repository = { forms: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn() }
+const repository = { forms: vi.fn(), discover: vi.fn(), list: vi.fn(), delete: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -60,20 +71,52 @@ function deferred<T>() {
 beforeEach(() => {
   vi.resetAllMocks()
   repository.forms.mockResolvedValue([structuredClone(firstForm)])
+  repository.discover.mockResolvedValue({ items: [structuredClone(firstForm)], warnings: ['원문 대조 필요'], cached: false })
   repository.list.mockResolvedValue({ items: [], nextBeforeId: null })
+  repository.delete.mockResolvedValue(undefined)
   repository.get.mockResolvedValue(structuredClone(detail))
   repository.create.mockResolvedValue(structuredClone(detail))
-  appContainer.register({ applicationPreparationUseCase: asValue(new ApplicationPreparationUseCase(repository)) })
+  repository.interpret.mockResolvedValue({
+    runId: 31,
+    inputRevision: 3,
+    sectionKey: 'company-overview',
+    suggestions: [{ fieldKey: 'company-name', status: 'PROVIDED', value: '새봄테크', evidenceQuote: '업체명은 새봄테크' }],
+    missingFields: [],
+    nextQuestion: null,
+  })
+  repository.replaceInputs.mockResolvedValue({
+    ...structuredClone(detail),
+    inputRevision: 4,
+    form: {
+      ...structuredClone(firstForm),
+      sections: firstForm.sections.map((section) => section.key === 'company-overview' ? {
+        ...section,
+        status: 'INPUT_CONFIRMED' as const,
+        facts: [{ id: 9, fieldKey: 'company-name', status: 'PROVIDED' as const, value: '새봄테크 연구소', sourceText: '업체명은 새봄테크입니다.', inputRevision: 4, updatedAt: detail.updatedAt }],
+      } : section),
+    },
+  })
+  browsePrograms.mockResolvedValue({
+    programs: [structuredClone(supportPrograms[0])], total: 1, page: 1, pageSize: 10, totalPages: 1,
+    regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
+  })
+  appContainer.register({
+    applicationPreparationUseCase: asValue(new ApplicationPreparationUseCase(repository)),
+    browseSupportProgramsUseCase: asValue({ execute: browsePrograms }),
+  })
 })
 
 afterEach(() => {
   cleanup()
-  appContainer.register({ applicationPreparationUseCase: asValue(original) })
+  appContainer.register({
+    applicationPreparationUseCase: asValue(original),
+    browseSupportProgramsUseCase: asValue(originalCatalog),
+  })
 })
 
 function mount(path: string) {
   const store = createAppStore()
-  store.dispatch(signedIn({ email: 'owner@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null }))
+  store.dispatch(signedIn({ email: 'owner@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, hasPassword: true, company: null }))
   const rendered = render(<Provider store={store}><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/app/application-preparations" element={<ApplicationPreparationListPage />} />
     <Route path="/app/application-preparations/new" element={<ApplicationPreparationEditorPage create />} />
@@ -110,6 +153,15 @@ describe('application preparation list', () => {
     expect(repository.list).toHaveBeenCalledTimes(2)
   })
 
+  it('explains that a collection 404 requires a backend image refresh instead of showing an empty list', async () => {
+    repository.list.mockRejectedValueOnce(new ApplicationPreparationError(404, 'APPLICATION_PREPARATION_API_UNAVAILABLE'))
+    mount('/app/application-preparations')
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Core·AI Service 이미지를 갱신')
+    expect(screen.queryByRole('heading', { name: '아직 시작한 신청 문서가 없습니다.' })).toBeNull()
+  })
+
   it('appends a cursor page and announces the more-loading state', async () => {
     const nextPage = deferred<ApplicationPreparationPage>()
     repository.list
@@ -140,7 +192,7 @@ describe('application preparation list', () => {
     const firstSignal = repository.list.mock.calls[0]?.[1] as AbortSignal
 
     act(() => {
-      store.dispatch(signedIn({ email: 'next@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, company: null }))
+      store.dispatch(signedIn({ email: 'next@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, hasPassword: true, company: null }))
     })
     expect(firstSignal.aborted).toBe(true)
     await act(async () => secondRequest.resolve({
@@ -155,15 +207,77 @@ describe('application preparation list', () => {
     }))
     expect(screen.queryByText('이전 사용자 신청')).toBeNull()
   })
+
+  it('requires confirmation and removes only the selected saved preparation after deletion succeeds', async () => {
+    repository.list.mockResolvedValueOnce({
+      items: [{ id: 12, inputRevision: 3, serviceField: 'TECHNICAL_SUPPORT', programTitle: firstForm.programTitle, formTitle: firstForm.formTitle, updatedAt: detail.updatedAt }],
+      nextBeforeId: null,
+    })
+    mount('/app/application-preparations')
+    await screen.findByText(firstForm.programTitle)
+
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }))
+    const confirmation = screen.getByRole('group', { name: `${firstForm.programTitle} 삭제 확인` })
+    expect(confirmation.textContent).toContain('작성 내용과 AI 실행 기록')
+    expect(repository.delete).not.toHaveBeenCalled()
+    fireEvent.click(within(confirmation).getByRole('button', { name: '정말 삭제' }))
+
+    expect(repository.delete).toHaveBeenCalledWith(12, expect.any(AbortSignal))
+    expect(await screen.findByRole('heading', { name: '아직 시작한 신청 문서가 없습니다.' })).toBeTruthy()
+    expect(screen.queryByText(firstForm.programTitle)).toBeNull()
+  })
 })
 
 describe('application preparation creation and detail', () => {
-  it('lets the user choose among official forms and limits service fields to the selected form', async () => {
-    repository.forms.mockResolvedValueOnce([structuredClone(firstForm), structuredClone(secondForm)])
+  it('searches the catalog and discovers documents only after the user selects a notice', async () => {
+    const program = { ...structuredClone(supportPrograms[0]), sourceCode: 'BIZINFO', id: 'PBLN_123' }
+    browsePrograms.mockResolvedValueOnce({
+      programs: [program], total: 1, page: 1, pageSize: 10, totalPages: 1,
+      regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
+    })
     mount('/app/application-preparations/new')
 
-    const formSelect = await screen.findByLabelText('작성할 공식 양식')
+    fireEvent.change(screen.getByLabelText('공고명·기관명'), { target: { value: '혁신 바우처' } })
+    fireEvent.click(screen.getByRole('button', { name: '공고 검색' }))
+
+    const results = await screen.findByRole('list', { name: '신청 문서 공고 검색 결과' })
+    expect(browsePrograms).toHaveBeenCalledWith(expect.objectContaining({
+      keyword: '혁신 바우처', sourceCode: 'BIZINFO', status: 'ALL', page: 1, pageSize: 10,
+    }), expect.any(AbortSignal))
+    expect(repository.discover).not.toHaveBeenCalled()
+    fireEvent.click(within(results).getByRole('button', { name: '선택' }))
+
+    const selectedHeading = screen.getByRole('heading', { name: '선택한 공고' })
+    const searchHeading = screen.getByRole('heading', { name: '지원 공고 검색' })
+    expect(selectedHeading.compareDocumentPosition(searchHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect((screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID') as HTMLInputElement).value).toBe('PBLN_123')
+    expect(repository.discover).not.toHaveBeenCalled()
+    fireEvent.click(within(selectedHeading.closest('section')!).getByRole('button', { name: '신청 문서 찾기' }))
+
+    expect(await screen.findByLabelText('작성할 공식 첨부')).toBeTruthy()
+    expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_123', expect.any(AbortSignal))
+  })
+
+  it('explains when the selected notice has no discoverable application form', async () => {
+    repository.discover.mockRejectedValueOnce(new ApplicationPreparationError(422, 'APPLICATION_FORM_NO_FORM'))
+    mount('/app/application-preparations/new')
+    fireEvent.change(screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID'), { target: { value: 'PBLN_1' } })
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('신청 문서를 찾지 못했습니다')
+    expect(screen.queryByRole('button', { name: '신청 문서 작성 시작' })).toBeNull()
+  })
+
+  it('discovers the selected notice and lets the user choose among its official forms', async () => {
+    repository.discover.mockResolvedValueOnce({ items: [structuredClone(firstForm), structuredClone(secondForm)], warnings: ['원문 대조 필요'], cached: false })
+    mount('/app/application-preparations/new?sourceCode=BIZINFO&sourceProgramId=PBLN_1')
+    expect((screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID') as HTMLInputElement).value).toBe('PBLN_1')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+
+    const formSelect = await screen.findByLabelText('작성할 공식 첨부')
     expect(within(formSelect).getAllByRole('option')).toHaveLength(2)
+    expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_1', expect.any(AbortSignal))
+    expect(screen.getByText('원문 대조 필요')).toBeTruthy()
     fireEvent.change(formSelect, { target: { value: secondForm.formVersionId } })
 
     expect(screen.getByText(secondForm.programTitle)).toBeTruthy()
@@ -175,7 +289,8 @@ describe('application preparation creation and detail', () => {
   it('prevents duplicate submissions and opens the created detail', async () => {
     const creation = deferred<ApplicationPreparation>()
     repository.create.mockReturnValueOnce(creation.promise)
-    mount('/app/application-preparations/new')
+    mount('/app/application-preparations/new?sourceCode=BIZINFO&sourceProgramId=PBLN_1')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
     await screen.findByText(firstForm.programTitle)
     fireEvent.change(screen.getByLabelText('작성할 지원 분야'), { target: { value: 'MARKETING' } })
 
@@ -207,6 +322,29 @@ describe('application preparation creation and detail', () => {
     expect(screen.getAllByLabelText('작성 상태: 작성 전')).toHaveLength(2)
     expect(screen.getByText('공식 양식 위치: HWPX 문단 1')).toBeTruthy()
     expect(repository.create).not.toHaveBeenCalled()
+    expect(repository.interpret).not.toHaveBeenCalled()
+  })
+
+  it('keeps AI suggestions unconfirmed until the user reviews and saves them', async () => {
+    mount('/app/application-preparations/12')
+    const section = (await screen.findByRole('heading', { name: '공식 작성 항목' }))
+      .parentElement!.querySelector('li') as HTMLElement
+    const answer = within(section).getByLabelText('AI가 사실 항목을 구분할 수 있도록 답변하기')
+    fireEvent.change(answer, { target: { value: '업체명은 새봄테크입니다.' } })
+    fireEvent.click(within(section).getByRole('button', { name: 'AI로 답변 확인' }))
+
+    expect(await within(section).findByText('확인 전 AI 제안')).toBeTruthy()
+    expect(repository.replaceInputs).not.toHaveBeenCalled()
+    const value = within(section).getByLabelText('업체명 확인 값')
+    fireEvent.change(value, { target: { value: '새봄테크 연구소' } })
+    fireEvent.click(within(section).getByRole('button', { name: '선택한 사실 확인하고 저장' }))
+
+    expect(repository.replaceInputs).toHaveBeenCalledWith(12, 'company-overview', {
+      expectedRevision: 3,
+      facts: [{ fieldKey: 'company-name', status: 'PROVIDED', value: '새봄테크 연구소', sourceText: '업체명은 새봄테크입니다.' }],
+    }, expect.any(AbortSignal))
+    expect(await screen.findByText('새봄테크 연구소')).toBeTruthy()
+    expect(screen.getByText('4')).toBeTruthy()
   })
 
   it('rejects a malformed detail id without making a request', () => {
@@ -226,11 +364,12 @@ describe('application preparation creation and detail', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(message)
   })
 
-  it('aborts an in-flight form request when the screen unmounts', () => {
-    const formsRequest = deferred<ApplicationForm[]>()
-    repository.forms.mockReturnValueOnce(formsRequest.promise)
-    const { unmount } = mount('/app/application-preparations/new')
-    const signal = repository.forms.mock.calls[0]?.[0] as AbortSignal
+  it('aborts an in-flight discovery request when the screen unmounts', () => {
+    const discoveryRequest = deferred<{ items: ApplicationForm[]; warnings: string[]; cached: boolean }>()
+    repository.discover.mockReturnValueOnce(discoveryRequest.promise)
+    const { unmount } = mount('/app/application-preparations/new?sourceCode=BIZINFO&sourceProgramId=PBLN_1')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+    const signal = repository.discover.mock.calls[0]?.[2] as AbortSignal
 
     unmount()
 
