@@ -335,7 +335,7 @@ describe('계정 화면', () => {
 })
 
 describe('작업 화면 사이드바', () => {
-  it('흰색 사이드바에서 선택 메뉴를 초록색으로 표시하고 기존 메뉴 계약을 유지한다', () => {
+  it('흰색 사이드바에서 선택 메뉴는 초록색, 준비 중 메뉴는 회색으로 표시하고 기존 메뉴 계약을 유지한다', () => {
     renderApp('/app/chat')
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     expect(sidebar.classList.contains('bg-white')).toBe(true)
@@ -350,10 +350,11 @@ describe('작업 화면 사이드바', () => {
     expect(documents.getAttribute('href')).toBe('/app/application-preparations')
     expect(documents.classList.contains('rounded-2xl')).toBe(true)
     expect(documents.getAttribute('aria-current')).toBeNull()
-    const savedPrograms = within(sidebar).getByRole('link', { name: /관심 공고함/ })
+    // 관심 공고함은 화면이 생겨 링크이며, 준비 중 배지가 없습니다.
+    const savedPrograms = within(sidebar).getByRole('link', { name: '관심 공고함' })
     expect(savedPrograms.getAttribute('href')).toBe('/app/saved-programs')
     expect(savedPrograms.getAttribute('aria-disabled')).toBeNull()
-    expect(within(savedPrograms).getByText('시안').classList.contains('rounded-full')).toBe(true)
+    expect(within(sidebar).queryByText('준비 중')).toBeNull()
 
     fireEvent.click(within(sidebar).getByRole('link', { name: '요금제' }))
     expect(within(sidebar).getByRole('link', { name: '요금제' }).getAttribute('aria-current')).toBe('page')
@@ -419,20 +420,12 @@ describe('작업 화면 사이드바', () => {
     expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
   })
 
-  it('회원이 기존 사이드바에서 관심 공고 달력 시안을 연다', () => {
+  it('모든 메뉴가 화면을 가져 준비 중 표시가 없다', () => {
     renderApp('/app/chat')
 
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
-    fireEvent.click(within(sidebar).getByRole('link', { name: /관심 공고함/ }))
-    expect(screen.getByRole('heading', { name: '관심 공고함' })).toBeTruthy()
-    expect(screen.getByRole('table', { name: /접수 일정/ })).toBeTruthy()
-    expect(within(sidebar).getByRole('link', { name: /관심 공고함/ }).getAttribute('aria-current')).toBe('page')
-  })
-
-  it('비회원의 관심 공고함 직접 접속은 기존 로그인 화면으로 보낸다', () => {
-    renderApp('/app/saved-programs', null)
-    expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy()
-    expect(screen.queryByRole('table', { name: /접수 일정/ })).toBeNull()
+    expect(within(sidebar).getByRole('link', { name: '관심 공고함' }).getAttribute('href')).toBe('/app/saved-programs')
+    expect(within(sidebar).queryByText('준비 중')).toBeNull()
   })
 
   it('사이드바 지원사업 새검색은 작성 중 초안과 대화를 지우고 입력창으로 포커스를 옮긴다', () => {

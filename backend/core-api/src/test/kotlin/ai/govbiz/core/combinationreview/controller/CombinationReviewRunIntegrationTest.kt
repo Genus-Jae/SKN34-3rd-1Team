@@ -18,6 +18,11 @@ import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachment
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
+import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
+import ai.govbiz.core.supportprogram.domain.SupportProgram
+import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
+import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
+import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
 import jakarta.servlet.http.Cookie
 import java.io.ByteArrayOutputStream
 import java.time.LocalDateTime
@@ -66,6 +71,8 @@ class CombinationReviewRunIntegrationTest {
     @Autowired private lateinit var reviews: CombinationReviewRepository
     @Autowired private lateinit var runs: CombinationReviewRunRepository
     @MockitoBean private lateinit var source: BizInfoAttachmentClient
+    @MockitoBean private lateinit var msitSource: MsitAttachmentClient
+    @MockitoBean private lateinit var programDetails: SupportProgramDetailService
     @MockitoBean private lateinit var ai: AiCombinationReviewClient
     private var ownerId = 0L
     private var otherId = 0L
@@ -120,6 +127,90 @@ class CombinationReviewRunIntegrationTest {
         val stored = requireNotNull(runs.findOwned(ownerId, reviewId, id))
         assertEquals(CombinationReviewHashHelper.sha256(general), stored.evidence!!.documents.first().rawHash)
         assertTrue(stored.evidence.blocks.any { it.text.contains("글로벌기업 협업 프로그램") })
+    }
+
+    @Test
+    fun collectsMsitOfficialAttachmentsThroughTheCatalogIdentityOutsideTransactions() {
+        val msit = ReviewProgramIdentity("MSIT", "3186573")
+        val sourceUrl = "https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&mId=311&mPid=121&nttSeqNo=${msit.sourceProgramId}&sCode=user"
+        val attachmentUrl = "https://www.msit.go.kr/ssm/file/fileDown.do?atchFileNo=52935&fileOrd=6&fileBtn=A"
+        reviewId = reviews.create(
+            ownerId,
+            CombinationReviewDraft("과기정통부 포함 검토", CombinationReviewInput(listOf(SelectedReviewProgram(g), SelectedReviewProgram(msit)))),
+        ).id
+        `when`(programDetails.get(msit.sourceCode, msit.sourceProgramId)).thenAnswer {
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive())
+            supportProgram(msit, sourceUrl)
+        }
+        `when`(msitSource.collect(msit.sourceCode, msit.sourceProgramId, sourceUrl)).thenAnswer {
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive())
+            fetched(deep, "과기정통부-공고.hwpx", attachmentUrl)
+        }
+
+        val runId = id(start().andExpect(status().isCreated())
+            .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+            .andExpect(jsonPath("$.evidence.documents[1].programIndex").value(1))
+            .andExpect(jsonPath("$.evidence.documents[1].sourceUrl").value(attachmentUrl)))
+
+        val stored = requireNotNull(runs.findOwned(ownerId, reviewId, runId))
+        assertEquals(listOf(0, 1), stored.evidence!!.documents.map { it.programIndex })
+        verify(source).collect(g.sourceCode, g.sourceProgramId)
+        verify(programDetails).get(msit.sourceCode, msit.sourceProgramId)
+        verify(msitSource).collect(msit.sourceCode, msit.sourceProgramId, sourceUrl)
+    }
+
+    @Test
+    fun missingMsitCatalogIdentityFailsAsSourceNotFoundBeforeAttachmentOrAiCalls() {
+        val msit = ReviewProgramIdentity("MSIT", "3186573")
+        reviewId = reviews.create(
+            ownerId,
+            CombinationReviewDraft("과기정통부 누락 검토", CombinationReviewInput(listOf(SelectedReviewProgram(g), SelectedReviewProgram(msit)))),
+        ).id
+        `when`(programDetails.get(msit.sourceCode, msit.sourceProgramId)).thenThrow(SupportProgramNotFoundException())
+
+        val response = start().andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.code").value("SOURCE_NOT_FOUND")).andReturn().response
+
+        val runId = json.readTree(response.contentAsString).path("runId").asLong()
+        assertEquals(ReviewRunStatus.FAILED, runs.findOwned(ownerId, reviewId, runId)!!.status)
+        verifyNoInteractions(msitSource)
+        verifyNoInteractions(ai)
+    }
+
+    @Test
+    fun rejectsMoreThanTwelveCollectedDocumentsWithoutPartialAnalysis() {
+        val first = ReviewProgramIdentity("MSIT", "3186573")
+        val second = ReviewProgramIdentity("MSIT", "3186574")
+        reviewId = reviews.create(
+            ownerId,
+            CombinationReviewDraft("원본 한도 검토", CombinationReviewInput(listOf(SelectedReviewProgram(first), SelectedReviewProgram(second)))),
+        ).id
+        listOf(first, second).forEach { identity ->
+            val sourceUrl = "https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&nttSeqNo=${identity.sourceProgramId}"
+            `when`(programDetails.get(identity.sourceCode, identity.sourceProgramId)).thenReturn(supportProgram(identity, sourceUrl))
+            `when`(msitSource.collect(identity.sourceCode, identity.sourceProgramId, sourceUrl)).thenReturn(
+                SupportProgramAttachments(
+                    "과기정통부 공고",
+                    (1..8).map { index ->
+                        SupportProgramAttachment(
+                            "https://www.msit.go.kr/ssm/file/fileDown.do?atchFileNo=${identity.sourceProgramId}&fileOrd=$index&fileBtn=A",
+                            "첨부-$index.hwpx",
+                            "HWPX",
+                            general,
+                        )
+                    },
+                    emptyList(),
+                ),
+            )
+        }
+
+        val response = start().andExpect(status().isUnprocessableContent())
+            .andExpect(jsonPath("$.code").value("SOURCE_TOO_LARGE")).andReturn().response
+
+        val runId = json.readTree(response.contentAsString).path("runId").asLong()
+        assertEquals(ReviewRunStatus.FAILED, runs.findOwned(ownerId, reviewId, runId)!!.status)
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM combination_review_run_source WHERE run_id = ?", Int::class.java, runId))
+        verifyNoInteractions(ai)
     }
 
     @Test
@@ -313,7 +404,16 @@ class CombinationReviewRunIntegrationTest {
         } finally { release.countDown(); executor.shutdownNow() }
     }
 
-    private fun fetched(bytes: ByteArray, name: String) = SupportProgramAttachments("공식 공고", listOf(SupportProgramAttachment("https://www.mss.go.kr/common/board/Download.do?bcIdx=1&cbIdx=310&streFileNm=$name", name, "HWPX", bytes)), listOf("기관 해석 미확인"))
+    private fun fetched(
+        bytes: ByteArray,
+        name: String,
+        sourceUrl: String = "https://www.mss.go.kr/common/board/Download.do?bcIdx=1&cbIdx=310&streFileNm=$name",
+    ) = SupportProgramAttachments("공식 공고", listOf(SupportProgramAttachment(sourceUrl, name, "HWPX", bytes)), listOf("기관 해석 미확인"))
+    private fun supportProgram(identity: ReviewProgramIdentity, sourceUrl: String) = SupportProgram(
+        identity.sourceProgramId, identity.sourceCode, "과기정통부 공고", "과학기술정보통신부", "공고 요약",
+        emptyList(), emptyList(), "중소기업", "접수 기간 미확인", null, null, SupportProgramStatus.UNKNOWN,
+        "과학기술정보통신부", sourceUrl, emptyList(),
+    )
     private fun blankPdf(): ByteArray = ByteArrayOutputStream().use { output ->
         PDDocument().use { document ->
             document.addPage(PDPage())

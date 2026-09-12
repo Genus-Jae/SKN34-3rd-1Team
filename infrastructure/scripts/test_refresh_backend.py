@@ -12,10 +12,10 @@ BASH = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$REFRESH_DOCKER_CALLS"
 case "$*" in
-  *" config --services") printf '%s\n' ${REFRESH_CONFIGURED_SERVICES-mysql qdrant ai-service core-api web};;
+  *" config --services") printf '%s\n' ${REFRESH_CONFIGURED_SERVICES-mysql qdrant redis ai-service core-api web};;
   "ps --all --quiet --filter label=com.docker.compose.project="*) printf '%s\n' "${REFRESH_PROJECT_CONTAINERS-container-id}";;
-  *" ps --all --services") printf '%s\n' ${REFRESH_EXISTING_SERVICES-mysql qdrant ai-service core-api web};;
-  *" ps --services --status running") printf '%s\n' ${REFRESH_RUNNING_SERVICES-mysql qdrant ai-service core-api web};;
+  *" ps --all --services") printf '%s\n' ${REFRESH_EXISTING_SERVICES-mysql qdrant redis ai-service core-api web};;
+  *" ps --services --status running") printf '%s\n' ${REFRESH_RUNNING_SERVICES-mysql qdrant redis ai-service core-api web};;
   *" port web 5173") printf '%s\n' '127.0.0.1:5173';;
 esac
 exit 0
@@ -34,6 +34,12 @@ class RefreshBackendSafetyTest(unittest.TestCase):
     def run_script(self, **overrides):
         with tempfile.TemporaryDirectory(prefix="refresh-backend-test-") as directory:
             root = Path(directory)
+            # A clean checkout/CI has no developer .env. Keep the fixture self-contained
+            # and never read the real developer's credentials during safety tests.
+            script = root / "infrastructure/scripts/refresh-backend.sh"
+            script.parent.mkdir(parents=True)
+            script.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+            (root / ".env").write_text("OPENAI_API_KEY=never-sent-test-key\n", encoding="utf-8")
             docker = root / "docker"
             curl = root / "curl"
             docker.write_text(FAKE_DOCKER, encoding="utf-8")
@@ -48,8 +54,8 @@ class RefreshBackendSafetyTest(unittest.TestCase):
                 **overrides,
             }
             result = subprocess.run(
-                [str(BASH), str(SCRIPT)],
-                cwd=SCRIPT.parents[2],
+                [str(BASH), str(script)],
+                cwd=root,
                 env=environment,
                 capture_output=True,
                 text=True,
@@ -75,7 +81,8 @@ class RefreshBackendSafetyTest(unittest.TestCase):
         self.assertNotIn("--volumes", calls)
         self.assertNotIn(" up --detach --no-deps --no-build mysql", calls)
         self.assertNotIn(" up --detach --no-deps --no-build qdrant", calls)
-        self.assertIn("Existing MySQL and Qdrant containers and volumes were not recreated or removed", result.stdout)
+        self.assertNotIn(" up --detach --no-deps --no-build redis", calls)
+        self.assertIn("Existing MySQL, Qdrant and Redis containers and volumes were not recreated or removed", result.stdout)
 
     def test_missing_target_project_stops_before_build_or_replacement(self):
         result, calls = self.run_script(REFRESH_PROJECT_CONTAINERS="")
@@ -85,7 +92,7 @@ class RefreshBackendSafetyTest(unittest.TestCase):
         self.assert_no_mutation(calls)
 
     def test_unexpected_compose_configuration_stops_before_inspecting_or_mutating(self):
-        result, calls = self.run_script(REFRESH_CONFIGURED_SERVICES="mysql qdrant core-api web")
+        result, calls = self.run_script(REFRESH_CONFIGURED_SERVICES="mysql qdrant redis core-api web")
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("does not contain expected service 'ai-service'", result.stderr)
@@ -97,6 +104,14 @@ class RefreshBackendSafetyTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("Required existing service 'qdrant' is not running", result.stderr)
         self.assert_no_mutation(calls)
+
+    def test_missing_or_stopped_redis_prevents_deploying_a_broken_preview_store(self):
+        for setting in ("REFRESH_EXISTING_SERVICES", "REFRESH_RUNNING_SERVICES"):
+            with self.subTest(setting=setting):
+                result, calls = self.run_script(**{setting: "mysql qdrant ai-service core-api web"})
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("'redis'", result.stderr)
+                self.assert_no_mutation(calls)
 
 
 if __name__ == "__main__":

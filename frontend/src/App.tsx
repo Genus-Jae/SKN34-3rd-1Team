@@ -7,7 +7,6 @@ import { selectAuthStatus } from './presentation/shared/auth/state/authSlice'
 import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
 import { ApplicationPreparationEditorPage, ApplicationPreparationListPage } from './presentation/features/application-preparation/view/ApplicationPreparationPages'
 import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
-import { SavedProgramsPage } from './presentation/features/saved-programs/view/SavedProgramsPage'
 import { DailyReportEmailPage } from './presentation/features/daily-report/view/DailyReportEmailPage'
 import { useReviewSessionIsolation } from './presentation/features/combination-review/viewmodel/useReviewSessionIsolation'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
@@ -17,6 +16,7 @@ import { AdminAccountsPage } from './presentation/features/admin/view/AdminAccou
 import { ForgotPasswordPage } from './presentation/features/auth/view/ForgotPasswordPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
 import { OAuthCompletePage } from './presentation/features/auth/view/OAuthCompletePage'
+import { SavedSupportProgramsPage } from './presentation/features/saved-support-program/view/SavedSupportProgramsPage'
 import { ResetPasswordPage } from './presentation/features/auth/view/ResetPasswordPage'
 import { SignupPage } from './presentation/features/auth/view/SignupPage'
 import { SupportProgramSearchPage } from './presentation/features/support-program-catalog/view/SupportProgramSearchPage'
@@ -30,6 +30,7 @@ import { PartnerProposalBoxPage } from './presentation/features/partner-proposal
 import { PricingPage } from './presentation/features/pricing/view/PricingPage'
 import { PublicPartnerRecruitmentDetailPage } from './presentation/features/public-partner-recruitment/view/PublicPartnerRecruitmentDetailPage'
 import { PublicPartnerRecruitmentListPage } from './presentation/features/public-partner-recruitment/view/PublicPartnerRecruitmentListPage'
+import { GuestSearchDetailLayout } from './presentation/features/support-program-detail/view/GuestSearchDetailLayout'
 import { SupportProgramDetailPage } from './presentation/features/support-program-detail/view/SupportProgramDetailPage'
 import { SupportProgramEvidenceQuestionPage } from './presentation/features/support-program-detail/view/SupportProgramEvidenceQuestionPage'
 import { ReduxSampleItemPage } from './presentation/features/sample-item/view/ReduxSampleItemPage'
@@ -40,12 +41,15 @@ import { useRestoreAuthSession } from './presentation/shared/auth/hooks/useAuthS
 import { GuestOnly, PublicOnly, RequireAuth } from './presentation/shared/auth/RouteGuards'
 import { APP_PREFIX, appPaths, publicPaths } from './presentation/shared/routes/appPaths'
 
-/** 공개 검색은 공용 헤더와 검색 탭을 포함한 자체 레이아웃을 사용하고, 나머지 공개 화면은 공용 헤더를 사용합니다. */
+/** 비로그인 검색 흐름은 헤더·검색 탭이 고정된 자체 레이아웃을 쓰고, 나머지 공개 화면은 공용 헤더를 사용합니다. */
 function PublicLayout() {
   const { pathname } = useLocation()
+  const path = pathname.replace(/\/+$/, '') || publicPaths.landing
+  // 비로그인 검색 흐름(검색·공고 상세·원문 질문)은 헤더·검색 탭이 고정된 자체 레이아웃을 씁니다.
+  const inSearchFlow = path === publicPaths.landing || path === publicPaths.supportProgramDetail || path === publicPaths.supportProgramQuestion
   return (
-    <div className={pathname === '/' ? 'flex h-dvh flex-col overflow-hidden bg-white' : undefined}>
-      {pathname !== '/' ? <AppHeader /> : null}
+    <div className={inSearchFlow ? 'flex h-dvh flex-col overflow-hidden bg-white' : undefined}>
+      {inSearchFlow ? null : <AppHeader />}
       <Outlet />
     </div>
   )
@@ -84,8 +88,11 @@ function App() {
           <Route path={publicPaths.pricing} element={<PricingPage />} />
           <Route path={publicPaths.partners} element={<PublicPartnerRecruitmentListPage />} />
           <Route path={publicPaths.partnerDetail} element={<PublicPartnerRecruitmentDetailPage />} />
-          <Route path={publicPaths.supportProgramDetail} element={<SupportProgramDetailPage />} />
-          <Route path={publicPaths.supportProgramQuestion} element={<SupportProgramEvidenceQuestionPage />} />
+          {/* 상세·원문 질문은 검색 화면의 헤더·검색 탭을 그대로 둔 채 그 아래에 띄웁니다. */}
+          <Route element={<GuestSearchDetailLayout />}>
+            <Route path={publicPaths.supportProgramDetail} element={<SupportProgramDetailPage />} />
+            <Route path={publicPaths.supportProgramQuestion} element={<SupportProgramEvidenceQuestionPage />} />
+          </Route>
         </Route>
         {/* 상태관리 비교 예제는 개발용 화면이라 로그인 여부와 무관하게 같은 헤더 아래에서 엽니다. */}
         <Route path="/examples/sample-item/hook" element={<SampleItemPage />} />
@@ -105,7 +112,7 @@ function App() {
       <Route element={<RequireAuth />}>
         <Route element={<WorkspaceLayout />}>
           <Route path={appPaths.reports} element={<DailyReportPage />} />
-          <Route path={appPaths.savedPrograms} element={<SavedProgramsPage />} />
+          <Route path={appPaths.savedPrograms} element={<SavedSupportProgramsPage />} />
           <Route path={appPaths.applicationPreparations} element={<ApplicationPreparationListPage />} />
           <Route path={appPaths.applicationPreparationNew} element={<ApplicationPreparationEditorPage create />} />
           <Route path={appPaths.applicationPreparationDetail} element={<ApplicationPreparationEditorPage />} />

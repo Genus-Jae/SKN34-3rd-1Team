@@ -25,6 +25,7 @@
 | AI 호출 | OpenAI SDK 3.x, Agents SDK 0.22.x, tiktoken | 임베딩, 후보 점수화, 입력 토큰 제한 | [pyproject.toml](../backend/ai-service/pyproject.toml) |
 | 공고 저장 | MySQL 8.4 | 현재 공고와 원본 식별자, 신청 기간 저장 | [Compose 설정](../infrastructure/compose.yaml) |
 | 의미 검색 | Qdrant 1.17.1, qdrant-client 1.17.x | 임베딩 벡터 저장과 유사도 검색 | [Compose 설정](../infrastructure/compose.yaml) |
+| 임시 검색 결과 보관 | Redis 8.2.9, Spring Data Redis·Lettuce | 비회원 검색 후 로그인 복원용 전체 결과·조건·소유 계정, 고정 30분 TTL | [Redis 적용 상세](redis-search-result-restoration.md) |
 | 검증·실행 | Vitest, Testing Library, JUnit, Testcontainers, pytest, Docker Compose | 서비스별 테스트와 컨테이너 통합 검증 | [CI 정의](../.github/workflows/ci.yml) |
 
 AI 패키지는 Python `>=3.11,<3.15`를 선언하며, Frontend와 AI Service의 의존성은 각각
@@ -35,7 +36,12 @@ AI 패키지는 Python `>=3.11,<3.15`를 선언하며, Frontend와 AI Service의
 코드 계층·DI·MVVM·Flux·Facade·Agent 구조는 [아키텍처 README](architecture/README.md)로 모았습니다.
 아래는 기술별 데이터 역할이며, 요청·동기화의 상세 순서는 [서비스 호출·데이터 흐름](architecture.md)을 참고하세요.
 
-## MySQL과 Qdrant의 역할
+## MySQL·Qdrant·Redis의 역할
+
+MySQL과 Qdrant의 공고 저장·검색 역할은 다음과 같습니다. Redis는 이 둘을 대체하지 않고,
+별도로 비회원의 최종 검색 결과·조건을 로그인 후 복원하기 위해 30분 보관합니다.
+회원 세션·대화 기록은 MySQL에 유지하며 AI 랭킹·질의 임베딩 캐시는 Redis로 옮기지 않았습니다.
+저장 구조·적용 분기·장애 경계는 [Redis 적용 상세](redis-search-result-restoration.md)를 참고하세요.
 
 | 구분 | MySQL | Qdrant |
 |---|---|---|
@@ -156,11 +162,11 @@ C02의 조건 변경 해석은 공고 검색에 앞서는 별도 구체 Agent입
 
 ## 개발 환경과 검증
 
-Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Qdrant를 함께 실행합니다.
-AI Service는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
+Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Qdrant, Redis를 함께 실행합니다.
+AI Service와 Redis는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
 이 구성에 운영 인증·배포 자동화가 포함되어 있다고 가정하면 안 됩니다.
 
-[GitHub Actions](../.github/workflows/ci.yml)는 Frontend 테스트·lint·build, Core 빌드·MySQL 통합 테스트,
+[GitHub Actions](../.github/workflows/ci.yml)는 Frontend 테스트·lint·build, Core 빌드·MySQL·Redis 통합 테스트,
 AI 테스트·패키지 빌드·평가 도구 테스트, 컨테이너 통합 검증을 정의합니다. Compose 검증은 실제
-MySQL·Qdrant와 로컬 기업마당·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
+MySQL·Qdrant·Redis와 로컬 공고 제공처·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
 실제 공고 검색의 정확도와 원문 인용 답변의 정확도는 각각 별도의 실데이터 평가 대상입니다.

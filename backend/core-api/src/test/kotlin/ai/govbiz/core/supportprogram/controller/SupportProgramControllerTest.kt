@@ -17,6 +17,7 @@ import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.facade.AiSupportProgramRetrievalFacade
 import ai.govbiz.core.supportprogram.facade.SupportProgramRankingFacade
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
+import ai.govbiz.core.supportprogram.repository.SupportProgramSearchResultRepository
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.admission.config.SupportProgramRequestAdmissionProperties
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
@@ -92,7 +93,7 @@ class SupportProgramControllerTest {
         mockMvc = MockMvcBuilders
             .standaloneSetup(
                 SupportProgramController(
-                    searchService = SupportProgramSearchPreviewService(service, Clock.systemUTC()),
+                    searchService = SupportProgramSearchPreviewService(service, Mockito.mock(SupportProgramSearchResultRepository::class.java)),
                     readinessService = readinessService,
                     detailService = SupportProgramDetailService(supportProgramRepository),
                     evidenceService = evidenceService,

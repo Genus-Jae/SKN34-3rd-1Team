@@ -18,6 +18,7 @@
 flowchart LR
     Web[React Web] --> Core[Spring Boot Core API]
     Core --> DB[(MySQL 공고 카탈로그)]
+    Core --> Redis[(Redis 로그인 복원용 검색 결과·조건)]
     Core --> AI[FastAPI AI Service]
     AI --> Vector[(Qdrant 공고·원문 근거 벡터 컬렉션)]
     AI --> OpenAI[OpenAI 임베딩·공고 점수화·근거 답변]
@@ -31,6 +32,9 @@ flowchart LR
 사용자 요청의 진입점은 Core API입니다. 브라우저가 외부 공고 API나 AI Service를 직접 호출하지 않으며,
 공공데이터포털 인증키와 OpenAI API 키는 서버에서 사용합니다. 공고 수집은 백그라운드에서 수행하고
 사용자 검색은 이미 공개된 MySQL 카탈로그를 읽습니다.
+Redis는 비회원 검색의 전체 추천 결과·조건을 30분 보관하고 로그인 후 복원할 때 사용합니다.
+첫 AI 검색의 캐시나 대화 기록·회원 세션 저장소로 사용하는 것은 아닙니다.
+저장 구조·만료·계정 소유권·장애 처리는 [Redis 적용 상세](../redis-search-result-restoration.md)를 참고하세요.
 
 ## Frontend: 화면과 데이터 처리 분리
 
@@ -201,6 +205,7 @@ Core API는 기능별 디렉터리 안에서 HTTP, 업무 흐름, 외부 통신,
 |---|---|
 | 외부 API 호출 | Controller → Service → Facade → Client |
 | MySQL 접근 | Controller → Service → Repository → MyBatis Mapper → Mapper XML → MySQL |
+| 임시 검색 결과 저장·복원 | Controller → SupportProgramSearchPreviewService → SupportProgramSearchResultRepository → StringRedisTemplate → Lua → Redis |
 | 상태 계산·공고 모델 | 프레임워크와 무관한 Domain |
 
 Controller는 입력 검증과 공개 DTO 변환을, Service는 사용자 기능의 실행 순서를 맡습니다.

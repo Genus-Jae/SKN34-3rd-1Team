@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Positive
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -51,6 +52,13 @@ class ChatConversationController(private val service: ChatConversationService, p
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ChatConversationResponse.from(
             service.save(account, id, request.expectedVersion, request.snapshot.toString()),
         ))
+    }
+
+    @DeleteMapping("/{id}")
+    fun delete(account: Account, @RequestHeader("X-Chat-Account") expectedAccount: String, @PathVariable id: String): ResponseEntity<Void> {
+        requireSameAccount(account, expectedAccount)
+        service.delete(account, id)
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build()
     }
 
     private fun requireSameAccount(account: Account, expectedAccount: String) {

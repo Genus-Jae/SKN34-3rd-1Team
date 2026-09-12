@@ -90,8 +90,8 @@ pnpm dev
 | `/?mode=filter` | 공용 헤더·보조 패널 숨김 | 키워드·지역·분야·출처·접수 상태와 K-Startup 추가 필터, 최신순·마감순, 페이지 이동 |
 | `/pricing` | 헤더 | 무료·프로·팀 요금제 소개, 출시 예정 안내, FAQ, 무료 검색 진입 |
 | `/partners`, `/partners/detail?recruitmentId=...` | 헤더 | 공개 파트너 모집 목록·상세. 모집 API를 읽기만 하고(검색어는 조회 버튼으로 적용, 출처·정렬 선택 상자는 지원사업 찾기와 같은 모양, 건수는 "검색 결과 N건") 작성 기업 정보는 흐리게 가리며, 자세히 보기·제안 버튼은 로그인하면 할 수 있는 일 다이얼로그(배경 흐림)로 안내 |
-| `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 헤더 | 식별자로 상세 API를 조회해 공고 조건·출처 표시 |
-| `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 헤더 | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
+| `/support-programs/detail?sourceCode=...&sourceProgramId=...` | 검색 화면 안(헤더·검색 탭 고정) | 식별자로 상세 API를 조회해 공고 조건·출처 표시. 검색 탭을 누르면 들어온 검색 화면으로 돌아감. 관심 공고 저장(책갈피 아이콘)·원문 질문·신청 문서 작성은 회원 기능이라 로그인 뒤 같은 곳으로 이어지는 링크 |
+| `/support-programs/detail/question?sourceCode=...&sourceProgramId=...` | 검색 화면 안(헤더·검색 탭 고정) | 공고별 원문 질문 입력·답변·근거 인용·취소, 상세 화면으로 돌아가기 |
 | `/examples/sample-item/hook` | 헤더 | React Hook Form·로컬 요청 상태 예제 |
 | `/examples/sample-item/redux` | 헤더 | Redux 상태 유지 예제 |
 | `/login` | 없음 | 카카오·Google 로그인 버튼(요청 없이 바로 표시, 키가 없으면 누를 때 안내), 이메일·비밀번호 로그인, 로그인 상태 유지, `?next=` 복귀 경로, 소셜 로그인 실패 안내(`?oauthError=`) |
@@ -110,6 +110,7 @@ pnpm dev
 | `/app/partners/edit?recruitmentId=...` | 상세·내 모집글의 수정 버튼 | 모집글 수정. 작성과 같은 폼에 저장된 값을 채우되 묶인 공고는 바꾸지 않음. 남의 글·마감된 글은 안내만 |
 | `/app/partners/detail?recruitmentId=...` | 사이드바 | 모집 API의 상세·참여 제안 보내기·링크 복사. 내 글이면 오른쪽 칸 없이 받은 제안 카드(제안함 링크)와 수정·마감(확인 상자). 제안 상태 흐름은 `?` 도움말 |
 | `/app/proposals` | 사이드바(파트너 관리 · 제안함 탭) | 제안함. 받은 제안 수락·거절, 보낸 제안 철회, 수락된 제안의 상대 담당자 연락처 |
+| `/app/saved-programs` | 사이드바 | 관심 공고함. 공고 상세에서 담은 공고를 최근 순서로 카드로 보여 주고 제목을 누르면 상세(위 링크가 `← 관심 공고함으로 돌아가기`)로 감 |
 | `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
 | `/app/profile` | 사이드바 계정 카드 메뉴 | 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정. 완성도와 체크리스트는 맨 위 요약 카드, 이 정보가 쓰이는 곳·공개 범위는 카드 제목 옆 `?` 도움말(한 칸 배치). 나머지 섹션은 준비 중 |
 | `/app/admin/accounts` | 사이드바 계정 카드 메뉴(관리자) | 하단 관리자 아이디를 눌러 연 메뉴의 `회원·기업`으로 이동. 요약 수치, 요약 수치, 검색(이메일·기업명·사업자등록번호)과 상태·권한·로그인 방법 필터·정렬, "검색 결과 N건". 조건은 주소에 남아 상세에서 돌아와도 유지 |
@@ -148,13 +149,7 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 없는 `recruitmentId`는 다른 모집글로 대체하지 않고 "찾을 수 없습니다"로 보여 줍니다.
 공개 파트너 모집 화면은 `presentation/features/public-partner-recruitment`에 따로 두어 매칭·제안 폼 없이 읽기만 제공하고,
 두 파트너 feature가 함께 쓰는 조회 훅과 표시 helper는 `presentation/shared/partner-recruitment`에 둡니다.
-관심 공고함(`/app/saved-programs`)은 회원용 캘린더 시안이며, 사이드바에 "시안"으로 표시합니다.
-현재는 예시 데이터의 시작일 `시`·마감일 `끝`·동일 날짜 `당일` 일정, 연도/월 이동·달력 내부 스크롤과 공고명·기관명, 지역, 지원 분야,
-지원 대상, 마감 공고 제외 필터를 제공합니다. 관심 공고함 필터는 화면 로컬 상태이며 기존 검색 필터나 Redux를 변경하지 않습니다.
-실제 관심 등록·조회 API, 상세 이동과 진행 관리는 아직 연결하지 않았습니다.
-구현 범위는 [캘린더 작업 기록](../docs/saved-programs-calendar.md)을 참고합니다.
-새 검색은 채팅 화면이 맡으므로 사이드바에 두지 않습니다.
-로그인 작업 사이드바는 흰색 배경과 둥근 메뉴 항목을 사용하며,
+관심 공고함은 `/api/v1/me/saved-programs`를 쓰며 공고 상세의 관심 공고 저장 버튼(비로그인은 로그인 링크)이 담습니다. 로그인 작업 사이드바는 흰색 배경과 둥근 메뉴 항목을 사용하며,
 선택 메뉴는 연한 초록색 배경·초록색 글자, 준비 중 메뉴는 연한 회색 배경·알약 모양 배지로 구분합니다.
 `지원사업 새검색`은 돋보기 아이콘으로 표시하며 기존 대화·조건 초기화 동작을 유지합니다.
 
@@ -175,7 +170,12 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 표시합니다. 다른 창의 변경은 `expectedVersion` 충돌(409)로 거절하며 강제로 덮지 않습니다. 충돌 시 현재 내용을 별도로
 보관한 뒤 새로고침하여 서버 기록을 다시 확인해야 합니다. 미저장 상태에서 창을 닫거나 로그아웃하면 확인을 요청합니다.
 한 대화는 메시지 200개·UTF-8 JSON 2,000,000바이트 이내이며 초과분을 조용히 잘라 저장하지 않습니다.
-기록별 삭제·이름 변경은 아직 제공하지 않으며, 계정 탈퇴 시 개인 대화 기록을 함께 삭제합니다.
+각 기록 오른쪽 휴지통 버튼 → 삭제 확인으로 대화를 개별 삭제합니다. 삭제는 되돌릴 수 없으며 성공 후 목록에서 제거합니다.
+현재 보고 있는 대화를 삭제하면 빈 새 대화로 초기화하고, 다른 대화의 삭제는 현재 화면 내용을 바꾸지 않습니다.
+삭제 중 중복 클릭을 막고 실패 시 목록·현재 대화를 유지한 채 재시도를 안내합니다. 늦은 목록·상세·자동 저장 응답이나
+다른 탭의 저장 요청은 삭제한 대화를 되살리지 않습니다. DB에서도 제목·스냅샷은 비우고 재저장 차단용 식별 정보만 남깁니다.
+대화 삭제는 AI·검색 API를 호출하지 않으며 공고 원본·다른 업무 문서를 삭제하지 않습니다. 이름 변경은 아직 제공하지 않습니다.
+계정 탈퇴 시에는 개인 대화 기록과 삭제 식별 정보를 함께 제거합니다.
 
 `src/test/setupChatHistory.ts`는 다른 기능 테스트의 순차 fetch 대역과 백그라운드 기록 API를 격리합니다.
 `App.chatHistory.test.tsx`와 `ChatConversationRepositoryImpl.test.ts`는 이 대역을 해제하여 실제 HTTP·DTO 경로를 검증합니다.
@@ -201,7 +201,7 @@ HTTP·Repository 경계는 목록·양식 endpoint의 404 또는 상세 endpoint
 공개 검색(`/`)은 대화 전에는 기존 공용 헤더·가로 검색 탭·가운데 소개와 큰 입력창·예시 질문을 표시합니다.
 초안 입력·예시 선택만으로는 화면을 바꾸거나 자동 전송하지 않습니다. 첫 메시지를 전송해도 공용 헤더와
 가로 검색 탭을 유지하며, 본문만 중앙 대화 영역과 하단 입력창으로 전환합니다.
-`GuestSearchLayout`은 첫 메시지를 유효하게 전송한 뒤 AI 대화 검색 탭에서만 왼쪽에 세로로 긴 `AI 대화 도구` 보조 패널을 표시합니다.
+`GuestSearchLayout`(`presentation/shared/support-program`)은 비로그인 검색·공고 상세·원문 질문이 함께 쓰는 껍데기로 공용 헤더와 `SearchModeTabs`를 고정하며, 첫 메시지를 유효하게 전송한 뒤 AI 대화 검색 탭에서만 왼쪽에 세로로 긴 `AI 대화 도구` 보조 패널을 표시합니다.
 초안 입력·예시 선택·필터 조회만으로는 표시하지 않습니다. 대화가 있어도 필터 검색 탭에서는 패널을 숨기며,
 AI 대화 검색 탭으로 돌아오면 기존 대화·초안을 유지한 채 다시 표시합니다. 기존 답변·입력창과 어울리는 둥근 모서리와 옅은 테두리를
 사용하며 공용 헤더·가로 검색 탭은 유지합니다. 요청 취소·실패 뒤에도 AI 탭에 대화가 있으면 패널을 유지하고,
@@ -370,10 +370,6 @@ allowlist에 명시적으로 추가합니다. 테스트용 제공처는 producti
 K-Startup·과학기술정보통신부·충청남도 온라인수출지원시스템 공고도 Core 카탈로그 API를 통해 필터 검색·상세 조회합니다. 이 세 제공처의 원문 근거 질문은 계속 미지원입니다.
 알 수 없는 제공처나 위조 URL이 응답에 포함되면 전체 응답을 거부합니다.
 
-로그인 뒤 `/app/support-programs/detail`에는 관심 공고 등록·해제 아이콘 UI를 표시합니다.
-현재는 별도 ViewModel이 화면 상태만 전환하며 새로고침하면 초기화됩니다. 공개 상세에는 표시하지 않고,
-회원별 관심 공고 API·DB 저장과 관심 공고함 반영이 연결되기 전까지 실제 저장 완료로 표현하지 않습니다.
-
 검색 요청에는 사용자가 확인한 검색 의도와 기업 조건을 전달합니다. C02는 현재 확정 상태·새 메시지와
 필요한 경우 마지막 질문·미확정 제안과 최근 완료 검색 요약을 해석합니다. 전체 대화 이력을 다시 전송하거나
 확인 없이 조건을 자동 적용하지 않습니다. 새 후속 대화 계약은 Frontend·Core API·AI Service에 함께 반영해야 합니다.
@@ -385,7 +381,8 @@ K-Startup·과학기술정보통신부·충청남도 온라인수출지원시스
 src/
 ├── app/                         # Redux Store, typed hook, Awilix 조립·등록
 ├── presentation/features/chat/ # 채팅 검색 View, 페이지 ViewModel, 내부 hooks, chat slice
-├── presentation/features/support-program-detail/ # 상세·질문 페이지와 각 페이지 ViewModel
+├── presentation/features/support-program-detail/ # 상세·질문 페이지와 각 페이지 ViewModel, 관심 공고 저장 ViewModel
+├── presentation/features/saved-support-program/ # 관심 공고함 목록 View와 ViewModel
 ├── presentation/features/sample-item/ # 상태관리 비교 예제
 ├── presentation/features/auth/ # 로그인·회원가입 View와 각 페이지 ViewModel
 ├── presentation/features/partner-recruitment/ # 로그인 뒤 모집 목록·상세·작성 View와 각 페이지 ViewModel

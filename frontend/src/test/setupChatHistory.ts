@@ -5,7 +5,8 @@ import { vi } from 'vitest'
 vi.mock('../data/api/chatConversationApi', async (importOriginal) => {
   const original = await importOriginal<typeof import('../data/api/chatConversationApi')>()
   return { ...original, chatConversationRequest: async (_email: string, path: string, _schema: unknown, _signal: unknown,
-    body?: { expectedVersion: number; snapshot: { messages: { role: string; text: string }[] } }) => {
+    body?: { expectedVersion: number; snapshot: { messages: { role: string; text: string }[] } }, method?: string) => {
+    if (method === 'DELETE') return undefined
     if (body) return { id: decodeURIComponent(path.slice(1)), version: body.expectedVersion + 1,
       title: body.snapshot.messages.find((message) => message.role === 'user')?.text ?? '대화', updatedAt: '2026-09-12T12:00:00' }
     return { items: [], nextCursor: null }

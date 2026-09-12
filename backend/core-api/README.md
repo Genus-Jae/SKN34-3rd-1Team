@@ -18,16 +18,36 @@
 | `GET /api/v1/me/chat-conversations?before=123` | 본인 기록 요약 최대 30개와 `nextCursor`. 생성 ID 내림차순, 스냅샷 본문 제외 |
 | `GET /api/v1/me/chat-conversations/{id}` | 본인 기록의 요약·버전·스냅샷 조회 |
 | `PUT /api/v1/me/chat-conversations/{id}` | `{expectedVersion, snapshot}` 저장. 최초 버전 0, 이후 읽은 버전으로 갱신 |
+| `DELETE /api/v1/me/chat-conversations/{id}` | 본인 대화의 제목·스냅샷 삭제. 본문 없는 204, 반복 요청도 동일 |
 
 모든 요청은 세션 쿠키와 `X-Chat-Account`(화면 계정 이메일의 URL 인코딩 값)를 보냅니다. 소유자는 세션의 account ID로만
 정하고, 헤더는 다른 탭에서 계정이 바뀐 경우 요청을 차단하는 사전조건입니다. 비로그인·계정 불일치는 401, 타인 기록은
-404, 허용 Origin 없는 상태 변경은 403입니다. 관리자도 타인의 개인 대화를 조회하지 않으며 응답 캐시는 `no-store`입니다.
+조회 시 404, 허용 Origin 없는 상태 변경은 403입니다. 삭제는 기록의 존재 여부를 노출하지 않고 본인 범위에서만 204를
+반환하므로 다른 계정의 같은 ID 기록에는 영향이 없습니다. 관리자도 타인의 개인 대화를 조회·삭제할 수 없으며 응답 캐시는 `no-store`입니다.
 
 스냅샷 `schemaVersion=1`, 첫 사용자 메시지 ID와 경로 ID 일치, 메시지 200개·UTF-8 JSON 2,000,000바이트 이하를 검증합니다.
 제목은 첫 질문에서 유니코드 문자 최대 80개로 만듭니다. 이것은 회원이 보관하는 화면 데이터로, 서버가 보증한 검색 결과나
 AI 입력의 신뢰 근거로 사용하지 않습니다. 프론트엔드는 복원 시 DTO·공식 원문 링크 등을 별도로 검증합니다.
 저장 transaction에서 계정 행을 잠그고 버전을 검사합니다. 오래된 다른 내용은 409이며 같은 JSON의 재전송은 멱등입니다.
-계정 탈퇴 이벤트는 같은 transaction에서 대화 기록을 제거합니다. 저장·조회에는 외부 API·OpenAI 호출이 없습니다.
+`V21__add_chat_conversation_deletion.sql`은 `deleted_at`을 추가합니다. 삭제는 제목을 빈 문자열, 스냅샷을 `{}`로
+비우고 최소 식별 정보·삭제 표시만 남깁니다. 목록·상세에서 제외하며 복구 기능은 없습니다. 최초 저장보다 삭제가 먼저
+도착해도 같은 계정 잠금 아래 삭제 표시를 기록하고, 이후 모든 버전의 저장을 409로 거절해 자동 저장·다른 탭의 재생성을 막습니다.
+삭제 응답 유실 시 같은 DELETE를 재시도할 수 있습니다. 계정 탈퇴 이벤트는 같은 transaction에서 삭제 표시까지 제거합니다.
+저장·조회·삭제에는 외부 API·OpenAI 호출이 없습니다.
+
+### V19 병합 충돌과 기존 DB 업그레이드
+
+마이그레이션 순서는 `V19__create_chat_conversation.sql` → `V20__add_account_admin_management.sql` →
+`V21__add_chat_conversation_deletion.sql`입니다. 관리자 기능 브랜치의 중복 V19는 SQL 내용을 바꾸지 않고 V20으로
+이동했습니다. 이미 적용된 대화용 V19의 파일·체크섬·적용 이력은 유지하며, 빈 DB와 대화용 V19 적용 DB는 정상 기동으로
+남은 버전을 순서대로 적용합니다. 데이터 초기화나 `flyway repair`는 필요하지 않습니다.
+
+업그레이드 전에는 대상 DB의 `flyway_schema_history`에서 `version`, `script`, `checksum`, `success`를 확인하세요.
+**관리자용 `V19__add_account_admin_management.sql`을 먼저 적용한 별도 DB는 바로 재기동하지 마세요.** 해당 DB는
+대화용 V19 적용 DB와 이력이 다릅니다. 전체 백업과 관리자 스키마·SQL 체크섬 검증 후, DBA와 함께 관리자 이력의 버전·파일명을
+V20에 맞추고 미적용 대화용 V19를 한 번만 out-of-order로 적용하는 별도 이력 정합화가 필요합니다. 기존 설치 순서·체크섬·
+적용 시각은 보존해야 하며 이 저장소가 다른 DB의 이력을 자동 수정하지 않습니다. 무조건적인 `repair`, 이력 삭제,
+`validate-on-migrate=false`, 볼륨 초기화로 충돌을 숨기지 마세요.
 
 ## 실행
 
@@ -85,12 +105,14 @@ V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 
 없어 지원하지 않습니다. 사용자 임의 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색도 지원하지 않습니다.
 같은 공고에 읽을 수 있는 공식 문서가 있으면 크기 제한을 넘거나 텍스트를 추출할 수 없는 첨부는 제외 사유와 파일명을
 `coverageWarnings`에 남기고 분석을 계속합니다. 공고 하나의 모든 지원 형식 첨부가 제외되면 기존처럼 기술 실패로 종료합니다.
+중복 지원 검토 한 실행에서 보존하는 원본은 최대 12개이며, 초과 조합은 일부만 분석하지 않고 `SOURCE_TOO_LARGE`로 종료합니다.
 원문·입력·결과는 실행마다 보존하며 기존 검색 Qdrant 색인과 분리됩니다. 자동 수집 근거를 사람 검수 완료로 표시하지 않습니다.
 같은 요청 키는 AI를 재호출하지 않습니다. 새 실행은 계정 식별자로 기존 공개 요청 제한을 공유하며,
 검토별 DB 동시 실행 1개·Core 프로세스별 중복 검토 2개 한도를 추가로 적용합니다.
 
 `CombinationReviewRunService`는 실행 순서와 저장을, `AiCombinationReviewFacade`는 AI 호출·계약 검증 경계를 담당합니다.
-두 기능이 함께 쓰는 공식 첨부 수집·파싱은 `supportprogram/client/bizinfo/BizInfoAttachmentClient`와
+중복 지원 검토는 기업마당과 과기정통부 공고를 자동 분석하며, 현재 카탈로그의 과기정통부 공식 상세 URL을 다시 검증한 뒤 첨부를 수집합니다.
+두 기능이 함께 쓰는 공식 첨부 수집·파싱은 제공처별 `BizInfoAttachmentClient`·`MsitAttachmentClient`와
 `supportprogram/client/document/SupportProgramDocumentParser`에 두고, AI DTO 변환은 `AiCombinationReviewMapper`가 담당합니다.
 업무 실패는 `domain/exception`, 외부 시스템 실패는 `client/exception`에 두어 Repository·Client가 Service에 역으로 의존하지 않습니다.
 이는 프로젝트의 기능 중심 레이어드 구조이며 범용 port/interface나 전달만 하는 Facade를 추가한 구조는 아닙니다.
@@ -215,6 +237,7 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `POST /api/v1/admin/accounts/{id}/suspend` `/unsuspend` `/sessions/revoke` | 관리자 전용. 사유(1~500자) 필수. 정지는 모든 세션 삭제, 자기 계정 422 `ADMIN_SELF_ACTION`, 다른 관리자 422 `ADMIN_TARGET_PROTECTED`, 이미 그 상태면 409. `account_admin_action`에 기록 |
 | `GET /api/v1/me/company/lookup` | 로그인한 회원이 사업자등록번호로 국세청 등록 여부·상호·사업자 상태를 미리 보기(Bizno) |
 | `GET` `POST` `PUT /api/v1/me/company` | 내 기업 조회·등록(계속사업자만, 201)·담당자 입력 항목 수정 |
+| `GET` `POST` `DELETE /api/v1/me/saved-programs`, `GET …/status` | 관심 공고함. 로그인 회원이 현재 노출 중인 공고를 담고(같은 공고는 한 번) 빼며 최근 순서로 읽음. 없거나 숨겨진 공고는 404 `SUPPORT_PROGRAM_NOT_FOUND` |
 | `GET` `PUT /api/v1/me/company/partner-profile` | 협업·파트너 설정(참여 역할·관심 분야·한 줄 소개·역량 태그) 조회·저장. 기업당 한 행 UPSERT |
 | `GET /api/v1/partners/recruitments`, `GET .../{id}` | 파트너 모집글 목록(검색·찾는 역할·지역·내 글·정렬·페이지)과 상세. 세션 없이도 읽기 가능 |
 | `POST /api/v1/partners/recruitments` | 기업을 등록한 회원이 접수 중인 공고 하나에 모집글 작성(201). 공고당 하나 |
@@ -305,18 +328,33 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 결과 설명�
   비로그인 결과가 3개 이상일 때만 소문자 UUID `resultToken`과 UTC ISO-8601 `expiresAt`이 존재하고,
   나머지 경우 두 값은 `null`입니다. 기존 내부 검색과 일일 보고서·평가의 최대 5개 결과는 그대로 유지합니다.
 - 로그인 결과 복원: 인증된 `POST /api/v1/support-programs/search/results`에 `{resultToken}`을 보냅니다.
-  `Controller → SupportProgramSearchPreviewService`에서 보관된 원본 결과를 그대로 반환하며 검색·DB·모델을
-  다시 호출하지 않습니다. 응답은 검색 응답에 `context: {query, acceptingOnly, companyConditions}`를 추가한
+  `Controller → SupportProgramSearchPreviewService → SupportProgramSearchResultRepository → Redis`에서
+  보관된 원본 결과를 그대로 반환하며 검색·카탈로그 MySQL 조회·모델 호출을 다시 실행하지 않습니다.
+  세션 인증은 기존 MySQL 경로를 유지합니다. 응답은 검색 응답에 `context: {query, acceptingOnly, companyConditions}`를 추가한
   형태이며, `resultToken`과 `expiresAt`은 `null`입니다. 조건 텍스트는 최초 검색에서 정규화한 값이고
   기업 조건 미입력 값은 `null`입니다. 빈 GET 검색은 응답 `query`가 `""`, 대화용 `context.query`가 `null`입니다.
   이 조회는 검색·해석·근거 질문의 AI 요청 제한을 소비하지 않습니다. 세션 쿠키가 있는 POST에는 기존과 같이
   허용된 `Origin` 또는 `Referer`가 필요합니다.
   최초 복원 시 토큰이 `account.id`에 귀속되며 같은 계정의 재시도는 동일 결과를 반환합니다. 미인증·유효하지 않은
-  세션은 401, 다른 계정·만료·미존재·용량 초과로 제거된 토큰은 모두 410 `SUPPORT_PROGRAM_SEARCH_RESULT_EXPIRED`입니다.
-  결과는 단일 Core 프로세스 메모리에 발급 시점부터 30분간 최대 128개 보관하고, 한도 도달 시 가장 오래된 결과부터
-  제거합니다. 조회·로그인으로 만료가 연장되지 않으며 서버 재시작 시 사라집니다. 실패 시 자동으로 모델을 다시 호출하지
-  않으므로 새 검색은 사용자가 요청해야 합니다. 여러 Core 인스턴스 사이에서는 이 메모리를 공유하지 않습니다.
+  세션은 401, 다른 계정·만료·미존재 토큰은 모두 410 `SUPPORT_PROGRAM_SEARCH_RESULT_EXPIRED`입니다.
+  결과와 조건은 Redis의 `govbiz:search-result:v1:{SHA-256(token)}` hash에 JSON으로 30분 보관합니다.
+  TTL과 `expiresAt`은 Redis 시계 기준이며 조회·로그인으로 연장하지 않습니다. Lua로 최초 계정 연결을 원자적으로
+  처리해 여러 Core 인스턴스의 동시 복원도 한 계정에만 귀속됩니다. 같은 Redis를 쓰면 Core 재시작 후에도 복원됩니다.
+  기존 128건 조기 퇴거는 제거했습니다. Compose는 `128mb/noeviction`으로 메모리를 제한하고 개별 JSON은 최대 2MiB입니다.
+  저장소 연결·타임아웃·용량·역직렬화 오류는 503 `SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE`로 반환하며,
+  메모리 fallback이나 자동 재검색은 없습니다. 회원 검색 또는 2건 이하의 비회원 결과는 Redis를 사용하지 않습니다.
+  대화 기록 원본·회원 세션·공고는 계속 MySQL에 저장합니다. 첫 검색의 AI 점수화 속도를 높이는 캐시 변경은 아닙니다.
   GET·POST 검색과 복원은 성공·오류 응답에 모두 `Cache-Control: no-store`를 사용합니다.
+
+  Compose는 Redis 8.2.9와 `redis-data` AOF 볼륨을 추가합니다. `appendfsync everysec`이므로 비정상 종료 시
+  최근 약 1초의 저장/계정 연결이 유실될 수 있고, 복제·자동 failover·강한 내구성을 제공하지 않습니다.
+  TTL은 조회 가능한 기간입니다. 만료가 AOF·백업의 물리적 즉시 삭제를 보장하지 않으므로 디스크 접근 권한과 정리 정책도 관리해야 합니다.
+  `SupportProgramSearchResultRedisConfig`는 Lettuce 전용 DNS 캐시를 최대 5초로 제한해 Redis 교체 후 IP 변경을
+  재연결에서 반영합니다. JVM 전역 DNS나 외부 HTTP 클라이언트 설정은 바꾸지 않습니다.
+  직접 Core를 실행할 때는 Redis를 별도로 준비하고 `REDIS_HOST`/`REDIS_PORT`를 지정합니다(기본 `127.0.0.1:6379`).
+  연결/명령 제한은 `REDIS_CONNECT_TIMEOUT`/`REDIS_TIMEOUT`(기본 1초), 외부 운영 Redis의 인증·TLS는
+  `REDIS_USERNAME`/`REDIS_PASSWORD`/`REDIS_SSL_ENABLED`로 주입합니다. 로컬 Compose의 Redis는 무인증 내부망 전용이며
+  호스트 포트를 열지 않습니다. 운영에는 네트워크 격리·ACL·TLS·메모리/AOF 감시가 별도로 필요합니다.
 - 자격 검토: 조건 유무와 관계없이 점수화 계약은 `govbiz-support-program-ranking-v5`입니다.
   저장된 공식 API 본문 `summary` 최대 6,000, 지원대상 `targetDescription` 최대 2,000 Unicode code point를
   AI에 전달합니다. 둘 중 하나라도 잘리면 `sourceTextTruncated=true`이며 대상·지역 모두 `UNKNOWN`만 허용합니다.
@@ -485,6 +523,7 @@ supportprogram/
 │   ├── search             # DB 조회 → 의미·키워드 순위 결합 → AI 점수화
 │   ├── conversation       # 대화 변경 인용 검증·초안 병합·확정 조건 대비 변경 계산
 │   ├── detail             # 현재 공고 상세 조회
+│   ├── saved              # 회원의 관심 공고함(담기·빼기·목록)
 │   ├── readiness          # 제공처별 준비 상태와 전체 검색 범위 집계
 │   ├── evidence           # 공식 원문 캐시·청킹 → 근거 검색·답변
 │   ├── sync               # 수집·색인 준비·DB 공개와 별도 벡터 복구

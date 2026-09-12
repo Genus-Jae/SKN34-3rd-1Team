@@ -10,11 +10,17 @@
 - 기업마당 공식 원문 기반 질문·답변과 근거 인용
 - 공고 자동 동기화, 벡터 색인 복구, 검색 준비 상태 안내
 - 검색 취소·재시도·새 검색 초기화, 현재 적용 조건 표시, 요청량·동시 실행 제한
+- 비회원 검색 결과·조건의 30분 임시 보관과 로그인 후 전체 결과 복원
 
 검색 관련도와 신청 자격 확인은 구분해 표시합니다. 최근 개선과 검증 범위는
 [검색 품질 개선 기록](docs/search-relevance-v5-fix.md)을 참고하세요.
 
-기술 구성: React · TypeScript · Kotlin · Spring Boot · MyBatis · FastAPI · OpenAI · MySQL · Qdrant
+기술 구성: React · TypeScript · Kotlin · Spring Boot · MyBatis · FastAPI · OpenAI · MySQL · Qdrant · Redis
+
+Redis는 비회원 검색 후 로그인할 때 복원할 전체 추천 결과·검색 조건을 30분 보관합니다.
+같은 Redis를 사용하는 Core는 재시작하거나 여러 인스턴스로 실행해도 만료 전 결과와 최초 복원 계정을 공유합니다.
+첫 AI 검색을 빠르게 하는 캐시는 아니며, 대화 기록·회원 세션·공고 데이터는 MySQL에 유지합니다.
+저장 구조·장애 처리·운영 한계는 [Redis 적용 상세](docs/redis-search-result-restoration.md)를 참고하세요.
 
 ## 빠른 시작
 
@@ -39,7 +45,8 @@ Core·AI만 교체해야 Frontend와 API 버전이 어긋나지 않습니다.
 |---|---|
 | [아키텍처 README](docs/architecture/README.md) | 서비스 구성, 계층·DI·MVVM·Flux·Facade·Agent 설계 |
 | [호출·데이터 흐름](docs/architecture.md) | 검색·동기화·RAG·장애 처리의 실행 순서 |
-| [기술 구성](docs/technology.md) | 기술 스택·버전과 MySQL·Qdrant의 역할 |
+| [기술 구성](docs/technology.md) | 기술 스택·버전과 MySQL·Qdrant·Redis의 역할 |
+| [Redis 적용 상세](docs/redis-search-result-restoration.md) | 로그인 후 검색 결과 복원, 저장 구조·TTL·계정 소유권·장애·검증 |
 | [구현 현황](docs/implementation-status.md) | 완료 단계·검증 결과·현재 한계·다음 작업 |
 | [검색 평가 결과](evaluation/support-program-search/runs/support-program-catalog-20260906-v1/README.md) | 고정 실데이터·AI-only 판정·전후 비교·재현 방법 |
 | [실행·검증](infrastructure/README.md) | Compose·환경변수·통합 검증 |

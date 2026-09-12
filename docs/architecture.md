@@ -33,7 +33,8 @@ Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 전체 
 분석 POST는 `CombinationReviewRunController → CombinationReviewRunService`로 들어가 다음 경로를 실행합니다.
 
 1. `CombinationReviewRunRepository → MyBatis → MySQL`: 소유자·버전·요청 키 확인 후 RUNNING 입력 스냅샷 예약.
-2. `BizInfoAttachmentClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 수집.
+2. 선택한 제공처에 따라 `BizInfoAttachmentClient → 기업마당 공식 상세 → 직접 연결된 기업마당/중기부 첨부` 또는
+   `SupportProgramDetailService → MsitAttachmentClient → 과기정통부 공식 상세 → 직접 연결된 첨부`를 수집.
 3. `SupportProgramDocumentParser`: PDFBox 또는 HWPX ZIP/XML의 텍스트·위치를 추출. 신청 문서 발견과 중복 지원 검토가 같은 안전 경계를 사용.
    공고별로 읽을 수 있는 문서가 있으면 크기 제한 초과·텍스트 추출 불가 첨부는 경고와 함께 제외하고, 모두 제외되면 실행을 실패 처리.
 4. `CombinationReviewRunRepository`: 원문 바이트·해시·메타데이터·텍스트를 짧은 transaction에서 보존.
@@ -84,6 +85,15 @@ Core는 세션 account ID로 모든 SQL을 제한하고 `X-Chat-Account` 사전�
 화면 데이터로 신뢰된 검색 결과나 서버 권한의 근거가 아닙니다. 탈퇴 이벤트의 대화 삭제는 탈퇴 transaction에 참여합니다.
 브라우저는 계정 변경 때 진행 요청·메모리를 폐기하고, 조회 중 새 입력·화면 이동이 발생하면 늦은 복원을 적용하지 않습니다.
 저장 실패는 현재 창의 내용을 유지한 채 안내하며 자동 fallback·강제 덮어쓰기를 하지 않습니다.
+기록별 삭제는 같은 계층을 따라 `DELETE /api/v1/me/chat-conversations/{id}`로 처리합니다. `V21`의 `deleted_at`을
+설정하면서 제목·스냅샷을 비우고, 저장과 같은 계정 행 잠금으로 늦은 최초 저장·갱신까지 차단합니다. 삭제는 멱등 204,
+삭제된 ID의 조회는 404, 재저장은 409입니다. 다른 계정의 데이터에는 영향을 주지 않습니다.
+Frontend는 확인 후 삭제 요청을 보내고 성공 시에만 목록·메모리를 지웁니다. 현재 대화 삭제 시 Redux 요청 ID도 초기화하며,
+삭제 중 다른 대화로 전환했다면 그 대화는 보존합니다. 늦은 목록·상세·저장 응답은 삭제한 기록을 다시 표시하지 않습니다.
+삭제 실패 시 기록을 유지하고 재시도를 안내합니다. 원문 공고·Qdrant 색인·다른 업무 문서는 삭제하지 않습니다.
+병합 충돌을 해소한 마이그레이션 순서는 대화 테이블 V19 → 관리자 계정 관리 V20 → 대화 삭제 V21입니다.
+대화용 V19의 기존 이력은 변경하지 않습니다. 관리자용 V19가 적용된 별도 DB의 주의사항은
+[Core API 업그레이드 안내](../backend/core-api/README.md#v19-병합-충돌과-기존-db-업그레이드)를 따릅니다.
 
 ## 기업 맞춤 일일 리포트
 
@@ -144,24 +154,35 @@ GET /api/v1/support-programs/search (기존 단문·최신 목록)
 
 공개 GET·POST 검색은 로그인 세션에 따라 비회원에게 앞의 최대 2건, 회원에게 최대 5건을 반환합니다.
 응답의 `totalCount`는 전체 카탈로그 건수가 아니라 이번 추천 결과 수(0~5건)입니다. 비회원의 추가 결과가 있으면
-Core의 `SupportProgramSearchPreviewService`가 원본 결과·검색 조건을 최대 30분/128개까지 메모리에 보관하고,
+Core의 `SupportProgramSearchPreviewService`가 `SupportProgramSearchResultRepository`를 통해 원본 결과·검색 조건을 Redis에 30분 보관하고,
 브라우저에는 공개 2건과 난수 `resultToken`, `expiresAt`만 전달합니다. 잠긴 카드에는 원본 내용을 전달하지 않습니다.
 
 ```text
 선택한 잠금 카드 → 회원가입/로그인 → POST /api/v1/support-programs/search/results
   → SupportProgramController → SupportProgramSearchPreviewService
-    → 세션 인증·토큰 만료·소유 계정 확인 → 보관된 전체 결과와 검색 조건
+    → SupportProgramSearchResultRepository → Redis: Lua로 토큰 만료·소유 계정 확인 및 최초 계정 연결
+      → 보관된 전체 결과와 검색 조건 (회원 세션 인증은 기존 MySQL 경로)
 ```
 
 복원은 추가 검색·임베딩·랭킹 호출 없이 같은 결과를 반환하며 첫 조회 계정에 토큰을 귀속시킵니다.
-같은 계정의 재시도는 허용하지만 만료·퇴거·서버 재시작·다른 계정의 조회는 410으로 명시합니다.
-보관은 단일 Core 프로세스에 한정되며 검색·복원 응답에는 `Cache-Control: no-store`를 설정합니다.
+같은 계정의 재시도는 허용하지만 만료·미존재·다른 계정의 조회는 410으로 명시합니다.
+`govbiz:search-result:v1:{SHA-256(token)}` 키의 JSON·소유 계정·TTL을 함께 관리하므로 Core 재시작·여러 Core 사이에서
+상태를 공유합니다. TTL과 응답 `expiresAt`은 Redis 시계 기준의 고정 30분이며 복원으로 연장하지 않습니다.
+기존 128건 조기 퇴거 대신 Redis `128mb/noeviction`과 개별 JSON 2MiB 제한을 사용합니다. 저장소 장애·용량 초과는
+503 `SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE`이고 로컬 메모리 fallback/자동 재검색은 없습니다.
+Compose는 Redis 8.2.9·AOF 볼륨(`everysec`)을 사용하므로 Redis 컨테이너 재생성 후에도 볼륨이 남으면 복원되지만,
+비정상 종료 시 최근 약 1초의 결과/계정 연결이 유실될 수 있습니다. 다중 Redis 복제/고가용성은 아직 구현하지 않습니다.
+Lettuce 전용 DNS 캐시는 최대 5초로 제한해 Redis 컨테이너 교체로 IP가 바뀌어도 재연결할 때 새 주소를 확인합니다.
+대화 기록 원본과 회원 세션은 MySQL을 유지하고, AI 랭킹·임베딩 캐시는 기존 AI Service 메모리에 둡니다.
+Redis 추가는 첫 검색을 빠르게 하는 변경이 아니며 검색·복원 응답에는 `Cache-Control: no-store`를 설정합니다.
 일일 리포트·평가는 기존 내부 `SupportProgramSearchService`를 계속 사용하고, 공개 카탈로그·상세 조회는 이 제한과 분리합니다.
+파일별 책임·저장 구조·TTL·계정 경합·장애·설정·검증은 [Redis 적용 상세](redis-search-result-restoration.md)에 정리합니다.
 
 Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보냅니다. Core의 공개 DTO는
 날짜·길이·문자 입력을 검증한 뒤 조건 Domain 모델로 변환합니다. 검색 Service는 요청별 서울 날짜를
 한 번 정하고, 후보 검색에는 조건을 포함한 검색문을, Ranking Facade에는 원래 질의와 구조화된 조건을
-전달합니다. Facade가 AI 전용 DTO로 바꿉니다. 조건은 Repository에 저장하지 않으며 SQL·동기화·스키마는
+전달합니다. Facade가 AI 전용 DTO로 바꿉니다. 이 검색 요청의 조건을 지원사업 원본 Repository나 계정·기업 DB에
+저장하지는 않지만, 로그인 복원용 Redis 스냅샷에는 함께 보관합니다. 검색 조건 도입으로 SQL·동기화·스키마는
 변경하지 않습니다. 조건이 없는 GET 및 비웹 평가 호출은 기존 단문 경로를 유지합니다.
 
 1. Repository는 `is_source_present = TRUE`이고 제공처의 공개 세대·지문이 있는 공고를 읽습니다. 자연어 검색은
@@ -582,14 +603,15 @@ AI Service는 조건 변경 해석·점수화·원문 근거 답변에서 각각
 컬렉션을 직접 사용합니다.
 
 랭킹 모델은 `OPENAI_RANKING_MODEL`로 지정하고 미설정이면 공통 `OPENAI_MODEL`을 상속합니다.
-`OPENAI_RANKING_REASONING_EFFORT`는 `none`/`low`만 허용합니다. 정확도 우선 프로필은 랭킹만
-Sol/low를 사용하며 대화·원문 답변 모델은 바꾸지 않습니다. 모델 객체는 분리하되 동일한 OpenAI
+`OPENAI_RANKING_REASONING_EFFORT`는 `none`/`low`만 허용합니다. 제공 설정 예제는 비용 절감을 위해 랭킹도
+Luna/low를 사용하며 대화·원문 답변 모델은 바꾸지 않습니다. 모델 객체는 분리하되 동일한 OpenAI
 클라이언트·인증·재시도 정책을 공유하며 새 provider나 orchestration 계층은 없습니다.
 출력 축약은 미채택이며 기존 후보 ID·필드명·출력 계약을 유지합니다. 축약 구현은 평가 경로에만 남깁니다.
 `OPENAI_RANKING_SERVICE_TIER` 미설정 시 코드·Compose 기본값은 `default`입니다. 제공 `.env.example`은
-사용자 승인에 따른 Fast 상시 사용 프로필인 `priority`를 명시하며, 현재 Sol의 랭킹 토큰 단가는 일반 처리의 2배입니다.
-랭킹 요청에만 적용하고 대화 해석·RAG 답변·임베딩 설정은 바꾸지 않습니다. 모델·후보·점수·출력/시간 상한은 유지합니다.
-설정 프로필과 배포·실측 상태는 [지역 충돌·Fast 기록](region-conflict-fast-20260908.md)에서 구분합니다.
+기존 Fast 상시 사용 프로필인 `priority`를 유지합니다. 일반 처리보다 추가 요금이 있으며 일반 처리는 `default`로 지정합니다.
+랭킹 요청에만 적용하고 대화 해석·RAG 답변·임베딩 설정은 바꾸지 않습니다. 후보·점수·출력/시간 상한은 유지합니다.
+모델 교체는 토큰 단가 절감이며 토큰 수나 품질·속도의 개선을 보장하지 않습니다.
+이전 Sol의 배포·실측은 [지역 충돌·Fast 기록](region-conflict-fast-20260908.md)에 보존하며 Luna 평가 결과로 재해석하지 않습니다.
 
 두 색인 Service가 실제로 공유하는 입력 토큰 상한 처리는 `support_program_embedding.py`의 함수 하나로
 유지합니다. 토크나이저 준비·인코딩·잘라내기를 작업 스레드에서 실행해 HTTP 이벤트 루프를 막지 않으며,

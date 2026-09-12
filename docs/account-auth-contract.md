@@ -473,6 +473,22 @@ client secret과 nonce로 막습니다.
 `oauthError=unavailable`로 돌려보내 로그인 화면이 "키가 설정되지 않아 사용할 수 없습니다"를 안내합니다. 목록 endpoint는 설정
 확인용입니다. Google 인가 요청에는 `prompt`를 두지 않아, 이미 로그인·동의한 계정은 선택 화면 없이 돌아옵니다. 서버가 보내는 `/oauth/complete`는 세션 힌트를 남기고 `/auth/me`로 계정을 확인한 뒤 `next`로 이동합니다.
 
+## 관심 공고함
+
+로그인한 회원이 다시 볼 공고를 담아 둡니다. 세션이 없으면 401이고, 담기·빼기는 세션 쿠키가 붙은 상태 변경이라 Origin 검사도
+거칩니다. 공고 내용은 저장하지 않고 조회 때 `support_program`을 함께 읽으므로 접수 상태는 현재 공고와 같고, 동기화로 더 이상
+노출되지 않는 공고는 목록·상태에서 빠집니다(행은 남아 다시 노출되면 돌아옵니다).
+
+| 메서드·경로 | 용도 | 성공 |
+|---|---|---|
+| `GET /api/v1/me/saved-programs` | 목록. 최근에 담은 순서 | 200 `programs[]`(`savedAt`, `program`(공고 상세 응답과 같음)) |
+| `GET /api/v1/me/saved-programs/status?sourceCode=&sourceProgramId=` | 담겨 있는지 | 200 `{ "saved": true }` |
+| `POST /api/v1/me/saved-programs` `{ "sourceCode": "BIZINFO", "sourceProgramId": "PBLN_…" }` | 담기. 이미 담긴 공고는 그대로 | 200 담은 항목. 없거나 숨겨진 공고 404 `SUPPORT_PROGRAM_NOT_FOUND`, 형식 오류 400 |
+| `DELETE /api/v1/me/saved-programs?sourceCode=&sourceProgramId=` | 빼기. 담기지 않은 공고도 성공 | 204 |
+
+원본 ID에는 `/`가 올 수 있어 경로가 아니라 본문·쿼리로 받습니다. 프런트의 `/app/saved-programs`가 목록을 보여 주고 공고 상세의
+책갈피 아이콘 버튼이 담기·빼기를 오가며 결과 안내는 4초 뒤 사라집니다. 비로그인 공개 상세는 요청 없이 로그인 뒤 같은 공고로 돌아오는 링크만 둡니다(원문 질문·신청 문서 작성도 같은 방식).
+
 ## 관리자 계정 관리
 
 `/api/v1/admin/accounts` 아래는 관리자 전용입니다. Controller가 `AdminPrincipal` 파라미터를 받으므로 세션이 없으면 401,

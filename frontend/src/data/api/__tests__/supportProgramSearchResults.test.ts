@@ -61,7 +61,7 @@ describe('검색 공개 범위와 저장 결과 복원 계약', () => {
     expect(restoredSupportProgramSearchResponseDtoSchema.safeParse({ ...restored, query: '', context: emptyConversationContext }).success).toBe(true)
   })
 
-  it.each([[401, 'unauthorized'], [410, 'expired'], [500, 'unavailable']] as const)('%s 복원 실패는 안전한 %s 오류로 알리고 재검색하지 않는다', async (status, reason) => {
+  it.each([[401, 'unauthorized'], [410, 'expired'], [500, 'unavailable'], [503, 'unavailable']] as const)('%s 복원 실패는 안전한 %s 오류로 알리고 재검색하지 않는다', async (status, reason) => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('private server detail', { status }))
     vi.stubGlobal('fetch', fetchMock)
     const error = await new SupportProgramRepositoryImpl().restoreSearch(resultToken).catch((failure: unknown) => failure)

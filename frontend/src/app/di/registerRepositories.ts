@@ -6,6 +6,7 @@ import { asClass } from 'awilix/browser'
 
 import { AccountRepositoryImpl } from '../../data/repositories/AccountRepositoryImpl'
 import { AdminAccountRepositoryImpl } from '../../data/repositories/AdminAccountRepositoryImpl'
+import { SavedSupportProgramRepositoryImpl } from '../../data/repositories/SavedSupportProgramRepositoryImpl'
 import { CompanyRepositoryImpl } from '../../data/repositories/CompanyRepositoryImpl'
 import { PartnerProposalRepositoryImpl } from '../../data/repositories/PartnerProposalRepositoryImpl'
 import { PartnerRecruitmentRepositoryImpl } from '../../data/repositories/PartnerRecruitmentRepositoryImpl'
@@ -22,6 +23,7 @@ export function registerRepositories(container: AppContainer) {
     combinationReviewRepository: asClass(CombinationReviewRepositoryImpl).singleton(),
     accountRepository: asClass(AccountRepositoryImpl).singleton(),
     adminAccountRepository: asClass(AdminAccountRepositoryImpl).singleton(),
+    savedSupportProgramRepository: asClass(SavedSupportProgramRepositoryImpl).singleton(),
     companyRepository: asClass(CompanyRepositoryImpl).singleton(),
     partnerProposalRepository: asClass(PartnerProposalRepositoryImpl).singleton(),
     partnerRecruitmentRepository: asClass(PartnerRecruitmentRepositoryImpl).singleton(),

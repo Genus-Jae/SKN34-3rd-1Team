@@ -716,7 +716,7 @@ def responses_body(output_json: str) -> dict[str, object]:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("candidate_count", [1, 20])
-@pytest.mark.parametrize("model_name,reasoning", [("gpt-5.6-luna", "none"), ("gpt-5.6-sol", "low")])
+@pytest.mark.parametrize("model_name,reasoning", [("gpt-5.6-luna", "none"), ("gpt-5.6-sol", "low"), ("gpt-5.6-luna", "low")])
 async def test_openai_request_uses_non_stored_strict_structured_output(candidate_count, model_name, reasoning) -> None:
     captured_requests: list[dict[str, object]] = []
     captured_timeouts = []

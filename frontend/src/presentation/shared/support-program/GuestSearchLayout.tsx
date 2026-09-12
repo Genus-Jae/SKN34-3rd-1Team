@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 
-import { AppHeader } from '../../../shared/app-header/AppHeader'
+import { AppHeader } from '../app-header/AppHeader'
 
-/** 대화가 있는 AI 검색 탭에서만 보조 패널을 표시하고 공용 헤더·가로 검색 탭은 유지합니다. */
+/**
+ * 비로그인 검색 흐름(검색·공고 상세·원문 질문)이 함께 쓰는 껍데기입니다. 공용 헤더와 가로 검색 탭을 고정하고
+ * 그 아래 영역만 바꿉니다. 대화가 있는 AI 검색 탭에서만 왼쪽 보조 패널을 표시합니다.
+ */
 export function GuestSearchLayout({ children, searchTabs, onNewChat, showConversationPanel }: {
   showConversationPanel: boolean
   children: ReactNode

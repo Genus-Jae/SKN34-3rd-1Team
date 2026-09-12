@@ -32,6 +32,12 @@ import {
   TakeAdminAccountActionUseCase,
 } from '../../domain/usecases/AdminAccountUseCases'
 import {
+  BrowseSavedSupportProgramsUseCase,
+  CheckSavedSupportProgramUseCase,
+  RemoveSavedSupportProgramUseCase,
+  SaveSupportProgramUseCase,
+} from '../../domain/usecases/SavedSupportProgramUseCases'
+import {
   BrowsePartnerProposalsUseCase,
   RespondPartnerProposalUseCase,
   SendPartnerProposalUseCase,
@@ -106,6 +112,18 @@ export function registerUseCases(container: AppContainer) {
     ).singleton(),
     takeAdminAccountActionUseCase: asFunction(
       ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new TakeAdminAccountActionUseCase(adminAccountRepository),
+    ).singleton(),
+    browseSavedSupportProgramsUseCase: asFunction(
+      ({ savedSupportProgramRepository }: Pick<AppCradle, 'savedSupportProgramRepository'>) => new BrowseSavedSupportProgramsUseCase(savedSupportProgramRepository),
+    ).singleton(),
+    checkSavedSupportProgramUseCase: asFunction(
+      ({ savedSupportProgramRepository }: Pick<AppCradle, 'savedSupportProgramRepository'>) => new CheckSavedSupportProgramUseCase(savedSupportProgramRepository),
+    ).singleton(),
+    saveSupportProgramUseCase: asFunction(
+      ({ savedSupportProgramRepository }: Pick<AppCradle, 'savedSupportProgramRepository'>) => new SaveSupportProgramUseCase(savedSupportProgramRepository),
+    ).singleton(),
+    removeSavedSupportProgramUseCase: asFunction(
+      ({ savedSupportProgramRepository }: Pick<AppCradle, 'savedSupportProgramRepository'>) => new RemoveSavedSupportProgramUseCase(savedSupportProgramRepository),
     ).singleton(),
     browsePartnerRecruitmentsUseCase: asFunction(
       ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new BrowsePartnerRecruitmentsUseCase(partnerRecruitmentRepository),

@@ -467,10 +467,15 @@ describe('지원사업 직접 필터 검색', () => {
     expect((await screen.findByRole('link', { name: program.title })).getAttribute('href')).toContain(`${detailPath}?`)
     fireEvent.click(await screen.findByRole('link', { name: program.title }))
     await screen.findByRole('heading', { name: program.title })
-    fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
-    expect(screen.getByTestId('location').textContent).toContain(`${detailPath}/question?`)
-    fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
-    await screen.findByRole('heading', { name: program.title })
+    if (path.startsWith('/app')) {
+      fireEvent.click(screen.getByRole('link', { name: '이 공고에 질문하기' }))
+      expect(screen.getByTestId('location').textContent).toContain(`${detailPath}/question?`)
+      fireEvent.click(screen.getByRole('link', { name: '← 공고 상세로 돌아가기' }))
+      await screen.findByRole('heading', { name: program.title })
+    } else {
+      // 원문 질문은 회원 기능이라 비로그인은 로그인 링크만 봅니다.
+      expect(screen.getByRole('link', { name: '로그인하고 이 공고에 질문하기' })).toBeTruthy()
+    }
     const back = screen.getByRole('link', { name: '← 검색 결과로 돌아가기' })
     expect(back.getAttribute('href')).toContain(`${path}?mode=filter`)
     fireEvent.click(back)

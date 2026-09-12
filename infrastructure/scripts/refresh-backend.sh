@@ -26,7 +26,7 @@ COMPOSE=(
   --env-file "${ENV_FILE}"
   --file "${COMPOSE_FILE}"
 )
-EXPECTED_SERVICES=(mysql qdrant ai-service core-api web)
+EXPECTED_SERVICES=(mysql qdrant redis ai-service core-api web)
 
 contains_line() {
   local lines=$1
@@ -58,7 +58,7 @@ for service in "${EXPECTED_SERVICES[@]}"; do
 done
 
 running_services="$("${COMPOSE[@]}" ps --services --status running)"
-for service in mysql qdrant web; do
+for service in mysql qdrant redis web; do
   if ! contains_line "${running_services}" "${service}"; then
     echo "Required existing service '${service}' is not running in project '${PROJECT_NAME}'. Nothing was changed." >&2
     exit 1
@@ -120,4 +120,4 @@ wait_for_health() {
 wait_for_health "Core API" "/api/v1/health" "govbiz-core-api"
 wait_for_health "Core-to-AI Service" "/api/v1/health/ai-service" "govbiz-ai-service"
 
-echo "Backend refresh completed for project '${PROJECT_NAME}'. Existing MySQL and Qdrant containers and volumes were not recreated or removed."
+echo "Backend refresh completed for project '${PROJECT_NAME}'. Existing MySQL, Qdrant and Redis containers and volumes were not recreated or removed."
