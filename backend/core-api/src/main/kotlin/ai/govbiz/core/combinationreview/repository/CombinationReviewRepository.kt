@@ -53,7 +53,7 @@ class CombinationReviewRepository(
     fun findOwned(ownerAccountId: Long, reviewId: Long): StoredCombinationReview? {
         require(ownerAccountId > 0 && reviewId > 0) { "ownerAccountId and reviewId must be positive" }
         val row = mapper.findReview(ownerAccountId, reviewId) ?: return null
-        val input = CombinationReviewInput(mapper.findPrograms(ownerAccountId, reviewId).map { it.toDomain() })
+        val input = CombinationReviewInput.restore(mapper.findPrograms(ownerAccountId, reviewId).map { it.toDomain() })
         return StoredCombinationReview(
             id = row.id,
             ownerAccountId = row.ownerAccountId,

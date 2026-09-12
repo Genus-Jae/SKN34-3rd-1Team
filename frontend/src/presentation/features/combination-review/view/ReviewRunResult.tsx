@@ -7,7 +7,7 @@ import { runLabels } from './reviewLabels'
 const stages = { APPLICATION: '신청', SELECTION: '선정', COMMITMENT: '확약', AGREEMENT: '협약', EXECUTION: '수행', FUNDING: '교부' }
 const judgments = { RESTRICTION_APPLIES: '제한 적용', PERMISSION_IN_SCOPE: '명시된 범위 내 허용', NEEDS_FACTS: '사용자 정보 부족', INSUFFICIENT_EVIDENCE: '공식 근거 부족', CONFLICTING_EVIDENCE: '규정 충돌' }
 export function ReviewRunResult({ run, currentRevision, download, downloading }: { run: ReviewRun; currentRevision: number; download: (index: number) => void; downloading: boolean }) {
-  const [openStage, setOpenStage] = useState<string | null>(null)
+  const [selectedStage, setSelectedStage] = useState<string | null>(null)
   return <section className="space-y-4" aria-label={`실행 ${run.id} 결과`}>
     <div className={s.card}>
       <h2 className="text-xl font-bold">실행 #{run.id} · {runLabels[run.status]}</h2>
@@ -27,34 +27,45 @@ export function ReviewRunResult({ run, currentRevision, download, downloading }:
     <p className={s.warning}>공식 원문 기준의 AI 분석이며 사람이 검수한 정답이 아닙니다. 제한을 찾지 못한 것은 허용을 뜻하지 않습니다. 범위 내 허용도 전체 신청 자격이나 동시 수혜를 보장하지 않습니다.</p>
     {run.analysis && <>
       <p className={`${s.card} whitespace-pre-wrap`}>{run.analysis.summary}</p>
-      {run.analysis.pairs.map((pair) => <section className="space-y-3" key={`${pair.firstProgramIndex}:${pair.secondProgramIndex}`}>
-        <h3 className="break-all font-bold">사업 {pair.firstProgramIndex + 1} ↔ 사업 {pair.secondProgramIndex + 1}</h3>
-        <p className={s.muted}>{reviewProgramKey(run.input.programs[pair.firstProgramIndex])} ↔ {reviewProgramKey(run.input.programs[pair.secondProgramIndex])}</p>
-        {reviewStages.map((stageName) => {
-          const stage = pair.stages.find((value) => value.stage === stageName)!
-          const stageKey = `${run.id}:${pair.firstProgramIndex}:${pair.secondProgramIndex}:${stageName}`
-          const isOpen = openStage === stageKey
-          const contentId = `review-stage-${stageKey}`
-          return <article className={s.card} key={stageName}>
-            <h4><button type="button" className="flex w-full items-center justify-between gap-4 text-left font-bold focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label={`${stages[stage.stage]} · ${judgments[stage.judgment]} ${isOpen ? '접기' : '보기'}`} aria-expanded={isOpen} aria-controls={contentId} onClick={() => setOpenStage(isOpen ? null : stageKey)}><span>{stages[stage.stage]} · {judgments[stage.judgment]}</span><span className="shrink-0 text-sm text-emerald-800">{isOpen ? '접기' : '보기'}</span></button></h4>
-            {isOpen && <div id={contentId} className="mt-4 border-t border-slate-200 pt-4">
-              {stage.requiresInstitutionConfirmation && <p className="font-semibold text-amber-800">기관 확인 필요 · 기관 해석 미확인 사항은 판단 보류</p>}
-              <p className="mt-3 whitespace-pre-wrap text-sm"><strong>판단 범위:</strong> {stage.scope}</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{stage.explanation}</p>
-              {stage.questions.length > 0 && <div className="mt-3 text-sm"><strong>확인 질문</strong><ul className="list-disc space-y-1 pl-5">{stage.questions.map((q, i) => <li key={i}>{q}</li>)}</ul></div>}
-              {stage.citations.map((citation, i) => {
-                const block = run.evidence?.blocks.find((b) => b.id === citation.evidenceId)
-                const documentIndex = run.evidence?.documents.findIndex((d) => d.rawHash === block?.documentHash && d.programIndex === block?.programIndex) ?? -1
-                return <blockquote className="mt-4 border-l-4 border-emerald-700 bg-emerald-50 p-3 text-sm" key={i}>
-                  <p className="whitespace-pre-wrap">{citation.quote}</p>
-                  <p className="mt-2 break-all text-xs">{citation.evidenceId} · 사업 {(block?.programIndex ?? 0) + 1} · {block?.locator}</p>
-                  {documentIndex >= 0 && <button type="button" className={`${s.button} mt-2`} disabled={downloading} onClick={() => download(documentIndex)}>인용 원본 다운로드</button>}
-                </blockquote>
-              })}
-            </div>}
+      {run.analysis.pairs.map((pair) => {
+        const pairKey = `${run.id}:${pair.firstProgramIndex}:${pair.secondProgramIndex}`
+        const activeStage = pair.stages.find((stage) => selectedStage === `${pairKey}:${stage.stage}`) ?? pair.stages.find((stage) => stage.stage === reviewStages[0])!
+        const activeKey = `${pairKey}:${activeStage.stage}`
+        return <section className="space-y-4" key={pairKey}>
+          <div><h3 className="break-all font-bold">두 사업의 단계별 비교</h3><p className={s.muted}>{reviewProgramKey(run.input.programs[pair.firstProgramIndex])} ↔ {reviewProgramKey(run.input.programs[pair.secondProgramIndex])}</p></div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="tablist" aria-label="중복 지원 분석 단계">
+            {reviewStages.map((stageName, index) => {
+              const stage = pair.stages.find((value) => value.stage === stageName)!
+              const stageKey = `${pairKey}:${stageName}`
+              const active = activeKey === stageKey
+              const judgmentTone = stage.judgment === 'RESTRICTION_APPLIES' ? 'bg-red-100 text-red-800'
+                : stage.judgment === 'PERMISSION_IN_SCOPE' ? 'bg-emerald-100 text-emerald-800'
+                  : stage.judgment === 'NEEDS_FACTS' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-900'
+              return <button type="button" role="tab" aria-label={`${index + 1}단계 · ${stages[stage.stage]} · ${judgments[stage.judgment]}`} aria-selected={active} aria-controls={`review-stage-${pairKey}`} className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-emerald-700 ${active ? 'border-emerald-600 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:border-emerald-300'}`} key={stageName} onClick={() => setSelectedStage(stageKey)}>
+                <span className="block text-xs font-bold text-slate-500">{index + 1}단계</span>
+                <span className="mt-1 block text-base font-bold">{stages[stage.stage]}</span>
+                <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${judgmentTone}`}>{judgments[stage.judgment]}</span>
+              </button>
+            })}
+          </div>
+          <article id={`review-stage-${pairKey}`} role="tabpanel" className={s.card} aria-label={`${stages[activeStage.stage]} 분석 결과`}>
+            <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-lg font-bold">{stages[activeStage.stage]} 단계 분석</h4><strong>{judgments[activeStage.judgment]}</strong></div>
+            {activeStage.requiresInstitutionConfirmation && <p className="font-semibold text-amber-800">기관 확인 필요 · 기관 해석 미확인 사항은 판단 보류</p>}
+            <p className="whitespace-pre-wrap text-sm"><strong>판단 범위:</strong> {activeStage.scope}</p>
+            <p className="whitespace-pre-wrap text-sm leading-6">{activeStage.explanation}</p>
+            {activeStage.questions.length > 0 && <div className="text-sm"><strong>확인 질문</strong><ul className="mt-2 list-disc space-y-1 pl-5">{activeStage.questions.map((q, i) => <li key={i}>{q}</li>)}</ul></div>}
+            {activeStage.citations.map((citation, i) => {
+              const block = run.evidence?.blocks.find((b) => b.id === citation.evidenceId)
+              const documentIndex = run.evidence?.documents.findIndex((d) => d.rawHash === block?.documentHash && d.programIndex === block?.programIndex) ?? -1
+              return <blockquote className="border-l-4 border-emerald-700 bg-emerald-50 p-3 text-sm" key={i}>
+                <p className="whitespace-pre-wrap">{citation.quote}</p>
+                <p className="mt-2 break-all text-xs">{citation.evidenceId} · 사업 {(block?.programIndex ?? 0) + 1} · {block?.locator}</p>
+                {documentIndex >= 0 && <button type="button" className={`${s.button} mt-2`} disabled={downloading} onClick={() => download(documentIndex)}>인용 원본 다운로드</button>}
+              </blockquote>
+            })}
           </article>
-        })}
-      </section>)}
+        </section>
+      })}
       <section className={s.warning}><h3 className="font-bold">분석 한계</h3><ul className="list-disc pl-5">{run.analysis.limitations.map((text, i) => <li key={i}>{text}</li>)}</ul></section>
     </>}
     {run.evidence && <section className={s.card}>

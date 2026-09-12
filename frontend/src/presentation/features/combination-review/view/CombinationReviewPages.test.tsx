@@ -26,6 +26,10 @@ beforeEach(() => {
   repository.get.mockResolvedValue(structuredClone(reviewFixture))
   repository.runs.mockResolvedValue({ items: [], nextBeforeId: null })
   repository.run.mockResolvedValue(structuredClone(runFixture))
+  repository.start.mockImplementation(async (_id, request) => ({
+    ...structuredClone(runFixture), inputRevision: request.expectedRevision, requestKey: request.requestKey,
+    input: { ...structuredClone(runFixture.input), additionalFacts: request.additionalFacts },
+  }))
   repository.list.mockResolvedValue({ items: [], nextBeforeId: null })
   repository.delete.mockResolvedValue(undefined)
   browseSavedPrograms.mockResolvedValue([])
@@ -75,10 +79,11 @@ describe('review screens and execution safety', () => {
     await act(async () => { mounted = mount() })
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('heading', { name: /실행 #30 · 대기 중/ })).toBeTruthy()
+    expect(repository.run).toHaveBeenCalledTimes(2)
     expect(repository.start).not.toHaveBeenCalled()
     act(() => mounted.store.dispatch(signedOut()))
     await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
-    expect(repository.run).toHaveBeenCalledTimes(1)
+    expect(repository.run).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole('heading', { name: /실행 #30/ })).toBeNull()
   })
   it('pauses failed polling until the user checks the saved run again', async () => {
@@ -98,7 +103,6 @@ describe('review screens and execution safety', () => {
     repository.runs.mockResolvedValue({ items: [{ ...runFixture, status: 'UNKNOWN', analysis: null }], nextBeforeId: null })
     repository.run.mockResolvedValue({ ...runFixture, status: 'UNKNOWN', analysis: null, failureCode: 'RUN_OUTCOME_UNKNOWN' })
     await act(async () => { mount() })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /#30 · 입력 버전/ })) })
     expect(screen.getByText(/중복 과금을 방지/)).toBeTruthy()
     expect((screen.getByRole('button', { name: '새 분석 실행' }) as HTMLButtonElement).disabled).toBe(true)
     await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
@@ -114,14 +118,19 @@ describe('review screens and execution safety', () => {
     fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[0]!.title} 관심 공고 선택` }))
     fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[1]!.title} 관심 공고 선택` }))
 
-    expect(screen.getByText('공고 선택 · 2/3')).toBeTruthy()
-    expect(within(screen.getByRole('region', { name: '선택한 공고' })).getAllByRole('button', { name: '선택 해제' })).toHaveLength(2)
+    expect(screen.getByText('2/2 선택')).toBeTruthy()
+    expect(within(savedPrograms).getAllByRole('button', { name: /관심 공고 선택 해제$/ })).toHaveLength(2)
+    expect(screen.getByLabelText('현재 선택한 공고').children).toHaveLength(2)
     expect(browseSavedPrograms).toHaveBeenCalledWith(expect.any(AbortSignal))
   })
 
   it.each([201, 404])('handles new review save HTTP %s through the production adapter', async (status) => {
     const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
-      if (_url.includes('/catalog')) return Response.json({ programs: supportPrograms.slice(0, 2).map((program) => ({ ...program, recommendationScore: null, eligibilityReview: null, matchedReasons: [] })), total: 2, page: 1, pageSize: 10, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
+      if (_url.includes('/catalog')) return Response.json({ programs: supportPrograms.slice(0, 2).map((program, index) => ({ ...program, id: `PBLN_${index + 100}`, recommendationScore: null, eligibilityReview: null, matchedReasons: [] })), total: 2, page: 1, pageSize: 10, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
+      if (init?.method === 'POST' && _url.endsWith('/runs')) {
+        const request = JSON.parse(String(init.body))
+        return Response.json({ ...runFixture, inputRevision: request.expectedRevision, requestKey: request.requestKey, input: { ...runFixture.input, title: reviewFixture.title, programs: reviewFixture.programs, additionalFacts: request.additionalFacts } })
+      }
       if (init?.method === 'POST') return Response.json(status === 201 ? reviewFixture : { status: 404, error: 'Not Found' }, { status })
       return Response.json(_url.includes('/runs') ? { items: [], nextBeforeId: null } : reviewFixture)
     })
@@ -135,13 +144,17 @@ describe('review screens and execution safety', () => {
     fireEvent.click(screen.getByText('공고 검색'))
     const choices = await screen.findAllByRole('button', { name: '선택' })
     fireEvent.click(choices[0]); fireEvent.click(choices[1])
+    expect(screen.getByText('2/2 선택')).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: '선택 해제' })).toHaveLength(2)
+    expect(screen.getByLabelText('현재 선택한 공고').children).toHaveLength(2)
     expect(fetch).toHaveBeenCalledOnce()
     expect(new URL(fetch.mock.calls[0][0]).pathname).toMatch(/\/catalog$/)
     expect(new URL(fetch.mock.calls[0][0]).searchParams.get('status')).toBe('ALL')
     fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
-    fireEvent.click(screen.getByText('설정 완료 후 공고 분석'))
+    fireEvent.click(screen.getByText('입력 저장 후 분석 시작'))
     if (status === 201) {
       await screen.findByRole('heading', { name: '공고 분석' })
+      await waitFor(() => expect(fetch.mock.calls.filter(([url, init]) => init?.method === 'POST' && String(url).endsWith('/runs'))).toHaveLength(1))
     } else {
       expect((await screen.findByRole('alert')).textContent).toContain('Core API 실행 버전')
       fireEvent.click(screen.getByText('이전: 제목·공고 선택'))
@@ -149,27 +162,27 @@ describe('review screens and execution safety', () => {
       expect(screen.getByRole('heading', { name: '새 검토' })).toBeTruthy()
     }
     const posts = fetch.mock.calls.filter(([, init]) => init?.method === 'POST')
-    expect(posts).toHaveLength(1)
+    expect(posts).toHaveLength(status === 201 ? 2 : 1)
     expect(posts[0][0]).toMatch(/\/api\/v1\/combination-reviews$/)
   })
-  it('updates the acknowledged input version on empty PUT success without automatic GET or analysis', async () => {
+  it('updates the acknowledged input version and starts analysis with the same action', async () => {
     repository.replace.mockResolvedValue(undefined)
     mount('/app/combination-reviews/12'); await screen.findByDisplayValue(reviewFixture.title)
     fireEvent.change(screen.getByLabelText('검토 제목'), { target: { value: '수정된 제목' } })
     fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
-    fireEvent.click(screen.getByText('설정 완료 후 공고 분석'))
-    await screen.findByText('입력을 저장했습니다. 분석은 시작하지 않았습니다.')
+    fireEvent.click(screen.getByText('입력 저장 후 분석 시작'))
+    await screen.findByText('분석이 완료되어 저장된 결과를 표시합니다.')
     expect(screen.getByText('검토 #12 · 저장 입력 버전 3')).toBeTruthy()
     expect(screen.getByRole('heading', { name: '공고 분석' })).toBeTruthy()
     expect(repository.get).toHaveBeenCalledTimes(1)
-    expect(repository.start).not.toHaveBeenCalled()
+    expect(repository.start).toHaveBeenCalledWith(12, expect.objectContaining({ expectedRevision: 3 }), expect.any(AbortSignal))
   })
   it('focuses the server version error and preserves edited inputs', async () => {
     repository.replace.mockRejectedValue(new CombinationReviewError(404, 'COMBINATION_REVIEW_API_UNAVAILABLE'))
     mount('/app/combination-reviews/12'); await screen.findByDisplayValue(reviewFixture.title)
     fireEvent.change(screen.getByLabelText('검토 제목'), { target: { value: '보존할 입력' } })
     fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
-    fireEvent.click(screen.getByText('설정 완료 후 공고 분석'))
+    fireEvent.click(screen.getByText('입력 저장 후 분석 시작'))
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('Core API 실행 버전')
     expect(document.activeElement).toBe(alert)
@@ -188,6 +201,7 @@ describe('review screens and execution safety', () => {
     await screen.findByText('이전 검토')
     expect(repository.list.mock.calls[1][0]).toBe(12)
     expect(screen.getByText(reviewFixture.title)).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: '결과 보기' })).toHaveLength(2)
   })
   it('deletes a review only after explicit confirmation and removes it from the list', async () => {
     repository.list.mockResolvedValue({ items: [reviewFixture], nextBeforeId: null })
@@ -203,7 +217,7 @@ describe('review screens and execution safety', () => {
     mount('/app/combination-reviews/12'); await screen.findByDisplayValue(reviewFixture.title)
     fireEvent.change(screen.getByLabelText('검토 제목'), { target: { value: '내 편집 내용' } })
     fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
-    fireEvent.click(screen.getByText('설정 완료 후 공고 분석'))
+    fireEvent.click(screen.getByText('입력 저장 후 분석 시작'))
     await screen.findByRole('alert')
     expect(repository.replace.mock.calls[0][1]).toBe(2)
     repository.get.mockResolvedValue({ ...reviewFixture, inputRevision: 3, title: '서버 최신 제목' })
@@ -291,18 +305,15 @@ describe('review screens and execution safety', () => {
   it('uses the run snapshot order, six stages and source index', async () => {
     repository.runs.mockResolvedValue({ items: [runFixture], nextBeforeId: null })
     mount(); await screen.findByText('새 분석 실행')
-    fireEvent.click(screen.getByText(/#30 · 입력 버전 1/))
     await screen.findByText('실행 #30 · 분석 완료')
     expect(screen.getByText(/과거 입력 버전의 결과/)).toBeTruthy()
     expect(screen.getByText('BIZINFO:PBLN_200 ↔ BIZINFO:PBLN_100')).toBeTruthy()
-    expect(screen.getAllByText(/· (사용자 정보 부족|공식 근거 부족|규정 충돌|제한 적용|명시된 범위 내 허용)$/)).toHaveLength(6)
-    expect(screen.queryByText(/PDF 3쪽, 문단 2/)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: '신청 · 사용자 정보 부족 보기' }))
+    expect(screen.getAllByRole('tab')).toHaveLength(6)
     expect(screen.getByText(/PDF 3쪽, 문단 2/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: '신청 · 사용자 정보 부족 접기' }).getAttribute('aria-expanded')).toBe('true')
-    fireEvent.click(screen.getByRole('button', { name: '선정 · 공식 근거 부족 보기' }))
-    expect(screen.getByRole('button', { name: '신청 · 사용자 정보 부족 보기' }).getAttribute('aria-expanded')).toBe('false')
-    expect(screen.getAllByText(/PDF 3쪽, 문단 2/)).toHaveLength(1)
+    expect(screen.getByRole('tab', { name: '1단계 · 신청 · 사용자 정보 부족' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('tab', { name: '2단계 · 선정 · 공식 근거 부족' }))
+    expect(screen.getByRole('tab', { name: '1단계 · 신청 · 사용자 정보 부족' }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.getByRole('tabpanel', { name: '선정 분석 결과' })).toBeTruthy()
     expect(repository.start).not.toHaveBeenCalled()
   })
   it('keeps UNKNOWN independent from other participation fields', async () => {
@@ -313,5 +324,15 @@ describe('review screens and execution safety', () => {
     expect((screen.getByLabelText('사업 1 교부') as HTMLSelectElement).value).toBe('UNKNOWN')
     expect((screen.getByLabelText('사업 1 확약') as HTMLSelectElement).value).toBe('NO')
     await waitFor(() => expect(repository.start).not.toHaveBeenCalled())
+  })
+  it('moves the workspace scroll area to the top whenever the step changes', async () => {
+    const view = mount('/app/combination-reviews/12')
+    const scrollTo = vi.fn()
+    view.container.scrollTo = scrollTo
+    await screen.findByDisplayValue(reviewFixture.title)
+
+    fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
+
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, left: 0, behavior: 'auto' })
   })
 })

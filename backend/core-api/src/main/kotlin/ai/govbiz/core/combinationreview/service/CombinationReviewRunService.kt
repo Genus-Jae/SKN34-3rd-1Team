@@ -44,6 +44,9 @@ class CombinationReviewRunService(
 
     fun start(account: Account, reviewId: Long, expectedRevision: Long, requestKey: String, additionalFacts: String): ReviewRunReservation {
         runs.replay(account.id, reviewId, expectedRevision, requestKey, additionalFacts)?.let { return it }
+        if (reviews.findOwned(account, reviewId).draft.input.programs.size != 2) {
+            throw CombinationReviewRunException(ReviewRunFailureCode.INPUT_PROGRAM_COUNT_UNSUPPORTED)
+        }
         if (!queueEnabled) throw CombinationReviewRunException(ReviewRunFailureCode.RUN_QUEUE_UNAVAILABLE)
         try {
             return admission.execute("combination-review-account:${account.id}") {
@@ -70,6 +73,9 @@ class CombinationReviewRunService(
         val run = runs.claim(runId, runnerInstanceId) ?: return
         var analysisStarted = false
         try {
+            if (run.input.programs.size != 2) {
+                throw CombinationReviewRunException(ReviewRunFailureCode.INPUT_PROGRAM_COUNT_UNSUPPORTED, run.id)
+            }
             val documents = mutableListOf<ReviewSourceDocument>()
             val blocks = mutableListOf<ReviewEvidenceBlock>()
             val raw = mutableListOf<ByteArray>()

@@ -208,7 +208,7 @@ class ApiExceptionHandler {
     @ExceptionHandler(CombinationReviewRunException::class)
     fun handleCombinationReviewRunFailure(error: CombinationReviewRunException, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
         val status = when (error.code) {
-            ReviewRunFailureCode.SOURCE_UNSUPPORTED, ReviewRunFailureCode.SOURCE_TOO_LARGE -> HttpStatus.UNPROCESSABLE_CONTENT
+            ReviewRunFailureCode.INPUT_PROGRAM_COUNT_UNSUPPORTED, ReviewRunFailureCode.SOURCE_UNSUPPORTED, ReviewRunFailureCode.SOURCE_TOO_LARGE -> HttpStatus.UNPROCESSABLE_CONTENT
             ReviewRunFailureCode.RUN_CAPACITY_EXCEEDED, ReviewRunFailureCode.RUN_RATE_LIMITED -> HttpStatus.TOO_MANY_REQUESTS
             else -> HttpStatus.SERVICE_UNAVAILABLE
         }

@@ -228,6 +228,7 @@ class CombinationReviewApiIntegrationTest {
             "{}", "{", payload(title = ""), payload(title = " 공백"), payload(title = "x".repeat(201)),
             payload(title = "줄\n바꿈"), payload(programs = "[]"), payload(programs = "[$PROGRAM]"),
             payload(programs = "[$PROGRAM,$PROGRAM]"), payload(programs = "[$PROGRAM,null]"),
+            payload(programs = "[$PROGRAM,$SECOND,{\"sourceCode\":\"MSIT\",\"sourceProgramId\":\"3\"}]"),
             payload(programs = "[$PROGRAM,$PROGRAM,$PROGRAM,$PROGRAM]"),
             payload().replace("BIZINFO", "bizinfo"), payload().replace("공고-A", " 공고-A"),
             payload().replace("공고-A", "x".repeat(256)), payload().replace("일반형", ""),
@@ -251,10 +252,10 @@ class CombinationReviewApiIntegrationTest {
     }
 
     @Test
-    fun acceptsThreeDistinctSubProgramsAndUnicodeCodePointBoundary() {
-        val programs = """[$PROGRAM,{"sourceCode":"BIZINFO","sourceProgramId":"공고-A","subProgramId":"딥테크"},{"sourceCode":"KSTARTUP","sourceProgramId":"공고-A"}]"""
+    fun acceptsTwoDistinctSubProgramsAndUnicodeCodePointBoundary() {
+        val programs = """[$PROGRAM,{"sourceCode":"BIZINFO","sourceProgramId":"공고-A","subProgramId":"딥테크"}]"""
         write(post(BASE), payload(title = "🚀".repeat(200), programs = programs))
-            .andExpect(status().isCreated()).andExpect(jsonPath("$.programs.length()").value(3))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.programs.length()").value(2))
     }
 
     @ParameterizedTest

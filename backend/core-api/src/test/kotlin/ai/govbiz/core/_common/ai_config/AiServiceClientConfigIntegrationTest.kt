@@ -184,7 +184,7 @@ class AiServiceClientConfigIntegrationTest {
             requestReceived.countDown()
             try {
                 Thread.sleep(Duration.ofSeconds(2).toMillis())
-                sendJson(exchange, """{"contractVersion":"combination-review-v1","model":"test","promptVersion":"test"}""")
+                sendJson(exchange, """{"contractVersion":"combination-review-v2","model":"test","promptVersion":"test"}""")
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 exchange.close()

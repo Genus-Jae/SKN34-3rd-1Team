@@ -7,7 +7,7 @@ STAGES = {"APPLICATION", "SELECTION", "COMMITMENT", "AGREEMENT", "EXECUTION", "F
 Stage = Literal["APPLICATION", "SELECTION", "COMMITMENT", "AGREEMENT", "EXECUTION", "FUNDING"]
 Judgment = Literal["RESTRICTION_APPLIES", "PERMISSION_IN_SCOPE", "NEEDS_FACTS", "INSUFFICIENT_EVIDENCE", "CONFLICTING_EVIDENCE"]
 Answer = Literal["YES", "NO", "UNKNOWN"]
-CONTRACT_VERSION = "combination-review-v1"
+CONTRACT_VERSION = "combination-review-v2"
 
 
 class Contract(BaseModel):
@@ -32,15 +32,15 @@ class Program(Contract):
 
 class EvidenceBlock(Contract):
     id: str = Field(pattern=r"^E[0-9]{1,4}$")
-    programIndex: int = Field(ge=0, le=2)
+    programIndex: int = Field(ge=0, le=1)
     documentHash: str = Field(pattern=r"^[0-9a-f]{64}$")
     locator: str = Field(min_length=1, max_length=160)
     text: str = Field(min_length=1, max_length=4000)
 
 
 class AnalyzeRequest(Contract):
-    contractVersion: Literal["combination-review-v1"]
-    programs: list[Program] = Field(min_length=2, max_length=3)
+    contractVersion: Literal["combination-review-v2"]
+    programs: list[Program] = Field(min_length=2, max_length=2)
     asOfDate: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     additionalFacts: str = Field(max_length=8000)
     evidence: list[EvidenceBlock] = Field(min_length=1, max_length=512)
@@ -108,13 +108,13 @@ StageSelection = Annotated[
 
 
 class PairSelection(Contract):
-    firstProgramIndex: int = Field(ge=0, le=1)
-    secondProgramIndex: int = Field(ge=1, le=2)
+    firstProgramIndex: Literal[0]
+    secondProgramIndex: Literal[1]
     stages: list[StageSelection] = Field(min_length=6, max_length=6)
 
 class AnalysisSelection(Contract):
     summary: str = Field(min_length=1, max_length=1200)
-    pairs: list[PairSelection] = Field(min_length=1, max_length=3)
+    pairs: list[PairSelection] = Field(min_length=1, max_length=1)
     limitations: list[Limitation] = Field(min_length=1, max_length=12)
 
 

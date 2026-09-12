@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { appContainer } from '../../../../app/appContainer'
 import { appPaths } from '../../../shared/routes/appPaths'
@@ -16,7 +16,7 @@ function isEarlierState(current: RunSummary, next: RunSummary) {
   )
 }
 
-export function useReviewEditorViewModel(id: number | null, account: string) {
+export function useReviewEditorViewModel(id: number | null, account: string, autoStart = false) {
   const useCase = appContainer.resolve('combinationReviewUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const detailUseCase = appContainer.resolve('getSupportProgramDetailUseCase')
@@ -38,7 +38,9 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
   const [journalReady, setJournalReady] = useState(false)
   const [notice, setNotice] = useState('')
   const [pollingPaused, setPollingPaused] = useState(false)
-  const { setError } = scope
+  const autoStartAttempted = useRef(false)
+  const autoSelectedRunId = useRef<number | null>(null)
+  const { setError, busy, error } = scope
 
   const load = useCallback(() => {
     if (!id) return
@@ -59,31 +61,15 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
   }, [id, account, journal, useCase, detailUseCase, perform])
   useEffect(() => { load() }, [load])
   const search = (page = 1, term = keyword) => perform('catalog', (signal) => catalogUseCase.execute({ keyword: term, region: '', category: '', sourceCode: '', startupStage: '', applicantType: '', founderAge: '', status: 'ALL', sort: 'RECENT', page, pageSize: 10 }, signal), (result) => { setCatalog(result); setAppliedKeyword(term) })
-  const add = (program: SupportProgram) => {
+  const toggle = (program: SupportProgram) => {
     const selected = { sourceCode: program.sourceCode, sourceProgramId: program.id, subProgramId: null, participation: unknownParticipation() }
-    if (draft.programs.length >= 3 || draft.programs.some((p) => reviewProgramKey(p) === reviewProgramKey(selected))) return
-    setDraft({ ...draft, programs: [...draft.programs, selected] }); setNames({ ...names, [reviewProgramKey(selected)]: `${program.title} · ${program.organization}` })
-  }
-  const save = (afterSave?: () => void) => {
-    let input: ReviewDraft
-    try { input = validateReviewDraft(draft) } catch (e) { setError({ message: (e as Error).message }); return }
-    if (id && review) {
-      const saved = review
-      if (JSON.stringify(input) === JSON.stringify({ title: saved.title, programs: saved.programs })) {
-        setNotice('저장된 입력으로 공고 분석 단계로 이동했습니다.')
-        afterSave?.()
-        return
-      }
-      void perform('save', (signal) => useCase.replace(id, saved.inputRevision, input, signal), () => {
-        // PUT 204는 요청한 입력이 다음 버전으로 저장됐음을 뜻한다. 자동 GET으로 다른 편집을 섞지 않는다.
-        setReview({ ...saved, ...input, inputRevision: saved.inputRevision + 1 })
-        setDraft(input); setLatest(null); setNotice('입력을 저장했습니다. 분석은 시작하지 않았습니다.'); afterSave?.()
-      })
-    } else {
-      void perform('save', (signal) => useCase.create(input, signal), (value) => {
-        navigate(`${appPaths.combinationReviews}/${value.id}?step=analysis`, { replace: true })
-      })
+    const selectedIndex = draft.programs.findIndex((p) => reviewProgramKey(p) === reviewProgramKey(selected))
+    if (selectedIndex >= 0) {
+      setDraft({ ...draft, programs: draft.programs.filter((_, index) => index !== selectedIndex) })
+      return
     }
+    if (draft.programs.length >= 2) return
+    setDraft({ ...draft, programs: [...draft.programs, selected] }); setNames({ ...names, [reviewProgramKey(selected)]: `${program.title} · ${program.organization}` })
   }
   const reloadLatest = () => { if (id) void perform('latest', (signal) => useCase.get(id, signal), setLatest) }
   const adoptLatest = () => { if (latest) { setReview(latest); setDraft({ title: latest.title, programs: latest.programs }); setLatest(null); setNotice('최신 저장 입력으로 바꿨습니다.') } }
@@ -91,6 +77,7 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     if (id) void perform('history', (signal) => useCase.runs(id, before, signal), (value) => setRuns((old) => ({ ...value, items: before ? [...(old?.items ?? []), ...value.items] : value.items })))
   }, [id, perform, useCase])
   const acceptRun = useCallback((value: ReviewRun, select = true) => {
+    if (select) autoSelectedRunId.current = value.id
     setRun((old) => old && isEarlierState(old, value) ? old : select || !old || old.id === value.id ? value : old)
     setRuns((old) => {
       const current = old?.items.find((item) => item.id === value.id)
@@ -98,9 +85,16 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     })
     if (pending?.requestKey === value.requestKey && id) { journal.remove(account, id); setPending(null) }
   }, [pending, id, account, journal])
-  const selectRun = (runId: number) => {
-    if (id) void perform('run', (signal) => useCase.run(id, runId, signal), (value) => { acceptRun(value); setPollingPaused(false) })
-  }
+  const selectRun = useCallback((runId: number) => {
+    if (!id) return
+    void perform('run', (signal) => useCase.run(id, runId, signal), acceptRun).then((accepted) => setPollingPaused(!accepted))
+  }, [id, perform, useCase, acceptRun])
+  useEffect(() => {
+    const latestRunId = runs?.items[0]?.id
+    if (!latestRunId || autoSelectedRunId.current === latestRunId) return
+    autoSelectedRunId.current = latestRunId
+    selectRun(latestRunId)
+  }, [runs, selectRun])
   const activeRunId = runs?.items.find((item) => item.status === 'QUEUED' || item.status === 'RUNNING')?.id
   useEffect(() => {
     if (!id || !activeRunId || pollingPaused) return
@@ -118,14 +112,14 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     return () => { stopped = true; clearTimeout(timer) }
   }, [id, activeRunId, pollingPaused, perform, useCase, acceptRun])
   const dirty = review !== null && JSON.stringify(draft) !== JSON.stringify({ title: review.title, programs: review.programs })
-  const rejectedRevision = scope.error?.status === 409 && scope.error.code === 'COMBINATION_REVIEW_REVISION_CONFLICT' && !scope.error.runId
+  const rejectedRevision = error?.status === 409 && error.code === 'COMBINATION_REVIEW_REVISION_CONFLICT' && !error.runId
   const clearRejectedRequest = () => {
     if (!id || !pending || !rejectedRevision) return
     try { journal.remove(account, id); setPending(null); setNotice('버전 충돌로 생성되지 않은 요청을 정리했습니다. 최신 입력을 확인한 뒤 직접 새 분석을 시작하세요.') }
     catch { setError({ message: '보관한 요청을 지우지 못했습니다. 브라우저 저장소 설정을 확인해 주세요.' }) }
   }
-  const start = (retry: boolean) => {
-    if (!id || !review || !journalReady || scope.busy.includes('analysis')) return
+  const start = useCallback((retry: boolean) => {
+    if (!id || !review || !journalReady || busy.includes('analysis')) return
     if (!retry && (pending || dirty || runs?.items.some((item) => ['QUEUED', 'RUNNING', 'UNKNOWN'].includes(item.status)) || !review.programs.every(supportsAutomaticReview))) return
     if (retry && !pending) return
     const request = retry ? pending! : { expectedRevision: review.inputRevision, requestKey: crypto.randomUUID(), additionalFacts: facts }
@@ -139,7 +133,46 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
       journal.remove(account, id); setPending(null); setPollingPaused(false)
       setNotice(['QUEUED', 'RUNNING'].includes(value.status) ? '분석 요청이 접수되었습니다. 상태는 자동으로 갱신되며, 다른 화면으로 이동해도 작업은 유지됩니다.' : '저장된 실행을 확인했습니다. 새 분석은 자동으로 시작하지 않습니다.')
     })
+  }, [id, review, journalReady, busy, pending, dirty, runs, facts, journal, account, setError, perform, useCase, acceptRun])
+  const saveAndStart = (showAnalysis: () => void) => {
+    let input: ReviewDraft
+    try { input = validateReviewDraft(draft) } catch (e) { setError({ message: (e as Error).message }); return }
+    if (!input.programs.every(supportsAutomaticReview)) return
+    const launch = (saved: CombinationReview) => {
+      const request = { expectedRevision: saved.inputRevision, requestKey: crypto.randomUUID(), additionalFacts: facts }
+      try { journal.write(account, saved.id, request) }
+      catch { setError({ message: '요청 키를 안전하게 보관할 수 없어 분석을 시작하지 않았습니다. 브라우저 저장소 설정을 확인해 주세요.' }); return }
+      setPending(request)
+      setRun(null)
+      showAnalysis()
+      void perform('analysis', (signal) => useCase.start(saved.id, request, signal), (value) => {
+        acceptRun(value)
+        journal.remove(account, saved.id); setPending(null); setPollingPaused(false)
+        setNotice(['QUEUED', 'RUNNING'].includes(value.status) ? '분석 요청이 접수되었습니다. 상태는 자동으로 갱신되며, 완료되면 결과가 표시됩니다.' : '분석이 완료되어 저장된 결과를 표시합니다.')
+      })
+    }
+    if (id && review) {
+      const unchanged = JSON.stringify(input) === JSON.stringify({ title: review.title, programs: review.programs })
+      if (unchanged) { launch(review); return }
+      const saved = { ...review, ...input, inputRevision: review.inputRevision + 1 }
+      void perform('save', (signal) => useCase.replace(id, review.inputRevision, input, signal), () => {
+        setReview(saved); setDraft(input); setLatest(null); setNotice('입력을 저장하고 분석을 시작합니다.'); launch(saved)
+      })
+      return
+    }
+    void perform('save', (signal) => useCase.create(input, signal), (saved) => {
+      const request = { expectedRevision: saved.inputRevision, requestKey: crypto.randomUUID(), additionalFacts: facts }
+      try { journal.write(account, saved.id, request) }
+      catch { navigate(`${appPaths.combinationReviews}/${saved.id}?step=analysis`, { replace: true }); return }
+      navigate(`${appPaths.combinationReviews}/${saved.id}?step=analysis&start=1`, { replace: true })
+    })
   }
+  useEffect(() => {
+    if (!autoStart || autoStartAttempted.current || !id || !review || !journalReady || !pending) return
+    autoStartAttempted.current = true
+    navigate(`${appPaths.combinationReviews}/${id}?step=analysis`, { replace: true })
+    start(true)
+  }, [autoStart, id, review, journalReady, pending, navigate, start])
   const download = (documentIndex: number) => {
     if (!id || !run) return
     const selectedRun = run
@@ -150,5 +183,5 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
     })
   }
   return { ...scope, review, latest, draft, setDraft, catalog, savedProgramChoices, keyword, setKeyword, appliedKeyword, names, runs, run, facts, setFacts,
-    pending, notice, dirty, pollingPaused, rejectedRevision, clearRejectedRequest, load, search, add, save, reloadLatest, adoptLatest, history, selectRun, start, download }
+    pending, notice, dirty, pollingPaused, rejectedRevision, clearRejectedRequest, load, search, toggle, saveAndStart, reloadLatest, adoptLatest, history, selectRun, start, download }
 }

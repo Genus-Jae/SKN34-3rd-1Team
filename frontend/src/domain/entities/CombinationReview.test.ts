@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { supportsAutomaticReview } from './CombinationReview'
+import { supportsAutomaticReview, unknownParticipation, validateReviewDraft } from './CombinationReview'
 
 describe('supportsAutomaticReview', () => {
   it.each([
@@ -19,5 +19,19 @@ describe('supportsAutomaticReview', () => {
     { sourceCode: 'CNTRADE_NOTICE', sourceProgramId: '0', subProgramId: null },
   ])('rejects an unsupported automatic identity: $sourceCode:$sourceProgramId', (program) => {
     expect(supportsAutomaticReview(program)).toBe(false)
+  })
+})
+
+describe('validateReviewDraft', () => {
+  const program = (sourceProgramId: string) => ({ sourceCode: 'BIZINFO', sourceProgramId, subProgramId: null, participation: unknownParticipation() })
+
+  it('accepts exactly two distinct programs', () => {
+    expect(validateReviewDraft({ title: '두 사업 비교', programs: [program('PBLN_1'), program('PBLN_2')] }).programs).toHaveLength(2)
+  })
+
+  it('rejects any program count other than two', () => {
+    for (const programs of [[program('PBLN_1')], [program('PBLN_1'), program('PBLN_2'), program('PBLN_3')]]) {
+      expect(() => validateReviewDraft({ title: '잘못된 사업 수', programs })).toThrow('비교할 서로 다른 사업을 2개 선택해 주세요.')
+    }
   })
 })

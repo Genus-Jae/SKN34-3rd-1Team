@@ -52,7 +52,7 @@ export function supportsAutomaticReview(program: Pick<ReviewProgram, 'sourceCode
 export function validateReviewDraft(draft: ReviewDraft): ReviewDraft {
   const title = draft.title.trim()
   if (!title || [...title].length > 200 || /\p{C}/u.test(title)) throw new Error('제목은 제어문자 없이 1~200자로 입력해 주세요.')
-  if (draft.programs.length < 2 || draft.programs.length > 3) throw new Error('서로 다른 사업을 2~3개 선택해 주세요.')
+  if (draft.programs.length !== 2) throw new Error('비교할 서로 다른 사업을 2개 선택해 주세요.')
   if (new Set(draft.programs.map(reviewProgramKey)).size !== draft.programs.length) throw new Error('같은 공고를 중복 선택할 수 없습니다.')
   return structuredClone({ title, programs: draft.programs })
 }

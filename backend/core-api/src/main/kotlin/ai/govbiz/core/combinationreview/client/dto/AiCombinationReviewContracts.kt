@@ -1,6 +1,6 @@
 package ai.govbiz.core.combinationreview.client.dto
 
-const val AI_COMBINATION_REVIEW_CONTRACT_VERSION = "combination-review-v1"
+const val AI_COMBINATION_REVIEW_CONTRACT_VERSION = "combination-review-v2"
 
 data class AiReviewConfigurationPayload(val contractVersion: String, val model: String, val promptVersion: String)
 data class AiCombinationReviewRequest(

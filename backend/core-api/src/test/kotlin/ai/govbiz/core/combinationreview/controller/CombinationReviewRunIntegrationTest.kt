@@ -207,6 +207,23 @@ class CombinationReviewRunIntegrationTest {
     }
 
     @Test
+    fun rejectsALegacyThreeProgramReviewBeforeCreatingAnAnalysisRun() {
+        jdbc.update(
+            """INSERT INTO combination_review_program
+                (review_id, position, source_code, source_program_id, sub_program_id,
+                 application_submitted, selected, commitment_submitted, agreement_signed, execution_status, funding_received)
+                SELECT review_id, 2, source_code, CONCAT(source_program_id, '-legacy'), sub_program_id,
+                       application_submitted, selected, commitment_submitted, agreement_signed, execution_status, funding_received
+                FROM combination_review_program WHERE review_id = ? AND position = 0""",
+            reviewId,
+        )
+
+        start().andExpect(status().isUnprocessableContent())
+            .andExpect(jsonPath("$.code").value("INPUT_PROGRAM_COUNT_UNSUPPORTED"))
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM combination_review_run WHERE review_id = ?", Int::class.java, reviewId))
+    }
+
+    @Test
     fun executesThroughAuthenticatedHttpParserServiceAndRealMysqlAndDownloadsOwnedOriginalBytes() {
         val result = start().andExpect(status().isOk())
             .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))

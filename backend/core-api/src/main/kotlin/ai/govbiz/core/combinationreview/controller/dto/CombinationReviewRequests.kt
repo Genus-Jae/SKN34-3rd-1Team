@@ -15,7 +15,7 @@ import jakarta.validation.constraints.Size
 
 data class CreateCombinationReviewRequest(
     val title: String,
-    @field:Valid @field:Size(min = 2, max = 3)
+    @field:Valid @field:Size(min = 2, max = 2)
     val programs: List<SelectedReviewProgramRequest?>,
 ) {
     fun toDraft(): CombinationReviewDraft = toDraft(title, programs)
@@ -25,7 +25,7 @@ data class ReplaceCombinationReviewInputRequest(
     @field:Min(1) @field:Max(Long.MAX_VALUE - 1)
     val expectedRevision: Long,
     val title: String,
-    @field:Valid @field:Size(min = 2, max = 3)
+    @field:Valid @field:Size(min = 2, max = 2)
     val programs: List<SelectedReviewProgramRequest?>,
 ) {
     fun toDraft(): CombinationReviewDraft = toDraft(title, programs)

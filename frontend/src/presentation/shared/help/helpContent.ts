@@ -110,10 +110,10 @@ export const helpEntries: readonly HelpEntry[] = [
     id: 'review-save-vs-run',
     title: '검토 저장과 분석 실행은 무엇이 다른가요',
     question: '저장과 분석 실행은 뭐가 다른가요?',
-    summary: '검토를 저장해도 분석은 실행되지 않습니다. 저장한 뒤 새 분석 실행을 눌러야 결과가 나옵니다.',
+    summary: '참여 상태 입력을 마치고 분석 시작을 누르면 입력 저장과 비동기 분석 접수가 한 번에 이어집니다.',
     body: [
-      '공고를 2~3개 고르고 참여 상태를 입력한 뒤 저장하면 검토 입력만 보관됩니다.',
-      '공식 근거 분석은 따로 실행합니다. 실행하면 선택한 공고의 원문을 읽고 중복 지원·수혜 가능성을 검토합니다.',
+      '관심 공고함이나 전체 검색에서 공고를 정확히 2개 고르고 참여 상태를 입력합니다.',
+      '입력 저장 후 분석 시작을 누르면 검토 입력을 저장하고 분석 대기열에 작업을 접수합니다.',
       '실행 결과는 실행 이력에 남아 나중에 다시 열어 볼 수 있습니다.',
     ],
     limitation: null,
@@ -124,7 +124,7 @@ export const helpEntries: readonly HelpEntry[] = [
     action: { label: '중복 검토 열기', to: appPaths.combinationReviews },
     status: 'available',
     related: ['review-input-revision'],
-    updatedOn: '2026-09-10',
+    updatedOn: '2026-09-13',
   },
   {
     id: 'review-input-revision',

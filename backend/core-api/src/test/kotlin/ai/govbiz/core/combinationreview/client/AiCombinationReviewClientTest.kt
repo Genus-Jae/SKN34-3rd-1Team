@@ -44,7 +44,7 @@ class AiCombinationReviewClientTest {
     @Test
     fun retrievesModelAndPromptMetadataWithoutCallingAnalyze() {
         server.expect(requestTo("http://ai.test/internal/v1/combination-reviews/configuration")).andExpect(method(HttpMethod.GET))
-            .andRespond(withSuccess("""{"contractVersion":"combination-review-v1","model":"test-model","promptVersion":"sha256:test"}""", MediaType.APPLICATION_JSON))
+            .andRespond(withSuccess("""{"contractVersion":"combination-review-v2","model":"test-model","promptVersion":"sha256:test"}""", MediaType.APPLICATION_JSON))
         assertEquals("test-model", client.configuration().model)
         server.verify()
     }

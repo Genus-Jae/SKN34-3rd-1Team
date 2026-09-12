@@ -82,26 +82,32 @@ class CombinationReviewRepositoryIntegrationTest {
 
     @Test
     fun keepsDifferentSubProgramsAndProvidersUnderTheSameOriginalId() {
-        val input = CombinationReviewInput(
+        val subPrograms = CombinationReviewInput(
             listOf(
                 SelectedReviewProgram(ReviewProgramIdentity("BIZINFO", "same-id", "general")),
                 SelectedReviewProgram(ReviewProgramIdentity("BIZINFO", "same-id", "deep-tech")),
+            ),
+        )
+        val providers = CombinationReviewInput(
+            listOf(
+                SelectedReviewProgram(ReviewProgramIdentity("BIZINFO", "same-id")),
                 SelectedReviewProgram(ReviewProgramIdentity("KSTARTUP", "same-id")),
             ),
         )
-        val created = repository.create(ownerId, CombinationReviewDraft("세부사업 비교", input))
-        val stored = requireNotNull(repository.findOwned(ownerId, created.id))
-        assertEquals(input.programs, stored.draft.input.programs)
-        assertEquals(3, stored.draft.input.programPairs().size)
+        val subProgramReview = repository.create(ownerId, CombinationReviewDraft("세부사업 비교", subPrograms))
+        val providerReview = repository.create(ownerId, CombinationReviewDraft("제공처 비교", providers))
+        assertEquals(subPrograms.programs, requireNotNull(repository.findOwned(ownerId, subProgramReview.id)).draft.input.programs)
+        assertEquals(providers.programs, requireNotNull(repository.findOwned(ownerId, providerReview.id)).draft.input.programs)
+        assertEquals(1, subPrograms.programPairs().size)
+        assertEquals(1, providers.programPairs().size)
     }
 
     @Test
     fun doesNotCollapseCaseOrAccentDifferencesInSourceIds() {
-        val created = repository.create(ownerId, draft("대소문자 구분", "Case", "case", "cáse"))
-        assertEquals(
-            listOf("Case", "case", "cáse"),
-            requireNotNull(repository.findOwned(ownerId, created.id)).draft.input.programs.map { it.identity.sourceProgramId },
-        )
+        val caseReview = repository.create(ownerId, draft("대소문자 구분", "Case", "case"))
+        val accentReview = repository.create(ownerId, draft("악센트 구분", "case", "cáse"))
+        assertEquals(listOf("Case", "case"), requireNotNull(repository.findOwned(ownerId, caseReview.id)).draft.input.programs.map { it.identity.sourceProgramId })
+        assertEquals(listOf("case", "cáse"), requireNotNull(repository.findOwned(ownerId, accentReview.id)).draft.input.programs.map { it.identity.sourceProgramId })
     }
 
     @Test
@@ -114,7 +120,7 @@ class CombinationReviewRepositoryIntegrationTest {
 
     @Test
     fun replacesAllProgramsAndIncrementsRevisionWithoutChangingOwnershipOrCreationTime() {
-        val created = repository.create(ownerId, draft("이전", "a", "b", "c"))
+        val created = repository.create(ownerId, draft("이전", "a", "b"))
         val replacement = draft("변경", "second", "first")
         assertTrue(repository.replaceOwned(ownerId, created.id, 1, replacement))
         val updated = requireNotNull(repository.findOwned(ownerId, created.id))
@@ -212,14 +218,14 @@ class CombinationReviewRepositoryIntegrationTest {
 
     @Test
     fun rollsBackTitleRevisionDeletionAndInsertionsWhenReplacementFails() {
-        val before = repository.create(ownerId, draft("원래 입력", "a", "b", "c"))
+        val before = repository.create(ownerId, draft("원래 입력", "a", "b"))
         withRejectedProgram {
             assertThrows(DataAccessException::class.java) {
                 repository.replaceOwned(ownerId, before.id, 1, draft("실패할 변경", "inserted-first", "reject-write"))
             }
         }
         assertSameSnapshot(before, requireNotNull(repository.findOwned(ownerId, before.id)))
-        assertEquals(3, programCount(before.id))
+        assertEquals(2, programCount(before.id))
     }
 
     @Test

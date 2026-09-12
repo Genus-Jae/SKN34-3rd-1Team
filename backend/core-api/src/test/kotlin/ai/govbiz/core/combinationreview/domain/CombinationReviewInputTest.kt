@@ -18,16 +18,16 @@ class CombinationReviewInputTest {
     }
 
     @Test
-    fun everyPermutationOfThreeProgramsProducesTheSameThreePairs() {
-        val expected = listOf(ReviewProgramPair(a, b), ReviewProgramPair(a, c), ReviewProgramPair(b, c))
-        listOf(listOf(a, b, c), listOf(a, c, b), listOf(b, a, c), listOf(b, c, a), listOf(c, a, b), listOf(c, b, a))
-            .forEach { ids -> assertEquals(expected, input(*ids.toTypedArray()).programPairs()) }
+    fun rejectsAnyCountOtherThanTwo() {
+        listOf(emptyList(), listOf(a), listOf(a, b, c), listOf(a, b, c, ReviewProgramIdentity("BIZINFO", "D")))
+            .forEach { ids -> assertThrows(IllegalArgumentException::class.java) { input(*ids.toTypedArray()) } }
     }
 
     @Test
-    fun rejectsCountsOutsideTheSupportedRange() {
-        listOf(emptyList(), listOf(a), listOf(a, b, c, ReviewProgramIdentity("BIZINFO", "D")))
-            .forEach { ids -> assertThrows(IllegalArgumentException::class.java) { input(*ids.toTypedArray()) } }
+    fun restoresAThreeProgramSnapshotCreatedBeforeTheTwoProgramPolicy() {
+        val restored = CombinationReviewInput.restore(listOf(a, b, c).map(::SelectedReviewProgram))
+        assertEquals(3, restored.programs.size)
+        assertEquals(3, restored.programPairs().size)
     }
 
     @Test

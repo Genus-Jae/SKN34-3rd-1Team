@@ -72,7 +72,7 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 
 | 중복 지원 검토 API | 동작 |
 |---|---|
-| `POST /api/v1/combination-reviews` | 제목·2~3개 사업의 현재 입력 생성. 201과 상세 본문·Location 반환 |
+| `POST /api/v1/combination-reviews` | 제목·정확히 2개 사업의 현재 입력 생성. 201과 상세 본문·Location 반환 |
 | `GET /api/v1/combination-reviews?size=20&beforeId=123` | 본인 목록, 생성 ID 내림차순. size 1~50, beforeId 생략 가능 |
 | `GET /api/v1/combination-reviews/{id}` | 본인 상세 입력·버전 조회 |
 | `DELETE /api/v1/combination-reviews/{id}` | 본인 검토와 선택 공고·실행 이력·보관 원문 삭제. 성공 시 204 |
