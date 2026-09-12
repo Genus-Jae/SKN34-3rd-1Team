@@ -116,7 +116,7 @@ class AccountProfileServiceTest {
         verify(accountRepository).deleteOAuthIdentities(7L)
         verify(accountRepository).deleteAllSessionsByAccountId(7L)
         verify(accountRepository).markDeleted(7L, NOW)
-        verifyNoInteractions(eventPublisher)
+        verify(eventPublisher).publishEvent(AccountDeletedEvent(7L, emptyList()) as Any)
     }
 
     @Test

@@ -73,6 +73,7 @@ export function useSupportProgramChat(
   const isReadyToSubmit = useAppSelector(selectIsReadyToSubmit)
   const isSearching = useAppSelector(selectIsChatSearching)
   const messages = useAppSelector(selectChatMessages)
+  const isRestoredHistory = useAppSelector((state) => state.chat.isRestoredHistory)
   const canRetrySearch = useAppSelector(selectCanRetryChatSearch)
   const searchError = useAppSelector(selectChatSearchError)
   const inputError = useAppSelector((state) => state.chat.searchStatus === 'failed' ? null : state.chat.searchError)
@@ -355,6 +356,7 @@ export function useSupportProgramChat(
   }
 
   return {
+    isRestoredHistory,
     confirmedContext,
     interpretation,
     pendingClarification,

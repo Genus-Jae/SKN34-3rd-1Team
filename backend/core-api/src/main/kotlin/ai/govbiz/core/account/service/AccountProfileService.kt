@@ -74,7 +74,7 @@ class AccountProfileService(
         accountRepository.deleteOAuthIdentities(account.id)
         accountRepository.deleteAllSessionsByAccountId(account.id)
         accountRepository.markDeleted(account.id, now)
-        if (oauthLinks.isNotEmpty()) eventPublisher.publishEvent(AccountDeletedEvent(account.id, oauthLinks))
+        eventPublisher.publishEvent(AccountDeletedEvent(account.id, oauthLinks))
     }
 
     /** 세션을 확인한 뒤 비밀번호가 지워졌다면 해시가 없어 불일치로 봅니다. */

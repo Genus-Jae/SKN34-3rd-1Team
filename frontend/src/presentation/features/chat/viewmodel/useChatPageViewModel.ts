@@ -157,6 +157,7 @@ export function useChatPageViewModel() {
   }
 
   return {
+    isRestoredHistory: chat.isRestoredHistory,
     displayProposal,
     hasConfirmedSearch,
     hasSearchToReset: hasConfirmedSearch || chat.conversationCount > 0,
