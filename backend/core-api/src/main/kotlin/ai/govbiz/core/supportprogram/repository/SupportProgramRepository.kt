@@ -244,6 +244,9 @@ class SupportProgramRepository(
         )
     }
 
+    /** 관심 공고함처럼 공고 행을 함께 읽는 다른 Repository가 같은 변환을 쓸 때 부릅니다. */
+    internal fun toProgram(row: SupportProgramDbRow): SupportProgram = row.toCatalogProgram().program
+
     private fun SupportProgramDbRow.toCatalogProgram(): CatalogSupportProgram {
         val period = applicationPeriodRaw
         val startDate = applicationStartDate
