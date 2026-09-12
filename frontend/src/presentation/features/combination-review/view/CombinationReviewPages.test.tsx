@@ -387,6 +387,29 @@ describe('review screens and execution safety', () => {
     expect((screen.getByLabelText('사업 1 확약') as HTMLSelectElement).value).toBe('NO')
     await waitFor(() => expect(repository.start).not.toHaveBeenCalled())
   })
+  it('explains all six participation states on mouse hover and keyboard focus', async () => {
+    mount('/app/combination-reviews/12'); await screen.findByDisplayValue(reviewFixture.title)
+    fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
+    const descriptions = [
+      ['신청', '해당 사업에 신청서를 제출하여 접수가 이루어졌는지를 선택합니다.'],
+      ['선정', '평가·심사 후 지원 대상으로 선정되었다는 통보를 받았는지를 선택합니다.'],
+      ['확약', '선정 이후 사업 참여나 의무 이행을 위한 확약서를 제출했는지를 선택합니다.'],
+      ['협약', '주관기관과 지원 조건 및 사업 수행에 관한 협약을 체결했는지를 선택합니다.'],
+      ['수행', '협약 이후 사업이 시작 전·수행 중·완료·중단 중 어느 상태인지 선택합니다.'],
+      ['교부', '지원금·보조금이 실제로 지급(교부)되었는지를 선택합니다.'],
+    ]
+
+    for (const [label, description] of descriptions) {
+      const helpButtons = screen.getAllByRole('button', { name: `${label} 도움말` })
+      expect(helpButtons).toHaveLength(2)
+      const tooltip = document.getElementById(helpButtons[0]!.getAttribute('aria-describedby')!)!
+      expect(tooltip.textContent).toBe(description)
+      expect(tooltip.className).toContain('group-hover:visible')
+      expect(tooltip.className).toContain('group-focus-within:visible')
+    }
+    screen.getAllByRole('button', { name: '신청 도움말' })[0]!.focus()
+    expect(document.activeElement).toBe(screen.getAllByRole('button', { name: '신청 도움말' })[0])
+  })
   it('moves the workspace scroll area to the top whenever the step changes', async () => {
     const view = mount('/app/combination-reviews/12')
     const scrollTo = vi.fn()
