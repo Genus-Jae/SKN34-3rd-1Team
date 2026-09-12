@@ -156,6 +156,21 @@ describe('review screens and execution safety', () => {
     await screen.findByText('실행 #30 · 분석 완료')
     expect(repository.start.mock.calls[1][1]).toEqual(input)
   })
+  it('allows automatic analysis when a selected program is an official numeric MSIT notice', async () => {
+    repository.get.mockResolvedValue({
+      ...structuredClone(reviewFixture),
+      programs: [
+        reviewFixture.programs[0],
+        { ...reviewFixture.programs[1], sourceCode: 'MSIT', sourceProgramId: '3186573' },
+      ],
+    })
+
+    mount()
+
+    const button = await screen.findByRole('button', { name: '새 분석 실행' }) as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+    expect(screen.queryByText(/현재 기업마당의 숫자형/)).toBeNull()
+  })
   it.each([422, 429, 503])('shows %s as technical error with saved failed run', async (status) => {
     repository.start.mockRejectedValue(new CombinationReviewError(status, 'SOURCE_UNSUPPORTED', 30))
     repository.run.mockResolvedValue({ ...runFixture, status: 'FAILED', analysis: null, failureCode: 'SOURCE_UNSUPPORTED' })
