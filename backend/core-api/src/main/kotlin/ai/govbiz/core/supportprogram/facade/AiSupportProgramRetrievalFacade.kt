@@ -6,14 +6,18 @@ import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramIndexReferenc
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramIndexSearchRequest
 import ai.govbiz.core.supportprogram.client.ai.mapper.SupportProgramIndexDocumentMapper
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
-import java.text.Normalizer
-import java.util.Locale
+import ai.govbiz.core.supportprogram.client.elasticsearch.ElasticsearchSupportProgramClient
+import ai.govbiz.core.supportprogram.client.elasticsearch.dto.ElasticsearchSupportProgramReferenceRequest
+import ai.govbiz.core.supportprogram.client.elasticsearch.mapper.ElasticsearchSupportProgramDocumentMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /** 현재 DB 공고 버전에서 검증한 의미 검색과 키워드 순위를 결합해 점수화 후보를 고릅니다. */
 @Component
-class AiSupportProgramRetrievalFacade(private val client: AiSupportProgramIndexClient) {
+class AiSupportProgramRetrievalFacade(
+    private val client: AiSupportProgramIndexClient,
+    private val lexicalClient: ElasticsearchSupportProgramClient,
+) {
     // 한 개의 불변 스냅샷만 게시합니다. 동시 준비가 중복될 수 있지만 검색이나 HTTP 호출에 락을 걸지 않습니다.
     @Volatile
     private var preparedCatalog: PreparedCatalog? = null
@@ -26,6 +30,10 @@ class AiSupportProgramRetrievalFacade(private val client: AiSupportProgramIndexC
         }
         val prepared = timed("document_prepare") { prepare(eligiblePrograms) }
         val programsById = prepared.programsById
+        // 키워드 색인 장애는 유료 질의 임베딩을 요청하기 전에 발견합니다.
+        val keywordIds = timed("keyword_search") {
+            lexicalClient.search(query, prepared.lexicalReferences, SupportProgramRankingFacade.MAX_CANDIDATES)
+        }
         val semanticIds = timed("semantic_search") {
             val payload = client.search(
                 AiSupportProgramIndexSearchRequest(
@@ -53,34 +61,8 @@ class AiSupportProgramRetrievalFacade(private val client: AiSupportProgramIndexC
                 id
             }
         }
-        val candidateIds = timed("keyword_search") {
-            combineRanks(semanticIds, keywordCandidates(query, prepared))
-        }
+        val candidateIds = combineRanks(semanticIds, keywordIds)
         return java.util.List.copyOf(candidateIds.map(programsById::getValue))
-    }
-
-    private fun keywordCandidates(
-        query: String,
-        prepared: PreparedCatalog,
-    ): List<String> {
-        val queryTokens = tokenize(query)
-        if (queryTokens.isEmpty()) return emptyList()
-        return prepared.normalizedTextById.map { (id, normalizedText) ->
-            // 공고의 모든 토큰을 보관할 필요 없이 아직 찾지 못한 검색어만 추적합니다.
-            val remainingTokens = queryTokens.toMutableSet()
-            for (match in TOKEN.findAll(normalizedText)) {
-                remainingTokens.remove(match.value)
-                if (remainingTokens.isEmpty()) break
-            }
-            id to queryTokens.size - remainingTokens.size
-        }.filter { it.second > 0 }
-            .sortedWith(
-                compareByDescending<Pair<String, Int>> { it.second }
-                    .thenByDescending { prepared.programsById.getValue(it.first).sortTimestamp }
-                    .thenBy { it.first },
-            )
-            .take(SupportProgramRankingFacade.MAX_CANDIDATES)
-            .map { it.first }
     }
 
     private fun prepare(programs: List<CatalogSupportProgram>): PreparedCatalog {
@@ -121,13 +103,12 @@ class AiSupportProgramRetrievalFacade(private val client: AiSupportProgramIndexC
             programsById = java.util.Map.copyOf(programsById),
             references = java.util.List.copyOf(documents.map { it.reference() }),
             hashesById = java.util.Map.copyOf(documents.associate { it.id to it.contentHash }),
-            normalizedTextById = java.util.Map.copyOf(documents.associate {
-                it.id to Normalizer.normalize(it.text, Normalizer.Form.NFC).lowercase(Locale.ROOT)
+            lexicalReferences = java.util.List.copyOf(snapshot.map {
+                ElasticsearchSupportProgramDocumentMapper.fromCatalog(it).reference()
             }),
         )
         // 원문 크기는 잘린 검색 문서와 별도로 제한합니다. 큰 카탈로그도 정상 검색하되 보관하지 않습니다.
-        val cacheable = snapshot.sumOf(::retainedTextLength) <= MAX_CACHED_SOURCE_CHARACTERS &&
-            prepared.normalizedTextById.values.sumOf { it.length.toLong() } <= MAX_CACHED_SOURCE_CHARACTERS
+        val cacheable = snapshot.sumOf(::retainedTextLength) <= MAX_CACHED_SOURCE_CHARACTERS
         preparedCatalog = prepared.takeIf { cacheable }
         logger.info(
             "support_program_search preparation_cache={} document_count={}",
@@ -154,7 +135,7 @@ class AiSupportProgramRetrievalFacade(private val client: AiSupportProgramIndexC
         val programsById: Map<String, CatalogSupportProgram>,
         val references: List<AiSupportProgramIndexReferenceRequest>,
         val hashesById: Map<String, String>,
-        val normalizedTextById: Map<String, String>,
+        val lexicalReferences: List<ElasticsearchSupportProgramReferenceRequest>,
     )
 
     private inline fun <T> timed(stage: String, action: () -> T): T {
@@ -185,14 +166,9 @@ class AiSupportProgramRetrievalFacade(private val client: AiSupportProgramIndexC
         ).take(SupportProgramRankingFacade.MAX_CANDIDATES)
     }
 
-    private fun tokenize(text: String): Set<String> =
-        TOKEN.findAll(Normalizer.normalize(text, Normalizer.Form.NFC).lowercase(Locale.ROOT))
-            .map { it.value }.toSet()
-
     private companion object {
         const val RRF_OFFSET = 60.0
         const val MAX_CACHED_SOURCE_CHARACTERS = 2_000_000L
         val logger = LoggerFactory.getLogger(AiSupportProgramRetrievalFacade::class.java)
-        val TOKEN = Regex("[a-z0-9가-힣]+")
     }
 }

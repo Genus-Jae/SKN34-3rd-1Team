@@ -17,6 +17,26 @@ import java.nio.file.Path
 /** 빈 DB와 기존 대화용 V19 DB를 실제 MySQL 8.4에서 검증합니다. 개발 DB·적용 이력은 변경하지 않습니다. */
 class FlywayMigrationIntegrationTest {
     @Test
+    fun lexicalUpgradeOnlyInvalidatesDerivedReadinessAndPreservesPublishedHistory() = withDatabase { mysql, jdbc ->
+        migration(mysql, "23").migrate()
+        jdbc.update("""INSERT INTO support_program_sync_status
+            (source_code, published_generation, published_catalog_fingerprint, published_program_count, index_ready,
+             last_successful_sync_at, last_failed_sync_at, last_sync_outcome)
+            VALUES ('BIZINFO', 7, ?, 1422, TRUE, '2026-09-06 10:00:00', '2026-09-07 10:00:00', 'FAILURE')""", "a".repeat(64))
+        val columns = "source_code, published_generation, published_catalog_fingerprint, published_program_count, last_successful_sync_at, last_failed_sync_at, last_sync_outcome"
+        val before = jdbc.queryForMap("SELECT $columns FROM support_program_sync_status")
+        val history = jdbc.queryForList("SELECT version, script, checksum FROM flyway_schema_history ORDER BY installed_rank")
+        val flyway = migration(mysql, "24")
+        assertEquals(1, flyway.migrate().migrationsExecuted)
+        assertEquals(before, jdbc.queryForMap("SELECT $columns FROM support_program_sync_status"))
+        assertEquals(false, jdbc.queryForObject("SELECT index_ready FROM support_program_sync_status", Boolean::class.java))
+        assertEquals(history, jdbc.queryForList("SELECT version, script, checksum FROM flyway_schema_history WHERE installed_rank <= 23 ORDER BY installed_rank"))
+        jdbc.update("UPDATE support_program_sync_status SET index_ready = TRUE WHERE source_code = 'BIZINFO'")
+        assertEquals(0, flyway.migrate().migrationsExecuted)
+        assertEquals(true, jdbc.queryForObject("SELECT index_ready FROM support_program_sync_status", Boolean::class.java))
+    }
+
+    @Test
     fun freshDatabaseAppliesUniqueVersionsAndRepeatedStartupChangesNothing() = withDatabase { mysql, jdbc ->
         val flyway = migration(mysql, "21")
         assertEquals(21, flyway.migrate().migrationsExecuted)

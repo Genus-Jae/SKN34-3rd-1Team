@@ -539,6 +539,7 @@ Service가 만든 후보 최대 20개와 최종 추천 최대 5개의 ID를 기�
 | 기업마당 공식 원문 수집·검증 실패 | 503 | `SUPPORT_PROGRAM_EVIDENCE_UNAVAILABLE` |
 | AI Service의 예상하지 못한 HTTP 응답·응답 계약 위반 | 502 | `AI_SERVICE_UPSTREAM_ERROR` / `AI_SERVICE_INVALID_RESPONSE` |
 | AI Service 연결 불가·내부 503 응답 | 503 | `AI_SERVICE_UNAVAILABLE` |
+| Elasticsearch 연결 실패·색인 버전 누락·잘못된 키워드 응답 | 503 | `SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE` |
 | AI Service 호출 시간 초과·내부 408/504 응답 | 504 | `AI_SERVICE_TIMEOUT` |
 | 현재 허용 공고의 색인 미완료 또는 Qdrant·임베딩 실패 | 503(내부 시간 초과 분류에 따라 504) | `AI_SERVICE_UNAVAILABLE` / `AI_SERVICE_TIMEOUT` |
 

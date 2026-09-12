@@ -4,20 +4,23 @@ import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramIndexClient
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramIndexBatchRequest
 import ai.govbiz.core.supportprogram.client.ai.mapper.SupportProgramIndexDocumentMapper
+import ai.govbiz.core.supportprogram.client.elasticsearch.ElasticsearchSupportProgramClient
+import ai.govbiz.core.supportprogram.client.elasticsearch.mapper.ElasticsearchSupportProgramDocumentMapper
 import ai.govbiz.core.supportprogram.domain.CatalogSupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramSyncStatus
 import ai.govbiz.core.supportprogram.helper.SupportProgramCatalogFingerprintHelper
 import ai.govbiz.core.supportprogram.repository.SupportProgramRepository
 import org.springframework.stereotype.Service
 
-/** 공개 전 공고 스냅샷의 벡터를 준비하고, 저장된 현재 공고의 누락 색인을 복구합니다. */
+/** 공개 전 키워드·벡터 색인을 준비하고, 현재 공고의 누락 색인을 복구합니다. */
 @Service
 class SupportProgramIndexSyncService(
     private val repository: SupportProgramRepository,
     private val client: AiSupportProgramIndexClient,
+    private val lexicalClient: ElasticsearchSupportProgramClient,
 ) {
     /**
-     * 이미 MySQL에 공개된 공고에서 누락된 벡터만 복구합니다.
+     * 이미 MySQL에 공개된 공고의 키워드·벡터 색인을 복구합니다.
      *
      * 이 작업은 삭제를 수행하지 않습니다. 새 카탈로그의 벡터를 준비하는 도중 이전 스냅샷 기준의
      * 정리 작업이 새 벡터를 삭제하지 않게 하기 위해서입니다.
@@ -73,6 +76,7 @@ class SupportProgramIndexSyncService(
         check(programs.size <= SupportProgramIndexDocumentMapper.MAX_DOCUMENTS) { "index catalog exceeds supported limit" }
         val documents = programs.map(SupportProgramIndexDocumentMapper::fromCatalog)
         check(documents.map { it.id }.toSet().size == documents.size) { "duplicate catalog identities" }
+        lexicalClient.indexSnapshot(programs.map(ElasticsearchSupportProgramDocumentMapper::fromCatalog))
         // 외부 API는 DB transaction 밖에서 호출하며, 같은 문서 버전은 AI Service가 재사용합니다.
         for (batch in documents.chunked(BATCH_SIZE)) {
             val result = client.indexBatch(AiSupportProgramIndexBatchRequest(batch))

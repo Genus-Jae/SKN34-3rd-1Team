@@ -126,7 +126,7 @@ V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 
 업무 실패는 `domain/exception`, 외부 시스템 실패는 `client/exception`에 두어 Repository·Client가 Service에 역으로 의존하지 않습니다.
 이는 프로젝트의 기능 중심 레이어드 구조이며 범용 port/interface나 전달만 하는 Facade를 추가한 구조는 아닙니다.
 
-JDK 21과 MySQL 8.4가 필요합니다. 실제 공고 동기화·의미 검색에는 실행 중인 AI Service와 Qdrant도
+JDK 21과 MySQL 8.4가 필요합니다. 실제 공고 동기화·자연어 검색에는 Nori가 설치된 Elasticsearch와 실행 중인 AI Service·Qdrant도
 필요합니다. 전체 서비스를 함께 실행하는 방법은 [인프라 README](../../infrastructure/README.md)를 참고하세요.
 
 저장소 루트에서 다음 명령으로 실행합니다. 네이티브 실행은 루트 `.env`를 자동으로 읽지 않으므로
@@ -186,7 +186,7 @@ Qdrant·키워드 순위를 결합한 후보 최대 20개, AI 최종 추천 최�
 질문 파일은 [예시](../../evaluation/support-program-search/query-set.example.json)를 복사해 준비합니다.
 fixture 내보내기는 지정한 기준 날짜의 `OPEN` 공고만 담으므로, 캡처도 기본값인 `acceptingOnly=true`와
 **같은 기준 날짜**로 실행해야 합니다.
-실행 환경의 MySQL·AI Service·Qdrant는 실제 검색과 같은 상태여야 하며, AI 점수화 호출 비용이 발생할 수
+실행 환경의 MySQL·Elasticsearch·AI Service·Qdrant는 실제 검색과 같은 상태여야 하며, AI 점수화 호출 비용이 발생할 수
 있으므로 기본 실행이나 CI에는 포함하지 않습니다.
 
 ```bash
@@ -300,14 +300,19 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 결과 설명�
 
 ### 검색·상세·근거 질문
 
+키워드 색인 HTTP 경계는 `client/elasticsearch`, 공유 본문 구성은 `helper/SupportProgramIndexTextHelper`입니다.
+`SupportProgramIndexSyncService`가 Elasticsearch → Qdrant를 준비한 뒤에만 제공처 스냅샷을 공개합니다.
+기존 환경은 `V24`가 이전 준비 플래그를 재검증 대상으로 바꾸므로 **색인 복구 후** 자연어 검색이 가능합니다.
+환경변수·장애 계약·테스트·업그레이드는 [Elasticsearch 적용 상세](../../docs/elasticsearch-lexical-search.md)를 참고하세요.
+
 - GET 검색: 필수 `query`는 최대 500 UTF-16 코드 단위이며 빈 문자열을 허용합니다. 탭·줄바꿈·캐리지 리턴을 제외한
   Unicode C 범주 문자(예: NUL·제로폭 문자·단독 surrogate)는 DB·AI 호출 전에 400으로 거부합니다.
   `acceptingOnly`의 기본값은 `true`이고
   이때 `OPEN` 공고만 대상으로 삼습니다. 검색어가 있으면 검증된 의미 검색 상위 20개와 전체 적격 공고의
   키워드 상위 20개를 같은 가중치의 RRF(`1 / (60 + 순위)`)로 결합하고, 최대 20개를 AI가 점수화하여
-  기준을 통과한 0~5개를 선정한 후 아래 로그인별 노출 정책을 적용합니다. 키워드는 색인 본문의 NFC·소문자 토큰 집합 교집합 수로 정렬하고
+  기준을 통과한 0~5개를 선정한 후 아래 로그인별 노출 정책을 적용합니다. 키워드는 Elasticsearch Nori(`mixed`)·BM25로 정렬하고
   동점은 최신순·제공처 포함 ID순입니다. RRF 동점은 의미 검색 순위·제공처 포함 ID순입니다.
-  적격 공고의 전체 값과 순서가 같으면 제한된 단일 불변 스냅샷에서 검색 문서·해시·NFC/소문자 본문을 재사용합니다.
+  적격 공고의 전체 값과 순서가 같으면 제한된 단일 불변 스냅샷에서 문서 해시·두 색인의 버전 참조를 재사용합니다.
   DB 조회·접수 상태 계산·현재 벡터 확인은 매 검색 수행하고, 질문·검색 결과·랭킹은 이 캐시에 보관하지 않습니다.
   내용·순서·접수 상태가 바뀌면 전처리를 다시 수행합니다. DB·후보 준비·의미/키워드 검색·랭킹·전체 처리의
   시간과 성공/실패를 기록하며 질문·기업 조건·공고 원문은 로그에 남기지 않습니다.

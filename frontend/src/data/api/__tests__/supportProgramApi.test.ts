@@ -21,6 +21,21 @@ afterEach(() => {
 })
 
 describe('searchSupportProgramsApi', () => {
+  it('Elasticsearch 색인 장애는 빈 검색 성공이나 자동 재호출로 바꾸지 않는다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      type: 'urn:govbiz:problem:support-program-search-index-unavailable',
+      title: 'Support Program Search Index Unavailable',
+      status: 503,
+      detail: 'Support program search is temporarily unavailable. Please retry later.',
+      instance: '/api/v1/support-programs/search',
+      code: 'SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE',
+    }), { status: 503, headers: { 'Content-Type': 'application/problem+json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(new SupportProgramRepositoryImpl().search({ query: '서울 창업' }))
+      .rejects.toBeInstanceOf(SupportProgramApiError)
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
   it('다른 검색어의 결과를 현재 검색 결과로 표시하지 않고 명시적인 오류로 반환한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(completeSearchResult({ query: '부산 수출', programs: [supportPrograms[0]] })))
     vi.stubGlobal('fetch', fetchMock)

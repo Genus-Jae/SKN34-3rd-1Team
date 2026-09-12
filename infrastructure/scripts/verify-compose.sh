@@ -51,6 +51,10 @@ export OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
 export OPENAI_EMBEDDING_DIMENSIONS="1536"
 export EMBEDDING_TIMEOUT_SECONDS="5"
 export QDRANT_TIMEOUT_SECONDS="2"
+export ELASTICSEARCH_INDEX_NAME="govbiz-support-program-lexical-v1"
+export ELASTICSEARCH_API_KEY=""
+export ELASTICSEARCH_CONNECT_TIMEOUT="1s"
+export ELASTICSEARCH_READ_TIMEOUT="5s"
 export QDRANT_HOST_PORT="${VERIFY_COMPOSE_QDRANT_HOST_PORT:-16333}"
 export SUPPORT_PROGRAM_INDEX_ENABLED="true"
 export SUPPORT_PROGRAM_INDEX_INITIAL_DELAY="PT0S"
@@ -601,6 +605,23 @@ wait_for_http \
   "200" \
   '"total"[[:space:]]*:[[:space:]]*1' \
   '"id"[[:space:]]*:[[:space:]]*"174321"'
+
+echo "Stopping only verification Elasticsearch to verify lexical failure isolation"
+"${COMPOSE[@]}" stop elasticsearch
+# 복구가 먼저 장애를 기록하면 기존 전체 색인 미준비 계약(AI_SERVICE_UNAVAILABLE)이 응답될 수도 있다.
+wait_for_http "Lexical outage is an explicit failure, never an empty successful search" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=AI&acceptingOnly=true" "503" \
+  'SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE|AI_SERVICE_UNAVAILABLE'
+wait_for_http "Repair records lexical unavailability" \
+  "${WEB_BASE_URL}/api/v1/support-programs/readiness" "200" \
+  '"searchState"[[:space:]]*:[[:space:]]*"UNAVAILABLE"' '"indexReady"[[:space:]]*:[[:space:]]*false'
+wait_for_http "Published MySQL catalog remains available during lexical outage" \
+  "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=KSTARTUP&status=OPEN" "200" \
+  '"total"[[:space:]]*:[[:space:]]*2'
+"${COMPOSE[@]}" up --detach --force-recreate --no-deps --wait elasticsearch
+VERIFY_HTTP_MEMBER=true wait_for_http "Hybrid search recovers from persistent Elasticsearch data" \
+  "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" "200" \
+  '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_OLD_AI"'
 
 echo "Stopping Qdrant to verify that a vector outage is not hidden as a successful search"
 verify_search_result_store

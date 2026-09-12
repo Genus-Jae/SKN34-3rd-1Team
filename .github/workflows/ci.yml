@@ -133,6 +133,21 @@ jobs:
         working-directory: evaluation/support-program-search
         run: python -B review/verify-shared-run.py --run-dir runs/support-program-catalog-20260906-v1 --with-capture
 
+      - name: Recheck saved lexical comparison without Elasticsearch or model calls
+        working-directory: evaluation/support-program-search
+        run: >-
+          python -B compare_elasticsearch.py
+          --fixture runs/support-program-catalog-20260906-v1/review-final-v1/fixture-labeled.json
+          --verify-report runs/elasticsearch-nori-20260912-v1/report.json
+
+      - name: Recheck expanded Korean questions without model calls
+        working-directory: evaluation/support-program-search
+        run: >-
+          python -B compare_korean_queries.py
+          --fixture runs/support-program-catalog-20260906-v1/review-final-v1/fixture-labeled.json
+          --questions runs/elasticsearch-korean-queries-20260912-v1/questions.json
+          --verify-report runs/elasticsearch-korean-queries-20260912-v1/report.json
+
   container-integration:
     name: Container integration
     needs:

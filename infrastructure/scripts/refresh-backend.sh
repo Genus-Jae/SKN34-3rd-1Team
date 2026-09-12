@@ -26,7 +26,7 @@ COMPOSE=(
   --env-file "${ENV_FILE}"
   --file "${COMPOSE_FILE}"
 )
-EXPECTED_SERVICES=(mysql qdrant redis rabbitmq ai-service core-api web)
+EXPECTED_SERVICES=(mysql qdrant redis rabbitmq elasticsearch ai-service core-api web)
 
 contains_line() {
   local lines=$1
@@ -58,7 +58,7 @@ for service in "${EXPECTED_SERVICES[@]}"; do
 done
 
 running_services="$("${COMPOSE[@]}" ps --services --status running)"
-for service in mysql qdrant redis rabbitmq web; do
+for service in mysql qdrant redis rabbitmq elasticsearch web; do
   if ! contains_line "${running_services}" "${service}"; then
     echo "Required existing service '${service}' is not running in project '${PROJECT_NAME}'. Nothing was changed." >&2
     exit 1

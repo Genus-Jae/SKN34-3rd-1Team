@@ -1,7 +1,7 @@
 # GovBiz
 
 자연어로 정부지원사업을 찾고, 공식 공고를 근거로 질문할 수 있는 채팅형 웹앱입니다.
-기업마당·K-Startup과 선택 활성화하는 과기정통부·충청남도 수출입공지 수집기를 제공하며, MySQL·Qdrant 기반 검색과 AI 점수화로 관련 공고를 최대 5개 추천합니다.
+기업마당·K-Startup과 선택 활성화하는 과기정통부·충청남도 수출입공지 수집기를 제공하며, MySQL 원본과 Elasticsearch·Qdrant 후보 검색 및 AI 점수화로 관련 공고를 최대 5개 추천합니다.
 
 ## 주요 기능
 
@@ -16,12 +16,18 @@
 검색 관련도와 신청 자격 확인은 구분해 표시합니다. 최근 개선과 검증 범위는
 [검색 품질 개선 기록](docs/search-relevance-v5-fix.md)을 참고하세요.
 
-기술 구성: React · TypeScript · Kotlin · Spring Boot · MyBatis · FastAPI · OpenAI · MySQL · Qdrant · Redis · RabbitMQ
+기술 구성: React · TypeScript · Kotlin · Spring Boot · MyBatis · FastAPI · OpenAI · MySQL · Elasticsearch/Nori · Qdrant · Redis · RabbitMQ
 
 Redis는 비회원 검색 후 로그인할 때 복원할 전체 추천 결과·검색 조건을 30분 보관합니다.
 같은 Redis를 사용하는 Core는 재시작하거나 여러 인스턴스로 실행해도 만료 전 결과와 최초 복원 계정을 공유합니다.
 첫 AI 검색을 빠르게 하는 캐시는 아니며, 대화 기록·회원 세션·공고 데이터는 MySQL에 유지합니다.
 저장 구조·장애 처리·운영 한계는 [Redis 적용 상세](docs/redis-search-result-restoration.md)를 참고하세요.
+
+한국어 키워드 후보는 **Elasticsearch 9.5.3 + Nori·BM25**로 조회하고 Qdrant 의미 검색 순위와 RRF로 결합합니다.
+공개 전 두 색인을 준비하며, 기존 DB 업그레이드 시 `V24` 적용 후 색인 복구가 필요합니다.
+[적용 구조·실행 설정·업그레이드 주의사항](docs/elasticsearch-lexical-search.md)을 참고하세요.
+[독립 비교 실험](evaluation/support-program-search/elasticsearch/README.md)은 그대로 재실행할 수 있으며
+실험 점수를 실제 AI 최종 추천 정확도로 간주하지 않습니다.
 
 ## RabbitMQ 적용 범위
 

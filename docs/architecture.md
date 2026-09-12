@@ -55,6 +55,7 @@ AI 경계 실패는 `facade/exception`에서 표현하고 Service가 공개 실�
 ```text
 브라우저 → React Web → Core API
                        ├→ MySQL: 현재 공개 공고 카탈로그·공고별 공식 원문
+                       ├→ Elasticsearch: Nori·BM25 키워드 후보 색인·검색
                        ├→ 공공데이터포털: 기업마당·K-Startup 공고 수집
                        ├→ 기업마당 공식 HTTPS 상세 페이지: 명시적 원문 질문 시 HTML 수집
                        └→ AI Service
@@ -148,9 +149,10 @@ GET /api/v1/support-programs/search (기존 단문·최신 목록)
         → 접수 상태 계산·필터
         ├→ 빈 검색어: 최신순 최대 5개 반환
         └→ 검색어 있음:
-            AiSupportProgramRetrievalFacade → AiSupportProgramIndexClient
-              → AI Service → 현재 색인 검증 → 질의 임베딩 캐시/OpenAI → Qdrant 후보 최대 20개
-              → Core: 전체 적격 공고의 키워드 상위 20개와 RRF 결합 → 후보 최대 20개
+            AiSupportProgramRetrievalFacade
+              → ElasticsearchSupportProgramClient → Nori·BM25 후보 최대 20개
+              → AiSupportProgramIndexClient → AI Service → 현재 색인 검증 → 질의 임베딩 캐시/OpenAI → Qdrant 후보 최대 20개
+              → Core: 두 순위의 RRF 결합 → 후보 최대 20개
             AiSupportProgramRankingFacade → HttpAiSupportProgramRankingClient
               → AI Service → 정확일치 랭킹 응답 캐시, 없으면 단일 Agent → OpenAI 점수화·검증
             Core의 응답 검증 → 최종 추천 0~5개
@@ -196,17 +198,17 @@ Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보�
    오름차순의 최대 5개를 AI 없이 반환합니다. 자연어 검색의 빈 후보가 전체 색인 장애 때문이면 503으로 알리고,
    최초 빈 DB나 준비된 제공처의 정상 0건이면 빈 목록을 반환합니다. 미공개 제공처 데이터는 노출하지 않습니다.
 3. 비어 있지 않은 질의는 대상 공고 전체의 정확한 ID·내용 해시를 AI Service에 전달합니다.
-   Core는 적격 공고 전체 값과 순서가 같은 동안 단일 불변 스냅샷의 검색 문서·해시·정규화 본문을 재사용합니다.
+   Core는 적격 공고 전체 값과 순서가 같은 동안 단일 불변 스냅샷의 해시·두 색인 버전 참조를 재사용합니다.
    스냅샷 크기는 제한하며 큰 입력은 저장하지 않고 정상 처리합니다. 가변 목록을 복사하고 HTTP 호출을 락으로
    직렬화하지 않습니다. DB 조회·접수 상태 계산·공개/색인 준비 검증·키워드 순위 계산은 매 요청 유지합니다.
    최신 공고 20개를 먼저 자르지 않습니다. Qdrant가 반환해야 할 개수는 `min(대상 공고 수, 20)`입니다.
-4. `AiSupportProgramRetrievalFacade`는 의미 검색 응답의 질의·ID·해시·중복·유한 점수·내림차순·개수를
-   검증한 뒤 전체 적격 공고의 동일 색인 본문에서 키워드 상위 20개를 구합니다. 질의와 본문을 NFC로
-   정규화하고 `Locale.ROOT` 소문자 변환 후 `[a-z0-9가-힣]+` 토큰 집합의 교집합 수를 내림차순으로
-   정렬합니다. 일치 토큰이 없는 공고는 제외하고, 동점은 정렬 시각 내림차순·제공처 포함 ID 오름차순입니다.
+4. `AiSupportProgramRetrievalFacade`는 먼저 `ElasticsearchSupportProgramClient`로 현재 적격 버전에 한정한
+   Nori(`mixed`)·BM25 상위 20개를 조회합니다. 동일 검색 시점의 전체 버전 가시성·부분 실패·ID·해시·점수를
+   검증합니다. 질의·본문은 NFC로 정규화하며 동점은 정렬 시각 내림차순·제공처 포함 ID 오름차순입니다.
+   이어 의미 검색 응답의 질의·ID·해시·중복·유한 점수·내림차순·개수를 검증합니다.
    의미 검색과 키워드의 1부터 시작하는 순위를 동일 가중치 RRF `1 / (60 + 순위)`로 합산하고,
    동점은 의미 검색 순위·제공처 포함 ID 오름차순으로 정렬해 중복 없는 최대 20개를 점수화에 전달합니다.
-   의미 검색 응답이 실패하거나 잘못됐으면 오류를 반환합니다. 키워드 일치가 없으면 의미 검색 순서를 유지합니다.
+   어느 색인이든 실패하거나 잘못됐으면 오류를 반환합니다. 정상 키워드 일치가 없으면 의미 검색 순서를 유지합니다.
 5. AI Service는 전체 입력이 같은 검증된 랭킹 응답을 재사용하거나 모든 후보를 다시 평가합니다.
    AI는 후보의 의미·자격·세부 점수를 판단하고 총점은 출력하지 않습니다.
    요청별 strict schema의 `rankings`는 후보 ID 자체를 필수 키로 선언한 객체이며 다른 키는 금지합니다.
@@ -406,7 +408,8 @@ BizInfoSupportProgramCatalogSyncScheduler (기본: 최초 PT0S, 완료 후 PT6H)
   → Repository: 수집 시작 세대 발급 [짧은 DB transaction]
   → BizInfoSupportProgramCatalogFacade → BizInfoClient: 전체 페이지 수집·검증
   → BizInfoProgramMapper: 필수 필드 검증·공고 정규화
-  → SupportProgramIndexSyncService.indexSnapshot: 모든 공고의 벡터 준비
+  → SupportProgramIndexSyncService.indexSnapshot: 모든 공고의 두 색인 준비
+      → ElasticsearchSupportProgramClient → Elasticsearch: 불변 버전 추가·검색 가시성 검증
       → AiSupportProgramIndexClient → AI Service → OpenAI 임베딩 → Qdrant
   → Repository: 최신 시작 세대일 때만 MySQL에 공개 [짧은 DB transaction]
       → BIZINFO 기존 행 미노출 처리 + 수집 목록 UPSERT
@@ -432,9 +435,13 @@ MySQL의 `support_program_sync_generation`은 제공처별 최신 **시작** 세
 transaction 밖에서 실행하며, 수집 실패를 이유로 기존 행을 삭제하거나 다른 제공처 데이터를 변경하지 않습니다.
 동기화 Service가 수집·사전 색인·공개 과정의 RuntimeException을 한 번 기록한 뒤 Scheduler가 다음 주기에 계속 실행합니다.
 
-## 벡터 정합성과 복구
+## 키워드·벡터 색인 정합성과 복구
 
-`SupportProgramIndexDocumentMapper`가 제목·기관·지원 대상·분야·지역·신청 기간 원문·요약으로 검색 문서를
+Elasticsearch 버전 식별자·Nori/BM25 설정·장애 경계·`V24` 이후 재색인 절차는
+[Elasticsearch 적용 상세](elasticsearch-lexical-search.md)에 설명합니다. 정기 복구와 공개 전 준비는
+Elasticsearch를 먼저, 이어 Qdrant를 확인하며 모두 성공해야 `indexReady=true`입니다.
+
+두 Client Mapper가 공유하는 `SupportProgramIndexTextHelper`가 제목·기관·지원 대상·분야·지역·신청 기간 원문·요약으로 검색 문서를
 구성합니다. 제어·형식 문자는 개행·탭을 제외하고 정리하며 Unicode 코드 포인트 기준 최대 12,000자로
 제한합니다. UTF-8 문서의 SHA-256이 내용 해시이고, 내부 문서 ID는
 `{sourceCode}:{sourceProgramId}`입니다.
@@ -447,7 +454,7 @@ AI Service는 문서 ID·내용 해시에서 Qdrant point ID를 결정하며, �
 SupportProgramIndexSyncScheduler (기본: 최초 PT0S, 완료 후 PT1M)
   → SupportProgramIndexSyncService.repair
   → Repository: 현재 MySQL 공개 공고 목록·제공처별 상태 조회
-  → 제공처별로 AI Service: 해당 버전의 누락 벡터 생성·저장
+  → 제공처별로 Elasticsearch 누락 버전 준비 → AI Service: 해당 버전의 누락 벡터 생성·저장
   → 해당 제공처 상태의 공개 세대·지문·공고 수가 읽은 스냅샷과 같을 때만 indexReady 갱신
   → 한 제공처 실패 이후에도 다른 제공처를 처리하고, 완료 후 실패를 오류로 전달
 ```
@@ -459,7 +466,7 @@ SupportProgramIndexSyncScheduler (기본: 최초 PT0S, 완료 후 PT1M)
 복구 색인이 실패하면 자신이 읽은 스냅샷과 상태 행이 여전히 같을 때만 `indexReady=false`로 바꾸며,
 최근 카탈로그 동기화 성공·실패 기록은 바꾸지 않습니다. 복구가 늦게 끝난 동안 새 스냅샷이 공개되면 조건부
 UPDATE가 0행이 되어 새 스냅샷 상태를 건드리지 않습니다. 이 상태는 마지막 전체 색인 준비 결과이며 실시간
-Qdrant Health를 뜻하지는 않습니다.
+Elasticsearch/Qdrant Health를 뜻하지는 않습니다.
 
 공개 준비와 복구는 모두 `prune`을 호출하지 않습니다. 이전 스냅샷 기준의 삭제가 공개 준비 중인 새 벡터를
 지우는 상황을 피하기 위해 현재 자동 삭제를 연결하지 않았습니다. 내부 `prune` API는 존재하지만,
