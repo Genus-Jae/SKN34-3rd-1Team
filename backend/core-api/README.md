@@ -315,13 +315,15 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 결과 설명�
 `SupportProgramIndexSyncService`가 Elasticsearch → Qdrant를 준비한 뒤에만 제공처 스냅샷을 공개합니다.
 기존 환경은 `V24`가 이전 준비 플래그를 재검증 대상으로 바꾸므로 **색인 복구 후** 자연어 검색이 가능합니다.
 환경변수·장애 계약·테스트·업그레이드는 [Elasticsearch 적용 상세](../../docs/elasticsearch-lexical-search.md)를 참고하세요.
+현재 v2는 지역명·업무 용어 사용자 사전과 검색 시 `여행사/여행업체` 동의어 확장을 사용합니다.
+v1을 사용하던 환경은 **새 v2 인덱스 이름으로 전환하고 재색인**해야 합니다. 기존 공고·벡터·v1 색인은 삭제하지 않습니다.
 
 - GET 검색: 필수 `query`는 최대 500 UTF-16 코드 단위이며 빈 문자열을 허용합니다. 탭·줄바꿈·캐리지 리턴을 제외한
   Unicode C 범주 문자(예: NUL·제로폭 문자·단독 surrogate)는 DB·AI 호출 전에 400으로 거부합니다.
   `acceptingOnly`의 기본값은 `true`이고
   이때 `OPEN` 공고만 대상으로 삼습니다. 검색어가 있으면 검증된 의미 검색 상위 20개와 전체 적격 공고의
   키워드 상위 20개를 같은 가중치의 RRF(`1 / (60 + 순위)`)로 결합하고, 최대 20개를 AI가 점수화하여
-  기준을 통과한 0~5개를 선정한 후 아래 로그인별 노출 정책을 적용합니다. 키워드는 Elasticsearch Nori(`mixed`)·BM25로 정렬하고
+  기준을 통과한 0~5개를 선정한 후 아래 로그인별 노출 정책을 적용합니다. 키워드는 Elasticsearch Nori(`discard`, 사용자 사전·검색용 동의어)·BM25로 정렬하고
   동점은 최신순·제공처 포함 ID순입니다. RRF 동점은 의미 검색 순위·제공처 포함 ID순입니다.
   적격 공고의 전체 값과 순서가 같으면 제한된 단일 불변 스냅샷에서 문서 해시·두 색인의 버전 참조를 재사용합니다.
   DB 조회·접수 상태 계산·현재 벡터 확인은 매 검색 수행하고, 질문·검색 결과·랭킹은 이 캐시에 보관하지 않습니다.
@@ -511,7 +513,7 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `AI_RANKING_READ_TIMEOUT` | `55s` | 지원사업 최종 점수화 전용 응답 제한시간 |
 | `AI_SEMANTIC_SEARCH_READ_TIMEOUT` | `30s` | 의미 검색·색인 응답 제한시간 |
 | `ELASTICSEARCH_BASE_URL` | `http://127.0.0.1:9200` | 호스트 실행 시 키워드 색인·검색 주소. Compose는 `http://elasticsearch:9200`으로 고정 |
-| `ELASTICSEARCH_INDEX_NAME` | `govbiz-support-program-lexical-v1` | 단일 키워드 인덱스 이름. 분석기 변경은 새 버전 인덱스·재색인 필요 |
+| `ELASTICSEARCH_INDEX_NAME` | `govbiz-support-program-lexical-v2` | 단일 키워드 인덱스 이름. v1에서 전환 시 새 인덱스·재색인 필요 |
 | `ELASTICSEARCH_API_KEY` | 빈 값 | 선택 API Key. 개발 Compose는 인증 비활성이며 실제 키는 secret으로 주입 |
 | `ELASTICSEARCH_CONNECT_TIMEOUT` / `ELASTICSEARCH_READ_TIMEOUT` | `2s` / `10s` | ES 연결·읽기 제한시간 |
 | `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | 현재 공고의 Elasticsearch·Qdrant 확인·복구 여부. 새 공고 공개 전 필수 색인은 유지 |

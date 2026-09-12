@@ -129,7 +129,7 @@ services:
         condition: service_healthy
     environment:
       ELASTICSEARCH_BASE_URL: http://elasticsearch:9200
-      ELASTICSEARCH_INDEX_NAME: ${ELASTICSEARCH_INDEX_NAME:-govbiz-support-program-lexical-v1}
+      ELASTICSEARCH_INDEX_NAME: ${ELASTICSEARCH_INDEX_NAME:-govbiz-support-program-lexical-v2}
       ELASTICSEARCH_API_KEY: ${ELASTICSEARCH_API_KEY:-}
       ELASTICSEARCH_CONNECT_TIMEOUT: ${ELASTICSEARCH_CONNECT_TIMEOUT:-2s}
       ELASTICSEARCH_READ_TIMEOUT: ${ELASTICSEARCH_READ_TIMEOUT:-10s}

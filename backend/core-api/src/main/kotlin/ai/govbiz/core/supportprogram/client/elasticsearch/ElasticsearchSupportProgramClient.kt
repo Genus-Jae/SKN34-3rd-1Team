@@ -26,7 +26,7 @@ class ElasticsearchSupportProgramClient(
 ) {
     private val indexPath get() = "/${properties.indexName}"
     private val definition by lazy {
-        ClassPathResource("elasticsearch/support-program-lexical-v1.json").inputStream.use(mapper::readTree)
+        ClassPathResource("elasticsearch/support-program-lexical-v2.json").inputStream.use(mapper::readTree)
     }
 
     /** 불변 버전을 추가할 뿐 기존 버전을 삭제하지 않습니다. 전체가 검색에 보인 뒤에만 성공합니다. */

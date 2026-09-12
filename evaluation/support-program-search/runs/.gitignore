@@ -15,6 +15,22 @@
 !elasticsearch-korean-queries-20260912-v1/questions.json
 !elasticsearch-korean-queries-20260912-v1/report.json
 
+# 100 distinct AI-authored known targets, local-only 15/20 Nori comparison.
+!candidate-budget-100-20260913-v1/
+!candidate-budget-100-20260913-v1/README.md
+!candidate-budget-100-20260913-v1/questions.json
+!candidate-budget-100-20260913-v1/report.json
+!candidate-budget-100-20260913-v1/compare.py
+!candidate-budget-100-20260913-v1/test_compare.py
+
+# Frozen 100 + 200 additional targets, same local-only 15/20 comparison.
+!candidate-budget-300-20260913-v1/
+!candidate-budget-300-20260913-v1/README.md
+!candidate-budget-300-20260913-v1/questions-added.json
+!candidate-budget-300-20260913-v1/report.json
+!candidate-budget-300-20260913-v1/compare.py
+!candidate-budget-300-20260913-v1/test_compare.py
+
 # 지역 자격 합성 평가: 비밀정보 없는 고정 입력·실패/재검증 기록만 공유한다.
 !region-scope-20260907-v1/
 !region-scope-20260907-v1/README.md
@@ -285,6 +301,12 @@
 !region-conflict-20260908-v1/search/capture.json
 !region-conflict-20260908-v1/search/final_agent.py
 !region-conflict-20260908-v1/search/final_prompt.py
+
+# Nori v2 전후 비교. 기존 300개 입력·v1 결과를 소급 변경하지 않는다.
+!lexical-v2-20260913-v1/
+!lexical-v2-20260913-v1/README.md
+!lexical-v2-20260913-v1/questions-added.json
+!lexical-v2-20260913-v1/report.json
 
 # 별도 사업장 OR 예외 보완 재검사. v1 실패와 원장은 그대로 보존한다.
 !region-conflict-20260908-v2/

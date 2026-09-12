@@ -11,7 +11,7 @@ class ElasticsearchClientProperties(
     baseUrl: URI?, indexName: String?, apiKey: String?, connectTimeout: Duration?, readTimeout: Duration?,
 ) {
     val baseUrl: URI = baseUrl ?: URI.create("http://localhost:9200")
-    val indexName: String = indexName ?: "govbiz-support-program-lexical-v1"
+    val indexName: String = indexName ?: "govbiz-support-program-lexical-v2"
     val apiKey: String = apiKey?.trim().orEmpty()
     val connectTimeout: Duration = connectTimeout ?: Duration.ofSeconds(2)
     val readTimeout: Duration = readTimeout ?: Duration.ofSeconds(10)

@@ -206,7 +206,7 @@ Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보�
    직렬화하지 않습니다. DB 조회·접수 상태 계산·공개/색인 준비 검증·키워드 순위 계산은 매 요청 유지합니다.
    최신 공고 20개를 먼저 자르지 않습니다. Qdrant가 반환해야 할 개수는 `min(대상 공고 수, 20)`입니다.
 4. `AiSupportProgramRetrievalFacade`는 먼저 `ElasticsearchSupportProgramClient`로 현재 적격 버전에 한정한
-   Nori(`mixed`)·BM25 상위 20개를 조회합니다. 동일 검색 시점의 전체 버전 가시성·부분 실패·ID·해시·점수를
+   Nori v2(`discard`, 사용자 사전·검색용 동의어)·BM25 상위 20개를 조회합니다. 동일 검색 시점의 전체 버전 가시성·부분 실패·ID·해시·점수를
    검증합니다. 질의·본문은 NFC로 정규화하며 동점은 정렬 시각 내림차순·제공처 포함 ID 오름차순입니다.
    이어 의미 검색 응답의 질의·ID·해시·중복·유한 점수·내림차순·개수를 검증합니다.
    의미 검색과 키워드의 1부터 시작하는 순위를 동일 가중치 RRF `1 / (60 + 순위)`로 합산하고,
@@ -444,6 +444,8 @@ transaction 밖에서 실행하며, 수집 실패를 이유로 기존 행을 삭
 Elasticsearch 버전 식별자·Nori/BM25 설정·장애 경계·`V24` 이후 재색인 절차는
 [Elasticsearch 적용 상세](elasticsearch-lexical-search.md)에 설명합니다. 정기 복구와 공개 전 준비는
 Elasticsearch를 먼저, 이어 Qdrant를 확인하며 모두 성공해야 `indexReady=true`입니다.
+분석기 v2는 별도 인덱스로 재색인하며 v1을 수정하지 않습니다. `여행사/여행업체` 확장은 ES 검색 분석기에서만
+수행하고, 공유 본문·내용 해시·Qdrant·RRF·AI 랭킹 계약은 바꾸지 않습니다. 지역·업종의 신청 자격 추론은 포함하지 않습니다.
 
 두 Client Mapper가 공유하는 `SupportProgramIndexTextHelper`가 제목·기관·지원 대상·분야·지역·신청 기간 원문·요약으로 검색 문서를
 구성합니다. 제어·형식 문자는 개행·탭을 제외하고 정리하며 Unicode 코드 포인트 기준 최대 12,000자로

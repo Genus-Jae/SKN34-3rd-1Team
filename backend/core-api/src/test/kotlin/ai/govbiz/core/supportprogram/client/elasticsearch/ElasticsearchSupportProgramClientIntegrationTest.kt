@@ -19,6 +19,7 @@ import org.testcontainers.images.builder.ImageFromDockerfile
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.springframework.http.MediaType
+import org.springframework.core.io.ClassPathResource
 import org.springframework.web.client.RestClient
 import tools.jackson.databind.json.JsonMapper
 
@@ -87,6 +88,80 @@ class ElasticsearchSupportProgramClientIntegrationTest {
         val emptyIndex = "test-${UUID.randomUUID()}"
         val emptyClient = ElasticsearchSupportProgramClient(rest, ElasticsearchClientProperties(null, emptyIndex, null, null, null), json)
         emptyClient.indexSnapshot(emptyList())
+    }
+
+    @Test
+    fun preservesPlaceNamesAndSplitsDomainCompoundsWithoutStackedQueryTokens() {
+        client.indexSnapshot(emptyList())
+        assertEquals(listOf("횡성"), analyze("횡성", "korean"))
+        assertEquals(listOf("횡성", "군"), analyze("횡성군", "korean"))
+        // 단독 어절에서는 '의'가 별도 토큰으로 남을 수 있다. 모든 조사 제거가 아니라 업종명 보존을 검증한다.
+        assertTrue(analyze("소상공인의", "korean_search").contains("소상공인"))
+        assertEquals(listOf("횡성", "군", "소상공인"), analyze("횡성군 소상공인", "korean"))
+        assertEquals(listOf("여수", "로"), analyze("여수로", "korean_search"))
+        assertEquals(listOf("여수", "시"), analyze("여수시", "korean"))
+        assertEquals(listOf("대출", "이자"), analyze("대출이자를", "korean_search"))
+        assertEquals(listOf("대출", "이자"), analyze("대출이자", "korean"))
+        assertEquals(listOf("현장", "애로", "기술", "지원"), analyze("현장애로기술지원", "korean"))
+    }
+
+    @Test
+    fun expandsTravelBusinessSynonymsOnlyAtSearchTimeInBothDirections() {
+        val agency = document("agency", "여행사")
+        val business = document("business", "여행업체")
+        val traveler = document("traveler", "관광객")
+        val documents = listOf(agency, business, traveler)
+        client.indexSnapshot(documents)
+        assertEquals(listOf("여행사"), analyze("여행사", "korean"))
+        assertEquals(listOf("여행업체"), analyze("여행업체", "korean"))
+        assertEquals(setOf("여행사", "여행업체"), analyze("여행사", "korean_search").toSet())
+        for (query in listOf("여행사", "여행업체")) {
+            assertEquals(setOf(agency.id, business.id), client.search(query, documents.map { it.reference() }, 20).toSet())
+        }
+    }
+
+    @Test
+    fun placeNameAndParticleMatchesImproveRankingWithoutAnApplicantRegionFilter() {
+        val documents = listOf(
+            document("hoengseong", "횡성군 소상공인 대출이자 지원"),
+            document("anyang", "안양시 소상공인 대출이자 지원"),
+            document("yeosu", "여수시 단체관광객 유치 여행업체 인센티브 지원"),
+            document("samcheok", "삼척시 단체관광객 유치 여행업체 인센티브 지원"),
+        )
+        client.indexSnapshot(documents)
+        val references = documents.map { it.reference() }
+        assertEquals(documents[0].id, client.search("횡성 소상공인의 대출이자를 지원", references, 20).first())
+        assertEquals(documents[2].id, client.search("여수로 단체관광객을 유치하는 여행사", references, 20).first())
+    }
+
+    @Test
+    fun doesNotTurnRelatedIndustriesFundingTypesOrLocationsIntoEquivalentTerms() {
+        val documents = listOf(
+            document("restaurant", "음식점"), document("food", "식품접객업소"),
+            document("loan", "융자"), document("grant", "보조금"),
+            document("seoul", "서울"), document("ulsan", "울산"),
+        )
+        client.indexSnapshot(documents)
+        val references = documents.map { it.reference() }
+        for ((query, expected) in listOf("음식점" to 0, "식품접객업소" to 1, "융자" to 2, "보조금" to 3, "서울" to 4, "울산" to 5)) {
+            assertEquals(listOf(documents[expected].id), client.search(query, references, 20), query)
+        }
+    }
+
+    @Test
+    fun rejectsV1InsteadOfOverwritingItsIndexOrTreatingItAsV2() {
+        val oldDefinition = ClassPathResource("elasticsearch/support-program-lexical-v1.json").inputStream.use { it.readBytes() }
+        rest.put().uri("/$index").contentType(MediaType.APPLICATION_JSON).body(oldDefinition).retrieve().toBodilessEntity()
+        assertThrows(ElasticsearchClientException::class.java) { client.indexSnapshot(emptyList()) }
+        val mapping = json.readTree(rest.get().uri("/$index/_mapping").retrieve().body(String::class.java)!!)
+        assertEquals("support-program-lexical-v1", mapping.path(index).path("mappings").path("_meta").path("govbizSchema").asString())
+    }
+
+    private fun analyze(text: String, analyzer: String): List<String> {
+        val response = rest.post().uri("/$index/_analyze").contentType(MediaType.APPLICATION_JSON)
+            .body(json.writeValueAsBytes(mapOf("text" to text, "analyzer" to analyzer)))
+            .retrieve().body(String::class.java)!!
+        return json.readTree(response)["tokens"].toList().map { it["token"].asString() }
     }
 
     private fun document(id: String, title: String): ElasticsearchSupportProgramDocumentRequest =
