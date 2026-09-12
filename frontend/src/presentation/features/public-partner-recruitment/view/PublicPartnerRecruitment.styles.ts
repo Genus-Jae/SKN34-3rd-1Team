@@ -21,11 +21,12 @@ export const publicPartnerRecruitmentStyles = {
     'text-[0.85rem] text-[#838a93] focus-within:border-[#087f46] focus-within:shadow-[0_0_0_3px_rgb(8_127_70_/_12%)]',
   ),
   searchInput: 'min-w-0 flex-1 border-0 bg-transparent text-[0.85rem] text-app-ink outline-0 placeholder:text-sample-muted',
-  toolbar: 'flex flex-wrap items-center justify-between gap-3',
+  // 검색 칸·조회 뒤에 "검색 결과 N건"이 이어지고 출처·정렬은 오른쪽 끝에 붙습니다.
+  searchBar: 'flex flex-wrap items-center gap-x-4 gap-y-3',
   // 지원사업 찾기 필터 검색의 "검색 결과 N건" 제목·선택 상자와 같은 모양입니다.
   resultCount: 'm-0 text-base font-bold',
   resultTotal: 'text-brand-primary',
-  listOptions: 'flex flex-wrap items-center gap-3',
+  listOptions: 'ml-auto flex flex-wrap items-center gap-3',
   optionLabel: 'flex items-center gap-2 text-xs text-sample-muted',
   optionSelect: classes(
     'min-h-9 w-auto min-w-0 rounded-xl border border-sample-border bg-white px-3 text-xs text-app-ink',
