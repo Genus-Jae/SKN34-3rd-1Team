@@ -1,8 +1,16 @@
+import { useState } from 'react'
+
 import { regionNames } from '../../../../domain/entities/Region'
 import { supportProgramCategories } from '../../../../domain/entities/SupportProgramCategory'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { useSavedProgramCalendarViewModel } from '../viewmodel/useSavedProgramCalendarViewModel'
-import { savedProgramTargetOptions, type CalendarEventType, type SavedProgramCalendarFilters } from '../viewmodel/savedProgramCalendar'
+import {
+  savedProgramTargetOptions,
+  type CalendarEvent,
+  type CalendarEventType,
+  type CalendarProgram,
+  type SavedProgramCalendarFilters,
+} from '../viewmodel/savedProgramCalendar'
 import { savedCalendarStyles as s } from './SavedProgramsPage.styles'
 
 function Arrow({ direction, double = false }: { direction: 'left' | 'right'; double?: boolean }) {
@@ -24,9 +32,14 @@ export function SavedProgramsPage() {
   ]
 
   return <>
-    <WorkspacePageHeader title="관심 공고함" />
+    <WorkspacePageHeader title="관심 공고함" tabs={<div className={s.viewTabs} role="tablist" aria-label="관심 공고 보기 방식">
+      <button type="button" role="tab" aria-selected={vm.viewMode === 'calendar'} className={`${s.viewTab} ${vm.viewMode === 'calendar' ? s.activeViewTab : ''}`}
+        onClick={() => vm.setViewMode('calendar')}>달력 보기</button>
+      <button type="button" role="tab" aria-selected={vm.viewMode === 'list'} className={`${s.viewTab} ${vm.viewMode === 'list' ? s.activeViewTab : ''}`}
+        onClick={() => vm.setViewMode('list')}>목록 보기</button>
+    </div>} />
     <main className={s.page}>
-      <section className={s.content} aria-label="관심 공고 캘린더">
+      <section className={s.content} aria-label="관심 공고">
       <form className={s.filters} aria-label="관심 공고 필터" onSubmit={event => event.preventDefault()}>
         <div className={s.filterControls}>
           <label className={s.searchField}>
@@ -54,57 +67,132 @@ export function SavedProgramsPage() {
         </div>
       </form>
 
-      <div className={s.toolbar}>
-        <div className={s.navigation}>
-          <div className="flex items-center gap-1">
-            <select aria-label="달력 연도" className={s.monthSelect} value={vm.year} onChange={event => vm.chooseMonth(Number(event.target.value), vm.month)}>
-              {vm.years.map(year => <option key={year} value={year}>{year}년</option>)}
-            </select>
-            <select aria-label="달력 월" className={s.monthSelect} value={vm.month} onChange={event => vm.chooseMonth(vm.year, Number(event.target.value))}>
-              {Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>{i + 1}월</option>)}
-            </select>
+      {vm.viewMode === 'calendar' ? <>
+        <div className={s.toolbar}>
+          <div className={s.navigation}>
+            <div className="flex items-center gap-1">
+              <select aria-label="달력 연도" className={s.monthSelect} value={vm.year} onChange={event => vm.chooseMonth(Number(event.target.value), vm.month)}>
+                {vm.years.map(year => <option key={year} value={year}>{year}년</option>)}
+              </select>
+              <select aria-label="달력 월" className={s.monthSelect} value={vm.month} onChange={event => vm.chooseMonth(vm.year, Number(event.target.value))}>
+                {Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>{i + 1}월</option>)}
+              </select>
+            </div>
+            <div className={s.arrowGroup} role="group" aria-label="연도와 월 이동">
+              <button type="button" className={s.arrow} aria-label="이전 연도" title="이전 연도" disabled={!vm.canPreviousYear} onClick={() => vm.moveMonth(-12)}><Arrow direction="left" double /></button>
+              <button type="button" className={s.arrow} aria-label="이전 달" title="이전 달" disabled={!vm.canPreviousMonth} onClick={() => vm.moveMonth(-1)}><Arrow direction="left" /></button>
+              <button type="button" className={s.arrow} aria-label="다음 달" title="다음 달" disabled={!vm.canNextMonth} onClick={() => vm.moveMonth(1)}><Arrow direction="right" /></button>
+              <button type="button" className={s.arrow} aria-label="다음 연도" title="다음 연도" disabled={!vm.canNextYear} onClick={() => vm.moveMonth(12)}><Arrow direction="right" double /></button>
+            </div>
           </div>
-          <div className={s.arrowGroup} role="group" aria-label="연도와 월 이동">
-            <button type="button" className={s.arrow} aria-label="이전 연도" title="이전 연도" disabled={!vm.canPreviousYear} onClick={() => vm.moveMonth(-12)}><Arrow direction="left" double /></button>
-            <button type="button" className={s.arrow} aria-label="이전 달" title="이전 달" disabled={!vm.canPreviousMonth} onClick={() => vm.moveMonth(-1)}><Arrow direction="left" /></button>
-            <button type="button" className={s.arrow} aria-label="다음 달" title="다음 달" disabled={!vm.canNextMonth} onClick={() => vm.moveMonth(1)}><Arrow direction="right" /></button>
-            <button type="button" className={s.arrow} aria-label="다음 연도" title="다음 연도" disabled={!vm.canNextYear} onClick={() => vm.moveMonth(12)}><Arrow direction="right" double /></button>
-          </div>
+          <span className="text-sm font-semibold text-brand-primary">월간 캘린더</span>
         </div>
-        <span className="text-sm font-semibold text-brand-primary">월간 캘린더</span>
-      </div>
 
-      <div className={s.note}>
-        <span role="status">{monthLabel} · 표시 공고 <strong className="text-app-ink">{vm.programsInMonth}건</strong> / 전체 {vm.allProgramsInMonth}건</span>
-        <span>공고가 많은 주는 달력 안에서 스크롤해 확인하세요.</span>
-      </div>
-      {vm.programsInMonth === 0 && <p className="m-0 shrink-0 bg-app-canvas px-4 py-3 text-sm text-sample-muted">이 달에 표시할 예시 공고가 없습니다.</p>}
+        <div className={s.note}>
+          <span role="status">{monthLabel} · 표시 공고 <strong className="text-app-ink">{vm.programsInMonth}건</strong> / 전체 {vm.allProgramsInMonth}건</span>
+          <span>날짜별 공고는 최대 3건까지 표시하며 나머지는 건수로 안내합니다.</span>
+        </div>
+        {vm.programsInMonth === 0 && <p className="m-0 shrink-0 bg-app-canvas px-4 py-3 text-sm text-sample-muted">이 달에 표시할 예시 공고가 없습니다.</p>}
 
-      <div ref={vm.scrollRef} className={s.scroll} role="region" aria-label="달력 내부 스크롤" tabIndex={0}>
-        <table className={s.table} aria-label={`${monthLabel} 접수 일정`}>
-          <thead><tr>{['일', '월', '화', '수', '목', '금', '토'].map((day, index) =>
-            <th key={day} scope="col" className={`${s.weekday} ${index === 0 ? 'text-red-700' : index === 6 ? 'text-blue-700' : 'text-sample-muted'}`}>{day}</th>,
-          )}</tr></thead>
-          <tbody>{vm.weeks.map(week => <tr key={week[0]!.key}>{week.map((day, index) =>
-            <td key={day.key} ref={day.isToday ? vm.todayRef : undefined} className={`${s.cell} ${!day.inMonth ? 'bg-[#fafbfc]' : 'bg-white'}`}>
-              <time dateTime={day.key} aria-current={day.isToday ? 'date' : undefined} className={`${s.date} ${day.isToday ? 'bg-brand-primary font-bold text-white' : !day.inMonth ? 'text-[#9ca3af]' : index === 0 ? 'text-red-700' : index === 6 ? 'text-blue-700' : 'text-sample-muted'}`}>{day.day}</time>
-              {day.events.length > 0 && <ul className={s.events} aria-label={`${day.key} 접수 일정 ${day.events.length}건`}>{day.events.map(event =>
-                <li key={`${event.program.id}:${event.type}`} className={s.event}>
-                  <span className={`${s.eventBadge} ${eventBadgeStyle[event.type]}`}>{eventBadgeLabel[event.type]}</span>
-                  <span className={s.eventBody}>
-                    <span className={s.eventTitle}>{event.program.title}</span>
-                    <span className={s.eventOrg}>{event.program.organization}</span>
-                  </span>
-                </li>,
-              )}</ul>}
-            </td>,
-          )}</tr>)}</tbody>
-        </table>
-      </div>
-      <p className={s.footer}>예시 데이터로 보는 캘린더입니다. 실제 관심 등록·저장 및 공고 상세 이동은 아직 연결되지 않았습니다.</p>
+        <div className={s.calendarFrame}>
+          <table className={s.table} aria-label={`${monthLabel} 접수 일정`}>
+            <thead><tr>{['일', '월', '화', '수', '목', '금', '토'].map((day, index) =>
+              <th key={day} scope="col" className={`${s.weekday} ${index === 0 ? 'text-red-700' : index === 6 ? 'text-blue-700' : 'text-sample-muted'}`}>{day}</th>,
+            )}</tr></thead>
+            <tbody>{vm.weeks.map(week => <tr key={week[0]!.key}>{week.map((day, index) =>
+              <td key={day.key} className={`${s.cell} ${!day.inMonth ? 'bg-[#fafbfc]' : 'bg-white'}`}>
+                <time dateTime={day.key} aria-current={day.isToday ? 'date' : undefined} className={`${s.date} ${day.isToday ? 'bg-brand-primary font-bold text-white' : !day.inMonth ? 'text-[#9ca3af]' : index === 0 ? 'text-red-700' : index === 6 ? 'text-blue-700' : 'text-sample-muted'}`}>{day.day}</time>
+                <CalendarEvents date={day.key} events={day.events} />
+              </td>,
+            )}</tr>)}</tbody>
+          </table>
+        </div>
+        <p className={s.footer}>예시 데이터로 보는 캘린더입니다. 실제 관심 등록·저장 및 공고 상세 이동은 아직 연결되지 않았습니다.</p>
+      </> : <SavedProgramList programs={vm.listPrograms} total={vm.filteredProgramCount} today={vm.today} page={vm.listPage}
+        totalPages={vm.listTotalPages} onPageChange={vm.chooseListPage} />}
       </section>
     </main>
   </>
+}
+
+const maximumVisibleEvents = 3
+
+function CalendarEvents({ date, events }: { date: string; events: CalendarEvent[] }) {
+  const [showAll, setShowAll] = useState(false)
+  if (events.length === 0) return null
+  const visible = events.slice(0, maximumVisibleEvents)
+  const hiddenCount = events.length - visible.length
+  return <>
+    <ul className={s.events} aria-label={`${date} 접수 일정 ${events.length}건`}>
+      {visible.map(event => <CalendarEventRow key={`${event.program.id}:${event.type}`} event={event} />)}
+      {hiddenCount > 0 ? <li><button type="button" className={s.overflowCount} onClick={() => setShowAll(true)}>+{hiddenCount}건 더보기</button></li> : null}
+    </ul>
+    {showAll ? <div className={s.dialogBackdrop} role="presentation" onMouseDown={event => {
+      if (event.target === event.currentTarget) setShowAll(false)
+    }}>
+      <section role="dialog" aria-modal="true" aria-labelledby={`calendar-events-${date}`} className={s.dialog}>
+        <div className={s.dialogHeader}>
+          <div><p className="m-0 text-xs font-semibold text-brand-primary">접수 일정</p><h2 id={`calendar-events-${date}`} className="mt-1 mb-0 text-xl font-bold">{date} · {events.length}건</h2></div>
+          <button type="button" className={s.dialogClose} aria-label="전체 공고 닫기" onClick={() => setShowAll(false)}>×</button>
+        </div>
+        <ul className={s.dialogEvents} aria-label={`${date} 전체 접수 일정`}>
+          {events.map(event => <CalendarEventRow key={`${event.program.id}:${event.type}`} event={event} expanded />)}
+        </ul>
+      </section>
+    </div> : null}
+  </>
+}
+
+function CalendarEventRow({ event, expanded = false }: { event: CalendarEvent; expanded?: boolean }) {
+  return <li className={expanded ? s.dialogEvent : s.event} title={event.program.title}>
+    <span className={`${s.eventBadge} ${eventBadgeStyle[event.type]}`}>{eventBadgeLabel[event.type]}</span>
+    <span className="min-w-0 flex-1">
+      <span className={expanded ? 'block font-semibold text-app-ink' : s.eventTitle}>{event.program.title}</span>
+      {expanded ? <span className="mt-1 block text-xs text-sample-muted">{event.program.organization} · {event.program.region} · {event.program.category}</span> : null}
+    </span>
+  </li>
+}
+
+function SavedProgramList({ programs, total, today, page, totalPages, onPageChange }: {
+  programs: CalendarProgram[]; total: number; today: string; page: number; totalPages: number; onPageChange: (page: number) => void
+}) {
+  const pageStart = Math.max(1, Math.min(page - 2, totalPages - 4))
+  const pages = Array.from({ length: Math.min(5, totalPages) }, (_, index) => pageStart + index)
+  return <div role="tabpanel" aria-label="관심 공고 목록">
+    <div className={s.listSummary}><strong className="text-app-ink">관심 공고 {total}건</strong><span>한 페이지에 8개씩 표시합니다.</span></div>
+    {programs.length ? <div className={s.list}>{programs.map(program => {
+      const status = programStatus(program, today)
+      return <article key={program.id} className={s.listItem}>
+        <div className="min-w-0">
+          <h2 className={s.listTitle} title={program.title}>{program.title}</h2>
+          <p className={s.listMeta}>{program.organization} · {program.region} · {program.category} · {program.target}</p>
+        </div>
+        <div className={s.listPeriod}>
+          <span className={status === '마감' ? s.closedBadge : s.statusBadge}>{status}</span>
+          <span>{formatPeriod(program)}</span>
+        </div>
+      </article>
+    })}</div> : <p className="rounded-2xl border border-sample-border p-10 text-center text-sm text-sample-muted">조건에 맞는 관심 공고가 없습니다.</p>}
+    {totalPages > 1 ? <nav className={s.pagination} aria-label="관심 공고 페이지">
+      <button type="button" className={`${s.pageButton} ${s.inactivePageButton}`} disabled={page === 1} onClick={() => onPageChange(page - 1)}>이전</button>
+      {pages.map(value => <button type="button" key={value} aria-label={`${value}페이지`} aria-current={value === page ? 'page' : undefined}
+        className={`${s.pageButton} ${value === page ? s.activePageButton : s.inactivePageButton}`} onClick={() => onPageChange(value)}>{value}</button>)}
+      <button type="button" className={`${s.pageButton} ${s.inactivePageButton}`} disabled={page === totalPages} onClick={() => onPageChange(page + 1)}>다음</button>
+    </nav> : null}
+    <p className={s.footer}>예시 데이터 목록입니다. 실제 관심 등록·저장 및 공고 상세 이동은 아직 연결되지 않았습니다.</p>
+  </div>
+}
+
+function programStatus(program: CalendarProgram, today: string): '접수 예정' | '접수 중' | '마감' | '날짜 미확인' {
+  if (program.startDate === null && program.endDate === null) return '날짜 미확인'
+  if (program.endDate !== null && program.endDate < today) return '마감'
+  if (program.startDate !== null && program.startDate > today) return '접수 예정'
+  return '접수 중'
+}
+
+function formatPeriod(program: CalendarProgram): string {
+  if (program.startDate === null && program.endDate === null) return '접수일 미확인'
+  return `${program.startDate ?? '시작일 미확인'} ~ ${program.endDate ?? '마감일 미확인'}`
 }
 
 const eventBadgeLabel: Record<CalendarEventType, string> = {

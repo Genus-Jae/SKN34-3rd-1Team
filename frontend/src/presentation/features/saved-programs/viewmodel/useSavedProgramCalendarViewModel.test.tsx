@@ -81,4 +81,20 @@ describe('관심 공고 캘린더', () => {
     expect(result.current.canNextMonth).toBe(false)
     expect(result.current.canNextYear).toBe(false)
   })
+
+  it('달력과 목록을 전환하고 목록을 8개씩 페이지로 나눈다', () => {
+    const today = '2026-09-10'
+    const { result } = renderHook(() => useSavedProgramCalendarViewModel({ today, programs: createCalendarPreview(today) }))
+    expect(result.current.viewMode).toBe('calendar')
+    expect(result.current.listPrograms).toHaveLength(8)
+    expect(result.current.listTotalPages).toBe(3)
+    act(() => result.current.setViewMode('list'))
+    act(() => result.current.chooseListPage(2))
+    expect(result.current.viewMode).toBe('list')
+    expect(result.current.listPage).toBe(2)
+    act(() => result.current.changeFilter('category', '사업화'))
+    expect(result.current.listPage).toBe(1)
+    expect(result.current.filteredProgramCount).toBe(4)
+    expect(result.current.listTotalPages).toBe(1)
+  })
 })

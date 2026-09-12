@@ -425,14 +425,14 @@ describe('작업 화면 사이드바', () => {
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     fireEvent.click(within(sidebar).getByRole('link', { name: /관심 공고함/ }))
     expect(screen.getByRole('heading', { name: '관심 공고함' })).toBeTruthy()
-    expect(screen.getByRole('region', { name: '달력 내부 스크롤' })).toBeTruthy()
+    expect(screen.getByRole('table', { name: /접수 일정/ })).toBeTruthy()
     expect(within(sidebar).getByRole('link', { name: /관심 공고함/ }).getAttribute('aria-current')).toBe('page')
   })
 
   it('비회원의 관심 공고함 직접 접속은 기존 로그인 화면으로 보낸다', () => {
     renderApp('/app/saved-programs', null)
     expect(screen.getByRole('form', { name: '로그인' })).toBeTruthy()
-    expect(screen.queryByRole('region', { name: '달력 내부 스크롤' })).toBeNull()
+    expect(screen.queryByRole('table', { name: /접수 일정/ })).toBeNull()
   })
 
   it('사이드바 지원사업 새검색은 작성 중 초안과 대화를 지우고 입력창으로 포커스를 옮긴다', () => {
