@@ -1,12 +1,18 @@
-/** 달력 UI에 필요한 표시 정보. 실제 회원 저장/공고 API 계약은 다음 개발 범위입니다. */
+import type { SavedSupportProgram } from '../../../../domain/entities/SavedSupportProgram'
+
+/** 회원이 저장한 공고를 달력과 목록에 표시하기 위한 화면 모델입니다. */
 export type CalendarProgram = {
   id: string
+  sourceCode?: string
+  sourceProgramId?: string
   title: string
   organization: string
   startDate: string | null
   endDate: string | null
   region: string
+  regionValues?: readonly string[]
   category: string
+  categoryValues?: readonly string[]
   target: string
 }
 
@@ -29,7 +35,7 @@ export const defaultSavedProgramCalendarFilters: SavedProgramCalendarFilters = {
   keyword: '', region: '', category: '', target: '', excludeClosed: false,
 }
 
-export const savedProgramTargetOptions = ['예비창업자', '창업기업', '중소기업', '소상공인'] as const
+export const savedProgramTargetOptions = ['예비창업자', '창업기업', '중소기업', '소상공인', '기타'] as const
 
 export const firstCalendarYear = 2000
 export const lastCalendarYear = 2100
@@ -43,6 +49,28 @@ export function calendarToday(now = new Date()): string {
     timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(now)
   return `${parts.find(part => part.type === 'year')!.value}-${parts.find(part => part.type === 'month')!.value}-${parts.find(part => part.type === 'day')!.value}`
+}
+
+/** Core API가 돌려준 회원별 관심 공고를 달력 화면 모델로 변환합니다. */
+export function toCalendarPrograms(savedPrograms: readonly SavedSupportProgram[]): CalendarProgram[] {
+  return savedPrograms.map(({ program }) => {
+    const target = savedProgramTargetOptions.find((option) => option !== '기타' && program.targetDescription.includes(option))
+      ?? (program.targetDescription.trim() ? '기타' : '대상 미확인')
+    return {
+      id: `${program.sourceCode}:${program.id}`,
+      sourceCode: program.sourceCode,
+      sourceProgramId: program.id,
+      title: program.title,
+      organization: program.organization,
+      startDate: program.applicationStartDate,
+      endDate: program.applicationEndDate,
+      region: program.regions.join(' · ') || '지역 미분류',
+      regionValues: program.regions,
+      category: program.categories.join(' · ') || '분야 미분류',
+      categoryValues: program.categories,
+      target,
+    }
+  })
 }
 
 /** 샘플은 최초 표시 월에만 만듭니다. 월 이동 때 가짜 공고를 계속 생성하지 않습니다. */
@@ -80,8 +108,8 @@ export function filterCalendarPrograms(
   const keyword = filters.keyword.trim().toLocaleLowerCase('ko-KR')
   return programs.filter((program) => {
     if (keyword && !`${program.title} ${program.organization}`.toLocaleLowerCase('ko-KR').includes(keyword)) return false
-    if (filters.region && program.region !== filters.region) return false
-    if (filters.category && program.category !== filters.category) return false
+    if (filters.region && !(program.regionValues ?? [program.region]).includes(filters.region)) return false
+    if (filters.category && !(program.categoryValues ?? [program.category]).includes(filters.category)) return false
     if (filters.target && program.target !== filters.target) return false
     if (filters.excludeClosed && program.endDate !== null && program.endDate < today) return false
     return true

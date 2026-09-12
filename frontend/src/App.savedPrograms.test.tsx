@@ -49,12 +49,13 @@ describe('관심 공고함', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: '관심 공고함' })).toBeTruthy()
     expect(within(sidebar).getByRole('link', { name: '관심 공고함' }).getAttribute('aria-current')).toBe('page')
+    await screen.findAllByRole('link', { name: program.title })
+    fireEvent.click(screen.getByRole('tab', { name: '목록 보기' }))
     const cards = await screen.findAllByRole('article')
     expect(cards).toHaveLength(2)
     expect(within(cards[0]!).getByRole('link', { name: program.title }).getAttribute('href')).toBe(detailPath)
-    expect(within(cards[0]!).getByText(`접수 마감 ${program.applicationEndDate}`)).toBeTruthy()
-    expect(within(cards[0]!).getByText('2026-09-12 담음')).toBeTruthy()
-    expect(within(cards[1]!).getByText('접수 마감 별도 안내')).toBeTruthy()
+    expect(within(cards[0]!).getByText(`${program.applicationStartDate ?? '시작일 미확인'} ~ ${program.applicationEndDate ?? '마감일 미확인'}`)).toBeTruthy()
+    expect(within(cards[1]!).getByText(`${saved[1]!.program.applicationStartDate ?? '시작일 미확인'} ~ ${saved[1]!.program.applicationEndDate ?? '마감일 미확인'}`)).toBeTruthy()
   })
 
   it('담은 공고가 없으면 안내와 지원사업 찾기 링크를 보여 주고, 실패하면 다시 시도한다', async () => {

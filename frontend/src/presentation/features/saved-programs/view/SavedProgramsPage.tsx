@@ -1,9 +1,14 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 
 import { regionNames } from '../../../../domain/entities/Region'
 import { supportProgramCategories } from '../../../../domain/entities/SupportProgramCategory'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
-import { useSavedProgramCalendarViewModel } from '../viewmodel/useSavedProgramCalendarViewModel'
+import { appPaths, supportProgramDetailPath } from '../../../shared/routes/appPaths'
+import {
+  type SavedProgramsBrowseUseCase,
+  useSavedProgramCalendarViewModel,
+} from '../viewmodel/useSavedProgramCalendarViewModel'
 import {
   savedProgramTargetOptions,
   type CalendarEvent,
@@ -19,9 +24,14 @@ function Arrow({ direction, double = false }: { direction: 'left' | 'right'; dou
   </svg>
 }
 
-/** 관심 공고 캘린더 시안. 필터는 예시 데이터에 적용하며 실제 저장과 상세 이동은 다음 작업입니다. */
-export function SavedProgramsPage() {
-  const vm = useSavedProgramCalendarViewModel()
+type SavedProgramsPageProps = {
+  initial?: { today: string; programs: readonly CalendarProgram[] }
+  browseUseCase?: SavedProgramsBrowseUseCase
+}
+
+/** 로그인 회원이 실제로 저장한 지원사업을 달력과 목록으로 보여 줍니다. */
+export function SavedProgramsPage({ initial, browseUseCase }: SavedProgramsPageProps = {}) {
+  const vm = useSavedProgramCalendarViewModel(initial, browseUseCase)
   const monthLabel = `${vm.year}년 ${vm.month}월`
   const activeFilters: { key: keyof SavedProgramCalendarFilters; label: string }[] = [
     ...(vm.filters.keyword.trim() ? [{ key: 'keyword' as const, label: `검색 · ${vm.filters.keyword.trim()}` }] : []),
@@ -67,6 +77,20 @@ export function SavedProgramsPage() {
         </div>
       </form>
 
+      {vm.phase === 'loading' && vm.filteredProgramCount === 0 ? (
+        <p role="status" className="m-0 rounded-2xl border border-sample-border bg-white p-6 text-center text-sm text-sample-muted">관심 공고를 불러오는 중입니다.</p>
+      ) : vm.phase === 'failed' ? (
+        <section className="rounded-2xl border border-sample-border bg-white p-6 text-center" aria-label="관심 공고 불러오기 실패">
+          <p className="mt-0 text-sm text-sample-muted">관심 공고를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
+          <button type="button" className="rounded-xl border border-brand-primary px-4 py-2 text-sm font-semibold text-brand-primary" onClick={vm.retry}>다시 시도</button>
+        </section>
+      ) : vm.phase === 'ready' && vm.filteredProgramCount === 0 && vm.activeFilterCount === 0 ? (
+        <section className="rounded-2xl border border-sample-border bg-white p-6 text-center" aria-label="관심 공고 없음">
+          <p className="mt-0 text-sm text-sample-muted">아직 담은 공고가 없습니다. 공고 상세에서 관심 공고 저장을 누르면 여기에 모입니다.</p>
+          <Link className="inline-flex rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white" to={appPaths.chat}>지원사업 찾기</Link>
+        </section>
+      ) : null}
+
       {vm.viewMode === 'calendar' ? <>
         <div className={s.toolbar}>
           <div className={s.navigation}>
@@ -92,7 +116,7 @@ export function SavedProgramsPage() {
           <span role="status">{monthLabel} · 표시 공고 <strong className="text-app-ink">{vm.programsInMonth}건</strong> / 전체 {vm.allProgramsInMonth}건</span>
           <span>날짜별 공고는 최대 3건까지 표시하며 나머지는 건수로 안내합니다.</span>
         </div>
-        {vm.programsInMonth === 0 && <p className="m-0 shrink-0 bg-app-canvas px-4 py-3 text-sm text-sample-muted">이 달에 표시할 예시 공고가 없습니다.</p>}
+        {vm.programsInMonth === 0 && <p className="m-0 shrink-0 bg-app-canvas px-4 py-3 text-sm text-sample-muted">이 달에 표시할 관심 공고가 없습니다.</p>}
 
         <div className={s.calendarFrame}>
           <table className={s.table} aria-label={`${monthLabel} 접수 일정`}>
@@ -107,7 +131,7 @@ export function SavedProgramsPage() {
             )}</tr>)}</tbody>
           </table>
         </div>
-        <p className={s.footer}>예시 데이터로 보는 캘린더입니다. 실제 관심 등록·저장 및 공고 상세 이동은 아직 연결되지 않았습니다.</p>
+        <p className={s.footer}>저장한 공고의 접수 시작일과 마감일을 기준으로 표시합니다.</p>
       </> : <SavedProgramList programs={vm.listPrograms} total={vm.filteredProgramCount} today={vm.today} page={vm.listPage}
         totalPages={vm.listTotalPages} onPageChange={vm.chooseListPage} />}
       </section>
@@ -144,10 +168,13 @@ function CalendarEvents({ date, events }: { date: string; events: CalendarEvent[
 }
 
 function CalendarEventRow({ event, expanded = false }: { event: CalendarEvent; expanded?: boolean }) {
+  const detailPath = getDetailPath(event.program)
   return <li className={expanded ? s.dialogEvent : s.event} title={event.program.title}>
     <span className={`${s.eventBadge} ${eventBadgeStyle[event.type]}`}>{eventBadgeLabel[event.type]}</span>
     <span className="min-w-0 flex-1">
-      <span className={expanded ? 'block font-semibold text-app-ink' : s.eventTitle}>{event.program.title}</span>
+      {detailPath ? <Link className={expanded ? 'block font-semibold text-app-ink hover:text-brand-primary' : s.eventTitle}
+        to={detailPath} state={{ searchReturnTo: appPaths.savedPrograms }}>{event.program.title}</Link>
+        : <span className={expanded ? 'block font-semibold text-app-ink' : s.eventTitle}>{event.program.title}</span>}
       {expanded ? <span className="mt-1 block text-xs text-sample-muted">{event.program.organization} · {event.program.region} · {event.program.category}</span> : null}
     </span>
   </li>
@@ -164,7 +191,9 @@ function SavedProgramList({ programs, total, today, page, totalPages, onPageChan
       const status = programStatus(program, today)
       return <article key={program.id} className={s.listItem}>
         <div className="min-w-0">
-          <h2 className={s.listTitle} title={program.title}>{program.title}</h2>
+          <h2 className={s.listTitle} title={program.title}>{getDetailPath(program)
+            ? <Link to={getDetailPath(program)!} state={{ searchReturnTo: appPaths.savedPrograms }} className="hover:text-brand-primary">{program.title}</Link>
+            : program.title}</h2>
           <p className={s.listMeta}>{program.organization} · {program.region} · {program.category} · {program.target}</p>
         </div>
         <div className={s.listPeriod}>
@@ -179,8 +208,13 @@ function SavedProgramList({ programs, total, today, page, totalPages, onPageChan
         className={`${s.pageButton} ${value === page ? s.activePageButton : s.inactivePageButton}`} onClick={() => onPageChange(value)}>{value}</button>)}
       <button type="button" className={`${s.pageButton} ${s.inactivePageButton}`} disabled={page === totalPages} onClick={() => onPageChange(page + 1)}>다음</button>
     </nav> : null}
-    <p className={s.footer}>예시 데이터 목록입니다. 실제 관심 등록·저장 및 공고 상세 이동은 아직 연결되지 않았습니다.</p>
+    <p className={s.footer}>공고명을 누르면 지원사업 상세 내용을 확인할 수 있습니다.</p>
   </div>
+}
+
+function getDetailPath(program: CalendarProgram): string | null {
+  if (!program.sourceCode || !program.sourceProgramId) return null
+  return supportProgramDetailPath({ sourceCode: program.sourceCode, sourceProgramId: program.sourceProgramId }, true)
 }
 
 function programStatus(program: CalendarProgram, today: string): '접수 예정' | '접수 중' | '마감' | '날짜 미확인' {

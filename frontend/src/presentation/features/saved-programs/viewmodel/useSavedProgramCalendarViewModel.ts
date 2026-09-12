@@ -1,31 +1,55 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
+import { appContainer } from '../../../../app/appContainer'
+import type { SavedSupportProgram } from '../../../../domain/entities/SavedSupportProgram'
+import type { BrowseSavedSupportProgramsUseCase } from '../../../../domain/usecases/SavedSupportProgramUseCases'
 import {
   buildCalendarWeeks,
   calendarToday,
-  createCalendarPreview,
   defaultSavedProgramCalendarFilters,
   filterCalendarPrograms,
   firstCalendarYear,
   lastCalendarYear,
+  toCalendarPrograms,
   type CalendarProgram,
   type SavedProgramCalendarFilters,
 } from './savedProgramCalendar'
 
 export type SavedProgramsViewMode = 'calendar' | 'list'
+export type SavedProgramsBrowseUseCase = Pick<BrowseSavedSupportProgramsUseCase, 'execute'>
 
 const savedProgramListPageSize = 8
 
-/** 월 선택·필터·보기 방식은 이 화면만 사용하는 로컬 상태이므로 Redux에 넣지 않습니다. */
-export function useSavedProgramCalendarViewModel(input?: { today: string; programs: readonly CalendarProgram[] }) {
+type LoadState =
+  | { phase: 'loading'; items: SavedSupportProgram[] }
+  | { phase: 'ready'; items: SavedSupportProgram[] }
+  | { phase: 'failed'; items: SavedSupportProgram[] }
+
+/** 서버 공고는 UseCase로 읽고, 월 선택·필터·보기 방식은 화면 로컬 상태로 관리합니다. */
+export function useSavedProgramCalendarViewModel(
+  input?: { today: string; programs: readonly CalendarProgram[] },
+  browseUseCase: SavedProgramsBrowseUseCase = appContainer.resolve('browseSavedSupportProgramsUseCase'),
+) {
   const [initial] = useState(() => {
     const today = input?.today ?? calendarToday()
-    return { today, programs: input?.programs ?? createCalendarPreview(today) }
+    return { today, programs: input?.programs ?? null }
   })
+  const [loadState, setLoadState] = useState<LoadState>({ phase: initial.programs ? 'ready' : 'loading', items: [] })
+  const [loadVersion, setLoadVersion] = useState(0)
   const [display, setDisplay] = useState(() => ({ year: Number(initial.today.slice(0, 4)), month: Number(initial.today.slice(5, 7)) }))
   const [filters, setFilters] = useState(defaultSavedProgramCalendarFilters)
   const [viewMode, setViewMode] = useState<SavedProgramsViewMode>('calendar')
   const [listPage, setListPage] = useState(1)
+
+  useEffect(() => {
+    if (initial.programs) return
+    const controller = new AbortController()
+    setLoadState((current) => ({ phase: 'loading', items: current.items }))
+    browseUseCase.execute(controller.signal)
+      .then((items) => { if (!controller.signal.aborted) setLoadState({ phase: 'ready', items }) })
+      .catch(() => { if (!controller.signal.aborted) setLoadState((current) => ({ phase: 'failed', items: current.items })) })
+    return () => controller.abort()
+  }, [browseUseCase, initial.programs, loadVersion])
 
   function chooseMonth(year: number, month: number) {
     if (!Number.isInteger(year) || !Number.isInteger(month) || year < firstCalendarYear || year > lastCalendarYear || month < 1 || month > 12) return
@@ -44,10 +68,11 @@ export function useSavedProgramCalendarViewModel(input?: { today: string; progra
   }
 
   const today = input ? initial.today : calendarToday()
-  const filteredPrograms = filterCalendarPrograms(initial.programs, filters, today)
+  const programs = initial.programs ?? toCalendarPrograms(loadState.items)
+  const filteredPrograms = filterCalendarPrograms(programs, filters, today)
   const weeks = buildCalendarWeeks(display.year, display.month, today, filteredPrograms)
   const programsInMonth = new Set(weeks.flatMap(week => week.flatMap(day => day.events.map(event => event.program.id)))).size
-  const allProgramsInMonth = new Set(buildCalendarWeeks(display.year, display.month, today, initial.programs)
+  const allProgramsInMonth = new Set(buildCalendarWeeks(display.year, display.month, today, programs)
     .flatMap(week => week.flatMap(day => day.events.map(event => event.program.id)))).size
   const activeFilterCount = [filters.keyword.trim(), filters.region, filters.category, filters.target]
     .filter(Boolean).length + Number(filters.excludeClosed)
@@ -76,7 +101,7 @@ export function useSavedProgramCalendarViewModel(input?: { today: string; progra
   }
 
   return {
-    ...display, today, weeks, programsInMonth, allProgramsInMonth, filters, activeFilterCount,
+    ...display, today, phase: loadState.phase, weeks, programsInMonth, allProgramsInMonth, filters, activeFilterCount,
     viewMode, listPage: safeListPage, listTotalPages, listPrograms, filteredProgramCount: filteredPrograms.length,
     years: Array.from({ length: lastCalendarYear - firstCalendarYear + 1 }, (_, i) => firstCalendarYear + i),
     canPreviousMonth: display.year > firstCalendarYear || display.month > 1,
@@ -84,5 +109,6 @@ export function useSavedProgramCalendarViewModel(input?: { today: string; progra
     canPreviousYear: display.year > firstCalendarYear,
     canNextYear: display.year < lastCalendarYear,
     chooseMonth, moveMonth, goToToday, changeFilter, clearFilter, resetFilters, setViewMode, chooseListPage,
+    retry: () => setLoadVersion((value) => value + 1),
   }
 }

@@ -3,16 +3,17 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { SavedProgramsPage } from './SavedProgramsPage'
+import { createCalendarPreview } from '../viewmodel/savedProgramCalendar'
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
 it('관심 공고를 내부 스크롤 없이 달력과 페이지 목록으로 확인한다', () => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-09-10T03:00:00Z'))
-  render(<SavedProgramsPage />)
+  render(<SavedProgramsPage initial={{ today: '2026-09-10', programs: createCalendarPreview('2026-09-10') }} />)
   expect(screen.getByRole('table', { name: '2026년 9월 접수 일정' })).toBeTruthy()
   expect(screen.queryByRole('region', { name: '달력 내부 스크롤' })).toBeNull()
-  expect(screen.queryByRole('link', { name: /공고 찾기/ })).toBeNull()
+  expect(screen.queryByRole('link', { name: /지원사업 찾기/ })).toBeNull()
   expect(screen.queryByRole('button', { name: /공고 찾기/ })).toBeNull()
   expect(screen.queryByRole('button', { name: '오늘' })).toBeNull()
   expect(document.querySelector('time[aria-current="date"]')?.textContent).toBe('10')
@@ -46,7 +47,7 @@ it('관심 공고를 내부 스크롤 없이 달력과 페이지 목록으로 �
   fireEvent.click(screen.getByRole('tab', { name: '달력 보기' }))
   fireEvent.click(screen.getByRole('button', { name: '다음 연도' }))
   expect(screen.getByRole('table', { name: '2027년 9월 접수 일정' })).toBeTruthy()
-  expect(screen.getByText('이 달에 표시할 예시 공고가 없습니다.')).toBeTruthy()
+  expect(screen.getByText('이 달에 표시할 관심 공고가 없습니다.')).toBeTruthy()
   fireEvent.change(screen.getByRole('combobox', { name: '달력 월' }), { target: { value: '12' } })
   fireEvent.click(screen.getByRole('button', { name: '다음 달' }))
   expect(screen.getByRole('table', { name: '2028년 1월 접수 일정' })).toBeTruthy()
