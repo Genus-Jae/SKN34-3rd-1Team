@@ -10,7 +10,6 @@ export const appSidebarStyles = {
   scrollArea: 'min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4',
   newChatButton: 'mb-1 w-full cursor-pointer border-0 text-left',
   menuGroup: 'flex flex-col gap-1',
-  menuGroupTitle: 'mt-6 mb-2 px-3 text-xs font-normal text-[#888]',
   menuItem: 'flex min-h-11 min-w-0 items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary [&_svg]:size-[18px]',
   activeMenuItem: 'bg-[#e6f5ed] text-brand-primary hover:bg-[#dcefe5]',
   inactiveMenuItem: 'bg-transparent text-app-ink hover:bg-[#f5f6f7]',

@@ -20,7 +20,7 @@ type MenuItem = {
   matches?: (pathname: string) => boolean
 }
 
-type MenuGroup = { title: string; items: MenuItem[]; adminOnly?: boolean }
+type MenuGroup = { title: string; items: MenuItem[] }
 
 const menuGroups: MenuGroup[] = [
   {
@@ -38,18 +38,6 @@ const menuGroups: MenuGroup[] = [
         matches: (pathname) => pathname.startsWith(appPaths.partners) || pathname.startsWith(appPaths.proposals),
       },
       { label: '요금제', icon: 'pricing', to: appPaths.pricing, matches: (pathname) => pathname === appPaths.pricing },
-    ],
-  },
-  {
-    title: '관리자',
-    adminOnly: true,
-    items: [
-      {
-        label: '회원·기업',
-        icon: 'shield',
-        to: appPaths.adminMembers,
-        matches: (pathname) => pathname.startsWith(appPaths.admin),
-      },
     ],
   },
 ]
@@ -154,7 +142,8 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
   const navigate = useNavigate()
   const pendingProposalCount = usePendingReceivedProposalCount()
   const isSearchPage = pathname === appPaths.chat || pathname.startsWith(appPaths.supportProgramDetail)
-  // 계정 카드를 누르면 내 프로필·로그아웃이 열립니다. 화면을 옮기거나 Esc·바깥 클릭이면 닫힙니다.
+  // 계정 카드를 누르면 내 프로필·로그아웃과 관리자 전용 회원·기업 메뉴가 열립니다.
+  // 화면을 옮기거나 Esc·바깥 클릭이면 닫힙니다.
   const accountMenuId = useId()
   const accountRef = useRef<HTMLDivElement>(null)
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
@@ -212,10 +201,9 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
           <MenuIconGraphic name="search" /><span>지원사업 새검색</span>
         </button>
         {menuGroups
-          .filter((group) => !group.adminOnly || account?.tier === 'ADMIN')
           .map((group) => (
             <nav className={appSidebarStyles.menuGroup} key={group.title} aria-label={group.title}>
-              <p className={group.adminOnly ? appSidebarStyles.menuGroupTitle : 'sr-only'}>{group.title}</p>
+              <p className="sr-only">{group.title}</p>
               {group.items.map((item) =>
                 item.to ? (
                   <Link
@@ -258,6 +246,16 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
                 <MenuIconGraphic name="building" />
                 <span>내 프로필</span>
               </Link>
+              {account.tier === 'ADMIN' ? (
+                <Link
+                  className={sidebarMenuItemClassName(pathname.startsWith(appPaths.admin) ? 'active' : 'inactive')}
+                  to={appPaths.adminMembers}
+                  aria-current={pathname.startsWith(appPaths.admin) ? 'page' : undefined}
+                >
+                  <MenuIconGraphic name="shield" />
+                  <span>회원·기업</span>
+                </Link>
+              ) : null}
               <button className={appSidebarStyles.accountMenuButton} type="button" onClick={signOutToLanding}>
                 <MenuIconGraphic name="logout" />
                 <span>로그아웃</span>
@@ -279,7 +277,7 @@ export function AppSidebar({ onClose, onNewChat, closeLabel, onNavigate }: {
               <strong className={appSidebarStyles.accountName} title={account.email}>{account.email}</strong>
               <span className={appSidebarStyles.accountCompany}>{tierLabel(account)}</span>
             </span>
-            {/* ⋮ 아이콘으로 이 카드가 계정 메뉴(내 프로필·로그아웃)를 여는 버튼임을 알립니다. */}
+            {/* ⋮ 아이콘으로 이 카드가 계정 메뉴를 여는 버튼임을 알립니다. */}
             <span className={appSidebarStyles.accountMenuIcon} aria-hidden="true">
               <MenuIconGraphic name="more" />
             </span>
