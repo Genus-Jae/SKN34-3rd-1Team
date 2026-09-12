@@ -288,7 +288,6 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
             {searchContextControls}
             {composerInputGroup}
             {composerErrors}
-            <small className={chatPageStyles.privacyHint}>개인정보·비밀정보는 입력하지 마세요.</small>
           </form>
         </section>
       </main>
@@ -316,9 +315,8 @@ export function ChatPage({ layout = 'landing' }: { layout?: ChatPageLayout }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m12 3 8 4v5c0 5-8 9-8 9s-8-4-8-9V7l8-4Z" /><path d="m8 12 3 3 5-6" />
           </svg>
-          기업마당 공식 공고 기반 · 최종 신청 조건은 원문에서 확인하세요.
+          최종 신청 조건은 원문에서 확인하세요.
         </p> : null}
-        {isLandingIntro ? <small className={chatPageStyles.privacyHint}>개인정보·비밀정보는 입력하지 마세요.</small> : null}
         {isLandingIntro ? readinessNotice : null}
       </section>
     </main>
