@@ -109,7 +109,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
             {vm.catalog && <div className="mt-3 flex items-center gap-3"><button type="button" className={s.button} disabled={vm.catalog.page <= 1 || vm.busy.includes('catalog')} onClick={() => void vm.search(vm.catalog!.page - 1, vm.appliedKeyword)}>이전 공고</button><span className="text-sm">{vm.catalog.page} / {Math.max(1, vm.catalog.totalPages)}</span><button type="button" className={s.button} disabled={vm.catalog.page >= vm.catalog.totalPages || vm.busy.includes('catalog')} onClick={() => void vm.search(vm.catalog!.page + 1, vm.appliedKeyword)}>다음 공고</button></div>}
           </section>
           {vm.draft.programs.length > 0 && <section className={`${s.card} space-y-3`} aria-label="선택한 공고"><h2 className="font-bold">선택한 공고</h2>{vm.draft.programs.map((program, index) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4" key={reviewProgramKey(program)}><div className="min-w-0 flex-1"><strong>사업 {index + 1} · {vm.names[reviewProgramKey(program)] ?? '공고 정보 확인 중'}</strong><p className="break-all text-xs text-slate-500">{reviewProgramKey(program)}</p></div><button type="button" className={s.button} onClick={() => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.filter((_, i) => i !== index) })}>선택 해제</button></div>)}</section>}
-          {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 현재 기업마당의 숫자형 PBLN_ 공고와 과기정통부의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
+          {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 기업마당의 숫자형 PBLN_ 공고와 K-Startup·과기정통부·충남 수출지원의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
           <div className="flex justify-end"><button className={s.primary} type="button" onClick={goToParticipation} disabled={vm.draft.programs.length < 2}>다음: 참여 상태 설정</button></div>
         </fieldset>}
       {step === 'participation' && <>
@@ -117,7 +117,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
           <fieldset disabled={inputBusy} className="space-y-4">
             <div className={s.card}><h2 className="font-bold">공고별 현재 상태</h2><p className={s.muted}>신청·선정·확약·협약·수행·교부는 서로 독립된 사실입니다. 모르는 항목은 ‘모름’을 유지하세요.</p></div>
             {vm.draft.programs.map((program, index) => <ReviewParticipation key={reviewProgramKey(program)} program={program} index={index} name={vm.names[reviewProgramKey(program)]} onChange={(participation) => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.map((p, i) => i === index ? { ...p, participation } : p) })} />)}
-            {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 현재 기업마당의 숫자형 PBLN_ 공고와 과기정통부의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
+            {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 기업마당의 숫자형 PBLN_ 공고와 K-Startup·과기정통부·충남 수출지원의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
             <div className="flex flex-wrap justify-between gap-3"><button className={s.button} type="button" onClick={() => setStep('selection')}>이전: 제목·공고 선택</button><button className={s.primary} type="submit">{inputBusy ? '저장 중…' : '설정 완료 후 공고 분석'}</button></div>
           </fieldset>
         </form>
@@ -131,7 +131,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
         <button className={s.button} type="button" onClick={() => setStep('participation')}>← 참여 상태 수정</button>
         <section className={`${s.card} space-y-3`} aria-label="분석 대상 공고"><h2 className="font-bold">분석 대상 공고</h2><ul className="space-y-2">{vm.draft.programs.map((program, index) => <li key={reviewProgramKey(program)} className="rounded-lg bg-slate-50 p-3"><strong>사업 {index + 1} · {vm.names[reviewProgramKey(program)] ?? '공고 정보 확인 중'}</strong><p className="break-all text-xs text-slate-500">{reviewProgramKey(program)}</p></li>)}</ul></section>
         <section className={`${s.card} space-y-3`} aria-label="분석 실행"><h2 className="text-lg font-bold">공식 근거 분석</h2>
-          <p className={s.muted}>PDF·HWPX 공식 첨부를 자동 수집하여 OpenAI로 분석합니다. 유료 API 호출이 발생할 수 있습니다. 원문 미확보·미지원 형식은 오류로 표시합니다.</p>
+          <p className={s.muted}>PDF·HWP·HWPX 공식 첨부를 자동 수집하여 OpenAI로 분석합니다. 유료 API 호출이 발생할 수 있습니다. 원문 미확보·미지원 형식은 오류로 표시합니다.</p>
           <label className="block text-sm font-semibold">이번 실행의 추가 설명<textarea className={s.input} rows={4} maxLength={8000} value={vm.facts} disabled={analysisBusy || !!vm.pending} onChange={(e) => vm.setFacts(e.target.value)} /></label>
           <p className={s.muted}>{vm.facts.length}/8000 · 추가 설명은 실행에만 저장됩니다.</p>
           {vm.dirty && <p className={s.warning}>저장하지 않은 입력이 있습니다. 저장한 뒤 분석해 주세요.</p>}

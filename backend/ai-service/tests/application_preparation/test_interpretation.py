@@ -112,6 +112,42 @@ def test_real_runner_discovers_only_fields_with_exact_document_evidence():
     assert agent._discovery_agent.tools == []
 
 
+@pytest.mark.parametrize(("source_code", "source_program_id", "file_format", "document_index"), [
+    ("BIZINFO", "PBLN_123", "HWPX", 0),
+    ("KSTARTUP", "177911", "HWP", 1),
+    ("MSIT", "3186573", "PDF", 6),
+    ("CNTRADE_NOTICE", "3862", "HWPX", 7),
+])
+def test_discovery_contract_accepts_every_supported_provider_and_document_format(
+    source_code, source_program_id, file_format, document_index,
+):
+    data = discovery_request_data()
+    data["sourceCode"] = source_code
+    data["sourceProgramId"] = source_program_id
+    data["documents"][0]["documentIndex"] = document_index
+    data["documents"][0]["format"] = file_format
+    data["documents"][0]["blocks"][0]["blockId"] = f"D{document_index}-B0"
+
+    request = DiscoverFormsRequest.model_validate(data)
+
+    assert request.sourceCode == source_code
+    assert request.documents[0].format == file_format
+
+
+@pytest.mark.parametrize(("source_code", "source_program_id"), [
+    ("BIZINFO", "177911"),
+    ("KSTARTUP", "PBLN_123"),
+    ("MSIT", "0"),
+    ("CNTRADE_NOTICE", "01"),
+])
+def test_discovery_contract_rejects_provider_mismatched_ids(source_code, source_program_id):
+    data = discovery_request_data()
+    data["sourceCode"] = source_code
+    data["sourceProgramId"] = source_program_id
+    with pytest.raises(ValidationError):
+        DiscoverFormsRequest.model_validate(data)
+
+
 def test_discovery_normalizes_display_text_and_whitespace_only_quote_differences():
     request_data = discovery_request_data()
     request_data["documents"][0]["blocks"][0]["text"] = "사업\n개요를 작성해 주세요."

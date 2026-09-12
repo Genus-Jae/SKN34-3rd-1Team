@@ -15,7 +15,7 @@ export class ApplicationPreparationUseCase {
     const normalizedProgramId = sourceProgramId.trim()
     const valid = normalizedSourceCode === 'BIZINFO'
       ? /^PBLN_[0-9]{1,32}$/.test(normalizedProgramId)
-      : normalizedSourceCode === 'MSIT' && /^[1-9][0-9]{0,254}$/.test(normalizedProgramId)
+      : ['KSTARTUP', 'MSIT', 'CNTRADE_NOTICE'].includes(normalizedSourceCode) && /^[1-9][0-9]{0,254}$/.test(normalizedProgramId)
     if (!valid) throw new Error('신청 문서 찾기를 지원하는 공식 공고를 다시 선택해 주세요.')
     return this.repository.discover(normalizedSourceCode, normalizedProgramId, signal)
   }

@@ -9,28 +9,47 @@ import javax.xml.parsers.DocumentBuilderFactory
 import org.apache.pdfbox.Loader
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException
 import org.apache.pdfbox.text.PDFTextStripper
+import org.apache.tika.exception.EncryptedDocumentException
+import org.apache.tika.exception.TikaMemoryLimitException
+import org.apache.tika.exception.UnsupportedFormatException
+import org.apache.tika.io.TikaInputStream
+import org.apache.tika.metadata.Metadata
+import org.apache.tika.parser.ParseContext
+import org.apache.tika.parser.hwp.HwpV5Parser
 import org.springframework.stereotype.Component
 import org.w3c.dom.Element
+import org.xml.sax.Attributes
+import org.xml.sax.SAXException
+import org.xml.sax.helpers.DefaultHandler
 
 data class SupportProgramDocumentBlock(val locator: String, val text: String)
 
-/** 공식 PDF/HWPX 원문의 순서와 위치를 보존하며 안전 한도 안에서 텍스트 블록으로 변환합니다. */
+/** 공식 PDF/HWP/HWPX 원문의 순서와 위치를 보존하며 안전 한도 안에서 텍스트 블록으로 변환합니다. */
 @Component
 class SupportProgramDocumentParser {
     fun parse(bytes: ByteArray, format: String): List<SupportProgramDocumentBlock> = try {
         if (bytes.size > MAX_SUPPORT_PROGRAM_ATTACHMENT_BYTES) fail(Reason.TOO_LARGE)
         val blocks = when (format) {
             "PDF" -> pdf(bytes)
+            "HWP" -> hwp(bytes)
             "HWPX" -> hwpx(bytes)
             else -> fail(Reason.UNSUPPORTED)
         }
         if (blocks.sumOf { it.text.length } < 50) fail(Reason.UNSUPPORTED)
-        if (blocks.sumOf { it.text.length } > 60_000 || blocks.size > 256) fail(Reason.TOO_LARGE)
+        if (blocks.sumOf { it.text.length } > MAX_DOCUMENT_CHARACTERS || blocks.size > 256) fail(Reason.TOO_LARGE)
         blocks
     } catch (error: SupportProgramDocumentException) {
         throw error
     } catch (error: InvalidPasswordException) {
         throw SupportProgramDocumentException(Reason.UNSUPPORTED, cause = error)
+    } catch (error: EncryptedDocumentException) {
+        throw SupportProgramDocumentException(Reason.UNSUPPORTED, cause = error)
+    } catch (error: UnsupportedFormatException) {
+        throw SupportProgramDocumentException(Reason.UNSUPPORTED, cause = error)
+    } catch (error: TikaMemoryLimitException) {
+        throw SupportProgramDocumentException(Reason.TOO_LARGE, cause = error)
+    } catch (error: HwpTextLimitException) {
+        throw SupportProgramDocumentException(Reason.TOO_LARGE, cause = error)
     } catch (error: Exception) {
         throw SupportProgramDocumentException(Reason.INVALID, cause = error)
     }
@@ -46,6 +65,36 @@ class SupportProgramDocumentParser {
                     add(SupportProgramDocumentBlock("PDF page $page part ${part + 1}", value))
                 }
             }
+        }
+    }
+
+    private fun hwp(bytes: ByteArray): List<SupportProgramDocumentBlock> {
+        val handler = HwpParagraphHandler()
+        TikaInputStream.get(bytes).use { input ->
+            HwpV5Parser().parse(input, handler, Metadata(), ParseContext())
+        }
+        return buildList {
+            var buffer = StringBuilder()
+            var firstParagraph = 1
+            fun flush(lastParagraph: Int) {
+                if (buffer.isNotEmpty()) {
+                    add(SupportProgramDocumentBlock("HWP paragraphs $firstParagraph-$lastParagraph", buffer.toString()))
+                }
+                buffer = StringBuilder()
+            }
+            handler.paragraphs.forEachIndexed { index, paragraph ->
+                if (paragraph.length > 3000) {
+                    flush(index)
+                    splitText(paragraph).forEachIndexed { part, value ->
+                        add(SupportProgramDocumentBlock("HWP paragraph ${index + 1} part ${part + 1}", value))
+                    }
+                    return@forEachIndexed
+                }
+                if (buffer.length + paragraph.length + 1 > 3000) flush(index)
+                if (buffer.isEmpty()) firstParagraph = index + 1 else buffer.append('\n')
+                buffer.append(paragraph)
+            }
+            flush(handler.paragraphs.size)
         }
     }
 
@@ -131,8 +180,34 @@ class SupportProgramDocumentParser {
 
     private fun fail(reason: Reason): Nothing = throw SupportProgramDocumentException(reason)
 
+    private class HwpParagraphHandler : DefaultHandler() {
+        val paragraphs = mutableListOf<String>()
+        private var paragraph: StringBuilder? = null
+        private var totalCharacters = 0
+
+        override fun startElement(uri: String?, localName: String?, qName: String?, attributes: Attributes?) {
+            if ((localName ?: qName) == "p") paragraph = StringBuilder()
+        }
+
+        override fun characters(characters: CharArray, start: Int, length: Int) {
+            val target = paragraph ?: return
+            totalCharacters += length
+            if (totalCharacters > MAX_DOCUMENT_CHARACTERS) throw HwpTextLimitException()
+            target.append(characters, start, length)
+        }
+
+        override fun endElement(uri: String?, localName: String?, qName: String?) {
+            if ((localName ?: qName) != "p") return
+            paragraph?.toString()?.trim()?.takeIf(String::isNotBlank)?.let(paragraphs::add)
+            paragraph = null
+        }
+    }
+
+    private class HwpTextLimitException : SAXException()
+
     companion object {
-        const val VERSION = "pdfbox-3.0.8-hwpx-direct-paragraph-v1"
+        const val VERSION = "pdfbox-3.0.8-tika-4.0.0-hwp-v1-hwpx-direct-paragraph-v1"
+        const val MAX_DOCUMENT_CHARACTERS = 120_000
         private const val HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
     }
 }

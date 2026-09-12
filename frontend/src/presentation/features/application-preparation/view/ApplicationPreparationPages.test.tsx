@@ -260,28 +260,29 @@ describe('application preparation creation and detail', () => {
     expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_123', expect.any(AbortSignal))
   })
 
-  it('searches all providers, supports MSIT, and marks providers without attachment collection', async () => {
+  it('searches all providers and discovers K-Startup through the same flow', async () => {
     const msitProgram = { ...structuredClone(supportPrograms[0]), sourceCode: 'MSIT', id: '3186573', sourceName: '과학기술정보통신부' }
     const startupProgram = { ...structuredClone(supportPrograms[0]), sourceCode: 'KSTARTUP', id: '177911', sourceName: 'K-Startup', title: 'K-Startup 공고' }
-    const msitForm = {
-      ...structuredClone(firstForm), sourceCode: 'MSIT', sourceProgramId: msitProgram.id,
-      sourceUrl: 'https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&nttSeqNo=3186573',
+    const startupForm = {
+      ...structuredClone(firstForm), sourceCode: 'KSTARTUP', sourceProgramId: startupProgram.id,
+      sourceUrl: 'https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?pbancSn=177911&schM=view',
+      attachmentFileName: '신청양식.hwp',
     }
     browsePrograms.mockResolvedValueOnce({
       programs: [msitProgram, startupProgram], total: 2, page: 1, pageSize: 10, totalPages: 1,
       regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
     })
-    repository.discover.mockResolvedValueOnce({ items: [msitForm], warnings: [], cached: false })
+    repository.discover.mockResolvedValueOnce({ items: [startupForm], warnings: [], cached: false })
     mount('/app/application-preparations/new')
 
     fireEvent.click(screen.getByRole('button', { name: '공고 검색' }))
     const results = await screen.findByRole('list', { name: '신청 문서 공고 검색 결과' })
-    expect((within(results).getByRole('button', { name: '문서 지원 준비 중' }) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(within(results).getAllByRole('button', { name: '선택' })[0]!)
+    expect(within(results).queryByRole('button', { name: '문서 지원 준비 중' })).toBeNull()
+    fireEvent.click(within(results).getAllByRole('button', { name: '선택' })[1]!)
     fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
 
     expect(await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })).toBeTruthy()
-    expect(repository.discover).toHaveBeenCalledWith('MSIT', '3186573', expect.any(AbortSignal))
+    expect(repository.discover).toHaveBeenCalledWith('KSTARTUP', '177911', expect.any(AbortSignal))
     fireEvent.click(screen.getByRole('button', { name: '공고 다시 선택' }))
     expect(screen.getByRole('heading', { name: '지원 공고 검색' })).toBeTruthy()
   })
@@ -299,6 +300,21 @@ describe('application preparation creation and detail', () => {
 
     await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })
     expect(repository.discover).toHaveBeenCalledWith('MSIT', '3186573', expect.any(AbortSignal))
+  })
+
+  it.each([
+    ['KSTARTUP', '177911', 'K-Startup 공식 공고 ID'],
+    ['CNTRADE_NOTICE', '3862', '충남 온라인수출지원시스템 공식 공고 ID'],
+  ])('preserves a %s identity passed from the program detail page', async (sourceCode, sourceProgramId, inputLabel) => {
+    const form = { ...structuredClone(firstForm), sourceCode, sourceProgramId }
+    repository.discover.mockResolvedValueOnce({ items: [form], warnings: [], cached: false })
+    mount(`/app/application-preparations/new?sourceCode=${sourceCode}&sourceProgramId=${sourceProgramId}`)
+
+    expect((screen.getByLabelText(inputLabel) as HTMLInputElement).value).toBe(sourceProgramId)
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+
+    await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })
+    expect(repository.discover).toHaveBeenCalledWith(sourceCode, sourceProgramId, expect.any(AbortSignal))
   })
 
   it('explains when the selected notice has no discoverable application form', async () => {

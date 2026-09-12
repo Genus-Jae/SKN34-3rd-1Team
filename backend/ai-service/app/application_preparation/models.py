@@ -76,27 +76,32 @@ class InterpretationSelection(Contract):
 
 
 class DiscoveryBlock(Contract):
-    blockId: str = Field(pattern=r"^D[0-3]-B[0-9]{1,3}$")
+    blockId: str = Field(pattern=r"^D[0-7]-B[0-9]{1,3}$")
     locator: str = Field(min_length=1, max_length=200)
     text: str = Field(min_length=1, max_length=3000)
 
 
 class DiscoveryDocument(Contract):
-    documentIndex: int = Field(ge=0, le=3)
+    documentIndex: int = Field(ge=0, le=7)
     fileName: str = Field(min_length=1, max_length=300)
-    format: Literal["PDF", "HWPX"]
+    format: Literal["PDF", "HWP", "HWPX"]
     blocks: list[DiscoveryBlock] = Field(min_length=1, max_length=256)
 
 
 class DiscoverFormsRequest(Contract):
     contractVersion: Literal["application-form-discovery-v1"]
-    sourceCode: Literal["BIZINFO"]
-    sourceProgramId: str = Field(pattern=r"^PBLN_[0-9]{1,32}$")
+    sourceCode: Literal["BIZINFO", "KSTARTUP", "MSIT", "CNTRADE_NOTICE"]
+    sourceProgramId: str = Field(min_length=1, max_length=255)
     programTitle: str = Field(min_length=1, max_length=300)
-    documents: list[DiscoveryDocument] = Field(min_length=1, max_length=4)
+    documents: list[DiscoveryDocument] = Field(min_length=1, max_length=8)
 
     @model_validator(mode="after")
     def unique_documents_and_blocks(self) -> Self:
+        if self.sourceCode == "BIZINFO":
+            if re.fullmatch(r"PBLN_[0-9]{1,32}", self.sourceProgramId) is None:
+                raise ValueError("invalid BIZINFO source program id")
+        elif re.fullmatch(r"[1-9][0-9]{0,254}", self.sourceProgramId) is None:
+            raise ValueError("invalid numeric source program id")
         indexes = [item.documentIndex for item in self.documents]
         if len(indexes) != len(set(indexes)):
             raise ValueError("duplicate document index")
@@ -112,7 +117,7 @@ class DiscoveredFormField(Contract):
     label: str = Field(min_length=1, max_length=100)
     guidance: str = Field(min_length=1, max_length=500)
     required: bool
-    evidenceBlockId: str = Field(pattern=r"^D[0-3]-B[0-9]{1,3}$")
+    evidenceBlockId: str = Field(pattern=r"^D[0-7]-B[0-9]{1,3}$")
     evidenceQuote: str = Field(min_length=1, max_length=300)
 
 
@@ -124,7 +129,7 @@ class DiscoveredFormSection(Contract):
 
 
 class DiscoveredForm(Contract):
-    documentIndex: int = Field(ge=0, le=3)
+    documentIndex: int = Field(ge=0, le=7)
     sections: list[DiscoveredFormSection] = Field(min_length=1, max_length=12)
 
 

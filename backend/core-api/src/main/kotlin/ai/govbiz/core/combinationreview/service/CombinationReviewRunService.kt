@@ -11,9 +11,11 @@ import ai.govbiz.core.combinationreview.service.exception.*
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.admission.exception.SupportProgramRequestRejectedException
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.cntradenotice.CnTradeNoticeAttachmentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
+import ai.govbiz.core.supportprogram.client.kstartup.KStartupAttachmentClient
 import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
@@ -30,6 +32,8 @@ import org.springframework.stereotype.Service
 class CombinationReviewRunService(
     private val runs: CombinationReviewRunRepository, private val reviews: CombinationReviewService,
     private val bizInfoAttachments: BizInfoAttachmentClient, private val msitAttachments: MsitAttachmentClient,
+    private val kStartupAttachments: KStartupAttachmentClient,
+    private val cnTradeNoticeAttachments: CnTradeNoticeAttachmentClient,
     private val programDetails: SupportProgramDetailService, private val documentParser: SupportProgramDocumentParser,
     private val ai: AiCombinationReviewFacade, private val admission: SupportProgramRequestAdmissionService,
     @param:Qualifier("seoulClock") private val clock: Clock,
@@ -141,17 +145,33 @@ class CombinationReviewRunService(
     private fun collectAttachments(identity: ReviewProgramIdentity): SupportProgramAttachments = when (identity.sourceCode) {
         "BIZINFO" -> bizInfoAttachments.collect(identity.sourceCode, identity.sourceProgramId)
         "MSIT" -> {
-            if (!MSIT_PROGRAM_ID.matches(identity.sourceProgramId)) {
+            if (!NUMERIC_PROGRAM_ID.matches(identity.sourceProgramId)) {
                 throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
             }
-            val program = try {
-                programDetails.get(identity.sourceCode, identity.sourceProgramId)
-            } catch (error: SupportProgramNotFoundException) {
-                throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.NOT_FOUND, error)
-            }
+            val program = requireProgram(identity)
             msitAttachments.collect(identity.sourceCode, identity.sourceProgramId, program.sourceUrl)
         }
+        "KSTARTUP" -> {
+            if (!NUMERIC_PROGRAM_ID.matches(identity.sourceProgramId)) {
+                throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
+            }
+            val program = requireProgram(identity)
+            kStartupAttachments.collect(identity.sourceCode, identity.sourceProgramId, program.sourceUrl)
+        }
+        "CNTRADE_NOTICE" -> {
+            if (!NUMERIC_PROGRAM_ID.matches(identity.sourceProgramId)) {
+                throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
+            }
+            val program = requireProgram(identity)
+            cnTradeNoticeAttachments.collect(identity.sourceCode, identity.sourceProgramId, program.title, program.targetDescription)
+        }
         else -> throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.UNSUPPORTED)
+    }
+
+    private fun requireProgram(identity: ReviewProgramIdentity) = try {
+        programDetails.get(identity.sourceCode, identity.sourceProgramId)
+    } catch (error: SupportProgramNotFoundException) {
+        throw SupportProgramDocumentException(SupportProgramDocumentException.Reason.NOT_FOUND, error)
     }
 
     /** 각 하위 경계의 실패를 실행 상태·공개 오류 계약으로 변환한다. */
@@ -174,6 +194,6 @@ class CombinationReviewRunService(
 
     private companion object {
         const val MAX_REVIEW_SOURCE_DOCUMENTS = 12
-        val MSIT_PROGRAM_ID = Regex("[1-9][0-9]{0,254}")
+        val NUMERIC_PROGRAM_ID = Regex("[1-9][0-9]{0,254}")
     }
 }
