@@ -1,3 +1,4 @@
+import re
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -131,24 +132,75 @@ class FormDiscoverySelection(Contract):
     forms: list[DiscoveredForm] = Field(max_length=4)
 
 
+class FormDiscoveryValidationError(ValueError):
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _canonical_source_quote(source: str, proposed: str) -> str | None:
+    trimmed = proposed.strip()
+    if not trimmed:
+        return None
+    if trimmed in source:
+        return trimmed
+    parts = re.split(r"\s+", trimmed)
+    match = re.search(r"\s+".join(re.escape(part) for part in parts), source)
+    if match is None or len(match.group(0)) > 300:
+        return None
+    return match.group(0)
+
+
+def _unique_key(key: str, used: set[str]) -> str:
+    if key not in used:
+        used.add(key)
+        return key
+    suffix = 2
+    while True:
+        candidate = f"{key[: 63 - len(str(suffix))]}-{suffix}"
+        if candidate not in used:
+            used.add(candidate)
+            return candidate
+        suffix += 1
+
+
 def validate_discovery(request: DiscoverFormsRequest, output: FormDiscoverySelection) -> None:
     documents = {item.documentIndex: item for item in request.documents}
-    indexes = [item.documentIndex for item in output.forms]
-    if len(indexes) != len(set(indexes)) or not set(indexes).issubset(documents):
-        raise ValueError("invalid discovered document index")
+    merged_forms: dict[int, DiscoveredForm] = {}
     for form in output.forms:
-        section_keys = [section.sectionKey for section in form.sections]
-        if len(section_keys) != len(set(section_keys)):
-            raise ValueError("duplicate discovered section")
+        if form.documentIndex not in documents:
+            raise FormDiscoveryValidationError("INVALID_DOCUMENT_INDEX")
+        existing = merged_forms.get(form.documentIndex)
+        if existing is None:
+            merged_forms[form.documentIndex] = form
+        else:
+            existing.sections.extend(form.sections)
+            if len(existing.sections) > 12:
+                raise FormDiscoveryValidationError("TOO_MANY_MERGED_SECTIONS")
+    output.forms = list(merged_forms.values())
+    for form in output.forms:
+        section_keys: set[str] = set()
         blocks = {block.blockId: block for block in documents[form.documentIndex].blocks}
         for section in form.sections:
-            field_keys = [field.fieldKey for field in section.fields]
-            if len(field_keys) != len(set(field_keys)):
-                raise ValueError("duplicate discovered field")
+            section.sectionKey = _unique_key(section.sectionKey, section_keys)
+            section.title = section.title.strip()
+            section.description = section.description.strip()
+            if not section.title or not section.description:
+                raise FormDiscoveryValidationError("EMPTY_SECTION_TEXT")
+            field_keys: set[str] = set()
             for field in section.fields:
+                field.fieldKey = _unique_key(field.fieldKey, field_keys)
                 block = blocks.get(field.evidenceBlockId)
-                if block is None or field.evidenceQuote not in block.text:
-                    raise ValueError("discovered field evidence is not an exact source quote")
+                if block is None:
+                    raise FormDiscoveryValidationError("UNKNOWN_EVIDENCE_BLOCK")
+                field.label = field.label.strip()
+                field.guidance = field.guidance.strip()
+                if not field.label or not field.guidance:
+                    raise FormDiscoveryValidationError("EMPTY_FIELD_TEXT")
+                canonical_quote = _canonical_source_quote(block.text, field.evidenceQuote)
+                if canonical_quote is None:
+                    raise FormDiscoveryValidationError("EVIDENCE_QUOTE_MISMATCH")
+                field.evidenceQuote = canonical_quote
 
 
 def validate_selection(request: InterpretRequest, output: InterpretationSelection) -> None:

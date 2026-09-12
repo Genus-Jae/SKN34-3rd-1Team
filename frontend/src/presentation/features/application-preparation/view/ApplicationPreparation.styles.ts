@@ -7,6 +7,7 @@ export const applicationPreparationStyles = {
   input: 'block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus-visible:border-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100',
   button: 'inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700',
   primary: 'inline-flex min-h-11 items-center justify-center self-start rounded-full bg-emerald-800 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700',
+  danger: 'inline-flex min-h-10 items-center justify-center rounded-full border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700',
   warning: 'rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950',
   notice: 'rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700',
   status: 'm-0 text-sm leading-6 text-slate-600',

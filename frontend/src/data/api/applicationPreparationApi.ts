@@ -8,7 +8,7 @@ export type ApplicationPreparationNotFoundScope = 'feature' | 'preparation'
 export async function applicationPreparationRequest<T>(
   path: string,
   schema: z.ZodType<T>,
-  method: 'GET' | 'POST' | 'PUT',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   body?: unknown,
   signal?: AbortSignal,
   notFoundScope: ApplicationPreparationNotFoundScope = 'feature',
@@ -33,18 +33,21 @@ export async function applicationPreparationRequest<T>(
     if (!response.ok) {
       const problem = applicationPreparationProblemSchema.safeParse(await response.json().catch(() => null))
       const serverCode = problem.success ? problem.data.code : null
-      const code = response.status === 404
-        ? serverCode?.startsWith('APPLICATION_FORM_')
-          ? serverCode
-          : notFoundScope === 'preparation' && (
-            serverCode === 'APPLICATION_PREPARATION_NOT_FOUND' || serverCode === 'APPLICATION_PREPARATION_SECTION_NOT_FOUND'
-          )
-          ? serverCode
-          : 'APPLICATION_PREPARATION_API_UNAVAILABLE'
-        : serverCode ?? 'REQUEST_FAILED'
+      let code = serverCode ?? 'REQUEST_FAILED'
+      if (path.endsWith('/forms/discover') && serverCode === 'AI_SERVICE_INVALID_RESPONSE') {
+        code = 'APPLICATION_FORM_AI_INVALID_RESPONSE'
+      } else if (response.status === 404 && serverCode?.startsWith('APPLICATION_FORM_')) {
+        code = serverCode
+      } else if (response.status === 404 && notFoundScope === 'preparation' && (
+        serverCode === 'APPLICATION_PREPARATION_NOT_FOUND' || serverCode === 'APPLICATION_PREPARATION_SECTION_NOT_FOUND'
+      )) {
+        code = serverCode
+      } else if (response.status === 404) {
+        code = 'APPLICATION_PREPARATION_API_UNAVAILABLE'
+      }
       throw new ApplicationPreparationError(response.status, code)
     }
-    const payload = await response.json().catch(() => null)
+    const payload = response.status === 204 ? undefined : await response.json().catch(() => null)
     const parsed = schema.safeParse(payload)
     if (!parsed.success) throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
     return parsed.data

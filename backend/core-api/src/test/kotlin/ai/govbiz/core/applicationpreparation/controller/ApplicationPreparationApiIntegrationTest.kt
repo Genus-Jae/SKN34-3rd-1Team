@@ -41,6 +41,7 @@ import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
@@ -203,6 +204,21 @@ class ApplicationPreparationApiIntegrationTest {
         mvc.perform(get("$BASE/$id").cookie(owner)).andExpect(status().isOk()).andExpect(content().json(response.contentAsString))
         mvc.perform(get("$BASE/$id").cookie(other)).andExpect(status().isNotFound())
             .andExpect(jsonPath("$.code").value("APPLICATION_PREPARATION_NOT_FOUND"))
+    }
+
+    @Test
+    fun deletesOnlyAnOwnedPreparationAndReturnsNoContent() {
+        val id = create(owner)
+        mvc.perform(delete("$BASE/$id").cookie(other).header(HttpHeaders.ORIGIN, ORIGIN))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("APPLICATION_PREPARATION_NOT_FOUND"))
+
+        mvc.perform(delete("$BASE/$id").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN))
+            .andExpect(status().isNoContent())
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+        mvc.perform(get("$BASE/$id").cookie(owner)).andExpect(status().isNotFound())
+        mvc.perform(delete("$BASE/$id").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN))
+            .andExpect(status().isNotFound())
     }
 
     @Test

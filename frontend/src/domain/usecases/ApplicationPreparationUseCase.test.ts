@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ApplicationPreparationUseCase } from './ApplicationPreparationUseCase'
 
-const repository = { forms: vi.fn(), discover: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
+const repository = { forms: vi.fn(), discover: vi.fn(), list: vi.fn(), delete: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
 const useCase = new ApplicationPreparationUseCase(repository)
 const valid = {
   sourceCode: 'BIZINFO',
@@ -14,10 +14,13 @@ describe('ApplicationPreparationUseCase', () => {
   it('passes a valid immutable creation selection to the repository', () => {
     useCase.create(valid)
     expect(repository.create).toHaveBeenCalledWith(valid, undefined)
+    useCase.delete(3)
+    expect(repository.delete).toHaveBeenCalledWith(3, undefined)
   })
 
   it('rejects invalid ids and form selections before the repository', () => {
     expect(() => useCase.get(0)).toThrow('주소')
+    expect(() => useCase.delete(0)).toThrow('삭제')
     expect(() => useCase.create({ ...valid, formVersionId: '잘못된 버전' })).toThrow('양식')
   })
 

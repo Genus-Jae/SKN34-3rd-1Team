@@ -36,6 +36,18 @@ const creation = {
 }
 
 describe('application preparation HTTP boundary', () => {
+  it('deletes an owned preparation with the exact 204 contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(new ApplicationPreparationRepositoryImpl().delete(7)).resolves.toBeUndefined()
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toMatch(/\/api\/v1\/application-preparations\/7$/)
+    expect(options).toMatchObject({ method: 'DELETE', credentials: 'include', cache: 'no-store' })
+    expect(options.body).toBeUndefined()
+  })
+
   it('uses the exact URLs, methods, body, session cookie and no-store options', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({ items: [form] }))
@@ -84,6 +96,18 @@ describe('application preparation HTTP boundary', () => {
     await expect(repository.get(1)).rejects.toMatchObject({
       status: 401,
       message: '로그인이 만료되었습니다. 다시 로그인해 주세요.',
+    })
+  })
+
+  it('uses a form-discovery-specific message for an invalid AI response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      Response.json({ code: 'AI_SERVICE_INVALID_RESPONSE' }, { status: 502 }),
+    ))
+
+    await expect(new ApplicationPreparationRepositoryImpl().discover('BIZINFO', 'PBLN_1')).rejects.toMatchObject({
+      status: 502,
+      code: 'APPLICATION_FORM_AI_INVALID_RESPONSE',
+      message: expect.stringContaining('공식 첨부의 문항 근거'),
     })
   })
 

@@ -44,4 +44,9 @@
         ORDER BY id DESC
         LIMIT #{limit}
     </select>
+
+    <delete id="deleteOwned">
+        DELETE FROM application_preparation
+        WHERE id = #{preparationId} AND owner_account_id = #{ownerAccountId}
+    </delete>
 </mapper>

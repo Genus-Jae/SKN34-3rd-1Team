@@ -2,7 +2,7 @@
 
 [문서 목록](README.md) · [시스템 구조](architecture/README.md) · [계정·인증 계약](account-auth-contract.md)
 
-- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189) · [#199 — skn-96 공고 기반 양식 발견](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/199) · [#207 — skn-100 작성 도우미 공고 검색](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/207)
+- 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189) · [#199 — skn-96 공고 기반 양식 발견](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/199) · [#207 — skn-100 작성 도우미 공고 검색](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/207) · [#210 — skn-102 오류·삭제·선택 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/210)
 - 상태: **작성 도우미 안에서 기업마당 공고를 검색·선택하고 공식 PDF/HWPX의 신청 문서와 문항을 동적으로 발견해 기존 질문·사실 확인 흐름에 연결한다. 초안 생성·수정·확인은 미구현이다.**
 - 설계 기준: 2026-09-11, 팀 `main` 커밋 `6fc41bc`에서 `skn-96` 전환.
 - 기능 이름: 화면에서는 **신청 문서 작성 도우미**, 코드에서는 `applicationpreparation` / `application_preparation` / `application-preparation`을 사용한다.
@@ -72,6 +72,7 @@ AI가 만든 문장은 제출 완료나 사실 확인을 의미하지 않는다.
 ## 4. 사용자 흐름과 화면 경계
 
 1. 로그인 사용자가 작성 도우미 안에서 공고명·기관명으로 기업마당 공고를 검색·선택하거나 공고 상세에서 진입한다.
+   선택 공고는 검색 결과 위에 표시하고 같은 카드의 `신청 문서 찾기` 버튼으로 다음 행동을 이어간다.
 2. 검색에서 찾지 못한 경우에만 기업마당 공식 URL·공고 ID를 직접 입력한다.
 3. 사용자가 분석 버튼을 누르면 공식 PDF/HWPX를 수집하고 신청 문서·문항 후보를 추출한다.
 4. 사용자가 원문 위치와 발견 양식을 확인하고 생성 버튼을 누른다.
@@ -185,6 +186,7 @@ AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초�
 | POST `/application-preparations` | 공고·지원 분야·양식 버전으로 신청 준비 건 생성 |
 | GET `/application-preparations` | 본인 신청 준비 목록 |
 | GET `/application-preparations/{id}` | 본인 현재 입력·문항·작성 상태 조회 |
+| DELETE `/application-preparations/{id}` | 본인 신청 준비 삭제. 하위 확인 사실·AI 실행 기록은 cascade 삭제하고 공용 양식 스냅샷은 유지 |
 | POST `/application-preparations/{id}/sections/{sectionKey}/messages` | 사용자 답변 해석, 사실 제안·미정·다음 질문 반환 |
 | PUT `/application-preparations/{id}/sections/{sectionKey}/inputs` | 사용자가 확인한 문항 입력 전체 스냅샷 저장 |
 | POST `/application-preparations/{id}/sections/{sectionKey}/drafts` | 현재 확인 입력으로 명시적인 초안 실행 |
@@ -339,6 +341,7 @@ GitHub 이슈에서 skn-번호 확정
 | 문항별 질문과 사실 확인 | `skn-92` / #189 | AI 답변 해석, 사실 제안·확인, 문항 입력 저장과 화면 | AI Service·Core 계약·Frontend |
 | 공고 기반 양식 발견 전환 | `skn-96` / #199 | 기업마당 공식 첨부 수집·문항 추출·버전 스냅샷과 공고 상세·새 작성 연결 | AI Service·Core·MySQL 8.4·Frontend |
 | 작성 도우미 공고 검색 | `skn-100` / #207 | 새 작성 안에서 기업마당 공고 검색·선택, URL·ID 입력은 보조 경로 | Frontend·`git diff --check` |
+| 발견 오류·삭제·선택 흐름 보강 | `skn-102` / #210 | 원문 인용 공백 정규화, AI/출처 오류 구분, 신청 준비 삭제, 선택 공고 상단 행동 | AI Service·Core·MySQL 8.4·Frontend |
 | 초안 생성·수정·확인 | 새 번호 배정 필요 | 초안 실행·이력, 직접 수정, 확인·재확인 상태와 화면 | AI Service·Core·Frontend·Stub 연결 |
 | 전체 흐름 안정화 | 새 번호 배정 필요 | 로그인 복귀·세션 격리·장애·Compose 통합과 운영 문서 | 변경 서비스 전체·Compose·`git diff --check` |
 

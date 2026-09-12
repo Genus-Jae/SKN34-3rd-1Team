@@ -66,23 +66,23 @@ class AiApplicationPreparationFacade(private val client: AiApplicationPreparatio
                 form.sections.map { it.sectionKey }.distinct().size == form.sections.size)
             ExtractedApplicationForm(form.documentIndex, form.sections.map { section ->
                 require(Regex("[a-z][a-z0-9-]{0,63}").matches(section.sectionKey))
-                require(section.title.isNotBlank() && section.title.length <= 100)
-                require(section.description.isNotBlank() && section.description.length <= 1000)
+                val sectionTitle = validatedAiText(section.title, 100)
+                val sectionDescription = validatedAiText(section.description, 1000)
                 require(section.fields.isNotEmpty() && section.fields.size <= 20 &&
                     section.fields.map { it.fieldKey }.distinct().size == section.fields.size)
                 ExtractedApplicationFormSection(
                     section.sectionKey,
-                    section.title,
-                    section.description,
+                    sectionTitle,
+                    sectionDescription,
                     section.fields.map { field ->
                         val block = requireNotNull(blocks[field.evidenceBlockId])
                         require(Regex("[a-z][a-z0-9-]{0,63}").matches(field.fieldKey))
-                        require(field.label.isNotBlank() && field.label.length <= 100)
-                        require(field.guidance.isNotBlank() && field.guidance.length <= 500)
+                        val label = validatedAiText(field.label, 100)
+                        val guidance = validatedAiText(field.guidance, 500)
                         require(field.evidenceQuote.isNotBlank() && field.evidenceQuote.length <= 300 &&
                             block.text.contains(field.evidenceQuote))
                         ExtractedApplicationFormField(
-                            field.fieldKey, field.label, field.guidance, field.required,
+                            field.fieldKey, label, guidance, field.required,
                             field.evidenceBlockId, field.evidenceQuote,
                         )
                     },
@@ -164,5 +164,10 @@ class AiApplicationPreparationFacade(private val client: AiApplicationPreparatio
         require(configuration.contractVersion == AI_APPLICATION_PREPARATION_CONTRACT_VERSION)
         require(configuration.model.isNotBlank() && configuration.model.length <= 200)
         require(Regex("sha256:[0-9a-f]{64}").matches(configuration.promptVersion))
+    }
+
+    private fun validatedAiText(value: String, maxCodePoints: Int): String = value.trim().also { normalized ->
+        require(normalized.isNotEmpty() && normalized.codePointCount(0, normalized.length) <= maxCodePoints)
+        require(!Regex("\\p{C}").containsMatchIn(normalized))
     }
 }
