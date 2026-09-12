@@ -1,5 +1,8 @@
 package ai.govbiz.core.supportprogram.service.sync
 
+import ai.govbiz.core.supportprogram.client.elasticsearch.ElasticsearchSupportProgramClient
+import ai.govbiz.core.supportprogram.client.elasticsearch.mapper.ElasticsearchSupportProgramDocumentMapper
+import ai.govbiz.core.supportprogram.client.elasticsearch.exception.ElasticsearchClientException
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramIndexClient
 import ai.govbiz.core.supportprogram.client.ai.dto.AiSupportProgramIndexBatchPayload
@@ -33,6 +36,8 @@ class SupportProgramIndexSyncServiceTest {
     private lateinit var repository: SupportProgramRepository
     @Mock
     private lateinit var client: AiSupportProgramIndexClient
+    @Mock
+    private lateinit var lexicalClient: ElasticsearchSupportProgramClient
     private val programs = (1..17).map { catalogProgram("program-$it") }
     private val documents = programs.map(SupportProgramIndexDocumentMapper::fromCatalog)
     private val firstBatch = AiSupportProgramIndexBatchRequest(documents.take(16))
@@ -42,13 +47,14 @@ class SupportProgramIndexSyncServiceTest {
     fun indexesAllBatchesAndIsSafeToRepeat() {
         doReturn(AiSupportProgramIndexBatchPayload(16)).`when`(client).indexBatch(firstBatch)
         doReturn(AiSupportProgramIndexBatchPayload(1)).`when`(client).indexBatch(lastBatch)
-        val service = SupportProgramIndexSyncService(repository, client)
+        val service = SupportProgramIndexSyncService(repository, client, lexicalClient)
 
         assertEquals(17, service.indexSnapshot(programs))
         assertEquals(17, service.indexSnapshot(programs))
 
-        val order = inOrder(client)
+        val order = inOrder(lexicalClient, client)
         repeat(2) {
+            order.verify(lexicalClient).indexSnapshot(programs.map(ElasticsearchSupportProgramDocumentMapper::fromCatalog))
             order.verify(client).indexBatch(firstBatch)
             order.verify(client).indexBatch(lastBatch)
         }
@@ -69,10 +75,20 @@ class SupportProgramIndexSyncServiceTest {
             snapshot.map(SupportProgramIndexDocumentMapper::fromCatalog),
         )
         doReturn(AiSupportProgramIndexBatchPayload(2)).`when`(client).indexBatch(request)
-        val service = SupportProgramIndexSyncService(repository, client)
+        val service = SupportProgramIndexSyncService(repository, client, lexicalClient)
 
         assertEquals(2, service.indexSnapshot(snapshot))
         verify(client).indexBatch(request)
+    }
+
+    @Test
+    fun lexicalFailureDoesNotCallVectorIndexOrPublishReadiness() {
+        doThrow(ElasticsearchClientException("partial index")).`when`(lexicalClient)
+            .indexSnapshot(programs.map(ElasticsearchSupportProgramDocumentMapper::fromCatalog))
+        assertThrows(ElasticsearchClientException::class.java) {
+            SupportProgramIndexSyncService(repository, client, lexicalClient).indexSnapshot(programs)
+        }
+        verifyNoInteractions(client, repository)
     }
 
     @Test
@@ -81,7 +97,7 @@ class SupportProgramIndexSyncServiceTest {
         doReturn(AiSupportProgramIndexBatchPayload(16)).`when`(client).indexBatch(firstBatch)
         doThrow(AiServiceCallException.unavailable(null)).doReturn(AiSupportProgramIndexBatchPayload(1))
             .`when`(client).indexBatch(lastBatch)
-        val scheduler = SupportProgramIndexSyncScheduler(SupportProgramIndexSyncService(repository, client))
+        val scheduler = SupportProgramIndexSyncScheduler(SupportProgramIndexSyncService(repository, client, lexicalClient))
 
         scheduler.synchronize()
         scheduler.synchronize()
@@ -95,7 +111,7 @@ class SupportProgramIndexSyncServiceTest {
         doReturn(AiSupportProgramIndexBatchPayload(15)).`when`(client).indexBatch(firstBatch)
 
         assertThrows(AiServiceCallException::class.java) {
-            SupportProgramIndexSyncService(repository, client).indexSnapshot(programs)
+            SupportProgramIndexSyncService(repository, client, lexicalClient).indexSnapshot(programs)
         }
 
         verify(client, never()).indexBatch(lastBatch)
@@ -105,7 +121,7 @@ class SupportProgramIndexSyncServiceTest {
     fun emptyCatalogNeedsNoEmbeddingCall() {
         doReturn(emptyList<CatalogSupportProgram>()).`when`(repository).findPresent()
 
-        assertEquals(0, SupportProgramIndexSyncService(repository, client).repair())
+        assertEquals(0, SupportProgramIndexSyncService(repository, client, lexicalClient).repair())
         verifyNoInteractions(client)
         verify(repository, never()).bootstrapLegacySnapshotAfterSuccessfulRepair(
             "BIZINFO", emptyList(),
@@ -123,7 +139,7 @@ class SupportProgramIndexSyncServiceTest {
         doReturn(AiSupportProgramIndexBatchPayload(1)).`when`(client).indexBatch(request)
         doReturn(true).`when`(repository).bootstrapLegacySnapshotAfterSuccessfulRepair("BIZINFO", snapshot)
 
-        assertEquals(1, SupportProgramIndexSyncService(repository, client).repair())
+        assertEquals(1, SupportProgramIndexSyncService(repository, client, lexicalClient).repair())
 
         verify(repository).bootstrapLegacySnapshotAfterSuccessfulRepair("BIZINFO", snapshot)
     }
@@ -139,7 +155,7 @@ class SupportProgramIndexSyncServiceTest {
         doThrow(AiServiceCallException.unavailable(null)).`when`(client).indexBatch(request)
 
         assertThrows(AiServiceCallException::class.java) {
-            SupportProgramIndexSyncService(repository, client).repair()
+            SupportProgramIndexSyncService(repository, client, lexicalClient).repair()
         }
 
         verify(repository, never()).bootstrapLegacySnapshotAfterSuccessfulRepair("BIZINFO", snapshot)
@@ -157,7 +173,7 @@ class SupportProgramIndexSyncServiceTest {
             .`when`(repository).findSyncStatuses()
         doReturn(AiSupportProgramIndexBatchPayload(1)).`when`(client).indexBatch(request)
 
-        assertEquals(1, SupportProgramIndexSyncService(repository, client).repair())
+        assertEquals(1, SupportProgramIndexSyncService(repository, client, lexicalClient).repair())
 
         verify(repository).markIndexReadyIfPublishedSnapshotMatches("BIZINFO", 31L, fingerprint, 1)
         verify(repository, never()).markIndexNotReadyIfPublishedSnapshotMatches(
@@ -186,7 +202,7 @@ class SupportProgramIndexSyncServiceTest {
         assertEquals(
             failure,
             assertThrows(AiServiceCallException::class.java) {
-                SupportProgramIndexSyncService(repository, client).repair()
+                SupportProgramIndexSyncService(repository, client, lexicalClient).repair()
             },
         )
 
@@ -211,7 +227,7 @@ class SupportProgramIndexSyncServiceTest {
             .`when`(repository).findSyncStatuses()
         doReturn(AiSupportProgramIndexBatchPayload(1)).`when`(client).indexBatch(request)
 
-        assertEquals(1, SupportProgramIndexSyncService(repository, client).repair())
+        assertEquals(1, SupportProgramIndexSyncService(repository, client, lexicalClient).repair())
 
         verify(repository, never()).markIndexReadyIfPublishedSnapshotMatches(
             org.mockito.ArgumentMatchers.anyString(),
@@ -257,7 +273,7 @@ class SupportProgramIndexSyncServiceTest {
         doReturn(AiSupportProgramIndexBatchPayload(1)).`when`(client).indexBatch(successfulRequest)
 
         val thrown = assertThrows(AiServiceCallException::class.java) {
-            SupportProgramIndexSyncService(repository, client).repair()
+            SupportProgramIndexSyncService(repository, client, lexicalClient).repair()
         }
 
         assertEquals(failure, thrown)
@@ -293,7 +309,7 @@ class SupportProgramIndexSyncServiceTest {
         )
 
         val thrown = assertThrows(AiServiceCallException::class.java) {
-            SupportProgramIndexSyncService(repository, client).repair()
+            SupportProgramIndexSyncService(repository, client, lexicalClient).repair()
         }
 
         assertEquals(bizInfoFailure, thrown)
@@ -316,7 +332,7 @@ class SupportProgramIndexSyncServiceTest {
         doReturn(AiSupportProgramIndexBatchPayload(1)).`when`(client).indexBatch(bizInfoRequest)
         doReturn(AiSupportProgramIndexBatchPayload(1)).`when`(client).indexBatch(otherRequest)
 
-        assertEquals(2, SupportProgramIndexSyncService(repository, client).repair())
+        assertEquals(2, SupportProgramIndexSyncService(repository, client, lexicalClient).repair())
 
         val order = inOrder(repository, client)
         order.verify(client).indexBatch(bizInfoRequest)
@@ -333,7 +349,7 @@ class SupportProgramIndexSyncServiceTest {
             listOf(status(61L, fingerprint, 0), status(62L, fingerprint, 0, "OTHER")),
         ).`when`(repository).findSyncStatuses()
 
-        assertEquals(0, SupportProgramIndexSyncService(repository, client).repair())
+        assertEquals(0, SupportProgramIndexSyncService(repository, client, lexicalClient).repair())
 
         verifyNoInteractions(client)
         verify(repository).markIndexReadyIfPublishedSnapshotMatches("BIZINFO", 61L, fingerprint, 0)
@@ -354,7 +370,7 @@ class SupportProgramIndexSyncServiceTest {
         )
 
         assertThrows(AiServiceCallException::class.java) {
-            SupportProgramIndexSyncService(repository, client).repair()
+            SupportProgramIndexSyncService(repository, client, lexicalClient).repair()
         }
 
         verify(repository).markIndexNotReadyIfPublishedSnapshotMatches("BIZINFO", 71L, fingerprint, 1)
@@ -369,7 +385,7 @@ class SupportProgramIndexSyncServiceTest {
         doReturn(snapshot).`when`(repository).findPresent()
 
         assertThrows(IllegalStateException::class.java) {
-            SupportProgramIndexSyncService(repository, client).repair()
+            SupportProgramIndexSyncService(repository, client, lexicalClient).repair()
         }
 
         verifyNoInteractions(client)

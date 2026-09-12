@@ -1,5 +1,8 @@
 package ai.govbiz.core.supportprogram.facade
 
+import ai.govbiz.core.supportprogram.client.elasticsearch.ElasticsearchSupportProgramClient
+import ai.govbiz.core.supportprogram.client.elasticsearch.mapper.ElasticsearchSupportProgramDocumentMapper
+import ai.govbiz.core.supportprogram.client.elasticsearch.exception.ElasticsearchClientException
 import ai.govbiz.core._common.exception.AiServiceCallException
 import ai.govbiz.core._common.exception.AiServiceFailure
 import ai.govbiz.core.supportprogram.client.ai.AiSupportProgramIndexClient
@@ -35,6 +38,8 @@ import org.mockito.junit.jupiter.MockitoExtension
 class AiSupportProgramRetrievalFacadeTest {
     @Mock
     private lateinit var client: AiSupportProgramIndexClient
+    @Mock
+    private lateinit var lexicalClient: ElasticsearchSupportProgramClient
     private val programs = (1..25).map { catalogProgram("program-$it") }
     private val documents = programs.map(SupportProgramIndexDocumentMapper::fromCatalog)
     private val request = AiSupportProgramIndexSearchRequest("서울 AI", documents.map { it.reference() }, 20)
@@ -48,7 +53,7 @@ class AiSupportProgramRetrievalFacadeTest {
         doReturn(AiSupportProgramIndexSearchPayload(query, selectedMatches))
             .`when`(client).search(request)
 
-        val result = AiSupportProgramRetrievalFacade(client).retrieve(query, programs)
+        val result = AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve(query, programs)
 
         assertEquals(selectedIndexes.map { "program-${it + 1}" }, result.map { it.program.id })
         verify(client).search(request)
@@ -71,8 +76,9 @@ class AiSupportProgramRetrievalFacadeTest {
             ).let { if (index == 25) it.copy(sortTimestamp = "2020-01-01") else it }
         }
         stubSemantic(query, candidates, candidates.take(20))
+        stubLexical(query, candidates, listOf(candidates[24], candidates[19]))
 
-        val result = AiSupportProgramRetrievalFacade(client).retrieve(query, candidates)
+        val result = AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve(query, candidates)
         val ids = result.map { it.program.id }
 
         assertEquals(20, result.size)
@@ -88,15 +94,16 @@ class AiSupportProgramRetrievalFacadeTest {
         val second = catalogProgram("second", "quartz").copy(sortTimestamp = "2026-08-02")
         val candidates = listOf(first, second, catalogProgram("third", "별도 공고"))
         stubSemantic("quartz", candidates, candidates)
+        stubLexical("quartz", candidates, listOf(second, first))
 
-        val result = AiSupportProgramRetrievalFacade(client).retrieve("quartz", candidates)
+        val result = AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("quartz", candidates)
 
         // 의미 순위 first/second와 키워드 순위 second/first의 합은 같으므로 first가 먼저다.
         assertEquals(listOf("first", "second", "third"), result.map { it.program.id })
     }
 
     @Test
-    fun keywordRanksUseDistinctNormalizedTokensThenRecencyAndCanonicalIdRegardlessOfInputOrder() {
+    fun preservesValidatedBm25OrderRegardlessOfCatalogInputOrder() {
         val query = "크롬 QUARTZ funding"
         val semantic = (1..20).map { catalogProgram("semantic-$it", "별도 공고") }
         val decomposed = Normalizer.normalize("크롬", Normalizer.Form.NFD)
@@ -110,7 +117,10 @@ class AiSupportProgramRetrievalFacadeTest {
         val reverse = candidates.reversed()
         stubSemantic(query, candidates, semantic)
         stubSemantic(query, reverse, semantic)
-        val facade = AiSupportProgramRetrievalFacade(client)
+        val lexical = listOf(strongest, newest, firstTie, secondTie, repeated)
+        stubLexical(query, candidates, lexical)
+        stubLexical(query, reverse, lexical)
+        val facade = AiSupportProgramRetrievalFacade(client, lexicalClient)
 
         val result = facade.retrieve(query, candidates)
         val reversedResult = facade.retrieve(query, reverse)
@@ -125,7 +135,7 @@ class AiSupportProgramRetrievalFacadeTest {
     }
 
     @Test
-    fun ignoresRepeatedQueryTokensAndLongUnrelatedTextAfterAllKeywordsAreFound() {
+    fun combinesLexicalCandidatesOutsideTheSemanticBudget() {
         val query = "QUARTZ funding quartz"
         val semantic = (1..20).map { catalogProgram("semantic-$it", "별도 공고") }
         val unrelatedText = (1..1_000).joinToString(" ") { "unrelated$it" }
@@ -134,19 +144,20 @@ class AiSupportProgramRetrievalFacadeTest {
         val repeated = catalogProgram("repeated", "quartz ".repeat(100))
         val candidates = semantic + listOf(repeated, strongest)
         stubSemantic(query, candidates, semantic)
+        stubLexical(query, candidates, listOf(strongest, repeated))
 
-        val result = AiSupportProgramRetrievalFacade(client).retrieve(query, candidates)
+        val result = AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve(query, candidates)
 
         assertEquals(listOf(strongest, repeated), result.filter { it !in semantic })
     }
 
     @Test
-    fun preservesSemanticRankingForAQueryWithoutKeywordTokens() {
+    fun preservesSemanticRankingWhenBm25HasNoMatches() {
         val query = "!!!🙂"
         val semantic = programs.take(20).reversed()
         stubSemantic(query, programs, semantic)
 
-        val result = AiSupportProgramRetrievalFacade(client).retrieve(query, programs)
+        val result = AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve(query, programs)
 
         assertEquals(semantic, result)
     }
@@ -156,7 +167,7 @@ class AiSupportProgramRetrievalFacadeTest {
         doThrow(AiServiceCallException.unavailable(null)).`when`(client).search(request)
 
         val failure = assertThrows(AiServiceCallException::class.java) {
-            AiSupportProgramRetrievalFacade(client).retrieve("서울 AI", programs)
+            AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("서울 AI", programs)
         }
 
         assertEquals(AiServiceFailure.UNAVAILABLE, failure.failure)
@@ -188,7 +199,7 @@ class AiSupportProgramRetrievalFacadeTest {
             ),
         ).`when`(client).search(request)
 
-        val result = AiSupportProgramRetrievalFacade(client).retrieve("서울 AI", candidates)
+        val result = AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("서울 AI", candidates)
 
         assertEquals(listOf("OTHER", "BIZINFO"), result.map { it.program.sourceCode })
         assertEquals(listOf("SHARED", "SHARED"), result.map { it.program.id })
@@ -220,7 +231,7 @@ class AiSupportProgramRetrievalFacadeTest {
         for (payload in invalidResponses) {
             doReturn(payload).`when`(client).search(request)
             val failure = assertThrows(AiServiceCallException::class.java) {
-                AiSupportProgramRetrievalFacade(client).retrieve("서울 AI", programs)
+                AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("서울 AI", programs)
             }
             assertEquals(AiServiceFailure.INVALID_RESPONSE, failure.failure, payload.toString())
         }
@@ -230,7 +241,7 @@ class AiSupportProgramRetrievalFacadeTest {
     fun rejectsEmptySuccessResponseForAnEligibleCatalog() {
         doReturn(AiSupportProgramIndexSearchPayload("서울 AI", emptyList())).`when`(client).search(request)
         val failure = assertThrows(AiServiceCallException::class.java) {
-            AiSupportProgramRetrievalFacade(client).retrieve("서울 AI", programs)
+            AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("서울 AI", programs)
         }
         assertEquals(AiServiceFailure.INVALID_RESPONSE, failure.failure)
         verify(client).search(request)
@@ -238,7 +249,7 @@ class AiSupportProgramRetrievalFacadeTest {
 
     @Test
     fun doesNotCallTheClientForAnEmptyCatalog() {
-        assertEquals(emptyList<Any>(), AiSupportProgramRetrievalFacade(client).retrieve("서울 AI", emptyList()))
+        assertEquals(emptyList<Any>(), AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("서울 AI", emptyList()))
         verifyNoInteractions(client)
     }
 
@@ -246,7 +257,7 @@ class AiSupportProgramRetrievalFacadeTest {
     fun refusesOversizedCatalogInsteadOfSilentlyTruncating() {
         val oversized = List(20_001) { programs.first() }
         val exception = assertThrows(AiServiceCallException::class.java) {
-            AiSupportProgramRetrievalFacade(client).retrieve("서울 AI", oversized)
+            AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("서울 AI", oversized)
         }
         assertEquals(AiServiceFailure.UNAVAILABLE, exception.failure)
         verifyNoInteractions(client)
@@ -255,7 +266,7 @@ class AiSupportProgramRetrievalFacadeTest {
     @Test
     fun reusesPreparedReferencesForEqualCatalogValuesButStillChecksTheIndexForEveryQuery() {
         val captured = recordSemanticRequests()
-        val facade = AiSupportProgramRetrievalFacade(client)
+        val facade = AiSupportProgramRetrievalFacade(client, lexicalClient)
         val candidates = programs.take(3)
 
         assertEquals(candidates, facade.retrieve("no-match-one", candidates))
@@ -271,7 +282,7 @@ class AiSupportProgramRetrievalFacadeTest {
     @Test
     fun refreshesChangedTextClassificationStatusSortAndPublicMetadataWithoutServingStalePrograms() {
         val captured = recordSemanticRequests()
-        val facade = AiSupportProgramRetrievalFacade(client)
+        val facade = AiSupportProgramRetrievalFacade(client, lexicalClient)
         val initial = catalogProgram("one").let {
             it.copy(program = it.program.copy(sourceCode = "KSTARTUP"))
         }
@@ -306,7 +317,7 @@ class AiSupportProgramRetrievalFacadeTest {
     @Test
     fun isolatesMutableCallerCollectionsAndDetectsInPlaceChanges() {
         val captured = recordSemanticRequests()
-        val facade = AiSupportProgramRetrievalFacade(client)
+        val facade = AiSupportProgramRetrievalFacade(client, lexicalClient)
         val regions = mutableListOf("서울")
         val categories = mutableListOf("AI")
         val stages = mutableListOf("예비창업")
@@ -342,7 +353,7 @@ class AiSupportProgramRetrievalFacadeTest {
     @Test
     fun keepsOnlyOneCatalogSnapshotAndDoesNotRetainOversizedSourceText() {
         val captured = recordSemanticRequests()
-        val facade = AiSupportProgramRetrievalFacade(client)
+        val facade = AiSupportProgramRetrievalFacade(client, lexicalClient)
         val first = listOf(catalogProgram("one"))
         val second = listOf(catalogProgram("two"))
         facade.retrieve("unmatched", first)
@@ -369,7 +380,7 @@ class AiSupportProgramRetrievalFacadeTest {
             }
             semanticResponse(request)
         }.`when`(client).search(any(AiSupportProgramIndexSearchRequest::class.java) ?: request)
-        val facade = AiSupportProgramRetrievalFacade(client)
+        val facade = AiSupportProgramRetrievalFacade(client, lexicalClient)
         val first = listOf(catalogProgram("one", summary = "첫 번째 버전"))
         val second = listOf(catalogProgram("one", summary = "변경된 버전"))
         val executor = Executors.newFixedThreadPool(2)
@@ -395,6 +406,22 @@ class AiSupportProgramRetrievalFacadeTest {
             semanticResponse(request)
         }.`when`(client).search(any(AiSupportProgramIndexSearchRequest::class.java) ?: request)
         return captured
+    }
+
+    @Test
+    fun lexicalFailureStopsBeforeSemanticSearchOrPaidEmbedding() {
+        val references = programs.map { ElasticsearchSupportProgramDocumentMapper.fromCatalog(it).reference() }
+        doThrow(ElasticsearchClientException("unavailable")).`when`(lexicalClient).search("서울 AI", references, 20)
+        assertThrows(ElasticsearchClientException::class.java) {
+            AiSupportProgramRetrievalFacade(client, lexicalClient).retrieve("서울 AI", programs)
+        }
+        verifyNoInteractions(client)
+    }
+
+    private fun stubLexical(query: String, candidates: List<CatalogSupportProgram>, selected: List<CatalogSupportProgram>) {
+        doReturn(selected.map { it.program.sourceQualifiedId }).`when`(lexicalClient).search(
+            query, candidates.map { ElasticsearchSupportProgramDocumentMapper.fromCatalog(it).reference() }, 20,
+        )
     }
 
     private fun semanticResponse(request: AiSupportProgramIndexSearchRequest) = AiSupportProgramIndexSearchPayload(

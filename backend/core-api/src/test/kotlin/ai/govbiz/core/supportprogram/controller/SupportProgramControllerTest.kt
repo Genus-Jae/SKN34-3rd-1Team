@@ -1,6 +1,7 @@
 package ai.govbiz.core.supportprogram.controller
 
 import ai.govbiz.core._common.exception.AiServiceCallException
+import ai.govbiz.core.supportprogram.client.elasticsearch.exception.ElasticsearchClientException
 import ai.govbiz.core._common.exception.ApiExceptionHandler
 import ai.govbiz.core.account.service.AccountSessionService
 import ai.govbiz.core.account.web.AuthenticatedAccountArgumentResolver
@@ -480,6 +481,18 @@ class SupportProgramControllerTest {
         mockMvc.perform(get(PATH).queryParam("query", "서울"))
             .andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.code").value("AI_SERVICE_UNAVAILABLE"))
+    }
+
+    @Test
+    fun mapsLexicalFailureWithoutLeakingUpstreamDetailsOrReturningEmptySuccess() {
+        Mockito.doReturn(listOf(catalogProgram())).`when`(supportProgramRepository).findSearchablePresent()
+        Mockito.doThrow(ElasticsearchClientException("secret upstream URL and body")).`when`(retrieval)
+            .retrieve("서울", listOf(catalogProgram()))
+        mockMvc.perform(get(PATH).queryParam("query", "서울"))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.code").value("SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE"))
+            .andExpect(content().string(not(containsString("secret"))))
     }
 
     @Test

@@ -25,6 +25,7 @@
 | AI 호출 | OpenAI SDK 3.x, Agents SDK 0.22.x, tiktoken | 임베딩, 후보 점수화, 입력 토큰 제한 | [pyproject.toml](../backend/ai-service/pyproject.toml) |
 | 공고 저장 | MySQL 8.4 | 현재 공고와 원본 식별자, 신청 기간 저장 | [Compose 설정](../infrastructure/compose.yaml) |
 | 의미 검색 | Qdrant 1.17.1, qdrant-client 1.17.x | 임베딩 벡터 저장과 유사도 검색 | [Compose 설정](../infrastructure/compose.yaml) |
+| 한국어 키워드 검색 | Elasticsearch 9.5.3, analysis-nori 9.5.3, BM25 | 현재 공고 버전의 키워드 후보 최대 20개, 의미 후보와 RRF 결합 | [적용 상세](elasticsearch-lexical-search.md) |
 | 임시 검색 결과 보관 | Redis 8.2.9, Spring Data Redis·Lettuce | 비회원 검색 후 로그인 복원용 전체 결과·조건·소유 계정, 고정 30분 TTL | [Redis 적용 상세](redis-search-result-restoration.md) |
 | 정기 작업 전달 | RabbitMQ 4.3.5, Spring AMQP | 정기 리포트 생성 전용 quorum queue. 실행 상태·예산·Outbox는 MySQL | [RabbitMQ 적용 상세](rabbitmq-daily-report-generation.md) |
 | 검증·실행 | Vitest, Testing Library, JUnit, Testcontainers, pytest, Docker Compose | 서비스별 테스트와 컨테이너 통합 검증 | [CI 정의](../.github/workflows/ci.yml) |
@@ -34,10 +35,18 @@ AI 패키지는 Python `>=3.11,<3.15`를 선언하며, Frontend와 AI Service의
 
 ## 아키텍처 설명
 
+**Elasticsearch + Nori·BM25**를 자연어 검색의 키워드 후보와 공개 전 색인·정기 복구에 연결했습니다.
+MySQL 원본·Qdrant 의미 검색·Redis 역할은 그대로입니다. 독립적인 고정 스냅샷
+[비교 실험과 한계](../evaluation/support-program-search/elasticsearch/README.md)도 보존합니다.
+
 코드 계층·DI·MVVM·Flux·Facade·Agent 구조는 [아키텍처 README](architecture/README.md)로 모았습니다.
 아래는 기술별 데이터 역할이며, 요청·동기화의 상세 순서는 [서비스 호출·데이터 흐름](architecture.md)을 참고하세요.
 
-## MySQL·Qdrant·Redis의 역할
+## MySQL·Elasticsearch·Qdrant·Redis의 역할
+
+Elasticsearch에는 MySQL 공고로 만든 검색 본문·ID·내용 해시·정렬 값의 불변 버전을 저장합니다.
+한국어 형태소 기반 키워드 순위를 담당하며 최종 원본 데이터베이스나 신청 자격 판정기는 아닙니다.
+[버전 필터·복구·이전 버전 보존의 한계](elasticsearch-lexical-search.md)를 참고하세요.
 
 MySQL과 Qdrant의 공고 저장·검색 역할은 다음과 같습니다. Redis는 이 둘을 대체하지 않고,
 별도로 비회원의 최종 검색 결과·조건을 로그인 후 복원하기 위해 30분 보관합니다.
@@ -104,9 +113,9 @@ DB 반영은 기존 `BIZINFO` 공고를 미노출 처리한 뒤 이번 목록을
 ## 검색과 AI 점수화
 
 1. MySQL에서 공개 세대·지문과 색인 준비가 확인된 제공처의 현재 공고를 읽고 접수 상태 조건을 적용합니다.
-2. 공고 ID·해시 허용 목록을 AI Service에 보내 Qdrant 검색 범위를 제한합니다.
+2. 현재 공고의 버전 허용 목록으로 Elasticsearch Nori·BM25 후보 최대 20개를 구합니다. AI Service에도 ID·해시 허용 목록을 전달합니다.
 3. OpenAI로 검색 문장을 임베딩하고 Qdrant에서 의미 검색 후보를 최대 20개 가져옵니다.
-4. Core가 전체 적격 공고의 키워드 상위 20개와 의미 검색 순위를 동일 가중치 RRF로 결합해 후보 최대 20개를 정합니다.
+4. Core가 검증된 Elasticsearch 키워드 순위와 Qdrant 의미 검색 순위를 동일 가중치 RRF로 결합해 후보 최대 20개를 정합니다.
 5. OpenAI Agents SDK의 단일 Agent가 후보 전체의 세부 점수·자격을 판단합니다.
 6. AI Service가 총점을 합산하고 최소 점수·자격 조건을 적용한 뒤, Core가 계약을 다시 검증해 최대 5개를 반환합니다.
 
@@ -163,12 +172,12 @@ C02의 조건 변경 해석은 공고 검색에 앞서는 별도 구체 Agent입
 
 ## 개발 환경과 검증
 
-Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Qdrant, Redis, RabbitMQ를 함께 실행합니다.
-AI Service·Redis·RabbitMQ는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
+Docker Compose는 Vite 개발 서버, Core API, AI Service, MySQL, Elasticsearch, Qdrant, Redis, RabbitMQ를 함께 실행합니다.
+AI Service·Elasticsearch·Redis·RabbitMQ는 기본 Compose에서 호스트 포트를 공개하지 않고 서비스 네트워크로 연결합니다.
 RabbitMQ 소비자는 Core 내부에 있으며 별도 Worker 서버나 운영 고가용성 구성은 아닙니다.
 이 구성에 운영 인증·배포 자동화가 포함되어 있다고 가정하면 안 됩니다.
 
 [GitHub Actions](../.github/workflows/ci.yml)는 Frontend 테스트·lint·build, Core 빌드·MySQL·Redis·RabbitMQ 통합 테스트,
 AI 테스트·패키지 빌드·평가 도구 테스트, 컨테이너 통합 검증을 정의합니다. Compose 검증은 실제
-MySQL·Qdrant·Redis·RabbitMQ와 로컬 공고 제공처·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
+MySQL·Elasticsearch·Qdrant·Redis·RabbitMQ와 로컬 공고 제공처·OpenAI 스텁을 사용해 연결과 장애 복구를 확인합니다.
 실제 공고 검색의 정확도와 원문 인용 답변의 정확도는 각각 별도의 실데이터 평가 대상입니다.

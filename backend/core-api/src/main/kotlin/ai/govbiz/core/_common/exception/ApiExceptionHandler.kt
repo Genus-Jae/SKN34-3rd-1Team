@@ -1,5 +1,7 @@
 package ai.govbiz.core._common.exception
 
+import ai.govbiz.core.supportprogram.client.elasticsearch.exception.ElasticsearchClientException
+
 import ai.govbiz.core.account.client.bizno.exception.BiznoClientException
 import ai.govbiz.core.account.service.exception.AccountSuspendedException
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
@@ -349,6 +351,19 @@ class ApiExceptionHandler {
         request: HttpServletRequest,
     ): ResponseEntity<ProblemDetail> =
         problemResponse(definitionFor(exception.failure), request)
+
+    @ExceptionHandler(ElasticsearchClientException::class)
+    fun handleElasticsearchClientException(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                URI.create("urn:govbiz:problem:support-program-search-index-unavailable"),
+                "Support Program Search Index Unavailable",
+                "Support program search is temporarily unavailable. Please retry later.",
+                "SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE",
+            ),
+            request,
+        )
 
     @ExceptionHandler(LoginRateLimitedException::class)
     fun handleLoginRateLimitedException(
