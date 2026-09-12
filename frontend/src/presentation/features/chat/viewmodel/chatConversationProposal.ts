@@ -19,6 +19,7 @@ export type ChatConversationProposal = {
   hasRetainedConditions: boolean
   appliedConditions: { label: string; value: string }[]
   canConfirm: boolean
+  hasUnsentMessage: boolean
 } | {
   kind: 'clarification'
   question: string | null
@@ -33,11 +34,12 @@ type ProposalSource = {
   }
   pendingClarification: SupportProgramPendingClarification | null
   canSearch: boolean
+  hasUnsentMessage: boolean
 }
 
 /** 확정 상태는 바꾸지 않고, 현재 표시할 제안과 조건 차이만 계산합니다. */
 export function createChatConversationProposal({
-  isBusy, confirmedContext, interpretation, pendingClarification, canSearch,
+  isBusy, confirmedContext, interpretation, pendingClarification, canSearch, hasUnsentMessage,
 }: ProposalSource): ChatConversationProposal | null {
   if (isBusy) return null
 
@@ -68,5 +70,5 @@ export function createChatConversationProposal({
   })
 
   return { kind: 'ready', query: proposed.query, acceptingOnly: proposed.acceptingOnly,
-    changes, hasRetainedConditions, appliedConditions, canConfirm: canSearch }
+    changes, hasRetainedConditions, appliedConditions, canConfirm: canSearch && !hasUnsentMessage, hasUnsentMessage }
 }

@@ -6,6 +6,14 @@ import { createChatConversationProposal } from './chatConversationProposal'
 type ProposalSource = Parameters<typeof createChatConversationProposal>[0]
 
 describe('createChatConversationProposal', () => {
+  it('보내지 않은 메시지가 있어도 조건은 표시하되 이전 제안의 확인 검색은 막는다', () => {
+    expect(createChatConversationProposal(createSource({
+      hasUnsentMessage: true,
+      interpretation: { result: readyConversationProposal(seoulConversationContext) },
+    }))).toMatchObject({ kind: 'ready', query: '사업화 지원', canConfirm: false, hasUnsentMessage: true,
+      appliedConditions: expect.arrayContaining([{ label: '현재 소재지', value: '서울' }]) })
+  })
+
   it('표시할 해석 결과와 미확정 질문이 없으면 제안을 만들지 않는다', () => {
     expect(createChatConversationProposal(createSource())).toBeNull()
   })
@@ -62,7 +70,7 @@ describe('createChatConversationProposal', () => {
     }))
 
     expect(display).toEqual({
-      kind: 'ready', query: '부산 지원사업', acceptingOnly: false, canConfirm: true,
+      kind: 'ready', query: '부산 지원사업', acceptingOnly: false, canConfirm: true, hasUnsentMessage: false,
       changes: [{ label: '현재 소재지', after: '부산' }, { label: '업종', after: null }, { label: '접수 상태', after: '전체' }],
       hasRetainedConditions: true,
       appliedConditions: [{ label: '현재 소재지', value: '부산' }, { label: '설립일', value: '2024-01-01' },
@@ -102,5 +110,5 @@ describe('createChatConversationProposal', () => {
 
 function createSource(overrides: Partial<ProposalSource> = {}): ProposalSource {
   return { isBusy: false, confirmedContext: emptyConversationContext, interpretation: {},
-    pendingClarification: null, canSearch: true, ...overrides }
+    pendingClarification: null, canSearch: true, hasUnsentMessage: false, ...overrides }
 }
