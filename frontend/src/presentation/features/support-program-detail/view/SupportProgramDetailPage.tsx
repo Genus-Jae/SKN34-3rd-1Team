@@ -183,21 +183,21 @@ function SupportProgramDetail({ program, searchReturnTo }: {
             >
               이 공고에 질문하기
             </Link>
-            <Link
-              className={supportProgramDetailStyles.questionLink}
-              to={`${appPaths.applicationPreparationNew}?${new URLSearchParams({
-                sourceCode: program.sourceCode,
-                sourceProgramId: program.id,
-              })}`}
-            >
-              이 공고의 신청 문서 작성하기
-            </Link>
           </>
         ) : (
           <p className={supportProgramDetailStyles.questionDescription}>
             이 제공처 공고는 아직 원문 근거 답변을 지원하지 않습니다. 원문 공고에서 확인해 주세요.
           </p>
         )}
+        {['BIZINFO', 'MSIT'].includes(program.sourceCode) && <Link
+          className={supportProgramDetailStyles.questionLink}
+          to={`${appPaths.applicationPreparationNew}?${new URLSearchParams({
+            sourceCode: program.sourceCode,
+            sourceProgramId: program.id,
+          })}`}
+        >
+          이 공고의 신청 문서 작성하기
+        </Link>}
       </section>
 
       <section className={supportProgramDetailStyles.sourceSection} aria-labelledby="source-information">

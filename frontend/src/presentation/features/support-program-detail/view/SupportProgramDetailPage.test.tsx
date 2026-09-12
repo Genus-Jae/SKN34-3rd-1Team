@@ -37,6 +37,18 @@ describe('상세 오류 복구와 검색 화면 복귀', () => {
     expect(screen.getByRole('link', { name: '← 검색 결과로 돌아가기' }).getAttribute('href')).toBe('/app/chat')
   })
 
+  it('과기정통부 공고는 근거 질문 없이 신청 문서 작성 도우미로 연결한다', async () => {
+    const program = { ...supportPrograms[0], sourceCode: 'MSIT', id: '3186573', sourceName: '과학기술정보통신부' }
+    vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(program)
+    renderDetail(null, `?${new URLSearchParams({ sourceCode: program.sourceCode, sourceProgramId: program.id })}`)
+
+    await screen.findByRole('heading', { name: program.title })
+    expect(screen.queryByRole('link', { name: '이 공고에 질문하기' })).toBeNull()
+    expect(screen.getByRole('link', { name: '이 공고의 신청 문서 작성하기' }).getAttribute('href')).toBe(
+      `/app/application-preparations/new?${new URLSearchParams({ sourceCode: program.sourceCode, sourceProgramId: program.id })}`,
+    )
+  })
+
   it.each([null, {}, { searchReturnTo: 'https://example.com' }, { searchReturnTo: '//example.com' }, { searchReturnTo: '/admin' }])(
     '직접 진입 또는 허용하지 않는 복귀 상태 %j는 첫 검색 화면으로 돌아간다', async (state) => {
       vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(null)

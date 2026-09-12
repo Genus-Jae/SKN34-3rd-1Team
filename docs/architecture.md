@@ -9,8 +9,8 @@
 
 ## 서비스 경계
 
-신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 기업마당 공고를
-`ApplicationFormDiscoveryService → BizInfoAttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
+신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 기업마당·과기정통부 공고를
+`ApplicationFormDiscoveryService → 제공처별 BizInfoAttachmentClient/MsitAttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
 AiApplicationPreparationFacade → AI Service`로 분석합니다. 검증된 응답은 `ApplicationFormSnapshotRepository → MyBatis → MySQL`에
 파일 hash·파서·모델·프롬프트 버전과 함께 저장해 동일 추출 버전에서 재사용합니다. 발견 양식을 선택한 뒤
 `ApplicationPreparationService → ApplicationPreparationRepository`가 계정 소유 준비 건을 생성합니다. 화면 진입과 목록·상세
@@ -20,7 +20,8 @@ DB transaction 밖에서 해석합니다. 요청 키와 당시 입력을 먼저 
 별도 transaction으로 저장합니다. 사용자가 제안을 확인한 PUT만 문항 사실을 전체 교체하고 입력 revision을 증가시킵니다.
 본인 준비 건의 DELETE는 `ApplicationPreparationRepository → MyBatis → MySQL`에서 소유자 조건으로 한 행을 지우고,
 확인 사실·AI 실행 기록은 FK cascade로 삭제하지만 공용 `application_form_snapshot`은 유지합니다.
-Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 기존 카탈로그 공고 검색·선택과 보조 URL·ID 입력·첨부 분석·발견 양식 확인, `/:preparationId`의 공식 문항
+Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 전체 카탈로그 공고 검색·선택과 보조 기업마당 URL·ID 입력을 첫 단계로,
+첨부 분석 뒤 발견 양식 확인을 별도 두 번째 단계로 표시하고, `/:preparationId`의 공식 문항
 상세와 질문·사실 확인을 연결합니다. AI 제안은 저장하지 않고 사용자가 선택·수정한 전체 문항 입력만 revision을 올려 저장합니다.
 초안 생성·직접 수정·사용자 확인은 후속 사용자 기능입니다.
 

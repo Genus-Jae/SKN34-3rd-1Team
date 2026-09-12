@@ -24,12 +24,15 @@ describe('ApplicationPreparationUseCase', () => {
     expect(() => useCase.create({ ...valid, formVersionId: '잘못된 버전' })).toThrow('양식')
   })
 
-  it('accepts a BizInfo id or official URL and rejects untrusted discovery input', () => {
-    useCase.discover('PBLN_123')
-    useCase.discover('https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=PBLN_456')
+  it('accepts supported catalog identities and a manually entered BizInfo URL', () => {
+    useCase.discover('BIZINFO', 'PBLN_123')
+    useCase.discover('MSIT', '3186573')
+    useCase.discoverBizInfo('https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId=PBLN_456')
     expect(repository.discover).toHaveBeenNthCalledWith(1, 'BIZINFO', 'PBLN_123', undefined)
-    expect(repository.discover).toHaveBeenNthCalledWith(2, 'BIZINFO', 'PBLN_456', undefined)
-    expect(() => useCase.discover('https://evil.example/?pblancId=PBLN_123')).toThrow('기업마당')
+    expect(repository.discover).toHaveBeenNthCalledWith(2, 'MSIT', '3186573', undefined)
+    expect(repository.discover).toHaveBeenNthCalledWith(3, 'BIZINFO', 'PBLN_456', undefined)
+    expect(() => useCase.discover('KSTARTUP', '123')).toThrow('지원하는 공식 공고')
+    expect(() => useCase.discoverBizInfo('https://evil.example/?pblancId=PBLN_123')).toThrow('기업마당')
   })
 
   it('trims answers and rejects invalid section input before the repository', () => {

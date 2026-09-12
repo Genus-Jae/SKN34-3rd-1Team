@@ -10,13 +10,22 @@ export class ApplicationPreparationUseCase {
   }
 
   forms(signal?: AbortSignal) { return this.repository.forms(signal) }
-  discover(value: string, signal?: AbortSignal) {
+  discover(sourceCode: string, sourceProgramId: string, signal?: AbortSignal) {
+    const normalizedSourceCode = sourceCode.trim()
+    const normalizedProgramId = sourceProgramId.trim()
+    const valid = normalizedSourceCode === 'BIZINFO'
+      ? /^PBLN_[0-9]{1,32}$/.test(normalizedProgramId)
+      : normalizedSourceCode === 'MSIT' && /^[1-9][0-9]{0,254}$/.test(normalizedProgramId)
+    if (!valid) throw new Error('신청 문서 찾기를 지원하는 공식 공고를 다시 선택해 주세요.')
+    return this.repository.discover(normalizedSourceCode, normalizedProgramId, signal)
+  }
+  discoverBizInfo(value: string, signal?: AbortSignal) {
     const normalized = value.trim()
     const sourceProgramId = /^PBLN_[0-9]{1,32}$/.test(normalized)
       ? normalized
       : extractBizInfoProgramId(normalized)
     if (!sourceProgramId) throw new Error('기업마당 공식 공고 URL 또는 PBLN 공고 ID를 입력해 주세요.')
-    return this.repository.discover('BIZINFO', sourceProgramId, signal)
+    return this.discover('BIZINFO', sourceProgramId, signal)
   }
   list(beforeId?: number, signal?: AbortSignal) { return this.repository.list(beforeId, signal) }
   delete(id: number, signal?: AbortSignal) {

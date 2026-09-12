@@ -23,6 +23,15 @@ class ApplicationFormManifestTest {
     }
 
     @Test
+    fun acceptsAnMsitManifestOnlyWithItsMatchingOfficialHost() {
+        val form = form(sourceCode = "MSIT", sourceProgramId = "3186573", sourceUrl = "https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&nttSeqNo=3186573")
+        assertEquals("MSIT", form.sourceCode)
+        assertThrows(IllegalArgumentException::class.java) {
+            form(sourceCode = "MSIT", sourceProgramId = "3186573", sourceUrl = "https://www.bizinfo.go.kr/form")
+        }
+    }
+
+    @Test
     fun rejectsDuplicateSectionsUnsafeSourcesAndInstitutionReviewClaims() {
         assertThrows(IllegalArgumentException::class.java) { form(sections = listOf(section("same"), section("same"))) }
         assertThrows(IllegalArgumentException::class.java) { form(sourceUrl = "http://example.com/form") }
@@ -31,6 +40,8 @@ class ApplicationFormManifestTest {
     }
 
     private fun form(
+        sourceCode: String = "BIZINFO",
+        sourceProgramId: String = "PBLN_1",
         sourceUrl: String = "https://www.bizinfo.go.kr/form",
         institutionReviewed: Boolean = false,
         attachmentSha256: String = "a".repeat(64),
@@ -43,8 +54,8 @@ class ApplicationFormManifestTest {
     ) = ApplicationFormManifest(
         1,
         "verified-form-v1",
-        "BIZINFO",
-        "PBLN_1",
+        sourceCode,
+        sourceProgramId,
         "지원사업",
         "사업계획서",
         sourceUrl,
