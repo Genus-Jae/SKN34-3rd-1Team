@@ -5,8 +5,8 @@
 export const APP_PREFIX = '/app'
 
 export const appPaths = {
-  reports: `${APP_PREFIX}/reports`,
   savedPrograms: `${APP_PREFIX}/saved-programs`,
+  reports: `${APP_PREFIX}/reports`,
   applicationPreparations: `${APP_PREFIX}/application-preparations`,
   applicationPreparationNew: `${APP_PREFIX}/application-preparations/new`,
   applicationPreparationDetail: `${APP_PREFIX}/application-preparations/:preparationId`,
