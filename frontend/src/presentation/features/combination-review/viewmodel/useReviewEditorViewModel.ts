@@ -91,7 +91,6 @@ export function useReviewEditorViewModel(id: number | null, account: string, aut
   }, [id, perform, useCase, acceptRun])
   useEffect(() => {
     if (!resultRunId || autoSelectedRunId.current === resultRunId) return
-    autoSelectedRunId.current = resultRunId
     selectRun(resultRunId)
   }, [resultRunId, selectRun])
   const activeRunId = runs?.items.find((item) => item.status === 'QUEUED' || item.status === 'RUNNING')?.id

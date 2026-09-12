@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { useAppDispatch, useAppSelector } from '../../../../app/hooks'
 import { selectCurrentAccount, signedOut } from '../../../shared/auth/state/authSlice'
 import { appPaths, combinationReviewRunResultPath, supportProgramDetailPath } from '../../../shared/routes/appPaths'
@@ -80,6 +80,7 @@ export function CombinationReviewRunResultPage() {
 
 function RunResultPage({ reviewId, runId, account }: { reviewId: number; runId: number; account: string }) {
   const vm = useReviewEditorViewModel(reviewId, account, false, false, runId)
+  const navigate = useNavigate()
   const contentRef = useRef<HTMLElement>(null)
   const analysisPath = `${appPaths.combinationReviews}/${reviewId}?step=analysis`
   const header = <WorkspacePageHeader parent={{ to: analysisPath, label: '공고 분석' }} title={`실행 #${runId} 결과`} />
@@ -89,12 +90,23 @@ function RunResultPage({ reviewId, runId, account }: { reviewId: number; runId: 
   }, [])
   if (vm.error?.status === 401) return <>{header}<main className={workspacePageStyles.content}><ReviewError error={vm.error} /></main></>
   const selectedRun = vm.run?.id === runId ? vm.run : null
+  const runOptions = vm.runs?.items ?? []
+  const currentRunInOptions = runOptions.some((run) => run.id === runId)
   return <>{header}<main ref={contentRef} className={workspacePageStyles.content}>
     <Link className={workspacePageStyles.quietLink} to={analysisPath}>← 공고 분석으로</Link>
     {vm.review && <section className={`${s.card} space-y-1`}><h2 className="font-bold">{vm.review.title}</h2><p className={s.muted}>저장 입력 버전 {vm.review.inputRevision}의 실행 이력입니다.</p></section>}
+    <section className={`${s.card} space-y-3`} aria-label="다른 실행 이력">
+      <label className="block text-sm font-semibold">실행 결과 선택
+        <select className={s.input} value={String(runId)} onChange={(event) => navigate(combinationReviewRunResultPath(reviewId, Number(event.target.value)))}>
+          {!currentRunInOptions && <option value={runId}>실행 #{runId} · 현재 결과</option>}
+          {runOptions.map((run) => <option key={run.id} value={run.id}>실행 #{run.id} · {runLabels[run.status]} · {run.startedAt}</option>)}
+        </select>
+      </label>
+      {vm.runs?.nextBeforeId && <button className={s.button} type="button" disabled={vm.busy.includes('history')} onClick={() => vm.history(vm.runs!.nextBeforeId!)}>이전 실행 더 보기</button>}
+    </section>
     <ReviewError error={vm.error} />
     {!selectedRun && vm.busy.some((value) => value === 'load' || value === 'run') && <p role="status">실행 결과를 불러오는 중입니다.</p>}
-    {!selectedRun && vm.review && !vm.busy.includes('run') && <button className={s.button} type="button" onClick={() => vm.selectRun(runId)}>실행 결과 다시 불러오기</button>}
+    {!selectedRun && vm.review && vm.error && !vm.busy.includes('run') && <button className={s.button} type="button" onClick={() => vm.selectRun(runId)}>실행 결과 다시 불러오기</button>}
     {selectedRun && <>
       <div className="flex justify-end"><button className={s.button} type="button" disabled={vm.busy.includes('run')} onClick={() => vm.selectRun(runId)}>결과 새로고침</button></div>
       <ReviewRunResult run={selectedRun} currentRevision={vm.review?.inputRevision ?? selectedRun.inputRevision} download={vm.download} downloading={vm.busy.includes('download')} />

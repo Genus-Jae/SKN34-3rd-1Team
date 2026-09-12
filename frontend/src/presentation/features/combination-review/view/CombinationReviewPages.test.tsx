@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { asValue } from 'awilix/browser'
+import { StrictMode } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -41,15 +42,16 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); appContainer.register({ combinationReviewUseCase: asValue(original), browseSupportProgramsUseCase: asValue(originalCatalog), browseSavedSupportProgramsUseCase: asValue(originalSavedPrograms), getSupportProgramDetailUseCase: asValue(originalDetail) }) })
 function Isolation() { useReviewSessionIsolation(); return null }
-function mount(path = '/app/combination-reviews/12?step=analysis') {
+function mount(path = '/app/combination-reviews/12?step=analysis', strict = false) {
   const store = createAppStore()
   store.dispatch(signedIn({ email: 'a@example.com', role: 'USER', tier: 'MEMBER', emailVerified: false, hasPassword: true, company: null }))
-  const rendered = render(<Provider store={store}><Isolation /><MemoryRouter initialEntries={[path]}><Routes>
+  const screenTree = <Provider store={store}><Isolation /><MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/app/combination-reviews" element={<CombinationReviewListPage />} />
     <Route path="/app/combination-reviews/new" element={<CombinationReviewEditorPage create />} />
     <Route path="/app/combination-reviews/:reviewId/runs/:runId" element={<CombinationReviewRunResultPage />} />
     <Route path="/app/combination-reviews/:reviewId" element={<CombinationReviewEditorPage />} />
-  </Routes></MemoryRouter></Provider>)
+  </Routes></MemoryRouter></Provider>
+  const rendered = render(strict ? <StrictMode>{screenTree}</StrictMode> : screenTree)
   return { store, ...rendered }
 }
 describe('review screens and execution safety', () => {
@@ -356,6 +358,25 @@ describe('review screens and execution safety', () => {
     expect(screen.getByRole('tab', { name: '1단계 · 신청 · 사용자 정보 부족' }).getAttribute('aria-selected')).toBe('false')
     expect(screen.getByRole('tabpanel', { name: '선정 분석 결과' })).toBeTruthy()
     expect(repository.start).not.toHaveBeenCalled()
+  })
+  it('loads the selected result automatically after the application StrictMode remount', async () => {
+    mount('/app/combination-reviews/12/runs/30', true)
+
+    expect(await screen.findByRole('heading', { name: '실행 #30 · 분석 완료' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '실행 결과 다시 불러오기' })).toBeNull()
+    expect(repository.run).toHaveBeenCalledWith(12, 30, expect.any(AbortSignal))
+  })
+  it('switches to another execution result without returning to the analysis page', async () => {
+    const olderRun = { ...structuredClone(runFixture), id: 29, startedAt: '2026-09-08T09:00:00+09:00' }
+    repository.runs.mockResolvedValue({ items: [runFixture, olderRun], nextBeforeId: null })
+    repository.run.mockImplementation(async (_reviewId, selectedRunId) => selectedRunId === 29 ? olderRun : runFixture)
+    mount('/app/combination-reviews/12/runs/30')
+    await screen.findByRole('heading', { name: '실행 #30 · 분석 완료' })
+
+    fireEvent.change(screen.getByLabelText('실행 결과 선택'), { target: { value: '29' } })
+
+    expect(await screen.findByRole('heading', { name: '실행 #29 · 분석 완료' })).toBeTruthy()
+    expect(repository.run).toHaveBeenCalledWith(12, 29, expect.any(AbortSignal))
   })
   it('keeps UNKNOWN independent from other participation fields', async () => {
     mount('/app/combination-reviews/12'); await screen.findByDisplayValue(reviewFixture.title)
