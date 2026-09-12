@@ -124,6 +124,11 @@ wait_for_http() {
   local actual_status="000"
   local body_matches
   local pattern
+  # Bash 3.2 (macOS) treats an empty array as unset under set -u.
+  local request_options=(--header 'Accept: */*')
+  if [[ "${VERIFY_HTTP_MEMBER:-false}" == "true" ]]; then
+    request_options+=(--cookie "${RESPONSE_DIR}/application-preparation-cookie")
+  fi
 
   while ((SECONDS < deadline)); do
     : >"${LAST_RESPONSE_FILE}"
@@ -133,6 +138,7 @@ wait_for_http() {
         --output "${LAST_RESPONSE_FILE}" \
         --write-out '%{http_code}' \
         --max-time 70 \
+        "${request_options[@]}" \
         "${url}" || true
     )"
 
@@ -285,6 +291,76 @@ verify_application_preparation_flow() {
     return 1
   fi
   echo "Verified application preparation question and confirmed fact flow through Web, Core, AI stub and MySQL"
+}
+
+verify_search_result_store() {
+  local guest_file="${RESPONSE_DIR}/redis-guest.json"
+  local restored_file="${RESPONSE_DIR}/redis-restored.json"
+  local first_cookie="${RESPONSE_DIR}/application-preparation-cookie"
+  local other_cookie="${RESPONSE_DIR}/redis-other-cookie"
+  local token actual_status
+
+  wait_for_http "Guest search creates a Redis-backed result token" \
+    "${WEB_BASE_URL}/api/v1/support-programs/search?query=&acceptingOnly=false" "200" \
+    '"totalCount"[[:space:]]*:[[:space:]]*5' '"resultToken"[[:space:]]*:[[:space:]]*"[0-9a-f-]{36}"'
+  cp "${LAST_RESPONSE_FILE}" "${guest_file}"
+  [[ "$(grep -o '"sourceCode"' "${guest_file}" | wc -l | tr -d ' ')" == "2" ]] || return 1
+  token="$(sed -n 's/.*"resultToken"[[:space:]]*:[[:space:]]*"\([0-9a-f-]\{36\}\)".*/\1/p' "${guest_file}")"
+  [[ "${token}" =~ ^[0-9a-f-]{36}$ ]] || return 1
+
+  actual_status="$(curl --silent --output "${restored_file}" --write-out '%{http_code}' --max-time 10 \
+    --request POST --cookie "${first_cookie}" --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data "{\"resultToken\":\"${token}\"}" "${WEB_BASE_URL}/api/v1/support-programs/search/results")"
+  [[ "${actual_status}" == "200" ]] || return 1
+  grep -Eq '"totalCount"[[:space:]]*:[[:space:]]*5' "${restored_file}" || return 1
+  [[ "$(grep -o '"sourceCode"' "${restored_file}" | wc -l | tr -d ' ')" == "5" ]] || return 1
+
+  echo "Restarting Core to verify that saved results and token ownership are not process-local"
+  "${COMPOSE[@]}" restart core-api
+  wait_for_http "Core health after restart" "${WEB_BASE_URL}/api/v1/health" "200"
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --request POST --cookie "${first_cookie}" --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data "{\"resultToken\":\"${token}\"}" "${WEB_BASE_URL}/api/v1/support-programs/search/results")"
+  [[ "${actual_status}" == "200" ]] && cmp -s "${restored_file}" "${LAST_RESPONSE_FILE}" || return 1
+
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --request POST --cookie-jar "${other_cookie}" --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data '{"role":"ADMIN"}' "${WEB_BASE_URL}/api/v1/auth/dev-login")"
+  [[ "${actual_status}" == "200" ]] || return 1
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --request POST --cookie "${other_cookie}" --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data "{\"resultToken\":\"${token}\"}" "${WEB_BASE_URL}/api/v1/support-programs/search/results")"
+  [[ "${actual_status}" == "410" ]] || return 1
+
+  echo "Stopping only verification Redis to verify an explicit store outage"
+  "${COMPOSE[@]}" stop redis
+  actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+    --request POST --cookie "${first_cookie}" --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+    --data "{\"resultToken\":\"${token}\"}" "${WEB_BASE_URL}/api/v1/support-programs/search/results")"
+  [[ "${actual_status}" == "503" ]] || return 1
+  grep -q 'SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE' "${LAST_RESPONSE_FILE}" || return 1
+  wait_for_http "Guest search store outage is not a successful partial result" \
+    "${WEB_BASE_URL}/api/v1/support-programs/search?query=&acceptingOnly=false" "503" \
+    'SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE'
+  wait_for_http "MySQL catalog remains available during Redis outage" \
+    "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=KSTARTUP&status=OPEN" "200"
+
+  echo "Recreating verification Redis with the same AOF volume to verify recovery"
+  "${COMPOSE[@]}" up --detach --force-recreate --no-deps --wait redis
+  # The existing Core connection must recover too; retry only restoration, never search/AI.
+  local deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+  while ((SECONDS < deadline)); do
+    actual_status="$(curl --silent --output "${LAST_RESPONSE_FILE}" --write-out '%{http_code}' --max-time 10 \
+      --request POST --cookie "${first_cookie}" --header 'Content-Type: application/json' --header "Origin: ${WEB_BASE_URL}" \
+      --data "{\"resultToken\":\"${token}\"}" "${WEB_BASE_URL}/api/v1/support-programs/search/results")"
+    if [[ "${actual_status}" == "200" ]] && cmp -s "${restored_file}" "${LAST_RESPONSE_FILE}"; then
+      echo "Verified Redis result restoration: Core restart, account ownership, explicit outage and AOF recovery"
+      return 0
+    fi
+    sleep "${WAIT_INTERVAL_SECONDS}"
+  done
+  echo "Redis restoration did not recover the identical saved result" >&2
+  return 1
 }
 
 wait_for_ai_failure() {
@@ -461,14 +537,14 @@ wait_for_http \
   "Stopped CNTRADE_NOTICE upstream leaves both published notices available" \
   "${WEB_BASE_URL}/api/v1/support-programs/catalog?sourceCode=CNTRADE_NOTICE&status=UNKNOWN" \
   "200" '"total"[[:space:]]*:[[:space:]]*2[,}]'
-wait_for_http \
+VERIFY_HTTP_MEMBER=true wait_for_http \
   "Mixed-source semantic search includes both new unknown-status notice sources" \
   "${WEB_BASE_URL}/api/v1/support-programs/search?query=AI&acceptingOnly=false" \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"3186878"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"MSIT"' \
   '"id"[[:space:]]*:[[:space:]]*"900001"[^}]*"sourceCode"[[:space:]]*:[[:space:]]*"CNTRADE_NOTICE"'
 
-wait_for_http \
+VERIFY_HTTP_MEMBER=true wait_for_http \
   "Vite-proxied blank catalog search after BizInfo stub is stopped" \
   "${WEB_BASE_URL}/api/v1/support-programs/search?query=&acceptingOnly=true" \
   "200" \
@@ -480,7 +556,7 @@ wait_for_http \
 
 # This target is older than 25 irrelevant fixture programs. A latest-20 candidate
 # selector cannot pass this check. OpenAI is an HTTP fixture; Qdrant is real.
-wait_for_http \
+VERIFY_HTTP_MEMBER=true wait_for_http \
   "Whole-catalog semantic search finds the old relevant AI program" \
   "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
   "200" \
@@ -497,6 +573,7 @@ wait_for_http \
   '"id"[[:space:]]*:[[:space:]]*"174321"'
 
 echo "Stopping Qdrant to verify that a vector outage is not hidden as a successful search"
+verify_search_result_store
 "${COMPOSE[@]}" stop qdrant
 wait_for_http \
   "Explicit vector search failure while Qdrant is stopped" \
@@ -516,13 +593,13 @@ wait_for_http \
   "${WEB_BASE_URL}/api/v1/support-programs/search?query=AI&acceptingOnly=true" \
   "503" \
   '"code"[[:space:]]*:[[:space:]]*"AI_SERVICE_UNAVAILABLE"'
-wait_for_http \
+VERIFY_HTTP_MEMBER=true wait_for_http \
   "Blank latest listing still reads MySQL during vector outage" \
   "${WEB_BASE_URL}/api/v1/support-programs/search?query=&acceptingOnly=true" \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_EXPORT"'
 "${COMPOSE[@]}" start qdrant
-wait_for_http \
+VERIFY_HTTP_MEMBER=true wait_for_http \
   "Vector search recovers from persistent Qdrant data" \
   "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
   "200" \
@@ -547,10 +624,10 @@ echo "Restarting AI Service to verify recovery without restarting Core API"
 "${COMPOSE[@]}" start ai-service
 
 wait_for_http "Core to AI Service recovery" "${WEB_BASE_URL}/api/v1/health/ai-service" "200" '"status"[[:space:]]*:[[:space:]]*"up".*"service"[[:space:]]*:[[:space:]]*"govbiz-ai-service"'
-wait_for_http \
+VERIFY_HTTP_MEMBER=true wait_for_http \
   "Semantic search recovers after AI Service restart" \
   "${WEB_BASE_URL}/api/v1/support-programs/search?query=%EC%84%9C%EC%9A%B8%20AI&acceptingOnly=true" \
   "200" \
   '"id"[[:space:]]*:[[:space:]]*"PBLN_COMPOSE_OLD_AI"'
 
-echo "Compose verification passed: application preparation question/fact flow, four-source fixture synchronization, unknown-status notice boundaries, startup filters, mixed-source semantic results, MySQL listing, Qdrant/AI failure isolation and recovery. CNTRADE_NOTICE uses a documentation fixture, not live API validation."
+echo "Compose verification passed: Redis-backed guest result restoration, account ownership, Core restart and Redis AOF recovery; application preparation question/fact flow, four-source fixture synchronization, unknown-status notice boundaries, startup filters, mixed-source semantic results, MySQL listing, Qdrant/AI failure isolation and recovery. CNTRADE_NOTICE uses a documentation fixture, not live API validation."

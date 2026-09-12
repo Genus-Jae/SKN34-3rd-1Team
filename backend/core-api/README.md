@@ -327,18 +327,33 @@ CLARIFICATION_REQUIRED와 새 질문·초안을 반환합니다. 결과 설명�
   비로그인 결과가 3개 이상일 때만 소문자 UUID `resultToken`과 UTC ISO-8601 `expiresAt`이 존재하고,
   나머지 경우 두 값은 `null`입니다. 기존 내부 검색과 일일 보고서·평가의 최대 5개 결과는 그대로 유지합니다.
 - 로그인 결과 복원: 인증된 `POST /api/v1/support-programs/search/results`에 `{resultToken}`을 보냅니다.
-  `Controller → SupportProgramSearchPreviewService`에서 보관된 원본 결과를 그대로 반환하며 검색·DB·모델을
-  다시 호출하지 않습니다. 응답은 검색 응답에 `context: {query, acceptingOnly, companyConditions}`를 추가한
+  `Controller → SupportProgramSearchPreviewService → SupportProgramSearchResultRepository → Redis`에서
+  보관된 원본 결과를 그대로 반환하며 검색·카탈로그 MySQL 조회·모델 호출을 다시 실행하지 않습니다.
+  세션 인증은 기존 MySQL 경로를 유지합니다. 응답은 검색 응답에 `context: {query, acceptingOnly, companyConditions}`를 추가한
   형태이며, `resultToken`과 `expiresAt`은 `null`입니다. 조건 텍스트는 최초 검색에서 정규화한 값이고
   기업 조건 미입력 값은 `null`입니다. 빈 GET 검색은 응답 `query`가 `""`, 대화용 `context.query`가 `null`입니다.
   이 조회는 검색·해석·근거 질문의 AI 요청 제한을 소비하지 않습니다. 세션 쿠키가 있는 POST에는 기존과 같이
   허용된 `Origin` 또는 `Referer`가 필요합니다.
   최초 복원 시 토큰이 `account.id`에 귀속되며 같은 계정의 재시도는 동일 결과를 반환합니다. 미인증·유효하지 않은
-  세션은 401, 다른 계정·만료·미존재·용량 초과로 제거된 토큰은 모두 410 `SUPPORT_PROGRAM_SEARCH_RESULT_EXPIRED`입니다.
-  결과는 단일 Core 프로세스 메모리에 발급 시점부터 30분간 최대 128개 보관하고, 한도 도달 시 가장 오래된 결과부터
-  제거합니다. 조회·로그인으로 만료가 연장되지 않으며 서버 재시작 시 사라집니다. 실패 시 자동으로 모델을 다시 호출하지
-  않으므로 새 검색은 사용자가 요청해야 합니다. 여러 Core 인스턴스 사이에서는 이 메모리를 공유하지 않습니다.
+  세션은 401, 다른 계정·만료·미존재 토큰은 모두 410 `SUPPORT_PROGRAM_SEARCH_RESULT_EXPIRED`입니다.
+  결과와 조건은 Redis의 `govbiz:search-result:v1:{SHA-256(token)}` hash에 JSON으로 30분 보관합니다.
+  TTL과 `expiresAt`은 Redis 시계 기준이며 조회·로그인으로 연장하지 않습니다. Lua로 최초 계정 연결을 원자적으로
+  처리해 여러 Core 인스턴스의 동시 복원도 한 계정에만 귀속됩니다. 같은 Redis를 쓰면 Core 재시작 후에도 복원됩니다.
+  기존 128건 조기 퇴거는 제거했습니다. Compose는 `128mb/noeviction`으로 메모리를 제한하고 개별 JSON은 최대 2MiB입니다.
+  저장소 연결·타임아웃·용량·역직렬화 오류는 503 `SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE`로 반환하며,
+  메모리 fallback이나 자동 재검색은 없습니다. 회원 검색 또는 2건 이하의 비회원 결과는 Redis를 사용하지 않습니다.
+  대화 기록 원본·회원 세션·공고는 계속 MySQL에 저장합니다. 첫 검색의 AI 점수화 속도를 높이는 캐시 변경은 아닙니다.
   GET·POST 검색과 복원은 성공·오류 응답에 모두 `Cache-Control: no-store`를 사용합니다.
+
+  Compose는 Redis 8.2.9와 `redis-data` AOF 볼륨을 추가합니다. `appendfsync everysec`이므로 비정상 종료 시
+  최근 약 1초의 저장/계정 연결이 유실될 수 있고, 복제·자동 failover·강한 내구성을 제공하지 않습니다.
+  TTL은 조회 가능한 기간입니다. 만료가 AOF·백업의 물리적 즉시 삭제를 보장하지 않으므로 디스크 접근 권한과 정리 정책도 관리해야 합니다.
+  `SupportProgramSearchResultRedisConfig`는 Lettuce 전용 DNS 캐시를 최대 5초로 제한해 Redis 교체 후 IP 변경을
+  재연결에서 반영합니다. JVM 전역 DNS나 외부 HTTP 클라이언트 설정은 바꾸지 않습니다.
+  직접 Core를 실행할 때는 Redis를 별도로 준비하고 `REDIS_HOST`/`REDIS_PORT`를 지정합니다(기본 `127.0.0.1:6379`).
+  연결/명령 제한은 `REDIS_CONNECT_TIMEOUT`/`REDIS_TIMEOUT`(기본 1초), 외부 운영 Redis의 인증·TLS는
+  `REDIS_USERNAME`/`REDIS_PASSWORD`/`REDIS_SSL_ENABLED`로 주입합니다. 로컬 Compose의 Redis는 무인증 내부망 전용이며
+  호스트 포트를 열지 않습니다. 운영에는 네트워크 격리·ACL·TLS·메모리/AOF 감시가 별도로 필요합니다.
 - 자격 검토: 조건 유무와 관계없이 점수화 계약은 `govbiz-support-program-ranking-v5`입니다.
   저장된 공식 API 본문 `summary` 최대 6,000, 지원대상 `targetDescription` 최대 2,000 Unicode code point를
   AI에 전달합니다. 둘 중 하나라도 잘리면 `sourceTextTruncated=true`이며 대상·지역 모두 `UNKNOWN`만 허용합니다.

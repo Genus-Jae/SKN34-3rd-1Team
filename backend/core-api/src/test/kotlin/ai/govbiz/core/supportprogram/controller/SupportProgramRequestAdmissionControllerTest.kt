@@ -15,7 +15,7 @@ import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEv
 import ai.govbiz.core.supportprogram.service.readiness.SupportProgramSearchReadinessService
 import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchPreviewService
 import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchService
-import java.time.Clock
+import ai.govbiz.core.supportprogram.repository.SupportProgramSearchResultRepository
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -50,7 +50,7 @@ class SupportProgramRequestAdmissionControllerTest {
             now::get,
         )
         return MockMvcBuilders.standaloneSetup(
-            SupportProgramController(SupportProgramSearchPreviewService(search, Clock.systemUTC()), readiness, detail, evidence, admission),
+            SupportProgramController(SupportProgramSearchPreviewService(search, Mockito.mock(SupportProgramSearchResultRepository::class.java)), readiness, detail, evidence, admission),
         ).setCustomArgumentResolvers(AuthenticatedAccountArgumentResolver { Mockito.mock(AccountSessionService::class.java) })
             .setControllerAdvice(ApiExceptionHandler()).build()
     }

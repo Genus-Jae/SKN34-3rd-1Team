@@ -51,6 +51,7 @@ import ai.govbiz.core.partner.service.exception.RecruitmentProgramClosedExceptio
 import ai.govbiz.core.partner.service.exception.RecruitmentProgramNotFoundException
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
 import ai.govbiz.core.supportprogram.service.search.exception.SupportProgramSearchResultExpiredException
+import ai.govbiz.core.supportprogram.repository.exception.SupportProgramSearchResultStoreException
 import ai.govbiz.core.supportprogram.service.catalog.exception.SupportProgramCatalogFilterException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceNotSupportedException
 import ai.govbiz.core.supportprogram.service.evidence.exception.SupportProgramEvidenceUnavailableException
@@ -184,6 +185,16 @@ class ApiExceptionHandler {
                 HttpStatus.GONE, URI.create("urn:govbiz:problem:support-program-search-result-expired"),
                 "Search Result Expired", "The saved search result is no longer available. Please search again.",
                 "SUPPORT_PROGRAM_SEARCH_RESULT_EXPIRED",
+            ), request,
+        )
+
+    @ExceptionHandler(SupportProgramSearchResultStoreException::class)
+    fun handleSearchResultStoreUnavailable(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problemResponse(
+            ProblemDefinition(
+                HttpStatus.SERVICE_UNAVAILABLE, URI.create("urn:govbiz:problem:support-program-search-result-store-unavailable"),
+                "Search Result Store Unavailable", "The saved search result cannot be stored or restored right now. Please try again later.",
+                "SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE",
             ), request,
         )
 

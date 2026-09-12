@@ -32,7 +32,9 @@ CLARIFICATION_REQUIRED는 보완 질문이며 검색 결과 없음이나 외부 
 ### 기업 조건 검색 — 사용자 확인 후 실행 경로
 
 기업 조건을 URL query string에 넣지 않고 JSON body로 전송합니다. 회원가입·기업 조건 DB 저장은 없으며,
-조건은 현재 브라우저 대화의 메모리에서만 유지합니다. POST와 기존 GET은 같은 요청량·동시 실행 한도를 공유합니다.
+이 검색 요청은 입력 조건을 계정·기업 DB에 저장하지 않습니다. 비회원의 추가 결과가 있으면 로그인 후 복원을 위해
+전체 결과와 조건을 Redis에 30분 보관합니다. [Redis 적용·복원 계약](redis-search-result-restoration.md)을 참고하세요.
+POST와 기존 GET은 같은 요청량·동시 실행 한도를 공유합니다.
 
 ```http
 POST /api/v1/support-programs/search

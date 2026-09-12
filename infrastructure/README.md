@@ -1,7 +1,7 @@
 # GovBiz Docker Compose
 
 Docker Compose는 React 개발 서버, Core API, AI Service, 원본 카탈로그용 MySQL과 의미 검색용
-Qdrant를 함께 실행하는 로컬 개발 구성입니다. 회원 세션은 동작하지만 개발용 시드 로그인이 켜져 있고 쿠키 `Secure`가
+Qdrant, 로그인 후 검색 결과 복원용 Redis를 함께 실행하는 로컬 개발 구성입니다. 회원 세션은 동작하지만 개발용 시드 로그인이 켜져 있고 쿠키 `Secure`가
 꺼져 있으므로 운영 배포·TLS·운영 인증 구성으로 쓰지 않습니다.
 전체 기술 선택과 데이터 흐름은 [프로젝트 기술 문서](../docs/technology.md)를 참고하세요.
 
@@ -14,6 +14,7 @@ Browser (127.0.0.1:5173)
       → /api proxy
           → core-api:8080
               ├→ mysql:3306 (사용자 검색 카탈로그)
+              ├→ redis:6379 (로그인 전 검색 결과·조건의 30분 임시 보관)
               ├→ https://apis.data.go.kr (백그라운드 동기화)
               └→ ai-service:8000
                     ├→ qdrant:6333 (현재 공고의 벡터 색인)
@@ -28,6 +29,7 @@ Browser (127.0.0.1:5173)
 | web 컨테이너 | `http://core-api:8080` | Compose 내부 DNS |
 | Core API 컨테이너 | `http://ai-service:8000` | Compose 내부 DNS |
 | Core API 컨테이너 | `jdbc:mysql://mysql:3306/govbiz` | 사용자 검색용 지원사업 카탈로그 MySQL |
+| Core API 컨테이너 | `redis:6379` | 로그인 후 원본 검색 결과 복원. 호스트 포트는 공개하지 않음 |
 | Core API 컨테이너 | `https://apis.data.go.kr` | 백그라운드 동기화 전용 실제 기업마당 공고 upstream |
 | AI Service 컨테이너 | `https://api.openai.com/v1` | 공고·질의 임베딩 및 후보 점수화 |
 | AI Service 컨테이너 | `http://qdrant:6333` | 공고 임베딩 저장·의미 검색 |
@@ -35,10 +37,22 @@ Browser (127.0.0.1:5173)
 | Host의 DB 도구 | `127.0.0.1:3306` | loopback으로만 공개한 MySQL 포트 |
 | Host 터미널 | `http://127.0.0.1:6333` | loopback으로만 공개한 개발용 Qdrant API |
 
-`core-api`, `ai-service`, `mysql`, `qdrant`는 컨테이너 네트워크 안에서만 해석되는 이름입니다. 브라우저
+`core-api`, `ai-service`, `mysql`, `qdrant`, `redis`는 컨테이너 네트워크 안에서만 해석되는 이름입니다. 브라우저
 JavaScript가 `http://core-api:8080`을 직접 호출하면 실패합니다.
 
 ## 실행
+
+Redis는 8.2.9로 고정하고 `redis-data` 볼륨에 AOF(`appendfsync everysec`)를 기록합니다. Core 재시작과
+Redis 컨테이너 재생성에도 만료 전 결과와 최초 복원 계정이 유지되지만, Redis 비정상 종료 시 최근 약 1초는
+유실될 수 있습니다. 30분 TTL은 복원해도 연장하지 않으며 `128mb/noeviction` 한도에서 오래된 유효 결과를
+임의 퇴거하지 않고 새 저장을 503으로 거부합니다. 일반 대화 기록·세션은 MySQL에 남습니다.
+TTL은 조회 만료이며 AOF·백업에서의 물리적 즉시 삭제가 아닙니다. 디스크 접근 권한과 로그/백업 정리 정책도 관리해야 합니다.
+Core의 Lettuce 전용 DNS 캐시는 최대 5초입니다. Redis 컨테이너 교체 시 새 IP로 재연결하며 JVM 전역 DNS는 변경하지 않습니다.
+`REDIS_CONNECT_TIMEOUT`/`REDIS_TIMEOUT`은 기본 1초입니다. Redis 장애를 만료(410)로 숨기지 않고
+`SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE`(503)을 반환합니다. 회원 검색·일반 카탈로그는 Redis에 의존하지 않습니다.
+로컬 Redis는 **무인증 개발망 내부 전용**이므로 외부 포트를 추가하지 마세요. 운영에는 별도 네트워크 격리·ACL/TLS·
+메모리 및 AOF 모니터링이 필요합니다. Core 직접 실행 시 외부 Redis의 `REDIS_HOST`/`REDIS_PORT`, 필요하면
+`REDIS_USERNAME`/`REDIS_PASSWORD`/`REDIS_SSL_ENABLED`를 지정합니다. 로컬 Compose는 이 외부 인증/TLS 설정을 사용하지 않습니다.
 
 Docker Engine과 Compose v2가 필요합니다. 저장소 루트에서 `.env.example`을 `.env`로 복사하고,
 공공데이터포털에서 발급한 일반 인증키와 필수 OpenAI 키를 넣습니다.
@@ -184,6 +198,16 @@ Compose 네트워크 내부에서 Core API만 호출합니다. Host나 브라우
 
 ### 백엔드 변경 반영과 화면·API 버전 불일치
 
+Redis 도입 전부터 실행하던 스택은 먼저 아래 명령으로 Redis를 추가한 뒤 갱신 스크립트를 실행합니다.
+기존 MySQL·Qdrant 볼륨은 건드리지 않습니다. 전환 전 Core 메모리에 있던 검색 토큰은 이전할 수 없으므로
+해당 사용자만 새로 검색해야 합니다. 이후 Redis에 발급한 토큰부터 Core 재시작을 견딥니다.
+
+```bash
+docker compose --env-file .env --file infrastructure/compose.yaml up --detach --wait redis
+```
+
+갱신 스크립트는 Redis를 포함한 기존 데이터 서비스가 실행 중인지 확인한 후 Core·AI만 교체합니다.
+
 Web은 소스 디렉터리를 bind mount하여 Vite가 변경을 바로 반영하지만, Core·AI는 이미지 안의 JAR/Python 코드를
 실행합니다. 소스 수정이나 `docker compose restart`만으로 백엔드 코드가 갱신되지는 않습니다.
 C01처럼 공개 POST 검색과 내부 기업 조건 계약을 함께 변경했다면 **Core와 AI를 함께 재빌드**해야 합니다.
@@ -214,7 +238,7 @@ OpenAI 임베딩 비용이 발생할 수 있습니다.
 docker compose --env-file .env --file infrastructure/compose.yaml down --remove-orphans
 ```
 
-로컬 데이터를 의도적으로 초기화할 때만 다음 명령을 사용합니다. `mysql-data`, `qdrant-data`,
+로컬 데이터를 의도적으로 초기화할 때만 다음 명령을 사용합니다. `mysql-data`, `qdrant-data`, `redis-data`,
 `web-node-modules` volume을 삭제하므로 필요한 데이터는 먼저 백업해야 합니다. 삭제한 카탈로그와
 색인은 다시 수집·구축해야 하며, 실제 OpenAI를 쓰는 색인 재구축에는 비용이 발생합니다.
 
@@ -235,7 +259,7 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 ./infrastructure/scripts/verify-compose.sh
 ```
 
-검증 스크립트는 `verification` profile의 `bizinfo-stub`·`kstartup-stub`·`public-notices-stub`·`openai-stub`을 사용합니다. MySQL·Qdrant는
+검증 스크립트는 `verification` profile의 `bizinfo-stub`·`kstartup-stub`·`public-notices-stub`·`openai-stub`을 사용합니다. MySQL·Qdrant·Redis는
 실제 서버이고, 외부 공고·임베딩·점수화 응답만 고정된 가상 자료입니다. 기업마당 공고 27개와 K-Startup 공고 2개를
 수집하고, MSIT 11개(10+1 페이지)와 CNTRADE_NOTICE 2개(1+1 페이지)도 검증합니다.
 네 출처의 관련 공고가 함께 검색되는지, K-Startup 전용 3개 필터가 저장된 분류를 사용하는지,
@@ -266,6 +290,12 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 8. Core API를 통한 AI Service Health가 200인지 확인합니다.
 9. AI Service를 중지했을 때 Core Health는 200, AI Health와 자연어 검색은 503(연결 불가) 또는 504(시간 초과)인지 확인합니다.
 10. AI Service 재시작 후 Core API 재시작 없이 Health와 자연어 검색이 복구되는지 확인합니다.
+11. 익명 검색 토큰을 로그인 후 복원하고 Core 재시작 뒤에도 동일 결과·소유권이 유지되는지 확인합니다.
+    Redis 중지 중에는 복원/익명 결과 저장이 503이고 MySQL 카탈로그는 200인지 확인하며,
+    같은 AOF 볼륨으로 Redis를 재생성한 뒤 기존 결과가 그대로 복원되는지도 확인합니다.
+
+전체 추천·제공처 포함 여부는 테스트 회원 세션으로 확인합니다. 비회원의 공개 2건 제한과 Redis 토큰 발급·복원은
+별도의 익명 요청으로 확인하므로, 숨겨진 공고가 비회원 응답에 나타나야 통과하는 검증을 하지 않습니다.
 
 Web/Core는 검증 전용 `15173`/`18080` 포트를 사용해 기존 개발 서비스를 중지하지 않고 실행할 수 있습니다.
 `VERIFY_COMPOSE_WEB_HOST_PORT`/`VERIFY_COMPOSE_CORE_API_HOST_PORT`로 바꿀 수 있으며 CORS·요청 Origin도 같은 Web 주소를 사용합니다.
