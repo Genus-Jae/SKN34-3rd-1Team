@@ -1,29 +1,36 @@
 package ai.govbiz.core.supportprogram.service.search
 
+import ai.govbiz.core._common.test.RedisTestConnection
 import ai.govbiz.core.supportprogram.domain.*
+import ai.govbiz.core.supportprogram.repository.SupportProgramSearchResultRepository
 import ai.govbiz.core.supportprogram.service.dto.SupportProgramSearchResult
 import ai.govbiz.core.supportprogram.service.search.exception.SupportProgramSearchResultExpiredException
-import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
-import java.time.ZoneOffset
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.mockito.Mockito
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.module.kotlin.KotlinModule
 
 class SupportProgramSearchPreviewServiceTest {
     private val search = Mockito.mock(SupportProgramSearchService::class.java)
-    private val clock = MutableClock(Instant.parse("2026-09-10T03:00:00Z"))
-    private val service = SupportProgramSearchPreviewService(search, clock)
+    private val connection = RedisTestConnection()
+    private val repository = SupportProgramSearchResultRepository(connection.redis, JsonMapper.builder().addModule(KotlinModule.Builder().build()).build())
+    private val service = SupportProgramSearchPreviewService(search, repository)
     private val conditions = SupportProgramCompanyConditions("대구", "무역", LocalDate.parse("2020-01-02"), "수출")
+
+    @AfterEach
+    fun closeConnection() { connection.close() }
 
     private fun stub(programs: List<SupportProgram>, query: String = "무역 지원", acceptingOnly: Boolean = false,
                      conditions: SupportProgramCompanyConditions? = this.conditions) {
@@ -37,7 +44,7 @@ class SupportProgramSearchPreviewServiceTest {
         val preview = service.search("무역 지원", false, conditions, null)
         assertEquals(programs.take(2), preview.programs)
         assertEquals(5, preview.totalCount)
-        assertEquals(clock.instant().plus(Duration.ofMinutes(30)), preview.expiresAt)
+        assertTrue(Duration.between(Instant.now(), preview.expiresAt).seconds in 1790..1800)
         assertEquals(preview.resultToken, UUID.fromString(preview.resultToken).toString())
         val restored = service.restore(requireNotNull(preview.resultToken), 10L)
         assertEquals(programs, restored.result.programs)
@@ -77,20 +84,22 @@ class SupportProgramSearchPreviewServiceTest {
     fun thirtyMinuteExpiryIsFixedEvenAfterAClaimAndUnknownTokensDoNotSearch() {
         stub((1..5).map(::program))
         val token = requireNotNull(service.search("무역 지원", false, conditions, null).resultToken)
-        clock.advance(Duration.ofMinutes(29))
+        val key = key(token)
+        connection.redis.expire(key, Duration.ofMinutes(1))
         service.restore(token, 1L)
-        clock.advance(Duration.ofMinutes(1))
+        assertTrue(connection.redis.getExpire(key) in 1..60)
+        connection.redis.expireAt(key, Instant.EPOCH)
         assertThrows(SupportProgramSearchResultExpiredException::class.java) { service.restore(token, 1L) }
         assertThrows(SupportProgramSearchResultExpiredException::class.java) { service.restore(UUID.randomUUID().toString(), 1L) }
         Mockito.verify(search, Mockito.times(1)).search("무역 지원", false, conditions)
     }
 
     @Test
-    fun capacityEvictsOnlyTheOldestResultAndDoesNotReuseTokens() {
+    fun moreThan128ResultsDoNotEvictUnexpiredTokensOrReuseTokens() {
         stub((1..5).map(::program))
         val tokens = (1..129).map { requireNotNull(service.search("무역 지원", false, conditions, null).resultToken) }
         assertEquals(129, tokens.toSet().size)
-        assertThrows(SupportProgramSearchResultExpiredException::class.java) { service.restore(tokens.first(), 1L) }
+        assertEquals(5, service.restore(tokens.first(), 1L).result.programs.size)
         assertEquals(5, service.restore(tokens[1], 1L).result.programs.size)
         assertEquals(5, service.restore(tokens.last(), 1L).result.programs.size)
     }
@@ -152,10 +161,5 @@ class SupportProgramSearchPreviewServiceTest {
         matchedReasons = listOf("추천 $index"), recommendationScore = 100 - index,
     )
 
-    private class MutableClock(private var now: Instant) : Clock() {
-        override fun getZone(): ZoneId = ZoneOffset.UTC
-        override fun withZone(zone: ZoneId): Clock = this
-        override fun instant(): Instant = now
-        fun advance(duration: Duration) { now = now.plus(duration) }
-    }
+    private fun key(token: String) = "govbiz:search-result:v1:" + MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).toHexString()
 }

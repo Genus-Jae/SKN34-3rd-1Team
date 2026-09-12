@@ -3,6 +3,7 @@
 from pathlib import Path
 import importlib.util
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -54,6 +55,34 @@ exit 0
 
 
 class VerifyComposeSafetyTest(unittest.TestCase):
+    def test_http_checks_only_send_member_cookie_when_explicitly_selected(self):
+        function = re.search(r"(?ms)^wait_for_http\(\) \{\n.*?^\}", SCRIPT.read_text(encoding="utf-8")).group()
+        with tempfile.TemporaryDirectory(prefix="verify-http-test-") as directory:
+            root = Path(directory)
+            curl = root / "curl"
+            curl.write_text("""#!/usr/bin/env bash
+printf '%s\\n' "$@" > "$VERIFY_CURL_ARGS"
+while (($#)); do
+  if [[ "$1" == "--output" ]]; then printf '%s' '{"ok":true}' > "$2"; shift 2; else shift; fi
+done
+printf '%s' '200'
+""", encoding="utf-8")
+            curl.chmod(0o700)
+            for member in ("false", "true"):
+                with self.subTest(member=member):
+                    result = subprocess.run(
+                        [str(BASH), "-eu", "-c", function + '\nwait_for_http "fixture" "http://unused.invalid" 200'],
+                        env={"PATH": f"{root}:/usr/bin:/bin", "RESPONSE_DIR": str(root),
+                             "LAST_RESPONSE_FILE": str(root / "response"), "VERIFY_CURL_ARGS": str(root / "args"),
+                             "WAIT_TIMEOUT_SECONDS": "3", "WAIT_INTERVAL_SECONDS": "1", "VERIFY_HTTP_MEMBER": member},
+                        capture_output=True, text=True, timeout=5,
+                    )
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    arguments = (root / "args").read_text(encoding="utf-8").splitlines()
+                    # The same helper checks Vite HTML as well as JSON API responses.
+                    self.assertIn("Accept: */*", arguments)
+                    self.assertEqual(member == "true", "--cookie" in arguments)
+
     def run_script(self, **overrides):
         with tempfile.TemporaryDirectory(prefix="verify-compose-test-") as directory:
             root = Path(directory)

@@ -1,6 +1,7 @@
 package ai.govbiz.core.supportprogram.controller
 
 import ai.govbiz.core._common.config.JsonDeserializationConfig
+import ai.govbiz.core._common.test.RedisTestConnection
 import ai.govbiz.core._common.exception.ApiExceptionHandler
 import ai.govbiz.core.account.domain.Account
 import ai.govbiz.core.account.domain.AccountRole
@@ -11,6 +12,8 @@ import ai.govbiz.core.account.web.SessionOriginInterceptor
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramCompanyConditions
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
+import ai.govbiz.core.supportprogram.repository.SupportProgramSearchResultRepository
+import ai.govbiz.core.supportprogram.repository.exception.SupportProgramSearchResultStoreException
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.admission.config.SupportProgramRequestAdmissionProperties
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
@@ -27,6 +30,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.security.MessageDigest
 import java.util.UUID
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.AfterEach
@@ -53,11 +57,13 @@ class SupportProgramSearchPreviewControllerTest {
     private val search = Mockito.mock(SupportProgramSearchService::class.java)
     private val sessions = Mockito.mock(AccountSessionService::class.java)
     private val clock = MutableClock(Instant.parse("2026-09-10T03:00:00Z"))
-    private val preview = SupportProgramSearchPreviewService(search, clock)
+    private val connection = RedisTestConnection()
     private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build())
         .addMixIn(ProblemDetail::class.java, ProblemDetailJacksonMixin::class.java).also {
         JsonDeserializationConfig().strictJsonRequestTypes().customize(it)
     }.build()
+    private val repository = SupportProgramSearchResultRepository(connection.redis, mapper)
+    private val preview = SupportProgramSearchPreviewService(search, repository)
     private val validator = LocalValidatorFactoryBean().apply {
         setConfigurationInitializer { it.clockProvider { clock } }
         afterPropertiesSet()
@@ -83,11 +89,11 @@ class SupportProgramSearchPreviewControllerTest {
     }
 
     @AfterEach
-    fun closeValidator() { validator.close() }
+    fun closeValidator() { validator.close(); connection.close() }
 
-    private fun mvc(perClient: Int = 100): MockMvc = MockMvcBuilders.standaloneSetup(
+    private fun mvc(perClient: Int = 100, previewService: SupportProgramSearchPreviewService = preview): MockMvc = MockMvcBuilders.standaloneSetup(
         SupportProgramController(
-            preview, Mockito.mock(SupportProgramSearchReadinessService::class.java),
+            previewService, Mockito.mock(SupportProgramSearchReadinessService::class.java),
             Mockito.mock(SupportProgramDetailService::class.java), Mockito.mock(SupportProgramEvidenceService::class.java),
             SupportProgramRequestAdmissionService(SupportProgramRequestAdmissionProperties(perClient, 100, 4)) { 0L },
         ),
@@ -123,9 +129,10 @@ class SupportProgramSearchPreviewControllerTest {
         val body = mvc().perform(request).andExpect(status().isOk())
             .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$.programs.length()").value(2)).andExpect(jsonPath("$.totalCount").value(5))
-            .andExpect(jsonPath("$.expiresAt").value("2026-09-10T03:30:00Z"))
+            .andExpect(jsonPath("$.expiresAt").isString())
             .andExpect(jsonPath("$.context").doesNotExist()).andReturn().response.contentAsString
         val token = mapper.readTree(body).get("resultToken").asText()
+        assertTrue(Duration.between(Instant.now(), Instant.parse(mapper.readTree(body).get("expiresAt").asText())).seconds in 1790..1800)
         assertEquals(token, UUID.fromString(token).toString())
         for (hidden in programs.drop(2)) {
             for (value in listOf(hidden.id, hidden.title, hidden.summary, hidden.sourceUrl) + hidden.matchedReasons) {
@@ -186,7 +193,9 @@ class SupportProgramSearchPreviewControllerTest {
         stubPost()
         val mvc = mvc()
         val guest = mapper.readTree(mvc.perform(postSearch()).andReturn().response.contentAsString)
-        clock.advance(Duration.ofMinutes(30))
+        val key = "govbiz:search-result:v1:" + MessageDigest.getInstance("SHA-256")
+            .digest(guest.get("resultToken").asText().toByteArray()).toHexString()
+        connection.redis.expireAt(key, Instant.EPOCH)
         for (token in listOf(guest.get("resultToken").asText(), UUID.randomUUID().toString())) {
             mvc.perform(restore(token).member()).andExpect(status().isGone())
                 .andExpect(header().string("Cache-Control", "no-store"))
@@ -194,6 +203,20 @@ class SupportProgramSearchPreviewControllerTest {
         }
         Mockito.verify(search, Mockito.times(1)).search("  무역 지원  ", false, conditions)
         Mockito.verifyNoMoreInteractions(search)
+    }
+
+    @Test
+    fun storeFailureIsUnavailableNotExpiredAndNeverLeaksPrivateDetailsOrSearchesOnRestore() {
+        val failedRepository = Mockito.mock(SupportProgramSearchResultRepository::class.java)
+        val token = UUID.randomUUID().toString()
+        Mockito.`when`(failedRepository.claim(token, 1L)).thenThrow(SupportProgramSearchResultStoreException(IllegalStateException("private redis payload")))
+        val body = mvc(previewService = SupportProgramSearchPreviewService(search, failedRepository))
+            .perform(restore(token).member()).andExpect(status().isServiceUnavailable())
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(jsonPath("$.code").value("SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE"))
+            .andReturn().response.contentAsString
+        assertFalse(body.contains("private redis payload"))
+        Mockito.verifyNoInteractions(search)
     }
 
     @Test

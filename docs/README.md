@@ -10,7 +10,8 @@
 |---|---|
 | [아키텍처 README](architecture/README.md) | 서비스 경계, Frontend·Core API·AI Service의 계층·DI·디자인 패턴 |
 | [서비스 호출·데이터 흐름](architecture.md) | 검색·상세·RAG·동기화·벡터 복구와 오류 처리 순서 |
-| [기술 스택과 데이터 구성](technology.md) | 사용 기술·버전, MySQL·Qdrant 저장 역할과 점수 정책 |
+| [기술 스택과 데이터 구성](technology.md) | 사용 기술·버전, MySQL·Qdrant·Redis 저장 역할과 점수 정책 |
+| [Redis 적용 범위·검색 결과 복원](redis-search-result-restoration.md) | 적용 위치·호출 흐름·저장 구조, 30분 TTL·계정 소유권, 장애·운영·검증과 미적용 범위 |
 | [구현 현황](implementation-status.md) | 현재 완료 단계, 검증 범위, 제한 사항과 다음 작업 |
 | [코드 검수·최적화 기록](code-audit-20260907.md) | 학습 코드 보존, 미사용 항목 제거, 장애·화면·평가 오류 수정과 전체 검증 결과 |
 | [기획 대조 추가 검수](project-review-20260907.md) | 추가 발견 버그의 재현·수정, 이번 실행 검증과 환경 제약 |

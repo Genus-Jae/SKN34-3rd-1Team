@@ -154,24 +154,35 @@ GET /api/v1/support-programs/search (기존 단문·최신 목록)
 
 공개 GET·POST 검색은 로그인 세션에 따라 비회원에게 앞의 최대 2건, 회원에게 최대 5건을 반환합니다.
 응답의 `totalCount`는 전체 카탈로그 건수가 아니라 이번 추천 결과 수(0~5건)입니다. 비회원의 추가 결과가 있으면
-Core의 `SupportProgramSearchPreviewService`가 원본 결과·검색 조건을 최대 30분/128개까지 메모리에 보관하고,
+Core의 `SupportProgramSearchPreviewService`가 `SupportProgramSearchResultRepository`를 통해 원본 결과·검색 조건을 Redis에 30분 보관하고,
 브라우저에는 공개 2건과 난수 `resultToken`, `expiresAt`만 전달합니다. 잠긴 카드에는 원본 내용을 전달하지 않습니다.
 
 ```text
 선택한 잠금 카드 → 회원가입/로그인 → POST /api/v1/support-programs/search/results
   → SupportProgramController → SupportProgramSearchPreviewService
-    → 세션 인증·토큰 만료·소유 계정 확인 → 보관된 전체 결과와 검색 조건
+    → SupportProgramSearchResultRepository → Redis: Lua로 토큰 만료·소유 계정 확인 및 최초 계정 연결
+      → 보관된 전체 결과와 검색 조건 (회원 세션 인증은 기존 MySQL 경로)
 ```
 
 복원은 추가 검색·임베딩·랭킹 호출 없이 같은 결과를 반환하며 첫 조회 계정에 토큰을 귀속시킵니다.
-같은 계정의 재시도는 허용하지만 만료·퇴거·서버 재시작·다른 계정의 조회는 410으로 명시합니다.
-보관은 단일 Core 프로세스에 한정되며 검색·복원 응답에는 `Cache-Control: no-store`를 설정합니다.
+같은 계정의 재시도는 허용하지만 만료·미존재·다른 계정의 조회는 410으로 명시합니다.
+`govbiz:search-result:v1:{SHA-256(token)}` 키의 JSON·소유 계정·TTL을 함께 관리하므로 Core 재시작·여러 Core 사이에서
+상태를 공유합니다. TTL과 응답 `expiresAt`은 Redis 시계 기준의 고정 30분이며 복원으로 연장하지 않습니다.
+기존 128건 조기 퇴거 대신 Redis `128mb/noeviction`과 개별 JSON 2MiB 제한을 사용합니다. 저장소 장애·용량 초과는
+503 `SUPPORT_PROGRAM_SEARCH_RESULT_STORE_UNAVAILABLE`이고 로컬 메모리 fallback/자동 재검색은 없습니다.
+Compose는 Redis 8.2.9·AOF 볼륨(`everysec`)을 사용하므로 Redis 컨테이너 재생성 후에도 볼륨이 남으면 복원되지만,
+비정상 종료 시 최근 약 1초의 결과/계정 연결이 유실될 수 있습니다. 다중 Redis 복제/고가용성은 아직 구현하지 않습니다.
+Lettuce 전용 DNS 캐시는 최대 5초로 제한해 Redis 컨테이너 교체로 IP가 바뀌어도 재연결할 때 새 주소를 확인합니다.
+대화 기록 원본과 회원 세션은 MySQL을 유지하고, AI 랭킹·임베딩 캐시는 기존 AI Service 메모리에 둡니다.
+Redis 추가는 첫 검색을 빠르게 하는 변경이 아니며 검색·복원 응답에는 `Cache-Control: no-store`를 설정합니다.
 일일 리포트·평가는 기존 내부 `SupportProgramSearchService`를 계속 사용하고, 공개 카탈로그·상세 조회는 이 제한과 분리합니다.
+파일별 책임·저장 구조·TTL·계정 경합·장애·설정·검증은 [Redis 적용 상세](redis-search-result-restoration.md)에 정리합니다.
 
 Web의 POST 검색은 `query`와 선택적인 `companyConditions`를 따로 보냅니다. Core의 공개 DTO는
 날짜·길이·문자 입력을 검증한 뒤 조건 Domain 모델로 변환합니다. 검색 Service는 요청별 서울 날짜를
 한 번 정하고, 후보 검색에는 조건을 포함한 검색문을, Ranking Facade에는 원래 질의와 구조화된 조건을
-전달합니다. Facade가 AI 전용 DTO로 바꿉니다. 조건은 Repository에 저장하지 않으며 SQL·동기화·스키마는
+전달합니다. Facade가 AI 전용 DTO로 바꿉니다. 이 검색 요청의 조건을 지원사업 원본 Repository나 계정·기업 DB에
+저장하지는 않지만, 로그인 복원용 Redis 스냅샷에는 함께 보관합니다. 검색 조건 도입으로 SQL·동기화·스키마는
 변경하지 않습니다. 조건이 없는 GET 및 비웹 평가 호출은 기존 단문 경로를 유지합니다.
 
 1. Repository는 `is_source_present = TRUE`이고 제공처의 공개 세대·지문이 있는 공고를 읽습니다. 자연어 검색은

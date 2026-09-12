@@ -1,6 +1,6 @@
 package ai.govbiz.core.supportprogram.domain
 
-/** 한 번의 대화 해석에 사용하는 작은 검색 상태이며 서버에 저장하지 않습니다. */
+/** 한 번의 대화 해석에 사용하는 검색 상태입니다. 로그인 복원용 임시 스냅샷에도 포함됩니다. */
 data class SupportProgramConversationContext(
     val query: String?,
     val acceptingOnly: Boolean,
