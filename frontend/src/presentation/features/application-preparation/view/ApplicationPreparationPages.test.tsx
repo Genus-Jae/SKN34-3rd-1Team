@@ -15,7 +15,9 @@ import { ApplicationPreparationEditorPage, ApplicationPreparationListPage } from
 
 const original = appContainer.resolve('applicationPreparationUseCase')
 const originalCatalog = appContainer.resolve('browseSupportProgramsUseCase')
+const originalSavedPrograms = appContainer.resolve('browseSavedSupportProgramsUseCase')
 const browsePrograms = vi.fn()
+const browseSavedPrograms = vi.fn()
 const firstForm: ApplicationForm = {
   formVersionId: 'verified-form-v1',
   sourceCode: 'BIZINFO',
@@ -100,9 +102,11 @@ beforeEach(() => {
     programs: [structuredClone(supportPrograms[0])], total: 1, page: 1, pageSize: 10, totalPages: 1,
     regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
   })
+  browseSavedPrograms.mockResolvedValue([])
   appContainer.register({
     applicationPreparationUseCase: asValue(new ApplicationPreparationUseCase(repository)),
     browseSupportProgramsUseCase: asValue({ execute: browsePrograms }),
+    browseSavedSupportProgramsUseCase: asValue({ execute: browseSavedPrograms }),
   })
 })
 
@@ -111,6 +115,7 @@ afterEach(() => {
   appContainer.register({
     applicationPreparationUseCase: asValue(original),
     browseSupportProgramsUseCase: asValue(originalCatalog),
+    browseSavedSupportProgramsUseCase: asValue(originalSavedPrograms),
   })
 })
 
@@ -229,6 +234,23 @@ describe('application preparation list', () => {
 })
 
 describe('application preparation creation and detail', () => {
+  it('selects a notice from saved programs without searching the catalog', async () => {
+    const program = { ...structuredClone(supportPrograms[0]), sourceCode: 'KSTARTUP', id: '177911', title: '관심 창업 지원 공고' }
+    const form = { ...structuredClone(firstForm), sourceCode: 'KSTARTUP', sourceProgramId: program.id }
+    browseSavedPrograms.mockResolvedValueOnce([{ savedAt: '2026-09-12T10:00:00+09:00', program }])
+    repository.discover.mockResolvedValueOnce({ items: [form], warnings: [], cached: false })
+    mount('/app/application-preparations/new')
+
+    const savedPrograms = await screen.findByRole('list', { name: '신청 문서 관심 공고 목록' })
+    fireEvent.click(within(savedPrograms).getByRole('button', { name: '관심 창업 지원 공고 관심 공고 선택' }))
+
+    expect(browsePrograms).not.toHaveBeenCalled()
+    expect((screen.getByLabelText('K-Startup 공식 공고 ID') as HTMLInputElement).value).toBe('177911')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+    await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })
+    expect(repository.discover).toHaveBeenCalledWith('KSTARTUP', '177911', expect.any(AbortSignal))
+  })
+
   it('searches the catalog and discovers documents only after the user selects a notice', async () => {
     const program = { ...structuredClone(supportPrograms[0]), sourceCode: 'BIZINFO', id: 'PBLN_123' }
     browsePrograms.mockResolvedValueOnce({
