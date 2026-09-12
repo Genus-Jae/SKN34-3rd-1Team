@@ -8,7 +8,7 @@
 - 자연어 지원사업 검색과 추천 이유·점수 표시
 - 공고 상세 조회와 신청 기간·접수 상태 확인
 - 기업마당 공식 원문 기반 질문·답변과 근거 인용
-- 공고 자동 동기화, 벡터 색인 복구, 검색 준비 상태 안내
+- 공고 자동 동기화, 키워드·벡터 색인 복구, 검색 준비 상태 안내
 - 검색 취소·재시도·새 검색 초기화, 현재 적용 조건 표시, 요청량·동시 실행 제한
 - 비회원 검색 결과·조건의 30분 임시 보관과 로그인 후 전체 결과 복원
 - 기업 맞춤 일일 리포트와 RabbitMQ 기반 정기 생성 작업 처리
@@ -23,11 +23,17 @@ Redis는 비회원 검색 후 로그인할 때 복원할 전체 추천 결과·�
 첫 AI 검색을 빠르게 하는 캐시는 아니며, 대화 기록·회원 세션·공고 데이터는 MySQL에 유지합니다.
 저장 구조·장애 처리·운영 한계는 [Redis 적용 상세](docs/redis-search-result-restoration.md)를 참고하세요.
 
-한국어 키워드 후보는 **Elasticsearch 9.5.3 + Nori·BM25**로 조회하고 Qdrant 의미 검색 순위와 RRF로 결합합니다.
+## Elasticsearch 적용 범위
+
+공고 원본은 MySQL에 저장합니다. 한국어 키워드 후보는 **Elasticsearch 9.5.3 + Nori·BM25**로 조회하고,
+Qdrant 의미 검색 순위와 RRF로 결합해 후보 최대 20개를 기존 AI 점수화에 전달합니다.
+Elasticsearch와 Qdrant는 MySQL 공고에서 다시 만들 수 있는 검색용 색인이며, 필터 목록·상세·대화 기록 저장소를 대체하지 않습니다.
 공개 전 두 색인을 준비하며, 기존 DB 업그레이드 시 `V24` 적용 후 색인 복구가 필요합니다.
 [적용 구조·실행 설정·업그레이드 주의사항](docs/elasticsearch-lexical-search.md)을 참고하세요.
 [독립 비교 실험](evaluation/support-program-search/elasticsearch/README.md)은 그대로 재실행할 수 있으며
 실험 점수를 실제 AI 최종 추천 정확도로 간주하지 않습니다.
+2026-09-12 구현 검증 종료 시점에는 기존 개발 Docker에 배포하지 않았습니다.
+기존 환경에 적용할 때는 아래 빠른 시작 대신 [백엔드 갱신 절차](infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)를 따르세요.
 
 ## RabbitMQ 적용 범위
 
@@ -47,7 +53,7 @@ Compose는 큐 처리를 기본 활성화하지만 새 정기 예약·메일은 
 
 ## 빠른 시작
 
-Docker·Docker Compose와 공공데이터포털·OpenAI API 키가 필요합니다.
+처음 설치하는 개발 환경의 실행 방법입니다. Docker·Docker Compose와 공공데이터포털·OpenAI API 키가 필요합니다.
 저장소 루트에서 실행하며, 기존 `.env`가 있으면 유지합니다.
 
 ```bash
@@ -59,8 +65,9 @@ docker compose --env-file .env --file infrastructure/compose.yaml up --build
 [http://127.0.0.1:5173](http://127.0.0.1:5173)에서 접속합니다.
 첫 실행은 공고 수집·색인 완료까지 기다려야 하며, 임베딩·AI 답변에는 OpenAI 사용 비용이 발생합니다.
 이 구성은 로컬 개발용입니다. 환경변수·중지·키 없는 통합 검증은 [실행 안내](infrastructure/README.md)를 참고하세요.
-실행 중인 개발 스택에서 코드를 갱신한 뒤에는 [백엔드 이미지 갱신 절차](infrastructure/README.md)로
-Core·AI만 교체해야 Frontend와 API 버전이 어긋나지 않습니다.
+실행 중인 개발 스택에서는 [백엔드 이미지 갱신 절차](infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)로
+누락된 데이터 서비스를 먼저 준비한 뒤 Core·AI를 교체합니다. Health 응답만으로 검색 준비가 끝났다고 판단하지 않고
+`/api/v1/support-programs/readiness`의 제공처별 상태까지 확인합니다.
 
 ## 상세 문서
 
@@ -68,7 +75,8 @@ Core·AI만 교체해야 Frontend와 API 버전이 어긋나지 않습니다.
 |---|---|
 | [아키텍처 README](docs/architecture/README.md) | 서비스 구성, 계층·DI·MVVM·Flux·Facade·Agent 설계 |
 | [호출·데이터 흐름](docs/architecture.md) | 검색·동기화·RAG·장애 처리의 실행 순서 |
-| [기술 구성](docs/technology.md) | 기술 스택·버전과 MySQL·Qdrant·Redis의 역할 |
+| [기술 구성](docs/technology.md) | 기술 스택·버전과 MySQL·Elasticsearch·Qdrant·Redis·RabbitMQ의 역할 |
+| [Elasticsearch 적용 상세](docs/elasticsearch-lexical-search.md) | Nori·BM25 후보 검색, 버전 일치·두 색인 복구, V24 업그레이드·검증·한계 |
 | [Redis 적용 상세](docs/redis-search-result-restoration.md) | 로그인 후 검색 결과 복원, 저장 구조·TTL·계정 소유권·장애·검증 |
 | [RabbitMQ 적용 상세](docs/rabbitmq-daily-report-generation.md) | 정기 리포트 생성, Outbox·중복·재시도·실행 불명·운영·검증 |
 | [구현 현황](docs/implementation-status.md) | 완료 단계·검증 결과·현재 한계·다음 작업 |

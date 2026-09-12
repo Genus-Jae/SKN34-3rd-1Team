@@ -1,6 +1,6 @@
 # GovBiz Core API
 
-브라우저에 공개하는 Spring Boot API입니다. 기업마당·K-Startup·과기정통부·충청남도 수출입공지 수집기를 제공하며, 벡터 색인을 준비한 뒤 MySQL에
+브라우저에 공개하는 Spring Boot API입니다. 기업마당·K-Startup·과기정통부·충청남도 수출입공지 수집기를 제공하며, Elasticsearch 키워드·Qdrant 벡터 색인을 준비한 뒤 MySQL에
 공개하고, 저장된 공고의 검색·상세 조회와 기업마당 공식 원문 근거 질문을 담당합니다.
 
 프로젝트 전체 설명은 [메인 README](../../README.md), 계층·Facade·DI 설계는
@@ -131,6 +131,9 @@ JDK 21과 MySQL 8.4가 필요합니다. 실제 공고 동기화·자연어 검�
 
 저장소 루트에서 다음 명령으로 실행합니다. 네이티브 실행은 루트 `.env`를 자동으로 읽지 않으므로
 필요한 환경변수를 현재 프로세스에 설정해야 합니다.
+Core를 호스트에서 직접 실행할 때 `ELASTICSEARCH_BASE_URL`은 **호스트에서 접근 가능한 Nori 설치 ES**를
+가리켜야 합니다. 기본 Compose의 ES는 9200을 호스트에 공개하지 않으므로 `bootRun`만으로 그 컨테이너에
+연결되지는 않습니다. 전체 Compose 실행을 우선 사용하고, 별도 ES를 쓰는 경우 주소·인증·Nori 설정을 명시합니다.
 
 ```bash
 cd backend/core-api
@@ -499,8 +502,12 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 | `AI_COMBINATION_REVIEW_READ_TIMEOUT` | `75s` | 중복 지원·수혜 분석 전용 응답 제한시간 |
 | `AI_RANKING_READ_TIMEOUT` | `55s` | 지원사업 최종 점수화 전용 응답 제한시간 |
 | `AI_SEMANTIC_SEARCH_READ_TIMEOUT` | `30s` | 의미 검색·색인 응답 제한시간 |
-| `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | 이미 공개된 공고의 누락 벡터 자동 복구 여부 |
-| `SUPPORT_PROGRAM_INDEX_INITIAL_DELAY` | `PT0S` | 첫 누락 벡터 복구까지의 지연 |
+| `ELASTICSEARCH_BASE_URL` | `http://127.0.0.1:9200` | 호스트 실행 시 키워드 색인·검색 주소. Compose는 `http://elasticsearch:9200`으로 고정 |
+| `ELASTICSEARCH_INDEX_NAME` | `govbiz-support-program-lexical-v1` | 단일 키워드 인덱스 이름. 분석기 변경은 새 버전 인덱스·재색인 필요 |
+| `ELASTICSEARCH_API_KEY` | 빈 값 | 선택 API Key. 개발 Compose는 인증 비활성이며 실제 키는 secret으로 주입 |
+| `ELASTICSEARCH_CONNECT_TIMEOUT` / `ELASTICSEARCH_READ_TIMEOUT` | `2s` / `10s` | ES 연결·읽기 제한시간 |
+| `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | 현재 공고의 Elasticsearch·Qdrant 확인·복구 여부. 새 공고 공개 전 필수 색인은 유지 |
+| `SUPPORT_PROGRAM_INDEX_INITIAL_DELAY` | `PT0S` | 첫 키워드·벡터 색인 복구까지의 지연 |
 | `SUPPORT_PROGRAM_INDEX_FIXED_DELAY` | `PT1M` | 이전 복구 작업 종료 후 다음 실행까지의 지연 |
 | `APP_CORS_ALLOWED_ORIGIN` | `http://localhost:5173` | 허용할 Web origin |
 
@@ -510,8 +517,9 @@ Compose는 일부 주소·CORS 값을 내부 네트워크에 맞게 덮어씁니
 의미 검색·색인의 `aiSemanticSearchRestClient` `30s`는 유지합니다. 대화 조건 해석·원문 근거 답변의
 AI 모델·Agent 제한도 기존 `25s`·`30s`이며 Health와 함께 공유 Core 제한을 사용합니다.
 중복 검토는 AI 모델 `60s`·Agent 실행 `70s`보다 긴 `aiCombinationReviewRestClient` `75s`를 사용합니다.
-검색은 의미 검색과 점수화를 순서대로 호출하므로 브라우저 검색 제한은 두 Core 읽기 제한
-`30s + 55s`에 여유를 둔 `90s`입니다. 이 값은 요청 제한이며 응답시간 보장은 아닙니다.
+검색은 ES 키워드 검색 → 의미 검색 → 점수화를 순서대로 호출합니다. 각 Core 읽기 제한은
+`10s`·`30s`·`55s`이며, 브라우저 제한은 기존 `90s`를 유지합니다. 따라서 모든 단계의 최대 대기시간을
+보장하지 않으며 브라우저가 먼저 취소할 수 있습니다. 이 값은 요청 제한이며 응답시간 목표가 아닙니다.
 AI의 HTTP 504나 Core 읽기 시간 초과는 기존대로 `TIMEOUT → 504 AI_SERVICE_TIMEOUT`으로 전달하며
 빈 결과·일반 장애로 바꾸지 않습니다. 후보 수·모델·프롬프트·원문 자격 판단 계약은 바꾸지 않습니다.
 
@@ -540,13 +548,14 @@ supportprogram/
 │   ├── saved              # 회원의 관심 공고함(담기·빼기·목록)
 │   ├── readiness          # 제공처별 준비 상태와 전체 검색 범위 집계
 │   ├── evidence           # 공식 원문 캐시·청킹 → 근거 검색·답변
-│   ├── sync               # 수집·색인 준비·DB 공개와 별도 벡터 복구
+│   ├── sync               # 수집·두 색인 준비·DB 공개와 별도 키워드/벡터 복구
 │   ├── evaluation         # 비웹 fixture 내보내기·검색 품질 평가 캡처 프로필
 │   └── dto                # 검증된 내부 실행 결과
 ├── facade                 # 기업마당 수집·공식 원문·AI 응답 검증·도메인 변환
 ├── client/
 │   ├── bizinfo            # 기업마당 HTTP·목록/공식 HTML 검증·외부 DTO 정규화
 │   ├── kstartup           # K-Startup 페이지 검증·공식 상세 URL·원문 대상·전용 분류 정규화
+│   ├── elasticsearch      # Nori·BM25 색인/검색 HTTP, DTO·Mapper·설정·예외
 │   └── ai                 # AI 내부 HTTP 계약·조건 해석·공고/원문 청크 색인과 답변
 ├── repository            # 도메인↔DB 행 변환·트랜잭션·저장·조회
 │   └── mapper            # MyBatis Mapper, DbRow
@@ -636,11 +645,12 @@ SQL은 [`SupportProgramMapper.xml`](src/main/resources/mybatis/supportprogram/re
 - 검색·색인 흐름은 [아키텍처](../../docs/architecture.md)에, 20,000건 상한·자동 벡터 삭제 미연결 등
   현재 제약은 [구현 현황](../../docs/implementation-status.md)에 정리합니다.
 
-AI 경계의 실패는 `application/problem+json`으로 변환합니다. 내부 URL·라이브러리 예외는 공개하지 않습니다.
+검색·AI 외부 경계의 실패는 `application/problem+json`으로 변환합니다. 내부 URL·라이브러리 예외는 공개하지 않습니다.
 
-| AI 호출에서 관측한 상황 | 공개 HTTP | `code` |
+| 관측한 상황 | 공개 HTTP | `code` |
 |---|---:|---|
-| 내부 503 또는 연결 불가 | 503 | `AI_SERVICE_UNAVAILABLE` |
+| Elasticsearch 통신·시간 초과·부분 실패·문서 버전/가시성 검증 실패 | 503 | `SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE` |
+| AI 내부 503 또는 연결 불가, 기존 공고가 있지만 준비된 제공처가 없는 자연어 검색 | 503 | `AI_SERVICE_UNAVAILABLE` |
 | 조건 해석·점수화·색인 API의 내부 408·504 또는 연결·읽기 시간 초과 | 504 | `AI_SERVICE_TIMEOUT` |
 | 예상하지 않은 HTTP 상태 | 502 | `AI_SERVICE_UPSTREAM_ERROR` |
 | 잘못된 JSON·빈 body·응답 계약 위반 | 502 | `AI_SERVICE_INVALID_RESPONSE` |
@@ -651,6 +661,9 @@ AI Service는 시간 초과 외 LLM 실행 실패와 색인 미준비·Qdrant �
 됩니다. 조건 해석·점수화의 모델·HTTP·Agent 시간 초과는 내부 504 → 공개 `504 AI_SERVICE_TIMEOUT`으로
 구분합니다. Health API의 내부 408·504는 점수화 API와 달리 `UPSTREAM_ERROR`로 분류합니다.
 기업마당 수집 오류는 검색 요청에서 발생하는 오류가 아니라 백그라운드 작업의 실패로 기록됩니다.
+Elasticsearch 실패는 AI 오류와 별도 경계이며 ES 직접 시간 초과도 위 503으로 반환합니다.
+복구가 모든 제공처를 미준비로 기록한 뒤에는 검색의 사전 검사에서 `AI_SERVICE_UNAVAILABLE`이 나올 수 있습니다.
+두 오류 모두 빈 검색 결과로 숨기지 않으며, 자세한 구분은 [키워드 색인 복구·장애 계약](../../docs/elasticsearch-lexical-search.md#동기화준비-상태복구)을 참고하세요.
 
 ## 검증
 

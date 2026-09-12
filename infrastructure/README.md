@@ -144,8 +144,12 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `EMBEDDING_TIMEOUT_SECONDS` | `15` | OpenAI 임베딩 호출 제한시간(초) |
 | `QDRANT_TIMEOUT_SECONDS` | `5` | Qdrant 요청 제한시간(초) |
 | `QDRANT_HOST_PORT` | `6333` | Host loopback에 연결할 Qdrant 포트 |
-| `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | MySQL 현재 공고의 누락 벡터 정기 복구 여부. 기업마당 동기화의 사전 색인은 중지하지 않음 |
-| `SUPPORT_PROGRAM_INDEX_INITIAL_DELAY` | `PT0S` | 앱 시작 시 스케줄러의 첫 벡터 복구까지의 기간 |
+| `ELASTICSEARCH_BASE_URL` | Compose에서 `http://elasticsearch:9200` 고정 | Core의 키워드 색인·검색 주소. `.env`로 덮어쓰지 않으며 호스트 실행은 Core README 참고 |
+| `ELASTICSEARCH_INDEX_NAME` | `govbiz-support-program-lexical-v1` | 단일 키워드 인덱스 이름. 분석기 변경은 새 버전 인덱스와 재색인 필요 |
+| `ELASTICSEARCH_API_KEY` | 빈 값 | 인증을 별도로 구성한 ES의 API Key. 개발 Compose는 인증 비활성 |
+| `ELASTICSEARCH_CONNECT_TIMEOUT` / `ELASTICSEARCH_READ_TIMEOUT` | `2s` / `10s` | Core의 ES 연결·읽기 제한시간 |
+| `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | MySQL 현재 공고의 Elasticsearch·Qdrant 정기 확인·복구 여부. 공개 전 필수 색인은 중지하지 않음 |
+| `SUPPORT_PROGRAM_INDEX_INITIAL_DELAY` | `PT0S` | 앱 시작 시 첫 키워드·벡터 색인 복구까지의 기간 |
 | `SUPPORT_PROGRAM_INDEX_FIXED_DELAY` | `PT1M` | 이전 복구 완료 뒤 다음 실행까지의 기간 |
 | `APP_CORS_ALLOWED_ORIGIN` | `http://127.0.0.1:5173` | Compose에서 Core API가 허용할 브라우저 origin |
 | `MYSQL_DATABASE` | `govbiz` | MySQL 초기 데이터베이스 이름 |
@@ -159,12 +163,14 @@ OpenAI는 공고 임베딩과 후보 점수화의 필수 의존성입니다. 키
 전달합니다. 후보 점수화는 모델 `45s` → Agent 실행 `50s` → Core 전용 읽기 `55s` 순서입니다.
 조건 해석·원문 근거 답변은 기존 모델 `25s` → Agent 실행 `30s` → Core 읽기 `35s`를 유지합니다.
 중복 지원 검토는 긴 공식 원문 분석을 위해 모델 `60s` → Agent 실행 `70s` → Core 전용 읽기 `75s`를 사용합니다.
-검색 화면은 순차적인 의미 검색과 점수화의 Core 읽기 제한 `30s + 55s`에 여유를 둔 `90s` 후
-요청을 취소하고 수동 재시도를 허용합니다. 시간 초과는 성공이나 빈 결과로 바꾸지 않고 명시적인 오류로
+검색 화면의 요청 제한은 기존 `90s`를 유지합니다. 현재 순서는 ES 키워드 검색 → 의미 검색 → 점수화이며
+Core 읽기 제한은 각각 `10s`·`30s`·`55s`입니다. 브라우저 제한은 이 상한의 합보다 짧으므로
+모든 단계를 최대 시간까지 기다려 주는 보장은 아닙니다. 요청 제한에 도달하면 취소하고 수동 재시도를 허용합니다.
+시간 초과는 성공이나 빈 결과로 바꾸지 않고 명시적인 오류로
 반환합니다. 이 값은 대기 상한이지 응답속도 목표가 아니며 자동 재시도는 하지 않습니다.
 기존 `.env`나 서버 환경변수에 예전 제한시간을 지정했다면 기본값보다 우선하므로 직접 갱신해야 합니다.
-랭킹 시간 예산은 별도 변수로 조정하며, 변경할 때는 모델 < Agent < Core 읽기 및
-의미 검색 + 점수화 < 화면 상한의 관계도 함께 유지해야 합니다.
+랭킹 시간 예산은 별도 변수로 조정하며 모델 < Agent < Core 읽기 관계를 유지합니다.
+전체 대기 정책을 바꿀 때는 ES·의미 검색·점수화와 DB/연결 시간을 함께 계산하고 브라우저 취소 시점도 검증해야 합니다.
 
 공고 색인에도 OpenAI 임베딩 비용이 발생합니다. 신규·변경된 검색용 텍스트만 임베딩하며, 동일 내용은
 Qdrant에 저장된 벡터를 재사용합니다. 의미 검색·색인 API의 전체 제한시간은 최대 25초이며 Core의
@@ -175,22 +181,24 @@ Qdrant에 저장된 벡터를 재사용합니다. 의미 검색·색인 API의 �
 상태로 중지·재시작한 뒤 검색이 복구되는지도 확인합니다.
 
 Core API는 기본 설정에서 앱 시작 시 초기 지연 `PT0S`로 기업마당 공고 동기화를 실행하고, 동기화 완료 시점부터
-6시간 뒤에 다시 실행합니다. 전체 페이지 수집·검증과 새 공고의 벡터 색인이 성공한 뒤 MySQL
+6시간 뒤에 다시 실행합니다. 전체 페이지 수집·검증과 새 공고의 Elasticsearch·Qdrant 색인이 모두 성공한 뒤 MySQL
 카탈로그를 한 transaction으로 갱신합니다. 외부 호출·색인 실패 시 이전 MySQL 카탈로그를 유지하고,
 더 최신 동기화가 시작되었다면 오래된 실행 결과는 공개하지 않습니다. 사용자 검색은 MySQL을 읽고
 기업마당 API를 직접 호출하지 않습니다. 로컬에서 자동 동기화를 끄려면 `.env`에 `BIZINFO_SYNC_ENABLED=false`를
 설정합니다. 이 경우 기존 카탈로그는 검색할 수 있지만 새 공고는 갱신되지 않습니다.
 
-별도 벡터 복구 스케줄러는 MySQL의 현재 공고를 기본 1분 주기로 확인하고 누락된 벡터를 채웁니다.
-새 동기화 데이터는 벡터 준비 후 MySQL에 공개되므로, 통상적인 공고 변경 때문에 미완성 색인이
-검색에 노출되지는 않습니다. Qdrant 데이터 유실이나 기존 DB의 색인 미완료로 검색 대상 공고의 벡터가
-부족하면 자연어 검색은 503을 반환합니다. 최초 카탈로그가 아직 비어 있으면 검색 결과도 빈 목록입니다.
-빈 검색어의 최신 목록과 상세 조회는 Qdrant·OpenAI 없이 MySQL에서 반환합니다.
+별도 색인 복구 스케줄러는 MySQL의 현재 공고를 기본 1분 주기로 확인하고 Elasticsearch 누락 버전과
+Qdrant 누락 벡터를 순서대로 채웁니다. 두 색인 준비 후 MySQL에 공개하므로, 통상적인 공고 변경 때문에
+미완성 색인이 검색에 노출되지는 않습니다. 색인 누락·유실·장애를 정상적인 빈 결과로 처리하지 않습니다.
+복구 실패로 일부 제공처만 준비됐다면 그 범위만 검색하며, 기존 공고가 있는데 준비된 제공처가 없으면 자연어 검색은 503입니다.
+빈 검색어의 최신 목록·필터 목록·상세 조회는 Elasticsearch·Qdrant·OpenAI 없이 MySQL에서 반환합니다.
 
 현재 작업은 오래된 벡터를 자동 삭제하지 않습니다. 검색할 때 현재 공고 식별자·내용 해시와 일치하는
 벡터만 선택하며, 삭제 없는 복구로 겹치는 동기화 실행이 서로의 벡터를 지우는 일을 방지합니다.
 오래된 벡터의 안전한 정리는 후속 과제입니다. `SUPPORT_PROGRAM_INDEX_ENABLED=false`는 정기 복구만
-중지하며 기업마당 동기화의 사전 색인이나 자연어 검색의 Qdrant 의존성을 없애지 않습니다.
+중지하며 공개 전 필수 색인이나 자연어 검색의 Elasticsearch·Qdrant 의존성을 없애지 않습니다.
+Elasticsearch도 이전 문서 버전을 자동 삭제하지 않습니다. 구버전 저장량·BM25 통계 영향은
+[색인 수명주기 한계](../docs/elasticsearch-lexical-search.md#실행-설정과-한계)를 참고하세요.
 
 저장소 루트에서 실행합니다.
 
@@ -214,17 +222,45 @@ Compose 네트워크 내부에서 Core API만 호출합니다. Host나 브라우
 
 ### 백엔드 변경 반영과 화면·API 버전 불일치
 
-Redis/RabbitMQ 도입 전부터 실행하던 스택은 먼저 아래 명령으로 없는 서비스를 추가한 뒤 갱신 스크립트를 실행합니다.
-기존 MySQL·Qdrant 볼륨은 건드리지 않습니다. 전환 전 Core 메모리에 있던 검색 토큰은 이전할 수 없으므로
-해당 사용자만 새로 검색해야 합니다. 이후 Redis에 발급한 토큰부터 Core 재시작을 견딥니다.
+#### 1. 기존 프로젝트·설정·데이터 확인
+
+저장소 루트에서 `docker compose ls`로 기존 프로젝트 이름을 확인하고 DB·볼륨을 백업합니다.
+아래 명령은 기본 프로젝트 `govbiz` 기준입니다. 다른 이름이라면 모든 `--project-name`과
+갱신 스크립트의 `GOVBIZ_COMPOSE_PROJECT_NAME`을 **같은 기존 이름**으로 지정합니다.
+기존 `.env`를 새 예제로 덮어쓰지 말고 필요한 설정만 추가합니다.
+
+특히 `DAILY_REPORT_ENABLED=false`만으로 이미 예약된 리포트의 실행을 막을 수는 없습니다.
+`DAILY_REPORT_QUEUE_ENABLED`·SMTP·제공처 수집 설정과 기존 대기 작업을 확인하고, Elasticsearch 도입을
+이유로 작업 스위치를 임의로 켜지 않습니다. 큐의 처리 범위는 [RabbitMQ 문서](../docs/rabbitmq-daily-report-generation.md)를 확인하세요.
+기존 공고의 색인 복구를 진행하기로 했다면 **Core 재시작 전에** `SUPPORT_PROGRAM_INDEX_ENABLED=true`를
+확인합니다. Qdrant 누락 버전의 임베딩 비용이 발생할 수 있으며, 복구를 꺼 두면 V24 적용 후 검색 준비가 자동 회복되지 않습니다.
 
 ```bash
-docker compose --env-file .env --file infrastructure/compose.yaml up --detach --wait redis rabbitmq
+docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml ps --all
 ```
 
-갱신 스크립트는 Redis·RabbitMQ를 포함한 기존 데이터 서비스가 실행 중인지 확인한 후 Core·AI만 교체합니다.
-RabbitMQ만 아직 없다면 위 명령의 서비스 목록을 `rabbitmq`로 지정할 수 있습니다. Core 재빌드 후 Flyway `V23`이
-작업 테이블을 추가합니다. `DAILY_REPORT_ENABLED=false` 등 기존 수집·색인·발송 스위치는 확인 후 유지합니다.
+#### 2. 누락된 데이터 서비스 준비
+
+Elasticsearch가 없는 기존 환경에서는 Nori 설치 이미지를 먼저 빌드·시작합니다. 이미 실행 중이고
+정상이라면 건너뜁니다. 이 명령은 Core·AI를 시작하지 않으며 기존 데이터 컨테이너를 재생성하지 않습니다.
+
+```bash
+docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml up --detach --wait --build --no-deps --no-recreate elasticsearch
+```
+
+Redis·RabbitMQ도 없는 환경이라면 아래 명령을 실행합니다. 둘 중 하나만 없으면 해당 서비스 이름만
+지정해도 됩니다. 기존 컨테이너의 설정 변경·이미지 교체는 `--no-recreate`로 수행되지 않으므로,
+이미 있는 서비스의 업그레이드와 이 최초 추가 절차를 혼동하지 마세요.
+
+```bash
+docker compose --project-name govbiz --env-file .env --file infrastructure/compose.yaml up --detach --wait --no-deps --no-recreate redis rabbitmq
+```
+
+이미 중지된 서비스는 위 명령으로 시작될 수 있습니다. 실행 중인 구버전 Core가 큐에 연결하면 기존 작업을
+처리할 수 있으므로 1번의 설정·대기 작업 확인을 먼저 마칩니다. MySQL·Qdrant와 기존 named volume은
+삭제하지 않습니다. Redis 도입 전 Core 메모리에만 있던 검색 토큰은 이전할 수 없어 새 검색이 필요합니다.
+
+#### 3. Core·AI 재빌드와 Flyway 적용
 
 Web은 소스 디렉터리를 bind mount하여 Vite가 변경을 바로 반영하지만, Core·AI는 이미지 안의 JAR/Python 코드를
 실행합니다. 소스 수정이나 `docker compose restart`만으로 백엔드 코드가 갱신되지는 않습니다.
@@ -247,6 +283,30 @@ GET만 있다면 실행 중인 Core가 구버전인지 확인합니다. Core만 
 `GOVBIZ_COMPOSE_PROJECT_NAME=확인한이름 ./infrastructure/scripts/refresh-backend.sh`로 명시합니다. 스크립트는 해당 프로젝트가
 없거나 예상 서비스 구성이 아니면 빌드·교체 전에 중단합니다. Core 시작 시 기존 설정에 따라 자동 수집·색인이 동작할 수 있고
 OpenAI 임베딩 비용이 발생할 수 있습니다.
+
+Core 시작 시 미적용 migration을 순서대로 적용합니다. `V23`은 리포트 작업 테이블을 추가하고,
+`V24`는 기존 Qdrant 기준의 `index_ready`를 false로 재설정합니다. V24는 공고·대화 기록을 삭제하지 않습니다.
+이후 복구가 완료되기 전까지 자연어 검색이 제한될 수 있습니다.
+
+#### 4. 색인 복구와 검색 준비 확인
+
+1번에서 활성화한 복구는 기본 시작 지연 `PT0S`, 이전 복구 완료 후 간격 `PT1M`으로 실행됩니다.
+공개된 수동 복구 HTTP API는 없습니다. 재시작 이후 `.env` 파일만 고쳐서는 실행 중인 Core의 설정이 바뀌지 않습니다.
+Elasticsearch 준비는 OpenAI를 호출하지 않지만 Qdrant에 없는 버전이 있으면 임베딩 비용이 발생할 수 있습니다.
+비용 확인 전 복구를 꺼 두었다면 V24 적용 후에도 준비 상태가 자동으로 회복되지 않습니다.
+
+기본 Web 포트에서 아래 조회는 상태만 읽으며 새 AI 검색을 실행하지 않습니다. 포트를 바꿨다면 주소도 맞춥니다.
+
+```bash
+curl --fail --silent --show-error http://127.0.0.1:5173/api/v1/support-programs/readiness
+```
+
+- `sources`에서 사용하려는 제공처의 `indexReady=true`를 확인합니다. 최상위 `indexReady=true`는 **한 제공처 이상** 준비됐다는 뜻입니다.
+- `SEARCHABLE_WITH_PARTIAL_SOURCES`는 일부 제공처만 검색 가능, `SEARCHABLE_WITH_SYNC_FAILURE`는 기존 공고는 준비됐지만 최신 동기화는 실패한 상태입니다.
+- `UNAVAILABLE`이면 복구 설정·ES/AI 연결·Core 로그를 확인합니다. `/api/v1/health`의 200이나 ES 컨테이너의 healthy만으로 공고 색인 완료를 판단하지 않습니다.
+- 검증 없이 SQL로 `index_ready=true`를 강제하거나 볼륨을 삭제하지 않습니다. 실제 자연어 검색 확인은 임베딩·AI 점수화 비용을 확인한 뒤 별도로 수행합니다.
+
+오류 코드·버전 일치·복구 방식은 [Elasticsearch 적용 상세](../docs/elasticsearch-lexical-search.md)를 참고하세요.
 
 ### 중지와 데이터 초기화
 
@@ -277,7 +337,7 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 ./infrastructure/scripts/verify-compose.sh
 ```
 
-검증 스크립트는 `verification` profile의 `bizinfo-stub`·`kstartup-stub`·`public-notices-stub`·`openai-stub`을 사용합니다. MySQL·Qdrant·Redis는
+검증 스크립트는 `verification` profile의 `bizinfo-stub`·`kstartup-stub`·`public-notices-stub`·`openai-stub`을 사용합니다. MySQL·Elasticsearch·Qdrant·Redis·RabbitMQ는
 실제 서버이고, 외부 공고·임베딩·점수화 응답만 고정된 가상 자료입니다. 기업마당 공고 27개와 K-Startup 공고 2개를
 수집하고, MSIT 11개(10+1 페이지)와 CNTRADE_NOTICE 2개(1+1 페이지)도 검증합니다.
 네 출처의 관련 공고가 함께 검색되는지, K-Startup 전용 3개 필터가 저장된 분류를 사용하는지,
@@ -301,7 +361,7 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
 4. 동기화된 공고 행이 MySQL에 존재하는지 확인한 뒤 로컬 스텁을 중지하고, 빈 검색어 GET이
    Web → Core API → MySQL 카탈로그를 거쳐 이를 반환하는지 확인합니다. 이 검색 요청은 로컬 스텁을
    직접 호출하지 않으며, 더미 OpenAI 키도 외부로 보내지 않습니다.
-5. 자연어 검색이 Web → Core → MySQL → AI Service → Qdrant → 점수화를 거쳐 오래된 관련 공고를 반환하는지 확인합니다.
+5. 자연어 검색이 MySQL 대상 조회 → Elasticsearch 키워드 검색 → AI Service/Qdrant 의미 검색 → RRF 결합 → 스텁 점수화를 거쳐 오래된 관련 공고를 반환하는지 확인합니다.
 6. Qdrant를 중지하고 정기 복구가 `UNAVAILABLE/indexReady=false`를 기록한 뒤에도 자연어 검색은 503,
    빈 검색어 목록은 기존 공개 공고를 포함한 200인지 확인합니다. 이후 재시작 뒤 검색 복구를 확인합니다.
 7. SampleItem 준비 POST가 200과 `READY_FOR_PROCESSING`을 반환하는지 확인합니다.
@@ -314,6 +374,8 @@ Windows에서는 WSL 등 Bash 환경에서 실행합니다. 루트 `.gitattribut
     RabbitMQ의 quorum 주 큐/DLQ와 소비자 1개 연결도 확인합니다. 검증용 브로커 중단 중 카탈로그가 200을 유지하고,
     같은 브로커 볼륨으로 재생성 후 Core 재시작 없이 소비자가 재연결되는지 확인합니다.
     정기 생성·SMTP는 강제로 끈 상태이며 실제 작업·중복·재발행은 별도의 MySQL·RabbitMQ Testcontainers 테스트에서 검증합니다.
+12. Elasticsearch를 중지하면 자연어 검색이 503이고 MySQL 목록은 유지되는지 확인합니다. 정기 복구의
+    `indexReady=false` 기록과 같은 ES 볼륨으로 컨테이너를 재생성한 후 검색 준비·검색 결과 복구도 확인합니다.
 
 전체 추천·제공처 포함 여부는 테스트 회원 세션으로 확인합니다. 비회원의 공개 2건 제한과 Redis 토큰 발급·복원은
 별도의 익명 요청으로 확인하므로, 숨겨진 공고가 비회원 응답에 나타나야 통과하는 검증을 하지 않습니다.

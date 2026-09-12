@@ -18,6 +18,7 @@
 flowchart LR
     Web[React Web] --> Core[Spring Boot Core API]
     Core --> DB[(MySQL 공고 카탈로그)]
+    Core --> Lexical[(Elasticsearch Nori·BM25 공고 색인)]
     Core --> Redis[(Redis 로그인 복원용 검색 결과·조건)]
     Core <--> RabbitMQ[RabbitMQ 정기 리포트 생성 큐]
     Core --> AI[FastAPI AI Service]
@@ -25,6 +26,7 @@ flowchart LR
     AI --> OpenAI[OpenAI 임베딩·공고 점수화·근거 답변]
     Sync[Core 백그라운드 동기화] --> Source[기업마당·K-Startup 공고 API]
     Sync --> AI
+    Sync --> Lexical
     Sync --> DB
     EvidenceQuestion[공고 질문 페이지의 명시적 질문] --> Core
     Core --> DetailSource[기업마당 공식 HTTPS 상세 HTML]
@@ -33,6 +35,10 @@ flowchart LR
 사용자 요청의 진입점은 Core API입니다. 브라우저가 외부 공고 API나 AI Service를 직접 호출하지 않으며,
 공공데이터포털 인증키와 OpenAI API 키는 서버에서 사용합니다. 공고 수집은 백그라운드에서 수행하고
 사용자 검색은 이미 공개된 MySQL 카탈로그를 읽습니다.
+Core는 현재 공고 버전으로 Elasticsearch 키워드 후보와 AI Service의 Qdrant 의미 후보를 제한하고,
+RRF로 결합한 후보를 AI 점수화에 전달합니다. 동기화도 두 색인을 준비한 뒤 MySQL에 공개합니다.
+MySQL이 원본이며 두 검색 색인은 파생 데이터입니다. 버전·준비 상태·오류 경계는
+[Elasticsearch 적용 상세](../elasticsearch-lexical-search.md)를 참고하세요.
 Redis는 비회원 검색의 전체 추천 결과·조건을 30분 보관하고 로그인 후 복원할 때 사용합니다.
 첫 AI 검색의 캐시나 대화 기록·회원 세션 저장소로 사용하는 것은 아닙니다.
 저장 구조·만료·계정 소유권·장애 처리는 [Redis 적용 상세](../redis-search-result-restoration.md)를 참고하세요.
@@ -226,7 +232,7 @@ Facade는 하위 시스템의 여러 처리 단계를 하나의 진입점으로 
 |---|---|---|
 | `BizInfoSupportProgramCatalogFacade` | Client 전체 조회 → Mapper 정규화·검증 → 외부 예외 변환 | 검증된 카탈로그 목록 또는 카탈로그 예외 |
 | `BizInfoSupportProgramSourceDocumentFacade` | 공식 상세 HTML 수집 → 읽기 가능한 원문 정규화 → 원문 수집 예외 변환 | 특정 기업마당 공고의 검증된 원문 |
-| `AiSupportProgramRetrievalFacade` | 현재 문서 ID·해시 구성 → 의미 검색 응답 검증 → 키워드 순위와 RRF 결합 | 현재 DB에 대응하는 최대 20개 공고 후보 |
+| `AiSupportProgramRetrievalFacade` | 현재 공고의 두 색인 버전 참조 구성 → Elasticsearch 키워드·AI 의미 검색 응답 검증 → RRF 결합 | 현재 DB에 대응하는 최대 20개 공고 후보 |
 | `AiSupportProgramRankingFacade` | AI DTO 생성 → Client 호출 → 버전·점수·자격·추천 이유 검증 | 추천 이유와 점수가 반영된 `SupportProgram` |
 | `AiSupportProgramEvidenceFacade` | 원문 청크 색인·검색·답변 호출 → 청크·점수·인용 범위 검증 | 답변 상태와 공식 원문 인용 |
 
@@ -237,6 +243,8 @@ Facade는 하위 시스템의 여러 처리 단계를 하나의 진입점으로 
 모든 호출에 Facade를 추가하지는 않습니다. 상세 DB 조회는 Service가 Repository를 사용하고,
 간단한 AI Health 호출과 색인 배치 요청은 Service가 Client를 직접 사용합니다. 업무 흐름의
 트랜잭션·동기화 공개 순서도 Facade가 아니라 해당 Service·Repository의 책임입니다.
+`SupportProgramIndexSyncService`도 구체 `ElasticsearchSupportProgramClient`와 `AiSupportProgramIndexClient`를
+직접 호출합니다. 키워드 검색을 위해 전달만 하는 Facade나 범용 검색 provider 계층을 추가하지 않았습니다.
 
 ### Spring 생성자 DI와 계층의 적용 범위
 
