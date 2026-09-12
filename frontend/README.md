@@ -82,7 +82,7 @@ pnpm dev
 나머지 공개 화면은 공용 헤더를, 로그인 뒤 `/app` 화면은 작업 사이드바를 사용합니다.
 로그인한 사용자가 공개 URL(`/`, `/pricing`, `/partners`, 공고 상세)에 오면 같은 내용의 `/app` 화면으로 보내고, 비로그인으로
 `/app`에 오면 `/login?next=`로 보냅니다. 로그인·회원가입·비밀번호 찾기·재설정은 둘 다 쓰지 않는 단독 화면(상단 로고와 가운데
-카드)이며 로그인 상태에서는 작업 화면으로 돌려보냅니다. `/app/admin/members`는 관리자만 엽니다. 경로 상수와 공개↔내부 대응은 `presentation/shared/routes/appPaths.ts`에 있습니다.
+카드)이며 로그인 상태에서는 작업 화면으로 돌려보냅니다. `/app/admin/accounts`(계정 관리)는 관리자만 엽니다. 경로 상수와 공개↔내부 대응은 `presentation/shared/routes/appPaths.ts`에 있습니다.
 
 | 경로 | 껍데기 | 기능 |
 |---|---|---|
@@ -101,7 +101,7 @@ pnpm dev
 | `/reset-password` | 없음 | 메일 링크(`#token=`)로 여는 새 비밀번호 설정. 성공하면 로그인으로 안내 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
 | `/app/application-preparations` | 사이드바 | 내 신청 준비 목록과 생성 ID 커서 페이지. 확인 후 내 작업만 삭제하며 하위 사실·AI 실행 기록도 함께 삭제 |
-| `/app/application-preparations/new` | 사이드바 | 기업마당 공고를 검색·선택하면 선택 공고를 검색 영역 위로 올리고 옆 버튼에서 신청 문서를 찾음. URL·ID 직접 입력은 보조 경로 |
+| `/app/application-preparations/new` | 사이드바 | 전체 제공처 공고를 검색하고 기업마당·과기정통부 공고를 선택해 공식 신청 문서를 찾음. 공고 선택과 발견 문서 확인은 두 단계 화면으로 분리하며 기업마당 URL·ID 직접 입력은 보조 경로 |
 | `/app/application-preparations/:preparationId` | 사이드바 | 공식 문항별 답변을 AI가 사실·미정으로 제안하고, 사용자가 값과 근거를 확인한 항목만 입력 스냅샷으로 저장. 초안은 후속 기능 |
 | `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
 | `/app/partners` | 사이드바(파트너 관리 · 모집글 탭) | 파트너 모집 목록. 검색어·찾는 역할(복수)·지역(복수, 전체가 전국까지 뜻함)은 조회 버튼으로 적용하고 정렬·페이지는 바로 적용해 모집 API 조회(내 글만 보기 칩은 내 모집글 탭으로 대체). 카드는 폭에 따라 3·2·1열, 작성 버튼은 기업 등록 회원만 |
@@ -112,7 +112,8 @@ pnpm dev
 | `/app/proposals` | 사이드바(파트너 관리 · 제안함 탭) | 제안함. 받은 제안 수락·거절, 보낸 제안 철회, 수락된 제안의 상대 담당자 연락처 |
 | `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
 | `/app/profile` | 사이드바 계정 카드 메뉴 | 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정. 완성도와 체크리스트는 맨 위 요약 카드, 이 정보가 쓰이는 곳·공개 범위는 카드 제목 옆 `?` 도움말(한 칸 배치). 나머지 섹션은 준비 중 |
-| `/app/admin/members` | 사이드바 계정 카드 메뉴(관리자) | 하단 관리자 아이디를 눌러 연 메뉴의 `회원·기업`으로 이동. 어드민 회원·기업 목록과 운영 규칙 |
+| `/app/admin/accounts` | 사이드바 계정 카드 메뉴(관리자) | 하단 관리자 아이디를 눌러 연 메뉴의 `회원·기업`으로 이동. 요약 수치, 요약 수치, 검색(이메일·기업명·사업자등록번호)과 상태·권한·로그인 방법 필터·정렬, "검색 결과 N건". 조건은 주소에 남아 상세에서 돌아와도 유지 |
+| `/app/admin/accounts/detail?accountId=...` | 계정 목록 | 머리글 `계정 관리 > 계정 상세`로 목록에 돌아감. 계정·기업·활동·조치 기록과 정지·정지 해제·강제 로그아웃(사유 필수). 내 계정·다른 관리자 계정은 조치 버튼 대신 까닭을 표시. 예전 `/app/admin/members`는 목록으로 보냄 |
 
 `/login`은 실제 Core API 세션에 연결됩니다. 로그인하면 HttpOnly 쿠키 세션이 생기고 새로고침 뒤에도 복원되며,
 잘못된 비밀번호·정지 계정·시도 제한(429)을 구분해 안내합니다. 개발 빌드의 헤더에는 `개발 로그인 · 관리자`와
@@ -138,7 +139,7 @@ pnpm dev
 받은 제안함은 사이드바 배지·제안함 화면·모집글 상세가 함께 읽고 제안함 화면이 수락·거절로 바꾸므로 `presentation/shared/partner-proposal`의
 Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조회, 결과를 slice에 반영)가 소유하고,
 보낸 제안함은 제안함 화면만 쓰므로 `useSentProposalBox`의 Hook 로컬 상태로 둡니다.
-`/app/admin/members`와 추천·매칭은 아직 **데모 단계**라 ViewModel이 예시 값을 돌려줍니다.
+추천·매칭은 아직 **데모 단계**라 ViewModel이 예시 값을 돌려줍니다. 관리자 계정 관리는 Core의 `/api/v1/admin/accounts`를 씁니다.
 지역은 공고 분류와 같은 `domain/entities/Region`의 시·도 목록을 쓰고, 프로필의 정식 명칭은 `toRegionName`으로 바꿉니다.
 모집글 작성·프로필 일치 표시는 `useAuthSession().hasCompany`(기업 등록 여부) 하나로 정하며, 제안 조건(이메일 인증)은 서비스 정책이라 작성자가 고르지 않습니다.
 모집 작성은 `browseSupportProgramsUseCase`로 접수 중 공고를 검색해 고르고 `createPartnerRecruitmentUseCase`로 등록합니다.
@@ -157,11 +158,37 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 선택 메뉴는 연한 초록색 배경·초록색 글자, 준비 중 메뉴는 연한 회색 배경·알약 모양 배지로 구분합니다.
 `지원사업 새검색`은 돋보기 아이콘으로 표시하며 기존 대화·조건 초기화 동작을 유지합니다.
 
+### 로그인 회원의 대화 기록
+
+로그인 작업 사이드바의 `요금제` 아래에 대화 기록을 표시합니다. 첫 전송한 질문을 제목으로 한 대화에 질문·답변·
+미확정 제안·확정 검색 조건·결과를 누적하고, `지원사업 새검색` 후 다음 질문을 전송하면 별도 기록을 만듭니다.
+비로그인 대화와 미전송 초안·빈 새 대화는 저장하지 않습니다. 기록은 기존 MySQL의 `chat_conversation`에 계정별로
+저장하므로 새로고침·재로그인·다른 기기에서도 목록에서 다시 열 수 있습니다. 새 접속 시에는 빈 채팅에서 시작합니다.
+목록은 생성 순서의 최신 30개를 먼저 조회하고 `이전 기록 더 보기`로 이전 기록을 추가합니다.
+
+흐름은 `WorkspaceLayout/useChatHistory → ChatConversationUseCase → ChatConversationRepository → data/api → Core API`입니다.
+기록을 열면 Redux 대화 상태를 복원하고 AI 탭으로 이동합니다. 조회·복원만으로 해석·검색·OpenAI를 호출하지 않습니다.
+기록의 공고 결과는 저장 당시 내용이며 현재 상태·신청 조건은 원문에서 다시 확인하도록 안내합니다.
+중단된 요청은 로딩 대신 명시적인 재시도 안내로 복원하며, 새 대화·기록 전환 시 이전 요청의 늦은 응답을 섞지 않습니다.
+
+저장은 대화별로 직렬화하고 최신 변경을 이어서 반영합니다. 실패 시 현재 창의 내용을 유지하며 저장 오류와 수동 재시도를
+표시합니다. 다른 창의 변경은 `expectedVersion` 충돌(409)로 거절하며 강제로 덮지 않습니다. 충돌 시 현재 내용을 별도로
+보관한 뒤 새로고침하여 서버 기록을 다시 확인해야 합니다. 미저장 상태에서 창을 닫거나 로그아웃하면 확인을 요청합니다.
+한 대화는 메시지 200개·UTF-8 JSON 2,000,000바이트 이내이며 초과분을 조용히 잘라 저장하지 않습니다.
+기록별 삭제·이름 변경은 아직 제공하지 않으며, 계정 탈퇴 시 개인 대화 기록을 함께 삭제합니다.
+
+`src/test/setupChatHistory.ts`는 다른 기능 테스트의 순차 fetch 대역과 백그라운드 기록 API를 격리합니다.
+`App.chatHistory.test.tsx`와 `ChatConversationRepositoryImpl.test.ts`는 이 대역을 해제하여 실제 HTTP·DTO 경로를 검증합니다.
+Core API 코드도 변경되므로 기존 실행 이미지는 재빌드해야 합니다. [백엔드 변경 반영 안내](../infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)를 참고하세요.
+
 신청 문서 작성 도우미는 `View → ViewModel → ApplicationPreparationUseCase → ApplicationPreparationRepository →
-data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 기존 공고 카탈로그를 공고명·기관명으로 검색해 기업마당 공고를
-선택하는 흐름을 기본으로 제공하고, 검색에서 찾지 못한 경우에만 공식 URL·ID 직접 입력을 보조 경로로 제공합니다.
+data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 기존 공고 카탈로그의 모든 제공처를 공고명·기관명으로 검색하고,
+공식 첨부 수집을 검증한 기업마당·과기정통부 공고를 선택하는 흐름을 기본으로 제공합니다. K-Startup과 충남 수출지원 공고는
+검색 결과에서 확인할 수 있지만 안전한 개별 첨부 수집 계약이 없어 `문서 지원 준비 중`으로 표시합니다. 검색에서 찾지 못한
+기업마당 공고만 공식 URL·ID 직접 입력을 보조 경로로 제공합니다.
 공고 선택은 분석을 시작하지 않으며 사용자가 `신청 문서 찾기`를 누를 때만 공식 첨부 분석 POST를 보냅니다. 공고 상세 링크는 공고 식별자를 입력란에만 전달하며 화면 진입으로 분석을
-시작하지 않습니다. 발견 문서·문항을 확인하고 별도 시작 버튼을 눌러야 준비 건을 생성합니다. 목록·상세는 AI Service를
+시작하지 않습니다. 분석이 끝나면 공고 검색 영역을 접고 두 번째 `신청 문서 확인` 단계로 전환하며, 발견 문서·문항을 확인하고
+별도 시작 버튼을 눌러야 준비 건을 생성합니다. 목록·상세는 AI Service를
 호출하지 않고 `institutionReviewed=false`를 표시해 AI 추출과 기관 검수를 구분합니다.
 HTTP·Repository 경계는 목록·양식 endpoint의 404 또는 상세 endpoint의 비계약 404를 구버전 API로 구분해 Core·AI 이미지
 갱신을 안내합니다. 상세가 `APPLICATION_PREPARATION_NOT_FOUND`를 반환한 경우에는 기존처럼 없거나 타인 소유인 신청 준비로
@@ -365,7 +392,7 @@ src/
 ├── presentation/features/public-partner-recruitment/ # 로그인 전 공개 모집 목록·상세 View와 ViewModel
 ├── presentation/features/partner-proposal/ # 제안함(받은·보낸 제안, 수락·거절·철회) View와 ViewModel
 ├── presentation/features/company-profile/ # 기업 등록·기본정보 수정(사업자번호 자동 하이픈·연도 선택기·홈페이지 정규화), 협업·파트너 설정, 계정 보안 모달의 View·ViewModel
-├── presentation/features/admin/ # 어드민 회원·기업 목록 View와 ViewModel
+├── presentation/features/admin/ # 관리자 계정 관리 목록·상세 View와 ViewModel
 ├── presentation/shared/        # 앱 공용 헤더, 작업 사이드바, 로그인 상태(auth slice·훅·라우트 보호), 경로 상수(routes), 파트너 모집 조회 훅·표시 helper, 받은 제안함 slice·훅과 보낸 제안함 훅, 작업 화면 공용 스타일, Core API 상태 표시, 지원사업 공통 오류 안내
 ├── domain/                      # Entity, Repository 계약, UseCase
 └── data/                        # Fetch, Zod DTO 검증, Repository 구현, 테스트 fixture

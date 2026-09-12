@@ -8,6 +8,27 @@
 [기술 구성](../../docs/technology.md)과 [구현 현황](../../docs/implementation-status.md),
 실제 실행 순서는 [호출·데이터 흐름](../../docs/architecture.md)을 참고하세요.
 
+## 계정별 대화 기록
+
+`ai.govbiz.core.chathistory`는 로그인 회원 본인의 대화 스냅샷을 보관합니다. `V19__create_chat_conversation.sql`로
+기존 MySQL에 테이블을 추가하며 기존 migration·공고 데이터는 수정하지 않습니다.
+
+| API | 동작 |
+|---|---|
+| `GET /api/v1/me/chat-conversations?before=123` | 본인 기록 요약 최대 30개와 `nextCursor`. 생성 ID 내림차순, 스냅샷 본문 제외 |
+| `GET /api/v1/me/chat-conversations/{id}` | 본인 기록의 요약·버전·스냅샷 조회 |
+| `PUT /api/v1/me/chat-conversations/{id}` | `{expectedVersion, snapshot}` 저장. 최초 버전 0, 이후 읽은 버전으로 갱신 |
+
+모든 요청은 세션 쿠키와 `X-Chat-Account`(화면 계정 이메일의 URL 인코딩 값)를 보냅니다. 소유자는 세션의 account ID로만
+정하고, 헤더는 다른 탭에서 계정이 바뀐 경우 요청을 차단하는 사전조건입니다. 비로그인·계정 불일치는 401, 타인 기록은
+404, 허용 Origin 없는 상태 변경은 403입니다. 관리자도 타인의 개인 대화를 조회하지 않으며 응답 캐시는 `no-store`입니다.
+
+스냅샷 `schemaVersion=1`, 첫 사용자 메시지 ID와 경로 ID 일치, 메시지 200개·UTF-8 JSON 2,000,000바이트 이하를 검증합니다.
+제목은 첫 질문에서 유니코드 문자 최대 80개로 만듭니다. 이것은 회원이 보관하는 화면 데이터로, 서버가 보증한 검색 결과나
+AI 입력의 신뢰 근거로 사용하지 않습니다. 프론트엔드는 복원 시 DTO·공식 원문 링크 등을 별도로 검증합니다.
+저장 transaction에서 계정 행을 잠그고 버전을 검사합니다. 오래된 다른 내용은 409이며 같은 JSON의 재전송은 멱등입니다.
+계정 탈퇴 이벤트는 같은 transaction에서 대화 기록을 제거합니다. 저장·조회에는 외부 API·OpenAI 호출이 없습니다.
+
 ## 실행
 
 기업 맞춤 리포트는 `ai.govbiz.core.dailyreport`에서 저장된 기업 조건·지원 목적을 기존 검색과 HTML 근거 답변에
@@ -37,14 +58,14 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 쓰기 요청의 기존 Origin 방어를 유지하고 CORS에서 PUT·DELETE를 허용합니다. 상세 JSON·오류 코드는 위 설계 문서에 있습니다.
 
 신청 문서 작성 도우미는 `ai.govbiz.core.applicationpreparation`에 구현합니다. V15는 로그인 계정이
-소유한 신청 준비 건의 공고·양식 버전·분야·입력 revision을 저장합니다. V18은 사용자가 선택한 기업마당 공고의
+소유한 신청 준비 건의 공고·양식 버전·분야·입력 revision을 저장합니다. V18 이후 사용자가 선택한 기업마당·과기정통부 공고의
 공식 PDF/HWPX에서 발견한 신청 문서와 문항을 파일 hash·파서·모델·프롬프트 버전이 고정된 양식 스냅샷으로 저장합니다.
 기존 혁신바우처 manifest는 검수 기준과 기존 준비 건 복원을 위해 유지합니다.
 
 | 신청 준비 API | 동작 |
 |---|---|
 | `GET /api/v1/application-preparations/forms` | 로그인 회원에게 지원 양식·분야·문항 조회. DB·AI 호출 없음 |
-| `POST /api/v1/application-preparations/forms/discover` | 선택한 기업마당 공고의 공식 PDF/HWPX에서 신청 문서·문항을 추출하고 동일 버전 스냅샷 재사용 |
+| `POST /api/v1/application-preparations/forms/discover` | 선택한 기업마당·과기정통부 공고의 공식 PDF/HWPX에서 신청 문서·문항을 추출하고 동일 버전 스냅샷 재사용 |
 | `POST /api/v1/application-preparations` | 공고·양식 버전·지원 분야를 검증해 본인 준비 건 생성. 201·Location·상세 반환 |
 | `GET /api/v1/application-preparations?size=20&beforeId=123` | 본인 준비 건 목록을 생성 ID 내림차순으로 조회 |
 | `GET /api/v1/application-preparations/{id}` | 본인 준비 건과 선택한 버전의 양식 문항 조회. 타인 건과 없는 건은 같은 404 |
@@ -58,8 +79,10 @@ V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 
 `Controller → Service → AI Facade → Client → AI Service`로 실행하고, 제안은 PUT 전까지 사실로 저장하지 않습니다.
 [기능 범위와 후속 경계](../../docs/application-preparation-design.md)를 참고하세요.
 
-자동 수집은 BIZINFO의 숫자형 `PBLN_...` ID와 세부사업 ID가 없는 공고를 지원합니다. 공식 상세에 직접 연결된
-기업마당 PDF/HWPX 및 중기부 사업공고의 PDF/HWPX를 읽습니다. 사용자 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색은 지원하지 않습니다.
+신청 문서 자동 수집은 BIZINFO의 숫자형 `PBLN_...` 공고와 MSIT의 숫자형 사업공고를 지원합니다. 각 제공처의 공식 상세에
+직접 연결된 PDF/HWPX만 읽고 제공처와 원문 호스트·공고 ID가 일치하는지 다시 검증합니다. K-Startup은 공식 사이트의 접속
+대기·차단 응답 때문에 안정적인 첨부 계약을 아직 확보하지 못했고, CNTRADE_NOTICE는 API ID와 개별 상세주소의 대응 계약이
+없어 지원하지 않습니다. 사용자 임의 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색도 지원하지 않습니다.
 같은 공고에 읽을 수 있는 공식 문서가 있으면 크기 제한을 넘거나 텍스트를 추출할 수 없는 첨부는 제외 사유와 파일명을
 `coverageWarnings`에 남기고 분석을 계속합니다. 공고 하나의 모든 지원 형식 첨부가 제외되면 기존처럼 기술 실패로 종료합니다.
 원문·입력·결과는 실행마다 보존하며 기존 검색 Qdrant 색인과 분리됩니다. 자동 수집 근거를 사람 검수 완료로 표시하지 않습니다.
@@ -181,12 +204,15 @@ Controller의 `SupportProgramRequestAdmissionService.execute`가 공개 요청 �
 | `POST /api/v1/auth/login` | 이메일·비밀번호 로그인. 세션 JWT를 HttpOnly 쿠키로만 내려줌 |
 | `POST /api/v1/auth/logout` | 세션 행 삭제와 쿠키 만료 |
 | `GET /api/v1/auth/me` | 세션 쿠키로 현재 계정·권한 단계 조회 |
-| `PUT /api/v1/me/password` | 현재 비밀번호 확인 뒤 변경. 요청한 세션만 남기고 다른 기기 세션 종료 |
+| `PUT /api/v1/me/password` | 로그인 세션으로 본인을 확인해 새 비밀번호만 받아 변경. 요청한 세션만 남기고 다른 기기 세션 종료 |
 | `POST /api/v1/auth/password-reset`, `POST …/confirm` | 로그인 없이 가입 이메일로 30분 일회용 재설정 링크 요청(가입 여부와 무관하게 204), 토큰으로 새 비밀번호 저장(모든 세션 종료) |
 | `GET /api/v1/me/deletion-preview`, `DELETE /api/v1/me` | 삭제 시 닫히는 모집글·제안 수 미리 보기와 계정 삭제(제안 철회·모집글 마감·기업 삭제·세션 삭제·`deleted_at`) |
 | `GET /api/v1/auth/oauth/providers` | 키가 설정된 소셜 로그인 공급자(카카오·Google)와 시작 주소. 설정 확인용이며 화면은 이 목록을 기다리지 않고 두 버튼을 바로 그림 |
 | `GET /api/v1/auth/oauth/{provider}/authorize`, `GET …/callback` | 소셜 로그인 시작(서명한 state 쿠키와 함께 공급자로 302)과 콜백(코드 교환·ID 토큰 확인 뒤 `sub`로 로그인 또는 가입, 세션 쿠키와 함께 프런트로 302). 같은 이메일의 기존 계정에는 자동 연결하지 않음 |
 | `POST /api/v1/auth/dev-login` | `ACCOUNT_DEV_LOGIN_ENABLED=true`일 때만 등록되는 개발용 시드 로그인 |
+| `GET /api/v1/admin/accounts/summary`, `GET /api/v1/admin/accounts` | 관리자 전용(`AdminPrincipal`: 세션 없으면 401, 관리자가 아니면 403). 요약 수치와 계정 목록(검색·상태·역할·로그인 방법·정렬·페이지). 삭제된 계정 제외 |
+| `GET /api/v1/admin/accounts/{id}` | 관리자 전용. 계정·기업·활동 수·최근 조치 기록 20건 |
+| `POST /api/v1/admin/accounts/{id}/suspend` `/unsuspend` `/sessions/revoke` | 관리자 전용. 사유(1~500자) 필수. 정지는 모든 세션 삭제, 자기 계정 422 `ADMIN_SELF_ACTION`, 다른 관리자 422 `ADMIN_TARGET_PROTECTED`, 이미 그 상태면 409. `account_admin_action`에 기록 |
 | `GET /api/v1/me/company/lookup` | 로그인한 회원이 사업자등록번호로 국세청 등록 여부·상호·사업자 상태를 미리 보기(Bizno) |
 | `GET` `POST` `PUT /api/v1/me/company` | 내 기업 조회·등록(계속사업자만, 201)·담당자 입력 항목 수정 |
 | `GET` `PUT /api/v1/me/company/partner-profile` | 협업·파트너 설정(참여 역할·관심 분야·한 줄 소개·역량 태그) 조회·저장. 기업당 한 행 UPSERT |

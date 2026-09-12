@@ -22,6 +22,7 @@ import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachment
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentBlock
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
+import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
@@ -73,7 +74,8 @@ class ApplicationPreparationApiIntegrationTest {
     @Autowired private lateinit var json: ObjectMapper
     @MockitoBean private lateinit var ai: AiApplicationPreparationClient
     @MockitoBean private lateinit var details: SupportProgramDetailService
-    @MockitoBean private lateinit var attachments: BizInfoAttachmentClient
+    @MockitoBean private lateinit var bizInfoAttachments: BizInfoAttachmentClient
+    @MockitoBean private lateinit var msitAttachments: MsitAttachmentClient
     @MockitoBean private lateinit var documentParser: SupportProgramDocumentParser
     private lateinit var owner: Cookie
     private lateinit var other: Cookie
@@ -116,11 +118,30 @@ class ApplicationPreparationApiIntegrationTest {
         )
         val bytes = "official-form".toByteArray()
         `when`(details.get("BIZINFO", DISCOVERY_PROGRAM_ID)).thenReturn(program)
-        `when`(attachments.collect("BIZINFO", DISCOVERY_PROGRAM_ID)).thenReturn(
+        `when`(bizInfoAttachments.collect("BIZINFO", DISCOVERY_PROGRAM_ID)).thenReturn(
             SupportProgramAttachments(
                 program.title,
                 listOf(SupportProgramAttachment("https://www.bizinfo.go.kr/cmm/fms/fileDown.do?atchFileId=FILE_1&fileSn=1", "사업계획서.hwpx", "HWPX", bytes)),
                 listOf("원문 대조 필요"),
+            ),
+        )
+        val msitProgram = program.copy(
+            id = MSIT_PROGRAM_ID,
+            sourceCode = "MSIT",
+            sourceName = "과학기술정보통신부",
+            sourceUrl = MSIT_SOURCE_URL,
+        )
+        `when`(details.get("MSIT", MSIT_PROGRAM_ID)).thenReturn(msitProgram)
+        `when`(msitAttachments.collect("MSIT", MSIT_PROGRAM_ID, MSIT_SOURCE_URL)).thenReturn(
+            SupportProgramAttachments(
+                msitProgram.title,
+                listOf(SupportProgramAttachment(
+                    "https://www.msit.go.kr/ssm/file/fileDown.do?atchFileNo=52935&fileOrd=6&fileBtn=A",
+                    "신청양식.hwpx",
+                    "HWPX",
+                    bytes,
+                )),
+                listOf("과기정통부 원문 대조 필요"),
             ),
         )
         `when`(documentParser.parse(bytes, "HWPX")).thenReturn(
@@ -182,7 +203,7 @@ class ApplicationPreparationApiIntegrationTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content("""{"sourceCode":"BIZINFO","sourceProgramId":"$DISCOVERY_PROGRAM_ID"}"""))
             .andExpect(status().isOk()).andExpect(jsonPath("$.cached").value(true))
-        verify(attachments, times(2)).collect("BIZINFO", DISCOVERY_PROGRAM_ID)
+        verify(bizInfoAttachments, times(2)).collect("BIZINFO", DISCOVERY_PROGRAM_ID)
         verify(ai, times(1)).discover(any(AiApplicationFormDiscoveryRequest::class.java) ?: fallbackDiscoveryRequest())
     }
 
@@ -204,6 +225,19 @@ class ApplicationPreparationApiIntegrationTest {
         mvc.perform(get("$BASE/$id").cookie(owner)).andExpect(status().isOk()).andExpect(content().json(response.contentAsString))
         mvc.perform(get("$BASE/$id").cookie(other)).andExpect(status().isNotFound())
             .andExpect(jsonPath("$.code").value("APPLICATION_PREPARATION_NOT_FOUND"))
+    }
+
+    @Test
+    fun discoversAnMsitOfficialFormThroughTheSameApplicationUseCase() {
+        mvc.perform(post("$BASE/forms/discover").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"sourceCode":"MSIT","sourceProgramId":"$MSIT_PROGRAM_ID"}"""))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].sourceCode").value("MSIT"))
+            .andExpect(jsonPath("$.items[0].sourceProgramId").value(MSIT_PROGRAM_ID))
+            .andExpect(jsonPath("$.items[0].sourceUrl").value(MSIT_SOURCE_URL))
+            .andExpect(jsonPath("$.warnings[0]").value("과기정통부 원문 대조 필요"))
+        verify(msitAttachments).collect("MSIT", MSIT_PROGRAM_ID, MSIT_SOURCE_URL)
     }
 
     @Test
@@ -392,5 +426,7 @@ class ApplicationPreparationApiIntegrationTest {
         const val PROMPT_VERSION = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val DISCOVERY_PROMPT_VERSION = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         const val DISCOVERY_PROGRAM_ID = "PBLN_123456"
+        const val MSIT_PROGRAM_ID = "3186573"
+        const val MSIT_SOURCE_URL = "https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&mId=311&mPid=121&nttSeqNo=3186573&sCode=user"
     }
 }

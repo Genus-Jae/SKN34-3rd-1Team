@@ -47,4 +47,12 @@ interface AccountMapper {
     ): Int
 
     fun deleteSessionsByAccountId(@Param("accountId") accountId: Long): Int
+
+    fun updateAccountLastLoginAt(
+        @Param("accountId") accountId: Long,
+        @Param("lastLoginAt") lastLoginAt: LocalDateTime,
+    ): Int
+
+    /** 삭제·정지되지 않은 관리자 수입니다. */
+    fun countActiveAdmins(): Int
 }

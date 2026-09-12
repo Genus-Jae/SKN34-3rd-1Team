@@ -23,7 +23,8 @@ export const appPaths = {
   proposals: `${APP_PREFIX}/proposals`,
   profile: `${APP_PREFIX}/profile`,
   admin: `${APP_PREFIX}/admin`,
-  adminMembers: `${APP_PREFIX}/admin/members`,
+  adminAccounts: `${APP_PREFIX}/admin/accounts`,
+  adminAccountDetail: `${APP_PREFIX}/admin/accounts/detail`,
   supportProgramDetail: `${APP_PREFIX}/support-programs/detail`,
   supportProgramQuestion: `${APP_PREFIX}/support-programs/detail/question`,
 } as const

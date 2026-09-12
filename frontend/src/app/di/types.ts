@@ -26,6 +26,13 @@ import type {
   GetPartnerRecruitmentDetailUseCase,
   UpdatePartnerRecruitmentUseCase,
 } from '../../domain/usecases/PartnerRecruitmentUseCases'
+import type { AdminAccountRepository } from '../../domain/repositories/AdminAccountRepository'
+import type {
+  BrowseAdminAccountsUseCase,
+  GetAdminAccountDetailUseCase,
+  GetAdminAccountStatsUseCase,
+  TakeAdminAccountActionUseCase,
+} from '../../domain/usecases/AdminAccountUseCases'
 import type {
   BrowsePartnerProposalsUseCase,
   RespondPartnerProposalUseCase,
@@ -58,6 +65,8 @@ export type FetchCoreApiHealth = (signal?: AbortSignal) => Promise<CoreApiHealth
 
 /** Awilix가 생성·연결할 수 있는 전체 의존성 목록입니다. */
 export type AppCradle = {
+  chatConversationRepository: import('../../domain/repositories/ChatConversationRepository').ChatConversationRepository
+  chatConversationUseCase: import('../../domain/usecases/ChatConversationUseCase').ChatConversationUseCase
   applicationPreparationRepository: ApplicationPreparationRepository
   applicationPreparationUseCase: ApplicationPreparationUseCase
   dailyReportRepository: import('../../domain/repositories/DailyReportRepository').DailyReportRepository
@@ -67,6 +76,11 @@ export type AppCradle = {
   reviewRequestJournal: typeof import('../../data/storage/reviewRequestJournal').reviewRequestJournal
   browseSupportProgramsUseCase: BrowseSupportProgramsUseCase
   accountRepository: AccountRepository
+  adminAccountRepository: AdminAccountRepository
+  getAdminAccountStatsUseCase: GetAdminAccountStatsUseCase
+  browseAdminAccountsUseCase: BrowseAdminAccountsUseCase
+  getAdminAccountDetailUseCase: GetAdminAccountDetailUseCase
+  takeAdminAccountActionUseCase: TakeAdminAccountActionUseCase
   browsePartnerProposalsUseCase: BrowsePartnerProposalsUseCase
   browsePartnerRecruitmentsUseCase: BrowsePartnerRecruitmentsUseCase
   companyRepository: CompanyRepository

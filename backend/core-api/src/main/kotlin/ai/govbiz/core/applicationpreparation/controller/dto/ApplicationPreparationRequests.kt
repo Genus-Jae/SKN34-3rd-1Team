@@ -11,8 +11,8 @@ import jakarta.validation.constraints.NotNull
 import jakarta.validation.Valid
 
 data class DiscoverApplicationFormsRequest(
-    @field:NotBlank @field:Pattern(regexp = "BIZINFO") val sourceCode: String,
-    @field:NotBlank @field:Pattern(regexp = "PBLN_[0-9]{1,32}") val sourceProgramId: String,
+    @field:NotBlank @field:Pattern(regexp = "BIZINFO|MSIT") val sourceCode: String,
+    @field:NotBlank @field:Size(max = 255) val sourceProgramId: String,
 )
 
 data class CreateApplicationPreparationRequest(

@@ -3,6 +3,7 @@ package ai.govbiz.core.account.service
 import ai.govbiz.core.account.domain.AccountCredential
 import ai.govbiz.core.account.domain.OAuthLink
 import ai.govbiz.core.account.domain.OAuthProvider
+import ai.govbiz.core.account.domain.AccountRole
 import ai.govbiz.core.account.helper.AccountTestHelper
 import ai.govbiz.core.account.helper.AccountTestHelper.NOW
 import ai.govbiz.core.account.helper.SessionTokenHelper
@@ -11,6 +12,7 @@ import ai.govbiz.core.account.repository.CompanyRepository
 import ai.govbiz.core.account.service.dto.AccountDeletedEvent
 import ai.govbiz.core.account.service.exception.AuthenticationRequiredException
 import ai.govbiz.core.account.service.exception.CurrentPasswordMismatchException
+import ai.govbiz.core.account.service.exception.LastAdminDeletionException
 import ai.govbiz.core.partner.repository.PartnerProposalRepository
 import ai.govbiz.core.partner.repository.PartnerRecruitmentRepository
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -116,7 +118,7 @@ class AccountProfileServiceTest {
         verify(accountRepository).deleteOAuthIdentities(7L)
         verify(accountRepository).deleteAllSessionsByAccountId(7L)
         verify(accountRepository).markDeleted(7L, NOW)
-        verifyNoInteractions(eventPublisher)
+        verify(eventPublisher).publishEvent(AccountDeletedEvent(7L, emptyList()) as Any)
     }
 
     @Test
@@ -150,6 +152,20 @@ class AccountProfileServiceTest {
         service.deleteAccount(account.copy(hasPassword = false), null)
 
         verify(accountRepository, never()).findCredentialByEmail(anyString())
+        verify(accountRepository).markDeleted(7L, NOW)
+    }
+
+    @Test
+    fun deleteAccountRefusesTheOnlyActiveAdminButLetsOneOfSeveralAdminsLeave() {
+        val admin = AccountTestHelper.account(id = 7L, role = AccountRole.ADMIN)
+        stubCredential()
+        doReturn(1).`when`(accountRepository).countActiveAdmins()
+
+        assertThrows(LastAdminDeletionException::class.java) { service.deleteAccount(admin, "password1") }
+        verify(accountRepository, never()).markDeleted(anyLong(), AccountTestHelper.anyValue())
+
+        doReturn(2).`when`(accountRepository).countActiveAdmins()
+        service.deleteAccount(admin, "password1")
         verify(accountRepository).markDeleted(7L, NOW)
     }
 

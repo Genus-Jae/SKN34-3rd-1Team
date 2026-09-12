@@ -12,7 +12,8 @@ import { DailyReportEmailPage } from './presentation/features/daily-report/view/
 import { useReviewSessionIsolation } from './presentation/features/combination-review/viewmodel/useReviewSessionIsolation'
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router'
 
-import { AdminMembersPage } from './presentation/features/admin/view/AdminMembersPage'
+import { AdminAccountDetailPage } from './presentation/features/admin/view/AdminAccountDetailPage'
+import { AdminAccountsPage } from './presentation/features/admin/view/AdminAccountsPage'
 import { ForgotPasswordPage } from './presentation/features/auth/view/ForgotPasswordPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
 import { OAuthCompletePage } from './presentation/features/auth/view/OAuthCompletePage'
@@ -127,7 +128,10 @@ function App() {
 
       <Route element={<RequireAuth minimumTier="ADMIN" />}>
         <Route element={<WorkspaceLayout />}>
-          <Route path={appPaths.adminMembers} element={<AdminMembersPage />} />
+          <Route path={appPaths.adminAccounts} element={<AdminAccountsPage />} />
+          <Route path={appPaths.adminAccountDetail} element={<AdminAccountDetailPage />} />
+          {/* 예전 데모 화면 주소는 계정 관리로 보냅니다. */}
+          <Route path={`${appPaths.admin}/members`} element={<Navigate replace to={appPaths.adminAccounts} />} />
         </Route>
       </Route>
 

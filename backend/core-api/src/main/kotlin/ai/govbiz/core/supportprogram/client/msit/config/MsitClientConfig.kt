@@ -12,4 +12,8 @@ class MsitClientConfig {
     @Bean
     fun msitRestClient(builder: RestClient.Builder, properties: MsitClientProperties): RestClient =
         buildRestClient(builder, properties.baseUrl, properties.connectTimeout, properties.readTimeout)
+
+    @Bean
+    fun msitSourceDocumentRestClient(builder: RestClient.Builder, properties: MsitClientProperties): RestClient =
+        buildRestClient(builder, null, properties.connectTimeout, properties.readTimeout)
 }

@@ -1,4 +1,5 @@
 import { CombinationReviewUseCase } from '../../domain/usecases/CombinationReviewUseCase'
+import { ChatConversationUseCase } from '../../domain/usecases/ChatConversationUseCase'
 import { ApplicationPreparationUseCase } from '../../domain/usecases/ApplicationPreparationUseCase'
 import { DailyReportUseCase } from '../../domain/usecases/DailyReportUseCase'
 import { reviewRequestJournal } from '../../data/storage/reviewRequestJournal'
@@ -24,6 +25,12 @@ import {
   GetPartnerRecruitmentDetailUseCase,
   UpdatePartnerRecruitmentUseCase,
 } from '../../domain/usecases/PartnerRecruitmentUseCases'
+import {
+  BrowseAdminAccountsUseCase,
+  GetAdminAccountDetailUseCase,
+  GetAdminAccountStatsUseCase,
+  TakeAdminAccountActionUseCase,
+} from '../../domain/usecases/AdminAccountUseCases'
 import {
   BrowsePartnerProposalsUseCase,
   RespondPartnerProposalUseCase,
@@ -53,6 +60,7 @@ import type { AppContainer, AppCradle } from './types'
 /** Domain UseCase와 UseCase가 필요로 하는 Repository 연결을 등록합니다. */
 export function registerUseCases(container: AppContainer) {
   container.register({
+    chatConversationUseCase: asFunction(({ chatConversationRepository }: Pick<AppCradle, 'chatConversationRepository'>) => new ChatConversationUseCase(chatConversationRepository)).singleton(),
     applicationPreparationUseCase: asFunction(
       ({ applicationPreparationRepository }: Pick<AppCradle, 'applicationPreparationRepository'>) => new ApplicationPreparationUseCase(applicationPreparationRepository),
     ).singleton(),
@@ -86,6 +94,18 @@ export function registerUseCases(container: AppContainer) {
     ).singleton(),
     sendPartnerProposalUseCase: asFunction(
       ({ partnerProposalRepository }: Pick<AppCradle, 'partnerProposalRepository'>) => new SendPartnerProposalUseCase(partnerProposalRepository),
+    ).singleton(),
+    getAdminAccountStatsUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new GetAdminAccountStatsUseCase(adminAccountRepository),
+    ).singleton(),
+    browseAdminAccountsUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new BrowseAdminAccountsUseCase(adminAccountRepository),
+    ).singleton(),
+    getAdminAccountDetailUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new GetAdminAccountDetailUseCase(adminAccountRepository),
+    ).singleton(),
+    takeAdminAccountActionUseCase: asFunction(
+      ({ adminAccountRepository }: Pick<AppCradle, 'adminAccountRepository'>) => new TakeAdminAccountActionUseCase(adminAccountRepository),
     ).singleton(),
     browsePartnerRecruitmentsUseCase: asFunction(
       ({ partnerRecruitmentRepository }: Pick<AppCradle, 'partnerRecruitmentRepository'>) => new BrowsePartnerRecruitmentsUseCase(partnerRecruitmentRepository),

@@ -154,4 +154,18 @@
         DELETE FROM account_session
         WHERE account_id = #{accountId}
     </delete>
+
+    <update id="updateAccountLastLoginAt">
+        UPDATE account
+        SET last_login_at = #{lastLoginAt}
+        WHERE id = #{accountId}
+    </update>
+
+    <select id="countActiveAdmins" resultType="int">
+        SELECT COUNT(*)
+        FROM account
+        WHERE role = 'ADMIN'
+          AND deleted_at IS NULL
+          AND suspended_at IS NULL
+    </select>
 </mapper>

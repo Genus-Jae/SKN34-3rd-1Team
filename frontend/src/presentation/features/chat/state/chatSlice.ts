@@ -1,30 +1,16 @@
 import { createSelector, createSlice, nanoid, type PayloadAction } from '@reduxjs/toolkit'
 
 import type { RootState } from '../../../../app/store'
+import type { ChatConversationSnapshot, ChatMessage, ChatSearchOptions } from '../../../../domain/entities/ChatConversation'
 import type { RestoredSupportProgramSearchResult, SupportProgramSearchResult } from '../../../../domain/entities/SupportProgramSearchResult'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
-import type { SupportProgramCompanyConditions, SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
+import type { SupportProgramSearch } from '../../../../domain/repositories/SupportProgramRepository'
 import type { SupportProgramConversationContext, SupportProgramInterpretation, SupportProgramInterpretRequest, SupportProgramLastSearch, SupportProgramPendingClarification } from '../../../../domain/entities/SupportProgramConversation'
 import { sessionRestored, signedIn, signedOut } from '../../../shared/auth/state/authSlice'
 import { formatSupportProgramEligibilityCounts } from '../supportProgramEligibility'
 
-export type ChatSearchOptions = {
-  acceptingOnly: boolean
-  companyConditions?: SupportProgramCompanyConditions
-}
-
-export type SupportProgramChatMessage = {
-  id: string
-  role: 'assistant' | 'user'
-  text: string
-  failure?: 'search' | 'interpretation'
-  programs?: SupportProgram[]
-  totalCount?: number
-  resultToken?: string | null
-  expiresAt?: string | null
-  searchOptions?: ChatSearchOptions
-  searchQuery?: string
-}
+export type { ChatSearchOptions } from '../../../../domain/entities/ChatConversation'
+export type SupportProgramChatMessage = ChatMessage
 
 type ChatSearchStatus = 'idle' | 'pending' | 'failed'
 
@@ -39,6 +25,7 @@ type ChatInterpretation = {
 
 type ChatState = {
   accountEmail: string | null
+  isRestoredHistory: boolean
   activeRequestId: string | null
   activeSearchContext: SupportProgramConversationContext | null
   lastSearch: SupportProgramLastSearch | null
@@ -63,6 +50,11 @@ const chatSlice = createSlice({
   name: 'chat',
   initialState,
   reducers: {
+    conversationHistoryOpened(state, action: PayloadAction<{ accountEmail: string; snapshot: ChatConversationSnapshot }>) {
+      if (!state.accountEmail || state.accountEmail !== action.payload.accountEmail) return
+      const { schemaVersion: _version, ...snapshot } = action.payload.snapshot
+      return { ...createInitialState(), ...snapshot, accountEmail: state.accountEmail, isRestoredHistory: true }
+    },
     conversationReset: {
       reducer(state, action: PayloadAction<{ welcomeMessage: SupportProgramChatMessage }>) {
         return { ...createInitialState(action.payload.welcomeMessage), accountEmail: state.accountEmail }
@@ -292,6 +284,7 @@ const chatSlice = createSlice({
 })
 
 export const {
+  conversationHistoryOpened,
   conversationReset,
   searchResultRestored,
   searchResultRestoreFailed,
@@ -327,9 +320,31 @@ export const selectIsReadyToSubmit = createSelector(
 
 export default chatSlice.reducer
 
+/** 요청 중인 기록을 열어도 존재하지 않는 로딩을 복원하거나 AI를 자동 재호출하지 않습니다. */
+export function createChatConversationSnapshot(state: ChatState): ChatConversationSnapshot {
+  const interrupted = state.interpretation.status === 'pending' ? {
+    id: `${state.interpretation.requestId}-interrupted`, role: 'assistant' as const, failure: 'interpretation' as const,
+    text: '완료되지 않은 메시지입니다. 다시 해석해 주세요.',
+  } : state.searchStatus === 'pending' ? {
+    id: `${state.activeRequestId}-interrupted`, role: 'assistant' as const, failure: 'search' as const,
+    text: '완료되지 않은 검색입니다. 확인한 조건으로 다시 검색해 주세요.',
+  } : null
+  return {
+    schemaVersion: 1, messages: interrupted ? [...state.messages, interrupted] : state.messages, searchOptions: state.searchOptions,
+    conversationQuery: state.conversationQuery, confirmedSearch: state.confirmedSearch, lastSearch: state.lastSearch,
+    pendingProposal: state.pendingProposal, pendingClarification: state.pendingClarification,
+    searchStatus: state.searchStatus === 'pending' ? 'failed' : state.searchStatus,
+    searchError: state.searchStatus === 'pending' ? '완료되지 않은 검색입니다. 확인한 조건으로 다시 검색해 주세요.' : state.searchError,
+    interpretation: state.interpretation.status === 'pending'
+      ? { ...state.interpretation, status: 'failed', error: '완료되지 않은 메시지입니다. 다시 해석해 주세요.' }
+      : { ...state.interpretation, status: state.interpretation.status },
+  }
+}
+
 function createInitialState(welcomeMessage = createWelcomeMessage()): ChatState {
   return {
     accountEmail: null,
+    isRestoredHistory: false,
     activeRequestId: null,
     activeSearchContext: null,
     lastSearch: null,

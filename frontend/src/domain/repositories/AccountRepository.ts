@@ -37,6 +37,8 @@ export type DeleteAccountResult =
   | { outcome: 'deleted' }
   | { outcome: 'current-password-mismatch' }
   | { outcome: 'rate-limited'; retryAfterSeconds: number | null }
+  /** 활성 관리자가 이 계정 하나뿐이라 삭제할 수 없습니다. */
+  | { outcome: 'last-admin' }
 
 /** 재설정 링크 요청은 가입 여부와 관계없이 `requested`입니다. 메일을 보낼 수 없는 서버 상태만 따로 안내합니다. */
 export type RequestPasswordResetResult =

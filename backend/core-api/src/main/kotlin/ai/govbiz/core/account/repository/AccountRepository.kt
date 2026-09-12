@@ -90,11 +90,19 @@ class AccountRepository(
     fun deleteAllSessionsByAccountId(accountId: Long): Int =
         accountMapper.deleteSessionsByAccountId(accountId)
 
-    /** 로그인 성공 시 새 세션을 저장하고 같은 계정의 만료 세션을 정리합니다. */
+    /** 삭제·정지되지 않은 관리자 수입니다. 마지막 관리자의 탈퇴를 막을 때 씁니다. */
+    fun countActiveAdmins(): Int =
+        accountMapper.countActiveAdmins()
+
+    /**
+     * 로그인 성공 시 새 세션을 저장하고 같은 계정의 만료 세션을 정리합니다. 가입·이메일 로그인·소셜 로그인·개발 로그인이 모두
+     * 이 경로로 세션을 받으므로 관리자 화면의 최근 로그인 시각도 여기서 남깁니다.
+     */
     @Transactional
     fun createSession(accountId: Long, session: NewAccountSession) {
         val now = LocalDateTime.now(clock)
         accountMapper.deleteExpiredSessionsByAccountId(accountId, now)
+        accountMapper.updateAccountLastLoginAt(accountId, now)
         val inserted = accountMapper.insertSession(
             AccountSessionDbRow(
                 tokenHash = session.tokenHash,

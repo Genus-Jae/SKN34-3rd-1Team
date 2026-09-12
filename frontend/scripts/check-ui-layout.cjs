@@ -21,7 +21,7 @@ const longRecruitment = { ...partnerRecruitmentDetail, title: `모집검증-${'R
 const questionPath = `/support-programs/detail/question?${detailQuery}`
 const paths = ['/', '/pricing', '/app/chat', '/app/pricing', '/login', '/signup', '/forgot-password', '/reset-password', '/partners', '/app/partners', '/app/partners/new',
   '/partners/detail?recruitmentId=101', '/app/partners/detail?recruitmentId=101', '/app/proposals', '/app/profile',
-  '/app/admin/members', detailPath, questionPath, '/examples/sample-item/hook', '/examples/sample-item/redux']
+  '/app/admin/accounts', detailPath, questionPath, '/examples/sample-item/hook', '/examples/sample-item/redux']
 // `/app` 경로는 회원 세션이 있어야 열립니다. 앱이 세션 힌트를 보고 부르는 /auth/me 응답을 경로별로 심습니다.
 const sessionHintKey = 'govbiz.hasSession'
 const memberAccount = { email: 'member@govbiz.local', role: 'USER', tier: 'MEMBER', emailVerified: true }

@@ -17,17 +17,19 @@ import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormDi
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
+import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
 import ai.govbiz.core.supportprogram.service.detail.exception.SupportProgramNotFoundException
 import java.security.MessageDigest
 import org.springframework.stereotype.Service
 
-/** 사용자가 선택한 기업마당 공고의 공식 첨부를 분석해 재사용 가능한 양식 스냅샷을 만듭니다. */
+/** 사용자가 선택한 지원 공고의 제공처별 공식 첨부를 분석해 재사용 가능한 양식 스냅샷을 만듭니다. */
 @Service
 class ApplicationFormDiscoveryService(
     private val details: SupportProgramDetailService,
-    private val attachments: BizInfoAttachmentClient,
+    private val bizInfoAttachments: BizInfoAttachmentClient,
+    private val msitAttachments: MsitAttachmentClient,
     private val parser: SupportProgramDocumentParser,
     private val ai: AiApplicationPreparationFacade,
     private val snapshots: ApplicationFormSnapshotRepository,
@@ -35,7 +37,12 @@ class ApplicationFormDiscoveryService(
 ) {
     fun discover(account: Account, sourceCode: String, sourceProgramId: String): ApplicationFormDiscoveryResult {
         require(account.id > 0)
-        if (sourceCode != "BIZINFO" || !Regex("PBLN_[0-9]{1,32}").matches(sourceProgramId)) {
+        val validIdentity = when (sourceCode) {
+            "BIZINFO" -> Regex("PBLN_[0-9]{1,32}").matches(sourceProgramId)
+            "MSIT" -> Regex("[1-9][0-9]{0,254}").matches(sourceProgramId)
+            else -> false
+        }
+        if (!validIdentity) {
             throw ApplicationFormDiscoveryException(Reason.SOURCE_UNSUPPORTED)
         }
         val program = try {
@@ -57,7 +64,11 @@ class ApplicationFormDiscoveryService(
         configuration: ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryConfiguration,
     ): ApplicationFormDiscoveryResult {
         return try {
-            val collected = attachments.collect(sourceCode, sourceProgramId)
+            val collected = when (sourceCode) {
+                "BIZINFO" -> bizInfoAttachments.collect(sourceCode, sourceProgramId)
+                "MSIT" -> msitAttachments.collect(sourceCode, sourceProgramId, sourceUrl)
+                else -> throw ApplicationFormDiscoveryException(Reason.SOURCE_UNSUPPORTED)
+            }
             val warnings = collected.warnings.toMutableList()
             val sourceFingerprint = sha256(collected.files.joinToString("\n") { file ->
                 "${file.sourceUrl}\u0000${file.fileName}\u0000${sha256(file.bytes)}"

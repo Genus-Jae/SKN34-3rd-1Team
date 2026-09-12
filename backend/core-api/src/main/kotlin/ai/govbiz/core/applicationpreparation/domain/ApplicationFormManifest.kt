@@ -26,8 +26,13 @@ data class ApplicationFormManifest(
         require(sourceProgramId.isSafeText(255)) { "invalid sourceProgramId" }
         require(programTitle.isSafeText(300) && formTitle.isSafeText(300)) { "invalid application form titles" }
         val uri = URI(sourceUrl)
-        require(uri.scheme == "https" && uri.host in setOf("bizinfo.go.kr", "www.bizinfo.go.kr")) {
-            "application form source must be an official BizInfo HTTPS URL"
+        val officialHosts = when (sourceCode) {
+            "BIZINFO" -> setOf("bizinfo.go.kr", "www.bizinfo.go.kr")
+            "MSIT" -> setOf("msit.go.kr", "www.msit.go.kr")
+            else -> emptySet()
+        }
+        require(uri.scheme == "https" && uri.host in officialHosts) {
+            "application form source must match its supported official HTTPS provider"
         }
         require(attachmentFileName.isSafeText(500) && attachmentBytes > 0) { "invalid attachment identity" }
         require(SHA256_PATTERN.matches(attachmentSha256)) { "invalid attachment hash" }

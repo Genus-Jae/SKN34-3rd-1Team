@@ -9,8 +9,8 @@
 
 ## 서비스 경계
 
-신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 기업마당 공고를
-`ApplicationFormDiscoveryService → BizInfoAttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
+신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 기업마당·과기정통부 공고를
+`ApplicationFormDiscoveryService → 제공처별 BizInfoAttachmentClient/MsitAttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
 AiApplicationPreparationFacade → AI Service`로 분석합니다. 검증된 응답은 `ApplicationFormSnapshotRepository → MyBatis → MySQL`에
 파일 hash·파서·모델·프롬프트 버전과 함께 저장해 동일 추출 버전에서 재사용합니다. 발견 양식을 선택한 뒤
 `ApplicationPreparationService → ApplicationPreparationRepository`가 계정 소유 준비 건을 생성합니다. 화면 진입과 목록·상세
@@ -20,7 +20,8 @@ DB transaction 밖에서 해석합니다. 요청 키와 당시 입력을 먼저 
 별도 transaction으로 저장합니다. 사용자가 제안을 확인한 PUT만 문항 사실을 전체 교체하고 입력 revision을 증가시킵니다.
 본인 준비 건의 DELETE는 `ApplicationPreparationRepository → MyBatis → MySQL`에서 소유자 조건으로 한 행을 지우고,
 확인 사실·AI 실행 기록은 FK cascade로 삭제하지만 공용 `application_form_snapshot`은 유지합니다.
-Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 기존 카탈로그 공고 검색·선택과 보조 URL·ID 입력·첨부 분석·발견 양식 확인, `/:preparationId`의 공식 문항
+Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 전체 카탈로그 공고 검색·선택과 보조 기업마당 URL·ID 입력을 첫 단계로,
+첨부 분석 뒤 발견 양식 확인을 별도 두 번째 단계로 표시하고, `/:preparationId`의 공식 문항
 상세와 질문·사실 확인을 연결합니다. AI 제안은 저장하지 않고 사용자가 선택·수정한 전체 문항 입력만 revision을 올려 저장합니다.
 초안 생성·직접 수정·사용자 확인은 후속 사용자 기능입니다.
 
@@ -67,6 +68,22 @@ Core가 전달한 공고 문서·원문 청크의 색인·검색·점수화·근
 AI Service는 호스트에 포트를 게시하지 않습니다. MySQL·Qdrant·Core API·Web의 개발용 포트는
 `127.0.0.1`에 바인딩합니다. 기업마당·K-Startup 키는 Core API에, OpenAI 키는 AI Service에만 주입합니다.
 이는 개발 환경의 서비스 배치이며 운영 인증·접근 제어가 구현됐다는 의미는 아닙니다.
+
+## 로그인 회원의 대화 기록
+
+`WorkspaceLayout/useChatHistory → ChatConversationUseCase → ChatConversationRepository → data/api →
+ChatConversationController → ChatConversationService → ChatConversationRepository → MyBatis Mapper → XML → MySQL`로
+대화 화면 스냅샷을 보관합니다. Frontend Repository와 Core Repository는 각 애플리케이션의 경계를 담당합니다.
+새 전송은 현재 대화에 누적하고 새 대화의 첫 전송은 별도 기록을 만듭니다. 비회원과 미전송 초안은 저장하지 않습니다.
+사이드바 요금제 아래 목록은 생성 ID 기반 30개 단위 커서 조회를 사용합니다. 기록을 열면 기존 Redux 상태만 복원하며
+검색·해석·OpenAI를 재호출하지 않습니다. 공고 결과는 저장 당시 내용이라는 안내를 표시합니다.
+
+Core는 세션 account ID로 모든 SQL을 제한하고 `X-Chat-Account` 사전조건으로 다른 탭의 계정 변경을 감지합니다.
+`V19`의 복합 UNIQUE와 FK는 소유자별 ID를 보호하며 저장 transaction의 계정 행 잠금·expectedVersion 검사로
+중복 생성·동시 덮어쓰기를 막습니다. 동일 내용 재전송은 멱등이며 충돌은 409로 드러냅니다. 이 스냅샷은 회원이 저장한
+화면 데이터로 신뢰된 검색 결과나 서버 권한의 근거가 아닙니다. 탈퇴 이벤트의 대화 삭제는 탈퇴 transaction에 참여합니다.
+브라우저는 계정 변경 때 진행 요청·메모리를 폐기하고, 조회 중 새 입력·화면 이동이 발생하면 늦은 복원을 적용하지 않습니다.
+저장 실패는 현재 창의 내용을 유지한 채 안내하며 자동 fallback·강제 덮어쓰기를 하지 않습니다.
 
 ## 기업 맞춤 일일 리포트
 

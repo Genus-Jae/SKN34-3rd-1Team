@@ -5,6 +5,7 @@ import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoSourceDocumentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
+import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
 import java.net.URI
 import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -42,5 +43,33 @@ class ApplicationFormDiscoveryLiveSourceTest {
             assertTrue(readable.isNotEmpty(), "$id must keep at least one readable official PDF/HWPX")
             assertTrue(readable.flatten().all { it.locator.isNotBlank() && it.text.isNotBlank() })
         }
+    }
+
+    @Test
+    fun msitNoticeKeepsItsReadableOfficialApplicationForm() {
+        val id = "3186573"
+        val sourceUrl = "https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&mId=311&mPid=121&nttSeqNo=$id&sCode=user"
+        val http = buildRestClient(
+            RestClient.builder(),
+            null,
+            Duration.ofSeconds(5),
+            Duration.ofSeconds(60),
+        )
+        val fetched = MsitAttachmentClient(http).collect("MSIT", id, sourceUrl)
+        val readable = fetched.files.mapNotNull { file ->
+            try {
+                SupportProgramDocumentParser().parse(file.bytes, file.format)
+            } catch (error: SupportProgramDocumentException) {
+                if (error.reason !in setOf(
+                        SupportProgramDocumentException.Reason.UNSUPPORTED,
+                        SupportProgramDocumentException.Reason.TOO_LARGE,
+                    )) throw error
+                null
+            }
+        }
+
+        assertTrue(fetched.files.any { it.fileName.contains("신청") && it.format == "HWPX" })
+        assertTrue(readable.isNotEmpty(), "$id must keep at least one readable official PDF/HWPX")
+        assertTrue(readable.flatten().all { it.locator.isNotBlank() && it.text.isNotBlank() })
     }
 }

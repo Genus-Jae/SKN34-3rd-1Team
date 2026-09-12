@@ -322,11 +322,11 @@ describe('계정 화면', () => {
   })
 
   it.each([memberAccount, companyAccount])('$tier 회원은 계정 메뉴를 열어도 관리자 메뉴와 화면을 보지 못한다', (account) => {
-    renderApp('/app/admin/members', account)
+    renderApp('/app/admin/accounts', account)
     // 회원은 관리자 화면 대신 작업 채팅으로 돌아가고 메뉴도 보지 못합니다.
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: '회원·기업 목록' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '계정 관리' })).toBeNull()
     fireEvent.click(within(sidebar).getByRole('button', { name: `계정 메뉴 · ${account.email}` }))
     expect(within(sidebar).getByRole('link', { name: '내 프로필' })).toBeTruthy()
     expect(within(sidebar).getByRole('button', { name: '로그아웃' })).toBeTruthy()
@@ -362,7 +362,7 @@ describe('작업 화면 사이드바', () => {
     expect(search.classList.contains('bg-[#e6f5ed]')).toBe(false)
   })
 
-  it('사이드바에서 파트너 모집을 열고 관리자 계정 메뉴에서 회원·기업 목록으로 이동한다', () => {
+  it('사이드바에서 파트너 모집을 열고 관리자 계정 메뉴에서 회원·기업으로 이동한다', () => {
     renderApp('/app/chat', adminAccount)
 
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
@@ -387,11 +387,11 @@ describe('작업 화면 사이드바', () => {
     expect(within(accountMenu).getByRole('link', { name: '내 프로필' })).toBeTruthy()
     expect(within(accountMenu).getByRole('button', { name: '로그아웃' })).toBeTruthy()
     const adminLink = within(accountMenu).getByRole('link', { name: '회원·기업' })
-    expect(adminLink.getAttribute('href')).toBe('/app/admin/members')
+    expect(adminLink.getAttribute('href')).toBe('/app/admin/accounts')
     expect(adminLink.getAttribute('aria-current')).toBeNull()
     expect(within(sidebar).getAllByRole('link', { name: '회원·기업' })).toHaveLength(1)
     fireEvent.click(adminLink)
-    expect(screen.getByRole('heading', { name: '회원·기업 목록' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '계정 관리' })).toBeTruthy()
     expect(accountButton.getAttribute('aria-expanded')).toBe('false')
     expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
 
@@ -1476,38 +1476,6 @@ describe('제안함 화면', () => {
     expect(screen.getByRole('region', { name: '기업 등록 필요' })).toBeTruthy()
     expect(screen.getByRole('region', { name: '제안 없음' })).toBeTruthy()
     expect(browse).not.toHaveBeenCalled()
-  })
-})
-
-describe('관리자 회원·기업 목록', () => {
-  it('회원 상태와 인증 여부에 따라 다른 조치를 보여준다', () => {
-    renderApp('/app/admin/members')
-
-    const list = screen.getByRole('region', { name: '회원·기업 목록' })
-    expect(within(list).getByText('예시 소프트웨어 주식회사')).toBeTruthy()
-    expect(within(list).getByText('제안 정지')).toBeTruthy()
-    // 미인증 계정은 정지가 아니라 인증 메일 재발송을 먼저 제안합니다.
-    expect(within(list).getAllByRole('button', { name: '인증 메일 재발송' }).length).toBe(2)
-  })
-
-  it('운영 규칙은 읽기만 하고 이 화면에서 바꾸지 않는다', () => {
-    renderApp('/app/admin/members')
-
-    const policies = screen.getByRole('region', { name: '모집·제안 운영 규칙' })
-    expect(within(policies).getByText('제안 유효기간')).toBeTruthy()
-    expect(within(policies).queryByRole('textbox')).toBeNull()
-  })
-
-  it('관리자 예시 조치와 단일 페이지 이전·다음은 실행 가능한 버튼으로 표시하지 않는다', () => {
-    renderApp('/app/admin/members')
-    expect(screen.getByText(/회원·정책은 예시이며/)).toBeTruthy()
-    // 사이드바의 로그아웃은 실제 동작이므로 화면 본문의 버튼만 봅니다.
-    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
-    for (const button of screen.getAllByRole('button').filter((element) => !sidebar.contains(element))) {
-      expect((button as HTMLButtonElement).disabled).toBe(true)
-    }
-    expect(screen.getByRole('region', { name: '회원·기업 표 가로 스크롤' }).tabIndex).toBe(0)
-    expect(fetch).not.toHaveBeenCalled()
   })
 })
 
