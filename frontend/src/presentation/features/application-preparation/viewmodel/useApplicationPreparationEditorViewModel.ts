@@ -17,7 +17,7 @@ function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error('신청 문서 정보를 처리하지 못했습니다.')
 }
 
-export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceProgramId = '') {
+export function useApplicationPreparationEditorViewModel(id: number | null, initialSourceCode = '', initialSourceProgramId = '') {
   const useCase = appContainer.resolve('applicationPreparationUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const navigate = useNavigate()
@@ -34,6 +34,8 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogError, setCatalogError] = useState<Error | null>(null)
   const [selectedProgram, setSelectedProgram] = useState<SupportProgram | null>(null)
+  const [discoverySourceCode, setDiscoverySourceCode] = useState(initialSourceCode)
+  const [creationStep, setCreationStep] = useState<'PROGRAM' | 'FORM'>('PROGRAM')
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -111,7 +113,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
         keyword: keyword.trim(),
         region: '',
         category: '',
-        sourceCode: 'BIZINFO',
+        sourceCode: '',
         startupStage: '',
         applicantType: '',
         founderAge: '',
@@ -121,7 +123,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
         pageSize: 10,
       }, controller.signal)
       if (controller.signal.aborted || catalogController.current !== controller) return
-      setCatalog({ ...result, programs: result.programs.filter((program) => program.sourceCode === 'BIZINFO') })
+      setCatalog(result)
       setAppliedCatalogKeyword(keyword)
     } catch (caught) {
       if (!controller.signal.aborted && catalogController.current === controller) setCatalogError(asError(caught))
@@ -134,9 +136,11 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   }, [catalogKeyword, catalogUseCase])
 
   const selectProgram = useCallback((program: SupportProgram) => {
-    if (program.sourceCode !== 'BIZINFO') return
+    if (!['BIZINFO', 'MSIT'].includes(program.sourceCode)) return
     setSelectedProgram(program)
+    setDiscoverySourceCode(program.sourceCode)
     setDiscoveryInput(program.id)
+    setCreationStep('PROGRAM')
     setForms([])
     setSelectedFormVersionId('')
     setDiscoveryWarnings([])
@@ -146,6 +150,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   const setManualDiscoveryInput = useCallback((value: string) => {
     setSelectedProgram(null)
     setDiscoveryInput(value)
+    setCreationStep('PROGRAM')
     setForms([])
     setSelectedFormVersionId('')
     setDiscoveryWarnings([])
@@ -163,13 +168,16 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     setError(null)
     setDiscoveryWarnings([])
     try {
-      const result = await useCase.discover(discoveryInput, controller.signal)
+      const result = selectedProgram || discoverySourceCode === 'MSIT'
+        ? await useCase.discover(discoverySourceCode, discoveryInput, controller.signal)
+        : await useCase.discoverBizInfo(discoveryInput, controller.signal)
       if (controller.signal.aborted || discoveryController.current !== controller) return
       const firstForm = result.items[0]
       setForms(result.items)
       setSelectedFormVersionId(firstForm?.formVersionId ?? '')
       if (firstForm?.supportedServiceFields[0]) setServiceField(firstForm.supportedServiceFields[0])
       setDiscoveryWarnings(result.warnings)
+      if (firstForm) setCreationStep('FORM')
     } catch (caught) {
       if (!controller.signal.aborted && discoveryController.current === controller) {
         setForms([])
@@ -182,7 +190,12 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
         setDiscovering(false)
       }
     }
-  }, [discovering, discoveryInput, useCase])
+  }, [discovering, discoveryInput, discoverySourceCode, selectedProgram, useCase])
+
+  const backToProgramSelection = useCallback(() => {
+    setCreationStep('PROGRAM')
+    setError(null)
+  }, [])
 
   const selectForm = useCallback((formVersionId: string) => {
     const form = forms.find((candidate) => candidate.formVersionId === formVersionId)
@@ -354,6 +367,8 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     catalogLoading,
     catalogError,
     selectedProgram,
+    discoverySourceCode,
+    creationStep,
     loading,
     submitting,
     error,
@@ -363,6 +378,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     selectProgram,
     setManualDiscoveryInput,
     discoverForms,
+    backToProgramSelection,
     selectForm,
     load,
     create,

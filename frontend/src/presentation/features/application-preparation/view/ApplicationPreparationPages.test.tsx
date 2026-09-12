@@ -242,7 +242,7 @@ describe('application preparation creation and detail', () => {
 
     const results = await screen.findByRole('list', { name: '신청 문서 공고 검색 결과' })
     expect(browsePrograms).toHaveBeenCalledWith(expect.objectContaining({
-      keyword: '혁신 바우처', sourceCode: 'BIZINFO', status: 'ALL', page: 1, pageSize: 10,
+      keyword: '혁신 바우처', sourceCode: '', status: 'ALL', page: 1, pageSize: 10,
     }), expect.any(AbortSignal))
     expect(repository.discover).not.toHaveBeenCalled()
     fireEvent.click(within(results).getByRole('button', { name: '선택' }))
@@ -255,7 +255,50 @@ describe('application preparation creation and detail', () => {
     fireEvent.click(within(selectedHeading.closest('section')!).getByRole('button', { name: '신청 문서 찾기' }))
 
     expect(await screen.findByLabelText('작성할 공식 첨부')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '지원 공고 검색' })).toBeNull()
+    expect(screen.getByRole('heading', { name: '신청 문서를 찾았습니다' })).toBe(document.activeElement)
     expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_123', expect.any(AbortSignal))
+  })
+
+  it('searches all providers, supports MSIT, and marks providers without attachment collection', async () => {
+    const msitProgram = { ...structuredClone(supportPrograms[0]), sourceCode: 'MSIT', id: '3186573', sourceName: '과학기술정보통신부' }
+    const startupProgram = { ...structuredClone(supportPrograms[0]), sourceCode: 'KSTARTUP', id: '177911', sourceName: 'K-Startup', title: 'K-Startup 공고' }
+    const msitForm = {
+      ...structuredClone(firstForm), sourceCode: 'MSIT', sourceProgramId: msitProgram.id,
+      sourceUrl: 'https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&nttSeqNo=3186573',
+    }
+    browsePrograms.mockResolvedValueOnce({
+      programs: [msitProgram, startupProgram], total: 2, page: 1, pageSize: 10, totalPages: 1,
+      regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
+    })
+    repository.discover.mockResolvedValueOnce({ items: [msitForm], warnings: [], cached: false })
+    mount('/app/application-preparations/new')
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 검색' }))
+    const results = await screen.findByRole('list', { name: '신청 문서 공고 검색 결과' })
+    expect((within(results).getByRole('button', { name: '문서 지원 준비 중' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(within(results).getAllByRole('button', { name: '선택' })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+
+    expect(await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })).toBeTruthy()
+    expect(repository.discover).toHaveBeenCalledWith('MSIT', '3186573', expect.any(AbortSignal))
+    fireEvent.click(screen.getByRole('button', { name: '공고 다시 선택' }))
+    expect(screen.getByRole('heading', { name: '지원 공고 검색' })).toBeTruthy()
+  })
+
+  it('preserves an MSIT identity passed from the program detail page', async () => {
+    const msitForm = {
+      ...structuredClone(firstForm), sourceCode: 'MSIT', sourceProgramId: '3186573',
+      sourceUrl: 'https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&nttSeqNo=3186573',
+    }
+    repository.discover.mockResolvedValueOnce({ items: [msitForm], warnings: [], cached: false })
+    mount('/app/application-preparations/new?sourceCode=MSIT&sourceProgramId=3186573')
+
+    expect((screen.getByLabelText('과학기술정보통신부 공식 공고 ID') as HTMLInputElement).value).toBe('3186573')
+    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+
+    await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })
+    expect(repository.discover).toHaveBeenCalledWith('MSIT', '3186573', expect.any(AbortSignal))
   })
 
   it('explains when the selected notice has no discoverable application form', async () => {

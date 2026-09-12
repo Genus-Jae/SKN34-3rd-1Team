@@ -37,14 +37,14 @@ V10은 검토 입력, V11은 실행 스냅샷·원본 파일 이력을 저장합
 쓰기 요청의 기존 Origin 방어를 유지하고 CORS에서 PUT·DELETE를 허용합니다. 상세 JSON·오류 코드는 위 설계 문서에 있습니다.
 
 신청 문서 작성 도우미는 `ai.govbiz.core.applicationpreparation`에 구현합니다. V15는 로그인 계정이
-소유한 신청 준비 건의 공고·양식 버전·분야·입력 revision을 저장합니다. V18은 사용자가 선택한 기업마당 공고의
+소유한 신청 준비 건의 공고·양식 버전·분야·입력 revision을 저장합니다. V18 이후 사용자가 선택한 기업마당·과기정통부 공고의
 공식 PDF/HWPX에서 발견한 신청 문서와 문항을 파일 hash·파서·모델·프롬프트 버전이 고정된 양식 스냅샷으로 저장합니다.
 기존 혁신바우처 manifest는 검수 기준과 기존 준비 건 복원을 위해 유지합니다.
 
 | 신청 준비 API | 동작 |
 |---|---|
 | `GET /api/v1/application-preparations/forms` | 로그인 회원에게 지원 양식·분야·문항 조회. DB·AI 호출 없음 |
-| `POST /api/v1/application-preparations/forms/discover` | 선택한 기업마당 공고의 공식 PDF/HWPX에서 신청 문서·문항을 추출하고 동일 버전 스냅샷 재사용 |
+| `POST /api/v1/application-preparations/forms/discover` | 선택한 기업마당·과기정통부 공고의 공식 PDF/HWPX에서 신청 문서·문항을 추출하고 동일 버전 스냅샷 재사용 |
 | `POST /api/v1/application-preparations` | 공고·양식 버전·지원 분야를 검증해 본인 준비 건 생성. 201·Location·상세 반환 |
 | `GET /api/v1/application-preparations?size=20&beforeId=123` | 본인 준비 건 목록을 생성 ID 내림차순으로 조회 |
 | `GET /api/v1/application-preparations/{id}` | 본인 준비 건과 선택한 버전의 양식 문항 조회. 타인 건과 없는 건은 같은 404 |
@@ -58,8 +58,10 @@ V16은 문항별 확인 사실과 AI 해석 실행의 요청 키·입력/출력 
 `Controller → Service → AI Facade → Client → AI Service`로 실행하고, 제안은 PUT 전까지 사실로 저장하지 않습니다.
 [기능 범위와 후속 경계](../../docs/application-preparation-design.md)를 참고하세요.
 
-자동 수집은 BIZINFO의 숫자형 `PBLN_...` ID와 세부사업 ID가 없는 공고를 지원합니다. 공식 상세에 직접 연결된
-기업마당 PDF/HWPX 및 중기부 사업공고의 PDF/HWPX를 읽습니다. 사용자 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색은 지원하지 않습니다.
+신청 문서 자동 수집은 BIZINFO의 숫자형 `PBLN_...` 공고와 MSIT의 숫자형 사업공고를 지원합니다. 각 제공처의 공식 상세에
+직접 연결된 PDF/HWPX만 읽고 제공처와 원문 호스트·공고 ID가 일치하는지 다시 검증합니다. K-Startup은 공식 사이트의 접속
+대기·차단 응답 때문에 안정적인 첨부 계약을 아직 확보하지 못했고, CNTRADE_NOTICE는 API ID와 개별 상세주소의 대응 계약이
+없어 지원하지 않습니다. 사용자 임의 URL·HWP·스캔 PDF/OCR·ZIP 내부 탐색도 지원하지 않습니다.
 같은 공고에 읽을 수 있는 공식 문서가 있으면 크기 제한을 넘거나 텍스트를 추출할 수 없는 첨부는 제외 사유와 파일명을
 `coverageWarnings`에 남기고 분석을 계속합니다. 공고 하나의 모든 지원 형식 첨부가 제외되면 기존처럼 기술 실패로 종료합니다.
 원문·입력·결과는 실행마다 보존하며 기존 검색 Qdrant 색인과 분리됩니다. 자동 수집 근거를 사람 검수 완료로 표시하지 않습니다.

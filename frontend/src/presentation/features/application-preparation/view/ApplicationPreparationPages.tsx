@@ -6,6 +6,7 @@ import {
   type ApplicationForm,
   type ApplicationFormSection,
 } from '../../../../domain/entities/ApplicationPreparation'
+import { catalogSourceLabels } from '../../../../domain/entities/SupportProgramCatalog'
 import { selectCurrentAccount } from '../../../shared/auth/state/authSlice'
 import { appPaths } from '../../../shared/routes/appPaths'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
@@ -171,7 +172,7 @@ function ApplicationPreparationList() {
                 }}>{vm.deletingId === item.id ? '삭제 중…' : '정말 삭제'}</button>
                 <button className={s.button} disabled={vm.deletingId !== null} type="button" onClick={() => setConfirmingId(null)}>취소</button>
               </div>
-              : <button className={s.button} disabled={vm.deletingId !== null} type="button" onClick={() => setConfirmingId(item.id)}>삭제</button>}
+              : <button className={s.danger} disabled={vm.deletingId !== null} type="button" onClick={() => setConfirmingId(item.id)}>삭제</button>}
           </div>
         </li>)}
       </ul>}
@@ -197,15 +198,28 @@ export function ApplicationPreparationEditorPage({ create = false }: { create?: 
       <main className={workspacePageStyles.content}><ErrorNotice message="올바른 신청 준비 주소가 아닙니다." /></main>
     </>
   }
-  const initialSourceProgramId = create && searchParams.get('sourceCode') === 'BIZINFO'
-    ? searchParams.get('sourceProgramId') ?? ''
-    : ''
-  return <ApplicationPreparationEditor key={`${account.email}:${id ?? 'new'}`} id={id} initialSourceProgramId={initialSourceProgramId} />
+  const requestedSourceCode = create ? searchParams.get('sourceCode') ?? '' : ''
+  const initialSourceCode = ['BIZINFO', 'MSIT'].includes(requestedSourceCode) ? requestedSourceCode : ''
+  const initialSourceProgramId = initialSourceCode ? searchParams.get('sourceProgramId') ?? '' : ''
+  return <ApplicationPreparationEditor
+    key={`${account.email}:${id ?? 'new'}`}
+    id={id}
+    initialSourceCode={initialSourceCode}
+    initialSourceProgramId={initialSourceProgramId}
+  />
 }
 
-function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: number | null; initialSourceProgramId: string }) {
-  const vm = useApplicationPreparationEditorViewModel(id, initialSourceProgramId)
+function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProgramId }: {
+  id: number | null
+  initialSourceCode: string
+  initialSourceProgramId: string
+}) {
+  const vm = useApplicationPreparationEditorViewModel(id, initialSourceCode, initialSourceProgramId)
   const detail = id === null ? null : vm.preparation
+  const resultHeading = useRef<HTMLHeadingElement>(null)
+  useLayoutEffect(() => {
+    if (vm.creationStep === 'FORM') resultHeading.current?.focus()
+  }, [vm.creationStep])
   return <>
     <WorkspacePageHeader
       parent={{ to: appPaths.applicationPreparations, label: listTitle }}
@@ -221,12 +235,18 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
         event.preventDefault()
         if (vm.selectedForm) void vm.create()
       }}>
+        <ol className={s.steps} aria-label="신청 문서 작성 준비 단계">
+          <li className={vm.creationStep === 'PROGRAM' ? s.activeStep : s.inactiveStep} aria-current={vm.creationStep === 'PROGRAM' ? 'step' : undefined}>1. 지원 공고 선택</li>
+          <li className={vm.creationStep === 'FORM' ? s.activeStep : s.inactiveStep} aria-current={vm.creationStep === 'FORM' ? 'step' : undefined}>2. 신청 문서 확인</li>
+        </ol>
+
+        {vm.creationStep === 'PROGRAM' && <>
         {vm.selectedProgram && <section className={s.card} aria-labelledby="selected-application-program-title">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h2 className={s.cardTitle} id="selected-application-program-title">선택한 공고</h2>
               <strong>{vm.selectedProgram.title}</strong>
-              <p className={s.muted}>{vm.selectedProgram.organization} · {programStatusLabels[vm.selectedProgram.status]}</p>
+              <p className={s.muted}>{catalogSourceLabels[vm.selectedProgram.sourceCode as keyof typeof catalogSourceLabels] ?? vm.selectedProgram.sourceName} · {vm.selectedProgram.organization} · {programStatusLabels[vm.selectedProgram.status]}</p>
               <p className={s.muted}>{vm.selectedProgram.applicationPeriod}</p>
             </div>
             <button className={s.primary} disabled={vm.discovering || vm.submitting} type="button" onClick={() => { void vm.discoverForms() }}>
@@ -239,7 +259,7 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
 
         <section className={s.card}>
           <h2 className={s.cardTitle} id="create-preparation-title">지원 공고 검색</h2>
-          <p className={s.muted}>공고명이나 기관명으로 검색하고 작성할 공고를 선택하세요. 현재 기업마당 공고의 PDF/HWPX를 분석할 수 있습니다.</p>
+          <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색할 수 있습니다. 현재 기업마당과 과학기술정보통신부 공고의 PDF/HWPX를 분석합니다.</p>
           <div className="flex flex-wrap items-end gap-2">
             <label className="min-w-0 flex-1 text-sm font-bold text-app-ink" htmlFor="application-program-search">
               공고명·기관명
@@ -262,7 +282,7 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
               {vm.catalogLoading ? '공고 검색 중…' : '공고 검색'}
             </button>
           </div>
-          {vm.catalogLoading && <p className={s.status} role="status" aria-live="polite">기업마당 공고를 검색하고 있습니다.</p>}
+          {vm.catalogLoading && <p className={s.status} role="status" aria-live="polite">전체 제공처의 공고를 검색하고 있습니다.</p>}
           {vm.catalogError && <ErrorNotice message={vm.catalogError.message} retryLabel="공고 다시 검색" onRetry={() => { void vm.searchPrograms(vm.catalog?.page ?? 1, vm.appliedCatalogKeyword || vm.catalogKeyword) }} />}
           {vm.catalog?.programs.length === 0 && <p className={s.notice}>검색 결과가 없습니다. 다른 검색어를 입력하거나 아래에서 공식 URL·공고 ID를 직접 입력해 주세요.</p>}
           {vm.catalog && vm.catalog.programs.length > 0 && <>
@@ -270,15 +290,16 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
             <ul className="divide-y divide-slate-200" aria-label="신청 문서 공고 검색 결과">
               {vm.catalog.programs.map((program) => {
                 const selected = vm.selectedProgram?.sourceCode === program.sourceCode && vm.selectedProgram.id === program.id
+                const supported = ['BIZINFO', 'MSIT'].includes(program.sourceCode)
                 return <li className="py-3" key={`${program.sourceCode}:${program.id}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <strong>{program.title}</strong>
-                      <p className={s.muted}>{program.organization} · {programStatusLabels[program.status]}</p>
+                      <p className={s.muted}>{catalogSourceLabels[program.sourceCode as keyof typeof catalogSourceLabels] ?? program.sourceName} · {program.organization} · {programStatusLabels[program.status]}</p>
                       <p className={s.muted}>{program.applicationPeriod}</p>
                     </div>
-                    <button className={s.button} disabled={selected || vm.discovering || vm.submitting} type="button" onClick={() => vm.selectProgram(program)}>
-                      {selected ? '선택됨' : '선택'}
+                    <button className={s.button} disabled={!supported || selected || vm.discovering || vm.submitting} type="button" onClick={() => vm.selectProgram(program)}>
+                      {!supported ? '문서 지원 준비 중' : selected ? '선택됨' : '선택'}
                     </button>
                   </div>
                 </li>
@@ -293,14 +314,16 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
 
         <details className={s.card}>
           <summary className="cursor-pointer text-sm font-bold text-app-ink">검색에서 공고를 찾지 못했나요?</summary>
-          <label className={s.label} htmlFor="application-program">기업마당 공식 공고 URL 또는 공고 ID</label>
+          <label className={s.label} htmlFor="application-program">
+            {vm.discoverySourceCode === 'MSIT' ? '과학기술정보통신부 공식 공고 ID' : '기업마당 공식 공고 URL 또는 공고 ID'}
+          </label>
           <input
             className={s.input}
             disabled={vm.discovering || vm.submitting}
             id="application-program"
             value={vm.discoveryInput}
             onChange={(event) => vm.setManualDiscoveryInput(event.target.value)}
-            placeholder="https://www.bizinfo.go.kr/…?pblancId=PBLN_… 또는 PBLN_…"
+            placeholder={vm.discoverySourceCode === 'MSIT' ? '예: 3186573' : 'https://www.bizinfo.go.kr/…?pblancId=PBLN_… 또는 PBLN_…'}
           />
         </details>
 
@@ -311,6 +334,18 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
           {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
           <p className={s.muted}>공식 페이지가 직접 연결한 PDF/HWPX만 분석합니다. 분석 결과는 확인 전 AI 제안이며 자동 제출되지 않습니다.</p>
         </section>}
+        </>}
+
+        {vm.creationStep === 'FORM' && <>
+        <section className={s.card} aria-labelledby="discovered-application-forms-title">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className={s.cardTitle} id="discovered-application-forms-title" ref={resultHeading} tabIndex={-1}>신청 문서를 찾았습니다</h2>
+              <p className={s.muted}>발견한 공식 첨부와 작성 문항을 확인한 뒤 작성을 시작하세요.</p>
+            </div>
+            <button className={s.button} disabled={vm.submitting} type="button" onClick={vm.backToProgramSelection}>공고 다시 선택</button>
+          </div>
+        </section>
 
         {vm.discoveryWarnings.length > 0 && <section className={s.notice} aria-label="공고 분석 안내">
           <ul className="list-disc space-y-1 pl-5">{vm.discoveryWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
@@ -359,6 +394,7 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
           </button>
           {vm.submitting && <p className={s.status} role="status" aria-live="polite">신청 준비를 생성하고 있습니다. 잠시만 기다려 주세요.</p>}
         </section>
+        </>}
         </>}
       </form>}
 
