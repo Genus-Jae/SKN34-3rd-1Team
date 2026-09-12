@@ -13,6 +13,7 @@ export const appPaths = {
   combinationReviews: `${APP_PREFIX}/combination-reviews`,
   combinationReviewNew: `${APP_PREFIX}/combination-reviews/new`,
   combinationReviewDetail: `${APP_PREFIX}/combination-reviews/:reviewId`,
+  combinationReviewRunResult: `${APP_PREFIX}/combination-reviews/:reviewId/runs/:runId`,
   chat: `${APP_PREFIX}/chat`,
   pricing: `${APP_PREFIX}/pricing`,
   partners: `${APP_PREFIX}/partners`,
@@ -28,6 +29,10 @@ export const appPaths = {
   supportProgramDetail: `${APP_PREFIX}/support-programs/detail`,
   supportProgramQuestion: `${APP_PREFIX}/support-programs/detail/question`,
 } as const
+
+export function combinationReviewRunResultPath(reviewId: number, runId: number): string {
+  return `${appPaths.combinationReviews}/${reviewId}/runs/${runId}`
+}
 
 export const publicPaths = {
   reportEmail: '/report-email',

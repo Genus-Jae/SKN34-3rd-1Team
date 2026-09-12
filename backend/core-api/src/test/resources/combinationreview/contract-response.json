@@ -1,5 +1,5 @@
 {
-  "contractVersion": "combination-review-v1",
+  "contractVersion": "combination-review-v2",
   "model": "test-model",
   "promptVersion": "sha256:f0e60686c3d79629d9523b65583a801f0780b83e00a3bbcde043ae895e601bcb",
   "summary": "계약 검증용 고정 응답",

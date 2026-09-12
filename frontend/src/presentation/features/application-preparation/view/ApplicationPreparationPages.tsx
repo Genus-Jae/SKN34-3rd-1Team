@@ -11,6 +11,7 @@ import { selectCurrentAccount } from '../../../shared/auth/state/authSlice'
 import { appPaths } from '../../../shared/routes/appPaths'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
 import { workspacePageStyles } from '../../../shared/workspace/WorkspacePage.styles'
+import { SavedSupportProgramPickerDialog } from '../../../shared/support-program/SavedSupportProgramPickerDialog'
 import { useApplicationPreparationEditorViewModel } from '../viewmodel/useApplicationPreparationEditorViewModel'
 import { useApplicationPreparationListViewModel } from '../viewmodel/useApplicationPreparationListViewModel'
 import { applicationPreparationStyles as s } from './ApplicationPreparation.styles'
@@ -221,11 +222,14 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
   initialSourceCode: string
   initialSourceProgramId: string
 }) {
-  const vm = useApplicationPreparationEditorViewModel(id, initialSourceCode, initialSourceProgramId)
+  const [savedProgramsOpen, setSavedProgramsOpen] = useState(false)
+  const savedProgramsButtonRef = useRef<HTMLButtonElement>(null)
+  const vm = useApplicationPreparationEditorViewModel(id, initialSourceCode, initialSourceProgramId, savedProgramsOpen)
   const detail = id === null ? null : vm.preparation
   const resultHeading = useRef<HTMLHeadingElement>(null)
+  const closeSavedPrograms = () => { setSavedProgramsOpen(false); savedProgramsButtonRef.current?.focus() }
   useLayoutEffect(() => {
-    if (vm.creationStep === 'FORM') resultHeading.current?.focus()
+    if (vm.creationStep === 'FORM') { setSavedProgramsOpen(false); resultHeading.current?.focus() }
   }, [vm.creationStep])
   return <>
     <WorkspacePageHeader
@@ -264,46 +268,27 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
           <p className={s.muted}>선택만으로 분석하지 않습니다. 버튼을 누르면 공식 첨부의 작성 문항을 찾습니다.</p>
         </section>}
 
-        <section className={s.card} aria-labelledby="saved-application-programs-title">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className={s.cardTitle} id="saved-application-programs-title">관심 공고함에서 선택</h2>
-              <p className={s.muted}>미리 담아 둔 공고를 바로 신청 문서에 연결할 수 있습니다.</p>
-            </div>
-            {vm.savedProgramChoices.phase === 'failed' && <button className={s.button} type="button" onClick={vm.savedProgramChoices.retry}>다시 불러오기</button>}
-          </div>
-          {(vm.savedProgramChoices.phase === 'idle' || vm.savedProgramChoices.phase === 'loading') && <p className={s.status} role="status">관심 공고를 불러오는 중입니다.</p>}
-          {vm.savedProgramChoices.phase === 'failed' && <p className={s.notice} role="alert">관심 공고를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>}
-          {vm.savedProgramChoices.phase === 'ready' && vm.savedProgramChoices.programs.length === 0 && <p className={s.notice}>관심 공고함에 담은 공고가 없습니다.</p>}
-          {vm.savedProgramChoices.programs.length > 0 && <ul className="divide-y divide-slate-200" aria-label="신청 문서 관심 공고 목록">
-            {vm.savedProgramChoices.programs.map((program) => {
-              const selected = vm.selectedProgram?.sourceCode === program.sourceCode && vm.selectedProgram.id === program.id
-              const supported = supportedDocumentSources.includes(program.sourceCode)
-              return <li className="py-3" key={`${program.sourceCode}:${program.id}`}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <strong>{program.title}</strong>
-                    <p className={s.muted}>{catalogSourceLabels[program.sourceCode as keyof typeof catalogSourceLabels] ?? program.sourceName} · {program.organization} · {programStatusLabels[program.status]}</p>
-                    <p className={s.muted}>{program.applicationPeriod}</p>
-                  </div>
-                  <button
-                    aria-label={`${program.title} 관심 공고 ${!supported ? '문서 지원 준비 중' : selected ? '선택됨' : '선택'}`}
-                    className={s.button}
-                    disabled={!supported || selected || vm.discovering || vm.submitting}
-                    type="button"
-                    onClick={() => vm.selectProgram(program)}
-                  >
-                    {!supported ? '문서 지원 준비 중' : selected ? '선택됨' : '선택'}
-                  </button>
-                </div>
-              </li>
-            })}
-          </ul>}
-        </section>
-
         <section className={s.card}>
-          <h2 className={s.cardTitle} id="create-preparation-title">지원 공고 검색</h2>
-          <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색하고 공식 PDF/HWP/HWPX를 분석할 수 있습니다.</p>
+          <h2 className={s.cardTitle} id="create-preparation-title">전체 공고 검색</h2>
+          <button ref={savedProgramsButtonRef} type="button" className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-semibold hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label="관심 공고함에서 선택" aria-haspopup="dialog" aria-expanded={savedProgramsOpen} onClick={() => setSavedProgramsOpen(true)}><span>관심 공고함에서 선택</span><span className="text-emerald-800">열기 ›</span></button>
+          <SavedSupportProgramPickerDialog
+            open={savedProgramsOpen}
+            phase={vm.savedProgramChoices.phase}
+            programs={vm.savedProgramChoices.programs}
+            selectedProgramKeys={vm.selectedProgram ? [`${vm.selectedProgram.sourceCode}:${vm.selectedProgram.id}`] : []}
+            selectionLimit={1}
+            description="신청 문서를 작성할 공고를 1개 선택하세요."
+            listLabel="신청 문서 관심 공고 목록"
+            isSupported={(program) => supportedDocumentSources.includes(program.sourceCode)}
+            unsupportedLabel="문서 지원 준비 중"
+            onToggle={(program) => {
+              const selected = vm.selectedProgram?.sourceCode === program.sourceCode && vm.selectedProgram.id === program.id
+              if (selected) vm.setManualDiscoveryInput('')
+              else vm.selectProgram(program)
+            }}
+            onRetry={vm.savedProgramChoices.retry}
+            onClose={closeSavedPrograms}
+          />
           <div className="flex flex-wrap items-end gap-2">
             <label className="min-w-0 flex-1 text-sm font-bold text-app-ink" htmlFor="application-program-search">
               공고명·기관명
@@ -326,6 +311,7 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
               {vm.catalogLoading ? '공고 검색 중…' : '공고 검색'}
             </button>
           </div>
+          <p className={s.muted}>공고명이나 기관명으로 모든 제공처를 검색하고 공식 PDF/HWP/HWPX를 분석할 수 있습니다.</p>
           {vm.catalogLoading && <p className={s.status} role="status" aria-live="polite">전체 제공처의 공고를 검색하고 있습니다.</p>}
           {vm.catalogError && <ErrorNotice message={vm.catalogError.message} retryLabel="공고 다시 검색" onRetry={() => { void vm.searchPrograms(vm.catalog?.page ?? 1, vm.appliedCatalogKeyword || vm.catalogKeyword) }} />}
           {vm.catalog?.programs.length === 0 && <p className={s.notice}>검색 결과가 없습니다. 다른 검색어를 입력하거나 아래에서 공식 URL·공고 ID를 직접 입력해 주세요.</p>}

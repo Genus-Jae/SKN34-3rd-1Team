@@ -1,7 +1,7 @@
 import { validateReviewDraft, type ReviewDraft, type RunRequest } from '../entities/CombinationReview'
 import type { CombinationReviewRepository } from '../repositories/CombinationReviewRepository'
 
-/** 저장·입력 수정과 분석 실행은 각각 명시적인 작업이다. 조회는 분석을 시작하지 않는다. */
+/** 저장·입력 수정과 분석 실행은 별도 API 계약이며 화면은 두 호출을 한 사용자 동작으로 이어갈 수 있다. 조회는 분석을 시작하지 않는다. */
 export class CombinationReviewUseCase {
   private readonly repository: CombinationReviewRepository
   constructor(repository: CombinationReviewRepository) { this.repository = repository }

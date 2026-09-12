@@ -1,5 +1,5 @@
 {
-  "contractVersion": "combination-review-v1",
+  "contractVersion": "combination-review-v2",
   "programs": [
     {
       "sourceCode": "BIZINFO",

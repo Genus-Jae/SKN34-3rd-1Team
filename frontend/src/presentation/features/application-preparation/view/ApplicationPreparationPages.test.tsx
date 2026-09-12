@@ -241,14 +241,36 @@ describe('application preparation creation and detail', () => {
     repository.discover.mockResolvedValueOnce({ items: [form], warnings: [], cached: false })
     mount('/app/application-preparations/new')
 
-    const savedPrograms = await screen.findByRole('list', { name: '신청 문서 관심 공고 목록' })
+    expect(browseSavedPrograms).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '관심 공고함에서 선택' }))
+    const dialog = await screen.findByRole('dialog', { name: '관심 공고함에서 선택' })
+    const savedPrograms = await within(dialog).findByRole('list', { name: '신청 문서 관심 공고 목록' })
     fireEvent.click(within(savedPrograms).getByRole('button', { name: '관심 창업 지원 공고 관심 공고 선택' }))
+    expect(within(dialog).getByText('1/1 선택')).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: '선택 완료' }))
 
     expect(browsePrograms).not.toHaveBeenCalled()
     expect((screen.getByLabelText('K-Startup 공식 공고 ID') as HTMLInputElement).value).toBe('177911')
     fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
     await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })
     expect(repository.discover).toHaveBeenCalledWith('KSTARTUP', '177911', expect.any(AbortSignal))
+  })
+
+  it('shows the saved-program empty state only after the picker opens', async () => {
+    mount('/app/application-preparations/new')
+    expect(browseSavedPrograms).not.toHaveBeenCalled()
+    expect(screen.queryByText('관심 공고함에 담은 공고가 없습니다.')).toBeNull()
+    const searchHeading = screen.getByRole('heading', { name: '전체 공고 검색' })
+    const savedProgramsButton = screen.getByRole('button', { name: '관심 공고함에서 선택' })
+    const searchInput = screen.getByLabelText('공고명·기관명')
+    expect(searchHeading.compareDocumentPosition(savedProgramsButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(savedProgramsButton.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.click(savedProgramsButton)
+
+    const dialog = await screen.findByRole('dialog', { name: '관심 공고함에서 선택' })
+    expect(await within(dialog).findByText('관심 공고함에 담은 공고가 없습니다.')).toBeTruthy()
+    expect(browseSavedPrograms).toHaveBeenCalledWith(expect.any(AbortSignal))
   })
 
   it('searches the catalog and discovers documents only after the user selects a notice', async () => {
@@ -270,14 +292,14 @@ describe('application preparation creation and detail', () => {
     fireEvent.click(within(results).getByRole('button', { name: '선택' }))
 
     const selectedHeading = screen.getByRole('heading', { name: '선택한 공고' })
-    const searchHeading = screen.getByRole('heading', { name: '지원 공고 검색' })
+    const searchHeading = screen.getByRole('heading', { name: '전체 공고 검색' })
     expect(selectedHeading.compareDocumentPosition(searchHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect((screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID') as HTMLInputElement).value).toBe('PBLN_123')
     expect(repository.discover).not.toHaveBeenCalled()
     fireEvent.click(within(selectedHeading.closest('section')!).getByRole('button', { name: '신청 문서 찾기' }))
 
     expect(await screen.findByLabelText('작성할 공식 첨부')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: '지원 공고 검색' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '전체 공고 검색' })).toBeNull()
     expect(screen.getByRole('heading', { name: '신청 문서를 찾았습니다' })).toBe(document.activeElement)
     expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_123', expect.any(AbortSignal))
   })
@@ -306,7 +328,7 @@ describe('application preparation creation and detail', () => {
     expect(await screen.findByRole('heading', { name: '신청 문서를 찾았습니다' })).toBeTruthy()
     expect(repository.discover).toHaveBeenCalledWith('KSTARTUP', '177911', expect.any(AbortSignal))
     fireEvent.click(screen.getByRole('button', { name: '공고 다시 선택' }))
-    expect(screen.getByRole('heading', { name: '지원 공고 검색' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '전체 공고 검색' })).toBeTruthy()
   })
 
   it('preserves an MSIT identity passed from the program detail page', async () => {

@@ -20,12 +20,14 @@ data class ReviewProgramPair(
     }
 }
 
-/** 검토 가능한 2~3개 사업의 불변 입력 스냅샷과 빠짐없는 비교 대상 쌍을 구성한다. */
-class CombinationReviewInput(programs: List<SelectedReviewProgram>) {
+/** 검토 가능한 두 사업의 불변 입력 스냅샷과 비교 대상 쌍을 구성한다. */
+class CombinationReviewInput private constructor(programs: List<SelectedReviewProgram>, restoreLegacy: Boolean) {
+    constructor(programs: List<SelectedReviewProgram>) : this(programs, false)
+
     val programs: List<SelectedReviewProgram> = Collections.unmodifiableList(ArrayList(programs))
 
     init {
-        require(this.programs.size in 2..3) { "a review requires two or three programs" }
+        require(this.programs.size == 2 || restoreLegacy && this.programs.size == 3) { "a review requires exactly two programs" }
         require(this.programs.map { it.identity }.distinct().size == this.programs.size) {
             "a review must not contain duplicate program identities"
         }
@@ -41,5 +43,10 @@ class CombinationReviewInput(programs: List<SelectedReviewProgram>) {
                 }
             }
         }
+    }
+
+    companion object {
+        /** 정책 변경 전에 저장한 세 사업 검토는 조회·결과 확인만 가능하도록 복원한다. */
+        fun restore(programs: List<SelectedReviewProgram>): CombinationReviewInput = CombinationReviewInput(programs, true)
     }
 }

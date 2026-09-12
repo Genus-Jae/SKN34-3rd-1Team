@@ -10,7 +10,9 @@ export function reviewFailureMessage(error: unknown): string {
   if (error.status === 409) return error.code === 'COMBINATION_REVIEW_REVISION_CONFLICT'
     ? '다른 화면에서 입력이 변경되었습니다. 작성 중인 입력은 유지됩니다. 최신 저장 입력을 조회한 뒤 직접 선택해 주세요.'
     : '실행 요청이 충돌했습니다. 실행 이력을 확인해 주세요. 요청 키나 내용을 자동으로 변경하지 않습니다.'
-  if (error.status === 422) return '현재 지원하지 않는 원문 형식·제공처 또는 문서 크기입니다. 정상적인 근거 부족 판단이 아닌 수집 실패입니다.'
+  if (error.status === 422) return error.code === 'INPUT_PROGRAM_COUNT_UNSUPPORTED'
+    ? '새 분석은 공고를 정확히 2개 선택해야 합니다. 기존 결과는 그대로 조회할 수 있습니다.'
+    : '현재 지원하지 않는 원문 형식·제공처 또는 문서 크기입니다. 정상적인 근거 부족 판단이 아닌 수집 실패입니다.'
   if (error.status === 429) return `요청량 또는 동시 실행 한도에 도달했습니다.${error.retryAfter ? ` 재확인 대기: ${error.retryAfter}초.` : ''} 실패 실행이 있으면 이력에서 확인해 주세요.`
   if (error.status === 503) return '원문 수집 또는 분석 서비스의 기술 오류입니다. 근거 부족이나 허용 판단을 의미하지 않습니다.'
   return '서버 응답을 안전하게 해석하지 못했습니다. 저장된 실행 이력을 확인해 주세요.'

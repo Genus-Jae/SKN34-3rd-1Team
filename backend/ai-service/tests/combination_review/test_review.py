@@ -90,8 +90,10 @@ def test_invalid_inputs_are_rejected_before_agent(change):
     lambda d: d["pairs"][0]["stages"][0].update(requiresInstitutionConfirmation=True),
     lambda d: d["pairs"][0]["stages"][0].update(judgment="NEEDS_FACTS", questions=[]),
     lambda d: d["pairs"][0]["stages"].pop(),
+    lambda d: d["pairs"].append(deepcopy(d["pairs"][0])),
+    lambda d: d["pairs"][0].update(secondProgramIndex=2),
 ])
-def test_invalid_judgments_fail_the_structured_contract(change):
+def test_invalid_outputs_fail_the_structured_contract(change):
     data = selection_data()
     change(data)
     with pytest.raises(ValidationError):
@@ -99,8 +101,6 @@ def test_invalid_judgments_fail_the_structured_contract(change):
 
 
 @pytest.mark.parametrize("change", [
-    lambda d: d["pairs"].append(deepcopy(d["pairs"][0])),
-    lambda d: d["pairs"][0].update(secondProgramIndex=2),
     lambda d: d["pairs"][0]["stages"][0].update(stage="FUNDING"),
     lambda d: d["pairs"][0]["stages"][0]["citations"][0].update(citationOptionIndex=500),
 ])
@@ -132,25 +132,14 @@ def test_returns_the_prebuilt_exact_source_quote_selected_by_the_model():
     )
 
 
-def test_three_programs_require_all_three_pairs_and_all_six_stages():
+def test_a_third_program_is_rejected_before_pair_analysis():
     request = request_data()
     program = deepcopy(request["programs"][0])
     program["sourceProgramId"] = "PBLN_3"
     request["programs"].append(program)
     request["evidence"].append({**request["evidence"][0], "id":"E2", "programIndex":2})
-    validated_request = AnalyzeRequest.model_validate(request)
-    options = build_citation_options(validated_request)
-    data = selection_data()
-    for first, second in [(0,2),(1,2)]:
-        pair = {**deepcopy(data["pairs"][0]), "firstProgramIndex":first, "secondProgramIndex":second}
-        for stage in pair["stages"]:
-            for citation in stage["citations"]:
-                citation["citationOptionIndex"] = first
-        data["pairs"].append(pair)
-    validate_selection(validated_request, AnalysisSelection.model_validate(data), options)
-    data["pairs"].pop()
-    with pytest.raises(ValueError, match="missing or duplicate pair"):
-        validate_selection(validated_request, AnalysisSelection.model_validate(data), options)
+    with pytest.raises(ValidationError):
+        AnalyzeRequest.model_validate(request)
 
 
 def test_too_large_context_rejected_without_model_call(monkeypatch):

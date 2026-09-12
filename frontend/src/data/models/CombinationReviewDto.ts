@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { reviewStages } from '../../domain/entities/CombinationReview'
 
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+// 새 실행은 두 공고만 만들지만 정책 변경 전 3개 비교 실행의 programIndex=2도 조회한다.
 const index = z.number().int().min(0).max(2)
 const time = z.string().datetime({ offset: true })
 const answer = z.enum(['YES', 'NO', 'UNKNOWN'])
@@ -10,6 +11,7 @@ export const reviewProgramSchema = z.object({
   participation: z.object({ applicationSubmitted: answer, selected: answer, commitmentSubmitted: answer, agreementSigned: answer,
     executionStatus: z.enum(['UNKNOWN', 'NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'STOPPED']), fundingReceived: answer }),
 })
+// 정책 변경 전 저장한 3개 비교의 이력과 결과도 조회할 수 있어야 한다. 새 입력은 Domain에서 정확히 2개로 제한한다.
 const programs = z.array(reviewProgramSchema).min(2).max(3)
 export const reviewSummarySchema = z.object({ id, title: z.string(), inputRevision: id, createdAt: time, updatedAt: time })
 export const reviewSchema = reviewSummarySchema.extend({ programs })

@@ -4,7 +4,7 @@ import { useAppDispatch, useAppSelector } from './app/hooks'
 import { conversationReset } from './presentation/features/chat/state/chatSlice'
 import { useRestoreSupportProgramSearch } from './presentation/features/chat/hooks/useRestoreSupportProgramSearch'
 import { selectAuthStatus } from './presentation/shared/auth/state/authSlice'
-import { CombinationReviewListPage, CombinationReviewEditorPage } from './presentation/features/combination-review/view/CombinationReviewPages'
+import { CombinationReviewListPage, CombinationReviewEditorPage, CombinationReviewRunResultPage } from './presentation/features/combination-review/view/CombinationReviewPages'
 import { ApplicationPreparationEditorPage, ApplicationPreparationListPage } from './presentation/features/application-preparation/view/ApplicationPreparationPages'
 import { DailyReportPage } from './presentation/features/daily-report/view/DailyReportPage'
 import { DailyReportEmailPage } from './presentation/features/daily-report/view/DailyReportEmailPage'
@@ -120,6 +120,7 @@ function App() {
           <Route path={appPaths.applicationPreparationDetail} element={<ApplicationPreparationEditorPage />} />
           <Route path={appPaths.combinationReviews} element={<CombinationReviewListPage />} />
           <Route path={appPaths.combinationReviewNew} element={<CombinationReviewEditorPage create />} />
+          <Route path={appPaths.combinationReviewRunResult} element={<CombinationReviewRunResultPage />} />
           <Route path={appPaths.combinationReviewDetail} element={<CombinationReviewEditorPage />} />
           <Route path={appPaths.chat} element={<SupportProgramSearchPage layout="workspace" />} />
           <Route path={appPaths.pricing} element={<PricingPage layout="workspace" />} />

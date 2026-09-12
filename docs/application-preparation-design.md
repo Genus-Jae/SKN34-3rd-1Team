@@ -3,7 +3,7 @@
 [문서 목록](README.md) · [시스템 구조](architecture/README.md) · [계정·인증 계약](account-auth-contract.md)
 
 - 관련 이슈: [#185 — skn-89 제약·계약](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/185) · [#187 — skn-90 신청 준비 기본 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/187) · [#189 — skn-92 문항별 질문과 사실 확인](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/189) · [#199 — skn-96 공고 기반 양식 발견](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/199) · [#207 — skn-100 작성 도우미 공고 검색](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/207) · [#210 — skn-102 오류·삭제·선택 흐름](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/210) · [#212 — skn-103 단계 분리·제공처 확장](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/212) · [#230 — skn-112 전 제공처 공식 첨부](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/230) · [#246 — skn-121 관심 공고 선택](https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN34-3rd-1Team/issues/246)
-- 상태: **작성 도우미 안에서 관심 공고함 또는 전체 제공처 검색으로 공고를 선택하고, 기업마당·K-Startup·과기정통부·충남 수출지원 공식 PDF/HWP/HWPX의 신청 문서와 문항을 동적으로 발견해 기존 질문·사실 확인 흐름에 연결한다. 공고 선택과 발견 문서 확인은 두 단계로 분리한다. 초안 생성·수정·확인은 미구현이다.**
+- 상태: **작성 도우미 안에서 버튼으로 연 관심 공고 팝업 또는 전체 제공처 검색으로 공고를 선택하고, 기업마당·K-Startup·과기정통부·충남 수출지원 공식 PDF/HWP/HWPX의 신청 문서와 문항을 동적으로 발견해 기존 질문·사실 확인 흐름에 연결한다. 관심 공고는 팝업을 열 때 지연 조회하며 중복 지원 검토와 같은 선택 UI를 공유한다. 공고 선택과 발견 문서 확인은 두 단계로 분리한다. 초안 생성·수정·확인은 미구현이다.**
 - 설계 기준: 2026-09-11, 팀 `main` 커밋 `6fc41bc`에서 `skn-96` 전환.
 - 기능 이름: 화면에서는 **신청 문서 작성 도우미**, 코드에서는 `applicationpreparation` / `application_preparation` / `application-preparation`을 사용한다.
 
