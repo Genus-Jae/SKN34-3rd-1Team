@@ -19,6 +19,7 @@ import java.net.URI
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -74,6 +75,15 @@ class ApplicationPreparationController(
     ): ResponseEntity<ApplicationPreparationResponse> =
         ResponseEntity.ok().cacheControl(CacheControl.noStore())
             .body(ApplicationPreparationResponse.from(service.findOwned(account, id)))
+
+    @DeleteMapping("/{id}")
+    fun delete(
+        account: Account,
+        @PathVariable @Min(1) id: Long,
+    ): ResponseEntity<Void> {
+        service.deleteOwned(account, id)
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build()
+    }
 
     @PostMapping("/{id}/sections/{sectionKey}/messages")
     fun interpret(

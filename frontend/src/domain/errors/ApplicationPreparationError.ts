@@ -21,6 +21,7 @@ function messageFor(code: string, status: number): string {
   if (code === 'APPLICATION_FORM_SOURCE_TOO_LARGE') return '공식 첨부가 자동 분석 가능한 크기나 페이지 수를 초과했습니다.'
   if (code === 'APPLICATION_FORM_SOURCE_INVALID') return '공식 첨부의 형식이나 출처를 안전하게 확인하지 못했습니다.'
   if (code === 'APPLICATION_FORM_SOURCE_UNAVAILABLE') return '공식 공고나 첨부를 지금 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.'
+  if (code === 'APPLICATION_FORM_AI_INVALID_RESPONSE') return 'AI가 공식 첨부의 문항 근거를 안전하게 확인하지 못했습니다. 입력은 저장되지 않았으니 다시 시도해 주세요.'
   if (code === 'APPLICATION_PREPARATION_SECTION_NOT_FOUND') return '현재 지원하지 않는 작성 항목입니다.'
   if (code === 'APPLICATION_PREPARATION_REVISION_CONFLICT') return '다른 변경이 먼저 저장되었습니다. 최신 입력을 다시 불러와 주세요.'
   if (code === 'APPLICATION_PREPARATION_RUN_CONFLICT') return '같은 AI 요청을 다시 사용할 수 없습니다. 답변을 확인한 뒤 다시 시도해 주세요.'

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useAppSelector } from '../../../../app/hooks'
 import {
@@ -141,6 +141,7 @@ export function ApplicationPreparationListPage() {
 
 function ApplicationPreparationList() {
   const vm = useApplicationPreparationListViewModel()
+  const [confirmingId, setConfirmingId] = useState<number | null>(null)
   return <>
     <WorkspacePageHeader
       title={listTitle}
@@ -156,11 +157,22 @@ function ApplicationPreparationList() {
       </section>}
       {vm.page && vm.page.items.length > 0 && <ul className={s.list} aria-label="신청 준비 목록">
         {vm.page.items.map((item) => <li className={s.card} key={item.id}>
-          <Link className={s.listLink} to={`${appPaths.applicationPreparations}/${item.id}`}>
-            <strong>{item.programTitle}</strong>
-            <span className={s.muted}>{item.formTitle} · {applicationServiceFieldLabels[item.serviceField]}</span>
-            <span className={s.muted}>입력 버전 {item.inputRevision} · {readableTime(item.updatedAt)} 수정</span>
-          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link className={`${s.listLink} min-w-0 flex-1`} to={`${appPaths.applicationPreparations}/${item.id}`}>
+              <strong>{item.programTitle}</strong>
+              <span className={s.muted}>{item.formTitle} · {applicationServiceFieldLabels[item.serviceField]}</span>
+              <span className={s.muted}>입력 버전 {item.inputRevision} · {readableTime(item.updatedAt)} 수정</span>
+            </Link>
+            {confirmingId === item.id
+              ? <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`${item.programTitle} 삭제 확인`}>
+                <span className="text-sm text-red-800">작성 내용과 AI 실행 기록을 삭제할까요?</span>
+                <button className={s.danger} disabled={vm.deletingId !== null} type="button" onClick={() => {
+                  void vm.deletePreparation(item.id).then((deleted) => { if (deleted) setConfirmingId(null) })
+                }}>{vm.deletingId === item.id ? '삭제 중…' : '정말 삭제'}</button>
+                <button className={s.button} disabled={vm.deletingId !== null} type="button" onClick={() => setConfirmingId(null)}>취소</button>
+              </div>
+              : <button className={s.button} disabled={vm.deletingId !== null} type="button" onClick={() => setConfirmingId(item.id)}>삭제</button>}
+          </div>
         </li>)}
       </ul>}
       {vm.page && vm.page.nextBeforeId !== null && !vm.error && <div className={s.moreActions}>
@@ -209,6 +221,22 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
         event.preventDefault()
         if (vm.selectedForm) void vm.create()
       }}>
+        {vm.selectedProgram && <section className={s.card} aria-labelledby="selected-application-program-title">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className={s.cardTitle} id="selected-application-program-title">선택한 공고</h2>
+              <strong>{vm.selectedProgram.title}</strong>
+              <p className={s.muted}>{vm.selectedProgram.organization} · {programStatusLabels[vm.selectedProgram.status]}</p>
+              <p className={s.muted}>{vm.selectedProgram.applicationPeriod}</p>
+            </div>
+            <button className={s.primary} disabled={vm.discovering || vm.submitting} type="button" onClick={() => { void vm.discoverForms() }}>
+              {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
+            </button>
+          </div>
+          {vm.discovering && <p className={s.status} role="status" aria-live="polite">공식 페이지의 PDF/HWPX 첨부를 수집하고 작성 문항을 찾고 있습니다.</p>}
+          <p className={s.muted}>선택만으로 분석하지 않습니다. 버튼을 누르면 공식 첨부의 작성 문항을 찾습니다.</p>
+        </section>}
+
         <section className={s.card}>
           <h2 className={s.cardTitle} id="create-preparation-title">지원 공고 검색</h2>
           <p className={s.muted}>공고명이나 기관명으로 검색하고 작성할 공고를 선택하세요. 현재 기업마당 공고의 PDF/HWPX를 분석할 수 있습니다.</p>
@@ -263,13 +291,6 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
           </>}
         </section>
 
-        {vm.selectedProgram && <section className={s.notice} aria-labelledby="selected-application-program-title">
-          <h2 className={s.cardTitle} id="selected-application-program-title">선택한 공고</h2>
-          <strong>{vm.selectedProgram.title}</strong>
-          <p className={s.muted}>{vm.selectedProgram.organization} · {programStatusLabels[vm.selectedProgram.status]}</p>
-          <p className={s.muted}>{vm.selectedProgram.applicationPeriod}</p>
-        </section>}
-
         <details className={s.card}>
           <summary className="cursor-pointer text-sm font-bold text-app-ink">검색에서 공고를 찾지 못했나요?</summary>
           <label className={s.label} htmlFor="application-program">기업마당 공식 공고 URL 또는 공고 ID</label>
@@ -283,7 +304,7 @@ function ApplicationPreparationEditor({ id, initialSourceProgramId }: { id: numb
           />
         </details>
 
-        {vm.discoveryInput.trim() && <section className={s.card} aria-label="선택한 공고 분석">
+        {!vm.selectedProgram && vm.discoveryInput.trim() && <section className={s.card} aria-label="입력한 공고 분석">
           <button className={s.primary} disabled={vm.discovering || vm.submitting || !vm.discoveryInput.trim()} type="button" onClick={() => { void vm.discoverForms() }}>
             {vm.discovering ? '공식 첨부 분석 중…' : '신청 문서 찾기'}
           </button>

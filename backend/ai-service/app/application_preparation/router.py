@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.application_preparation.models import DiscoverFormsRequest, InterpretRequest
+from app.application_preparation.models import DiscoverFormsRequest, FormDiscoveryValidationError, InterpretRequest
 from app.application_preparation.service import ApplicationPreparationError, ApplicationPreparationService
 
 router = APIRouter(prefix="/internal/v1/application-preparations", tags=["internal"])
@@ -31,10 +31,12 @@ async def discover(payload: DiscoverFormsRequest, service: Annotated[Application
         return await service.discover(payload)
     except ApplicationPreparationError as error:
         timed_out = str(error) == "APPLICATION_PREPARATION_TIMEOUT"
+        cause = error.__cause__
         logger.warning(
-            "application_form_discovery_failed failure_kind=%s error_type=%s document_count=%d",
+            "application_form_discovery_failed failure_kind=%s error_type=%s validation_reason=%s document_count=%d",
             "timeout" if timed_out else "execution",
-            type(error.__cause__ or error).__name__,
+            type(cause or error).__name__,
+            cause.reason if isinstance(cause, FormDiscoveryValidationError) else "NONE",
             len(payload.documents),
         )
         raise HTTPException(

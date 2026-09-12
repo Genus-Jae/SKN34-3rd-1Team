@@ -108,6 +108,23 @@ class ApplicationPreparationRepositoryIntegrationTest {
         assertEquals(2L, repository.findOwned(ownerId, created.id)!!.inputRevision)
     }
 
+    @Test
+    fun deletesOnlyTheOwnedPreparationAndCascadesItsConfirmedFacts() {
+        val created = repository.create(ownerId, draft())
+        inputs.replaceOwned(ownerId, created.id, "company-overview", 1, listOf(
+            NewConfirmedApplicationFact("company-name", ApplicationFactStatus.PROVIDED, "삭제할 업체", "삭제할 답변"),
+        ))
+
+        assertTrue(!repository.deleteOwned(otherId, created.id))
+        assertTrue(repository.deleteOwned(ownerId, created.id))
+        assertNull(repository.findOwned(ownerId, created.id))
+        assertEquals(0, jdbc.queryForObject(
+            "SELECT COUNT(*) FROM application_preparation_fact WHERE preparation_id = ?",
+            Int::class.java,
+            created.id,
+        ))
+    }
+
     private fun createAccount(): Long = accounts.createAccount(
         NewAccount("application-${UUID.randomUUID()}@example.test", "test-password-hash", LocalDateTime.of(2026, 9, 11, 0, 0)),
     ).id

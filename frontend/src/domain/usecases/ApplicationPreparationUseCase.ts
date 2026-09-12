@@ -19,6 +19,10 @@ export class ApplicationPreparationUseCase {
     return this.repository.discover('BIZINFO', sourceProgramId, signal)
   }
   list(beforeId?: number, signal?: AbortSignal) { return this.repository.list(beforeId, signal) }
+  delete(id: number, signal?: AbortSignal) {
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('삭제할 신청 준비 건이 올바르지 않습니다.')
+    return this.repository.delete(id, signal)
+  }
   get(id: number, signal?: AbortSignal) {
     if (!Number.isSafeInteger(id) || id <= 0) throw new Error('올바른 신청 준비 주소가 아닙니다.')
     return this.repository.get(id, signal)

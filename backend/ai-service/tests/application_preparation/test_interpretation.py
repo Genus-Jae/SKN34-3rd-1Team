@@ -112,6 +112,44 @@ def test_real_runner_discovers_only_fields_with_exact_document_evidence():
     assert agent._discovery_agent.tools == []
 
 
+def test_discovery_normalizes_display_text_and_whitespace_only_quote_differences():
+    request_data = discovery_request_data()
+    request_data["documents"][0]["blocks"][0]["text"] = "사업\n개요를 작성해 주세요."
+    output = discovery_selection_data()
+    section = output["forms"][0]["sections"][0]
+    section["title"] = "  사업 계획  "
+    section["description"] = "  사업 개요를 작성합니다.  "
+    section["fields"][0]["label"] = "  사업 개요  "
+    section["fields"][0]["guidance"] = "  사업의 목적과 내용을 입력합니다.  "
+    section["fields"][0]["evidenceQuote"] = "사업 개요"
+    agent = SimpleNamespace(discover=AsyncMock(return_value=FormDiscoverySelection.model_validate(output)))
+
+    result = asyncio.run(ApplicationPreparationService(agent, "test-model").discover(
+        DiscoverFormsRequest.model_validate(request_data),
+    ))
+
+    normalized = result["forms"][0]["sections"][0]
+    assert normalized["title"] == "사업 계획"
+    assert normalized["fields"][0]["label"] == "사업 개요"
+    assert normalized["fields"][0]["evidenceQuote"] == "사업\n개요"
+
+
+def test_discovery_merges_repeated_document_candidates_and_makes_generated_keys_unique():
+    output = discovery_selection_data()
+    duplicate = deepcopy(output["forms"][0])
+    duplicate["sections"][0]["title"] = "두 번째 사업 계획"
+    output["forms"].append(duplicate)
+    agent = SimpleNamespace(discover=AsyncMock(return_value=FormDiscoverySelection.model_validate(output)))
+
+    result = asyncio.run(ApplicationPreparationService(agent, "test-model").discover(
+        DiscoverFormsRequest.model_validate(discovery_request_data()),
+    ))
+
+    forms = result["forms"]
+    assert len(forms) == 1
+    assert [section["sectionKey"] for section in forms[0]["sections"]] == ["business-plan", "business-plan-2"]
+
+
 def test_discovery_rejects_a_field_without_exact_source_evidence():
     output = discovery_selection_data()
     output["forms"][0]["sections"][0]["fields"][0]["evidenceQuote"] = "문서에 없는 항목"

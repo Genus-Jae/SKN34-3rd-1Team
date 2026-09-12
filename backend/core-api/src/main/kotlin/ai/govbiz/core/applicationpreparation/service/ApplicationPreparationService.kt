@@ -56,6 +56,10 @@ class ApplicationPreparationService(
         return ApplicationPreparationPageResult(items, items.lastOrNull()?.preparation?.id?.takeIf { rows.size > size })
     }
 
+    fun deleteOwned(account: Account, preparationId: Long) {
+        if (!repository.deleteOwned(account.id, preparationId)) throw ApplicationPreparationNotFoundException()
+    }
+
     fun interpret(
         account: Account,
         preparationId: Long,

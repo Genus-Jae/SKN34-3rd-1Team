@@ -56,7 +56,7 @@ const detail = {
   updatedAt: '2026-09-11T01:00:00+09:00',
   form: structuredClone(firstForm),
 }
-const repository = { forms: vi.fn(), discover: vi.fn(), list: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
+const repository = { forms: vi.fn(), discover: vi.fn(), list: vi.fn(), delete: vi.fn(), get: vi.fn(), create: vi.fn(), interpret: vi.fn(), replaceInputs: vi.fn() }
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -73,6 +73,7 @@ beforeEach(() => {
   repository.forms.mockResolvedValue([structuredClone(firstForm)])
   repository.discover.mockResolvedValue({ items: [structuredClone(firstForm)], warnings: ['원문 대조 필요'], cached: false })
   repository.list.mockResolvedValue({ items: [], nextBeforeId: null })
+  repository.delete.mockResolvedValue(undefined)
   repository.get.mockResolvedValue(structuredClone(detail))
   repository.create.mockResolvedValue(structuredClone(detail))
   repository.interpret.mockResolvedValue({
@@ -206,6 +207,25 @@ describe('application preparation list', () => {
     }))
     expect(screen.queryByText('이전 사용자 신청')).toBeNull()
   })
+
+  it('requires confirmation and removes only the selected saved preparation after deletion succeeds', async () => {
+    repository.list.mockResolvedValueOnce({
+      items: [{ id: 12, inputRevision: 3, serviceField: 'TECHNICAL_SUPPORT', programTitle: firstForm.programTitle, formTitle: firstForm.formTitle, updatedAt: detail.updatedAt }],
+      nextBeforeId: null,
+    })
+    mount('/app/application-preparations')
+    await screen.findByText(firstForm.programTitle)
+
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }))
+    const confirmation = screen.getByRole('group', { name: `${firstForm.programTitle} 삭제 확인` })
+    expect(confirmation.textContent).toContain('작성 내용과 AI 실행 기록')
+    expect(repository.delete).not.toHaveBeenCalled()
+    fireEvent.click(within(confirmation).getByRole('button', { name: '정말 삭제' }))
+
+    expect(repository.delete).toHaveBeenCalledWith(12, expect.any(AbortSignal))
+    expect(await screen.findByRole('heading', { name: '아직 시작한 신청 문서가 없습니다.' })).toBeTruthy()
+    expect(screen.queryByText(firstForm.programTitle)).toBeNull()
+  })
 })
 
 describe('application preparation creation and detail', () => {
@@ -227,10 +247,12 @@ describe('application preparation creation and detail', () => {
     expect(repository.discover).not.toHaveBeenCalled()
     fireEvent.click(within(results).getByRole('button', { name: '선택' }))
 
-    expect(screen.getByRole('heading', { name: '선택한 공고' })).toBeTruthy()
+    const selectedHeading = screen.getByRole('heading', { name: '선택한 공고' })
+    const searchHeading = screen.getByRole('heading', { name: '지원 공고 검색' })
+    expect(selectedHeading.compareDocumentPosition(searchHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect((screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID') as HTMLInputElement).value).toBe('PBLN_123')
     expect(repository.discover).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
+    fireEvent.click(within(selectedHeading.closest('section')!).getByRole('button', { name: '신청 문서 찾기' }))
 
     expect(await screen.findByLabelText('작성할 공식 첨부')).toBeTruthy()
     expect(repository.discover).toHaveBeenCalledWith('BIZINFO', 'PBLN_123', expect.any(AbortSignal))

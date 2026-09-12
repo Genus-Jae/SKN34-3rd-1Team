@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type {
   InterpretApplicationPreparation,
   NewApplicationPreparation,
@@ -25,6 +26,9 @@ export class ApplicationPreparationRepositoryImpl implements ApplicationPreparat
   }
   list(beforeId?: number, signal?: AbortSignal) {
     return request(cursor(beforeId), applicationPreparationPageSchema, 'GET', undefined, signal)
+  }
+  delete(id: number, signal?: AbortSignal) {
+    return request(`/${id}`, z.undefined(), 'DELETE', undefined, signal, 'preparation')
   }
   async get(id: number, signal?: AbortSignal) {
     const result = await request(`/${id}`, applicationPreparationSchema, 'GET', undefined, signal, 'preparation')

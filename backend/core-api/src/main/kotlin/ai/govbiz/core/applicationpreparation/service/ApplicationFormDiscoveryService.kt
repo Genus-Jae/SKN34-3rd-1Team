@@ -57,95 +57,99 @@ class ApplicationFormDiscoveryService(
         configuration: ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryConfiguration,
     ): ApplicationFormDiscoveryResult {
         return try {
-        val collected = attachments.collect(sourceCode, sourceProgramId)
-        val warnings = collected.warnings.toMutableList()
-        val sourceFingerprint = sha256(collected.files.joinToString("\n") { file ->
-            "${file.sourceUrl}\u0000${file.fileName}\u0000${sha256(file.bytes)}"
-        }.toByteArray())
-        snapshots.findByProgram(
-            sourceCode, sourceProgramId, sourceFingerprint, SupportProgramDocumentParser.VERSION,
-            configuration.model, configuration.promptVersion,
-        )
-            .takeIf { it.isNotEmpty() }?.let { cached ->
-                return ApplicationFormDiscoveryResult(
-                    cached,
-                    warnings + "동일한 공식 첨부에서 이전에 추출한 양식을 재사용했습니다.",
-                    true,
+            val collected = attachments.collect(sourceCode, sourceProgramId)
+            val warnings = collected.warnings.toMutableList()
+            val sourceFingerprint = sha256(collected.files.joinToString("\n") { file ->
+                "${file.sourceUrl}\u0000${file.fileName}\u0000${sha256(file.bytes)}"
+            }.toByteArray())
+            snapshots.findByProgram(
+                sourceCode, sourceProgramId, sourceFingerprint, SupportProgramDocumentParser.VERSION,
+                configuration.model, configuration.promptVersion,
+            )
+                .takeIf { it.isNotEmpty() }?.let { cached ->
+                    return ApplicationFormDiscoveryResult(
+                        cached,
+                        warnings + "동일한 공식 첨부에서 이전에 추출한 양식을 재사용했습니다.",
+                        true,
+                    )
+                }
+            val documents = collected.files.mapIndexedNotNull { documentIndex, file ->
+                val blocks = try {
+                    parser.parse(file.bytes, file.format)
+                } catch (error: SupportProgramDocumentException) {
+                    if (error.reason !in setOf(
+                            SupportProgramDocumentException.Reason.UNSUPPORTED,
+                            SupportProgramDocumentException.Reason.TOO_LARGE,
+                        )) throw error
+                    warnings.add("자동 분석 제외 첨부(SOURCE_${error.reason.name}): ${file.fileName.take(250)}")
+                    return@mapIndexedNotNull null
+                }
+                ApplicationFormDiscoveryDocument(
+                    documentIndex,
+                    file.sourceUrl,
+                    file.fileName,
+                    file.format,
+                    file.bytes.size.toLong(),
+                    sha256(file.bytes),
+                    blocks.mapIndexed { blockIndex, block ->
+                        ApplicationFormDiscoveryBlock("D$documentIndex-B$blockIndex", block.locator, block.text)
+                    },
                 )
             }
-        val documents = collected.files.mapIndexedNotNull { documentIndex, file ->
-            val blocks = try {
-                parser.parse(file.bytes, file.format)
-            } catch (error: SupportProgramDocumentException) {
-                if (error.reason !in setOf(
-                        SupportProgramDocumentException.Reason.UNSUPPORTED,
-                        SupportProgramDocumentException.Reason.TOO_LARGE,
-                    )) throw error
-                warnings.add("자동 분석 제외 첨부(SOURCE_${error.reason.name}): ${file.fileName.take(250)}")
-                return@mapIndexedNotNull null
+            if (documents.isEmpty()) throw ApplicationFormDiscoveryException(Reason.SOURCE_UNSUPPORTED)
+            if (documents.sumOf { document -> document.blocks.sumOf { it.text.length } } > 120_000) {
+                throw ApplicationFormDiscoveryException(Reason.SOURCE_TOO_LARGE)
             }
-            ApplicationFormDiscoveryDocument(
-                documentIndex,
-                file.sourceUrl,
-                file.fileName,
-                file.format,
-                file.bytes.size.toLong(),
-                sha256(file.bytes),
-                blocks.mapIndexed { blockIndex, block ->
-                    ApplicationFormDiscoveryBlock("D$documentIndex-B$blockIndex", block.locator, block.text)
-                },
+            val input = ApplicationFormDiscoveryInput(
+                sourceCode,
+                sourceProgramId,
+                collected.programTitle.ifBlank { catalogTitle },
+                sourceUrl,
+                documents,
             )
-        }
-        if (documents.isEmpty()) throw ApplicationFormDiscoveryException(Reason.SOURCE_UNSUPPORTED)
-        if (documents.sumOf { document -> document.blocks.sumOf { it.text.length } } > 120_000) {
-            throw ApplicationFormDiscoveryException(Reason.SOURCE_TOO_LARGE)
-        }
-        val input = ApplicationFormDiscoveryInput(
-            sourceCode,
-            sourceProgramId,
-            collected.programTitle.ifBlank { catalogTitle },
-            sourceUrl,
-            documents,
-        )
-        val extracted = ai.discover(input, configuration)
-        if (extracted.isEmpty()) throw ApplicationFormDiscoveryException(Reason.NO_FORM)
-        val forms = extracted.map { candidate ->
-            val document = requireNotNull(documents.find { it.documentIndex == candidate.documentIndex })
-            val blockById = document.blocks.associateBy { it.blockId }
-            ApplicationFormManifest(
-                schemaVersion = 1,
-                formVersionId = formVersionId(
-                    sourceCode, sourceProgramId, document.sha256, configuration.model, configuration.promptVersion,
-                ),
-                sourceCode = sourceCode,
-                sourceProgramId = sourceProgramId,
-                programTitle = input.programTitle,
-                formTitle = document.fileName.replace(Regex("(?i)\\.(pdf|hwpx).*"), "").take(300),
-                sourceUrl = input.programSourceUrl,
-                attachmentFileName = document.fileName,
-                attachmentBytes = document.bytes,
-                attachmentSha256 = document.sha256,
-                verificationStatus = "SOURCE_DOCUMENT_EXTRACTED",
-                institutionReviewed = false,
-                supportedServiceFields = listOf(ApplicationServiceField.GENERAL),
-                sections = candidate.sections.map { section ->
-                    val locator = section.fields.map { field -> requireNotNull(blockById[field.evidenceBlockId]).locator }
-                        .distinct().joinToString(", ").take(200)
-                    ApplicationFormSectionDefinition(
-                        section.key,
-                        section.title,
-                        locator,
-                        section.description,
-                        section.fields.map { field ->
-                            ApplicationFormFieldDefinition(field.key, field.label, field.guidance, field.required)
+            val extracted = ai.discover(input, configuration)
+            if (extracted.isEmpty()) throw ApplicationFormDiscoveryException(Reason.NO_FORM)
+            val forms = try {
+                extracted.map { candidate ->
+                    val document = requireNotNull(documents.find { it.documentIndex == candidate.documentIndex })
+                    val blockById = document.blocks.associateBy { it.blockId }
+                    ApplicationFormManifest(
+                        schemaVersion = 1,
+                        formVersionId = formVersionId(
+                            sourceCode, sourceProgramId, document.sha256, configuration.model, configuration.promptVersion,
+                        ),
+                        sourceCode = sourceCode,
+                        sourceProgramId = sourceProgramId,
+                        programTitle = input.programTitle,
+                        formTitle = document.fileName.replace(Regex("(?i)\\.(pdf|hwpx).*"), "").trim().take(300),
+                        sourceUrl = input.programSourceUrl,
+                        attachmentFileName = document.fileName,
+                        attachmentBytes = document.bytes,
+                        attachmentSha256 = document.sha256,
+                        verificationStatus = "SOURCE_DOCUMENT_EXTRACTED",
+                        institutionReviewed = false,
+                        supportedServiceFields = listOf(ApplicationServiceField.GENERAL),
+                        sections = candidate.sections.map { section ->
+                            val locator = section.fields.map { field -> requireNotNull(blockById[field.evidenceBlockId]).locator }
+                                .distinct().joinToString(", ").trim().take(200)
+                            ApplicationFormSectionDefinition(
+                                section.key,
+                                section.title,
+                                locator,
+                                section.description,
+                                section.fields.map { field ->
+                                    ApplicationFormFieldDefinition(field.key, field.label, field.guidance, field.required)
+                                },
+                            )
                         },
                     )
-                },
-            )
-        }
-        snapshots.save(forms, sourceFingerprint, SupportProgramDocumentParser.VERSION, configuration)
-        val storedForms = forms.map { form -> requireNotNull(snapshots.findByVersion(form.formVersionId)) }
-        ApplicationFormDiscoveryResult(storedForms, warnings.distinct(), false)
+                }
+            } catch (error: IllegalArgumentException) {
+                throw AiServiceCallException.invalidResponse("Application form discovery output could not form a safe manifest", error)
+            }
+            snapshots.save(forms, sourceFingerprint, SupportProgramDocumentParser.VERSION, configuration)
+            val storedForms = forms.map { form -> requireNotNull(snapshots.findByVersion(form.formVersionId)) }
+            ApplicationFormDiscoveryResult(storedForms, warnings.distinct(), false)
         } catch (error: ApplicationFormDiscoveryException) {
             throw error
         } catch (error: SupportProgramDocumentException) {
