@@ -103,7 +103,8 @@ export function useSavedProgramCalendarViewModel(
   return {
     ...display, today, phase: loadState.phase, weeks, programsInMonth, allProgramsInMonth, filters, activeFilterCount,
     viewMode, listPage: safeListPage, listTotalPages, listPrograms, filteredProgramCount: filteredPrograms.length,
-    years: Array.from({ length: lastCalendarYear - firstCalendarYear + 1 }, (_, i) => firstCalendarYear + i),
+    totalProgramCount: programs.length,
+    years: selectableYears(display.year),
     canPreviousMonth: display.year > firstCalendarYear || display.month > 1,
     canNextMonth: display.year < lastCalendarYear || display.month < 12,
     canPreviousYear: display.year > firstCalendarYear,
@@ -111,4 +112,13 @@ export function useSavedProgramCalendarViewModel(
     chooseMonth, moveMonth, goToToday, changeFilter, clearFilter, resetFilters, setViewMode, chooseListPage,
     retry: () => setLoadVersion((value) => value + 1),
   }
+}
+
+/** 연도 목록은 2000년부터 2030년까지 고정입니다. 월 이동으로 그 밖의 해에 있으면 그 해만 더해 현재 값이 비지 않게 합니다. */
+export const firstSelectableYear = 2000
+export const lastSelectableYear = 2030
+
+export function selectableYears(displayYear: number): number[] {
+  const years = Array.from({ length: lastSelectableYear - firstSelectableYear + 1 }, (_, i) => firstSelectableYear + i)
+  return years.includes(displayYear) ? years : [...years, displayYear].sort((a, b) => a - b)
 }
