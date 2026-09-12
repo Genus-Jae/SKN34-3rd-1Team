@@ -92,6 +92,8 @@ export function PublicPartnerRecruitmentListPage() {
 
       <div className={styles.column}>
         {/* 검색어는 조회를 눌러야 적용됩니다. 로그인 뒤 목록과 같은 API keyword(제목·공고·기관·기업명)를 씁니다. */}
+        {/* 검색 칸·조회·"검색 결과 N건"·출처·정렬을 한 줄에 둡니다. 폭이 좁으면 줄이 접힙니다. */}
+        <div className={styles.searchBar}>
         <form
           className={styles.searchRow}
           aria-label="모집글 검색"
@@ -128,7 +130,6 @@ export function PublicPartnerRecruitmentListPage() {
           <button className={workspacePageStyles.primaryButton} type="submit">조회</button>
         </form>
         {/* 지원사업 찾기 필터 검색과 같은 "검색 결과 N건" 제목과 출처·정렬 선택입니다. 지역·분야 필터는 두지 않습니다. */}
-        <div className={styles.toolbar}>
           <h2 className={styles.resultCount} aria-live="polite">
             {resultTotal === null
               ? '검색 결과'
