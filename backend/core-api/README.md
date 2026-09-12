@@ -18,16 +18,36 @@
 | `GET /api/v1/me/chat-conversations?before=123` | 본인 기록 요약 최대 30개와 `nextCursor`. 생성 ID 내림차순, 스냅샷 본문 제외 |
 | `GET /api/v1/me/chat-conversations/{id}` | 본인 기록의 요약·버전·스냅샷 조회 |
 | `PUT /api/v1/me/chat-conversations/{id}` | `{expectedVersion, snapshot}` 저장. 최초 버전 0, 이후 읽은 버전으로 갱신 |
+| `DELETE /api/v1/me/chat-conversations/{id}` | 본인 대화의 제목·스냅샷 삭제. 본문 없는 204, 반복 요청도 동일 |
 
 모든 요청은 세션 쿠키와 `X-Chat-Account`(화면 계정 이메일의 URL 인코딩 값)를 보냅니다. 소유자는 세션의 account ID로만
 정하고, 헤더는 다른 탭에서 계정이 바뀐 경우 요청을 차단하는 사전조건입니다. 비로그인·계정 불일치는 401, 타인 기록은
-404, 허용 Origin 없는 상태 변경은 403입니다. 관리자도 타인의 개인 대화를 조회하지 않으며 응답 캐시는 `no-store`입니다.
+조회 시 404, 허용 Origin 없는 상태 변경은 403입니다. 삭제는 기록의 존재 여부를 노출하지 않고 본인 범위에서만 204를
+반환하므로 다른 계정의 같은 ID 기록에는 영향이 없습니다. 관리자도 타인의 개인 대화를 조회·삭제할 수 없으며 응답 캐시는 `no-store`입니다.
 
 스냅샷 `schemaVersion=1`, 첫 사용자 메시지 ID와 경로 ID 일치, 메시지 200개·UTF-8 JSON 2,000,000바이트 이하를 검증합니다.
 제목은 첫 질문에서 유니코드 문자 최대 80개로 만듭니다. 이것은 회원이 보관하는 화면 데이터로, 서버가 보증한 검색 결과나
 AI 입력의 신뢰 근거로 사용하지 않습니다. 프론트엔드는 복원 시 DTO·공식 원문 링크 등을 별도로 검증합니다.
 저장 transaction에서 계정 행을 잠그고 버전을 검사합니다. 오래된 다른 내용은 409이며 같은 JSON의 재전송은 멱등입니다.
-계정 탈퇴 이벤트는 같은 transaction에서 대화 기록을 제거합니다. 저장·조회에는 외부 API·OpenAI 호출이 없습니다.
+`V21__add_chat_conversation_deletion.sql`은 `deleted_at`을 추가합니다. 삭제는 제목을 빈 문자열, 스냅샷을 `{}`로
+비우고 최소 식별 정보·삭제 표시만 남깁니다. 목록·상세에서 제외하며 복구 기능은 없습니다. 최초 저장보다 삭제가 먼저
+도착해도 같은 계정 잠금 아래 삭제 표시를 기록하고, 이후 모든 버전의 저장을 409로 거절해 자동 저장·다른 탭의 재생성을 막습니다.
+삭제 응답 유실 시 같은 DELETE를 재시도할 수 있습니다. 계정 탈퇴 이벤트는 같은 transaction에서 삭제 표시까지 제거합니다.
+저장·조회·삭제에는 외부 API·OpenAI 호출이 없습니다.
+
+### V19 병합 충돌과 기존 DB 업그레이드
+
+마이그레이션 순서는 `V19__create_chat_conversation.sql` → `V20__add_account_admin_management.sql` →
+`V21__add_chat_conversation_deletion.sql`입니다. 관리자 기능 브랜치의 중복 V19는 SQL 내용을 바꾸지 않고 V20으로
+이동했습니다. 이미 적용된 대화용 V19의 파일·체크섬·적용 이력은 유지하며, 빈 DB와 대화용 V19 적용 DB는 정상 기동으로
+남은 버전을 순서대로 적용합니다. 데이터 초기화나 `flyway repair`는 필요하지 않습니다.
+
+업그레이드 전에는 대상 DB의 `flyway_schema_history`에서 `version`, `script`, `checksum`, `success`를 확인하세요.
+**관리자용 `V19__add_account_admin_management.sql`을 먼저 적용한 별도 DB는 바로 재기동하지 마세요.** 해당 DB는
+대화용 V19 적용 DB와 이력이 다릅니다. 전체 백업과 관리자 스키마·SQL 체크섬 검증 후, DBA와 함께 관리자 이력의 버전·파일명을
+V20에 맞추고 미적용 대화용 V19를 한 번만 out-of-order로 적용하는 별도 이력 정합화가 필요합니다. 기존 설치 순서·체크섬·
+적용 시각은 보존해야 하며 이 저장소가 다른 DB의 이력을 자동 수정하지 않습니다. 무조건적인 `repair`, 이력 삭제,
+`validate-on-migrate=false`, 볼륨 초기화로 충돌을 숨기지 마세요.
 
 ## 실행
 

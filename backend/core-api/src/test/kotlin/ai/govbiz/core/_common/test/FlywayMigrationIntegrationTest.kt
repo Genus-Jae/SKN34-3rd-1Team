@@ -1,0 +1,96 @@
+package ai.govbiz.core._common.test
+
+import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.FlywayException
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.testcontainers.mysql.MySQLContainer
+import java.nio.file.Files
+import java.nio.file.Path
+
+/** 빈 DB와 기존 대화용 V19 DB를 실제 MySQL 8.4에서 검증합니다. 개발 DB·적용 이력은 변경하지 않습니다. */
+class FlywayMigrationIntegrationTest {
+    @Test
+    fun freshDatabaseAppliesUniqueVersionsAndRepeatedStartupChangesNothing() = withDatabase { mysql, jdbc ->
+        val flyway = migration(mysql, "21")
+        assertEquals(21, flyway.migrate().migrationsExecuted)
+        assertEquals(21, jdbc.queryForObject("SELECT COUNT(DISTINCT version) FROM flyway_schema_history WHERE success = 1", Int::class.java))
+        assertEquals("V19__create_chat_conversation.sql", jdbc.queryForObject("SELECT script FROM flyway_schema_history WHERE version = '19'", String::class.java))
+        assertEquals("V20__add_account_admin_management.sql", jdbc.queryForObject("SELECT script FROM flyway_schema_history WHERE version = '20'", String::class.java))
+        assertEquals("V21__add_chat_conversation_deletion.sql", jdbc.queryForObject("SELECT script FROM flyway_schema_history WHERE version = '21'", String::class.java))
+        assertEquals(0, flyway.migrate().migrationsExecuted)
+        assertTrue(flyway.validateWithResult().validationSuccessful)
+    }
+
+    @Test
+    fun upgradingAnAppliedChatV19PreservesItsHistoryAndExistingAccountChatAndCatalog() = withDatabase { mysql, jdbc ->
+        migration(mysql, "19").migrate()
+        val history = jdbc.queryForList("SELECT installed_rank, version, script, checksum, installed_on, success FROM flyway_schema_history ORDER BY installed_rank")
+        assertEquals(-161548524, jdbc.queryForObject("SELECT checksum FROM flyway_schema_history WHERE version = '19'", Int::class.java))
+        jdbc.update("INSERT INTO account (email, password_hash, terms_agreed_at) VALUES (?, ?, CURRENT_TIMESTAMP(6))", "preserved@test.local", "preserved-hash")
+        val accountId = jdbc.queryForObject("SELECT id FROM account WHERE email = ?", Long::class.java, "preserved@test.local")!!
+        val snapshot = """{"schemaVersion":1,"messages":[{"id":"preserved","role":"user","text":"서울 AI 지원 😀"}]}"""
+        jdbc.update("INSERT INTO chat_conversation (account_id, conversation_id, title, snapshot, version, updated_at) VALUES (?, ?, ?, ?, 3, CURRENT_TIMESTAMP(6))",
+            accountId, "preserved", "서울 AI 지원 😀", snapshot)
+        jdbc.update("""INSERT INTO support_program (source_code, source_program_id, title, organization, summary, categories, regions,
+            target_description, application_period_raw, source_url) VALUES ('BIZINFO', 'preserved', '한글 공고', '기관', '지원 요약',
+            JSON_ARRAY('AI'), JSON_ARRAY('서울'), '중소기업', '상시', 'https://www.bizinfo.go.kr/')""")
+        val account = jdbc.queryForMap("SELECT id, email, password_hash, terms_agreed_at FROM account WHERE id = ?", accountId)
+        val chat = jdbc.queryForMap("SELECT id, account_id, conversation_id, title, CAST(snapshot AS CHAR) AS snapshot, version, updated_at FROM chat_conversation")
+        val program = jdbc.queryForMap("SELECT id, title, summary, CAST(categories AS CHAR) AS categories, CAST(regions AS CHAR) AS regions, first_seen_at FROM support_program")
+
+        val flyway = migration(mysql, "21")
+        assertEquals(2, flyway.migrate().migrationsExecuted)
+        assertEquals(history, jdbc.queryForList("SELECT installed_rank, version, script, checksum, installed_on, success FROM flyway_schema_history WHERE installed_rank <= 19 ORDER BY installed_rank"))
+        assertEquals(account, jdbc.queryForMap("SELECT id, email, password_hash, terms_agreed_at FROM account WHERE id = ?", accountId))
+        assertEquals(chat, jdbc.queryForMap("SELECT id, account_id, conversation_id, title, CAST(snapshot AS CHAR) AS snapshot, version, updated_at FROM chat_conversation"))
+        assertEquals(program, jdbc.queryForMap("SELECT id, title, summary, CAST(categories AS CHAR) AS categories, CAST(regions AS CHAR) AS regions, first_seen_at FROM support_program"))
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM chat_conversation WHERE deleted_at IS NULL", Int::class.java))
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM account WHERE last_login_at IS NULL", Int::class.java))
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM account_admin_action", Int::class.java))
+        assertEquals(0, flyway.migrate().migrationsExecuted)
+        assertTrue(flyway.validateWithResult().validationSuccessful)
+    }
+
+    @Test
+    fun legacyAdminV19FailsSafelyAndTheDocumentedOneTimeReconciliationPreservesHistory(@TempDir legacy: Path) = withDatabase { mysql, jdbc ->
+        // 이력 정합화는 격리된 테스트 DB에서만 재현합니다. 다른 개발자 DB를 자동 repair하지 않습니다.
+        for (resource in PathMatchingResourcePatternResolver().getResources("classpath*:db/migration/V*.sql")) {
+            val name = requireNotNull(resource.filename)
+            val version = requireNotNull(Regex("^V(\\d+)__").find(name)).groupValues[1].toInt()
+            if (version <= 18 || name == "V20__add_account_admin_management.sql") {
+                resource.inputStream.use { Files.copy(it, legacy.resolve(if (version == 20) "V19__add_account_admin_management.sql" else name)) }
+            }
+        }
+        Flyway.configure().dataSource(mysql.jdbcUrl, mysql.username, mysql.password)
+            .locations("filesystem:$legacy").load().migrate()
+        val original = jdbc.queryForMap("SELECT installed_rank, description, checksum, installed_on, success FROM flyway_schema_history WHERE version = '19'")
+        assertThrows(FlywayException::class.java) { migration(mysql, "21").migrate() }
+        assertEquals("V19__add_account_admin_management.sql", jdbc.queryForObject("SELECT script FROM flyway_schema_history WHERE version = '19'", String::class.java))
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'chat_conversation'", Int::class.java))
+
+        // 백업·스키마·체크섬을 확인한 DBA가 수행할 제한적인 이력 변경을 테스트합니다. 설치 순서와 시각은 보존합니다.
+        assertEquals(1, jdbc.update("UPDATE flyway_schema_history SET version = '20', script = 'V20__add_account_admin_management.sql' WHERE version = '19' AND script = 'V19__add_account_admin_management.sql' AND checksum = ? AND success = 1", original["checksum"]))
+        val reconciled = Flyway.configure().dataSource(mysql.jdbcUrl, mysql.username, mysql.password).target("21").outOfOrder(true).load()
+        assertEquals(2, reconciled.migrate().migrationsExecuted)
+        assertEquals(original, jdbc.queryForMap("SELECT installed_rank, description, checksum, installed_on, success FROM flyway_schema_history WHERE version = '20'"))
+        assertTrue(migration(mysql, "21").validateWithResult().validationSuccessful)
+        assertEquals(0, migration(mysql, "21").migrate().migrationsExecuted)
+    }
+
+    private fun migration(mysql: MySQLContainer, target: String) = Flyway.configure()
+        .dataSource(mysql.jdbcUrl, mysql.username, mysql.password).target(target).load()
+
+    private fun withDatabase(test: (MySQLContainer, JdbcTemplate) -> Unit) {
+        MySQLContainer("mysql:8.4").withDatabaseName("govbiz_migration_test").use { mysql ->
+            mysql.start()
+            test(mysql, JdbcTemplate(DriverManagerDataSource(mysql.jdbcUrl, mysql.username, mysql.password)))
+        }
+    }
+}

@@ -1,9 +1,13 @@
+import { z } from 'zod'
 import type { ChatConversationSnapshot } from '../../domain/entities/ChatConversation'
 import type { ChatConversationRepository } from '../../domain/repositories/ChatConversationRepository'
 import { chatConversationRequest } from '../api/chatConversationApi'
 import { chatConversationDetailSchema, chatConversationPageSchema, chatConversationSummarySchema, chatConversationSnapshotSchema } from '../models/ChatConversationDto'
 
 export class ChatConversationRepositoryImpl implements ChatConversationRepository {
+  delete(accountEmail: string, id: string, signal?: AbortSignal) {
+    return chatConversationRequest(accountEmail, `/${encodeURIComponent(id)}`, z.void(), signal, undefined, 'DELETE')
+  }
   list(accountEmail: string, before: number | null, signal?: AbortSignal) { return chatConversationRequest(accountEmail, before === null ? '' : `?before=${before}`, chatConversationPageSchema, signal) }
   async get(accountEmail: string, id: string, signal?: AbortSignal) {
     const detail = await chatConversationRequest(accountEmail, `/${encodeURIComponent(id)}`, chatConversationDetailSchema, signal)

@@ -15,6 +15,11 @@ class ChatConversationService(private val repository: ChatConversationRepository
     fun list(account: Account, before: Long?) = repository.findPage(account.id, before)
     fun get(account: Account, id: String) = repository.find(account.id, id) ?: throw ChatConversationNotFoundException()
 
+    fun delete(account: Account, id: String) {
+        if (!id.matches(Regex("[A-Za-z0-9_-]{1,64}"))) throw InvalidChatConversationException()
+        repository.delete(account.id, id)
+    }
+
     fun save(account: Account, id: String, expectedVersion: Long, snapshotJson: String): ChatConversation {
         if (!id.matches(Regex("[A-Za-z0-9_-]{1,64}")) || expectedVersion !in 0..9_007_199_254_740_990L
             || snapshotJson.toByteArray(Charsets.UTF_8).size > 2_000_000) throw InvalidChatConversationException()
