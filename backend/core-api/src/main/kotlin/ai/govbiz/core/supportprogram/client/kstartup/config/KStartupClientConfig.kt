@@ -12,4 +12,8 @@ class KStartupClientConfig {
     @Bean
     fun kStartupRestClient(builder: RestClient.Builder, properties: KStartupClientProperties): RestClient =
         buildRestClient(builder, properties.baseUrl, properties.connectTimeout, properties.readTimeout)
+
+    @Bean
+    fun kStartupSourceDocumentRestClient(builder: RestClient.Builder, properties: KStartupClientProperties): RestClient =
+        buildRestClient(builder, null, properties.connectTimeout, properties.readTimeout)
 }

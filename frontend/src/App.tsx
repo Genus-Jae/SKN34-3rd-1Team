@@ -16,7 +16,7 @@ import { AdminAccountsPage } from './presentation/features/admin/view/AdminAccou
 import { ForgotPasswordPage } from './presentation/features/auth/view/ForgotPasswordPage'
 import { LoginPage } from './presentation/features/auth/view/LoginPage'
 import { OAuthCompletePage } from './presentation/features/auth/view/OAuthCompletePage'
-import { SavedSupportProgramsPage } from './presentation/features/saved-support-program/view/SavedSupportProgramsPage'
+import { SavedProgramsPage } from './presentation/features/saved-programs/view/SavedProgramsPage'
 import { ResetPasswordPage } from './presentation/features/auth/view/ResetPasswordPage'
 import { SignupPage } from './presentation/features/auth/view/SignupPage'
 import { SupportProgramSearchPage } from './presentation/features/support-program-catalog/view/SupportProgramSearchPage'
@@ -38,6 +38,7 @@ import { SampleItemPage } from './presentation/features/sample-item/view/SampleI
 import { AppHeader } from './presentation/shared/app-header/AppHeader'
 import { WorkspaceLayout } from './presentation/shared/app-sidebar/WorkspaceLayout'
 import { useRestoreAuthSession } from './presentation/shared/auth/hooks/useAuthSession'
+import { AssistantWidget } from './presentation/shared/assistant/AssistantWidget'
 import { GuestOnly, PublicOnly, RequireAuth } from './presentation/shared/auth/RouteGuards'
 import { APP_PREFIX, appPaths, publicPaths } from './presentation/shared/routes/appPaths'
 
@@ -80,6 +81,7 @@ function App() {
   }, [authStatus, dispatchToStore, pathname])
 
   return (
+    <>
     <Routes>
       <Route element={<PublicLayout />}>
         <Route path={publicPaths.reportEmail} element={<DailyReportEmailPage />} />
@@ -112,7 +114,7 @@ function App() {
       <Route element={<RequireAuth />}>
         <Route element={<WorkspaceLayout />}>
           <Route path={appPaths.reports} element={<DailyReportPage />} />
-          <Route path={appPaths.savedPrograms} element={<SavedSupportProgramsPage />} />
+          <Route path={appPaths.savedPrograms} element={<SavedProgramsPage />} />
           <Route path={appPaths.applicationPreparations} element={<ApplicationPreparationListPage />} />
           <Route path={appPaths.applicationPreparationNew} element={<ApplicationPreparationEditorPage create />} />
           <Route path={appPaths.applicationPreparationDetail} element={<ApplicationPreparationEditorPage />} />
@@ -145,6 +147,9 @@ function App() {
       <Route path={APP_PREFIX} element={<Navigate replace to={appPaths.chat} />} />
       <Route path="*" element={<Navigate replace to={publicPaths.landing} />} />
     </Routes>
+    {/* 도우미는 화면 오른쪽 아래에 떠 있고 로그인·회원가입 같은 단독 화면에서는 스스로 숨습니다. */}
+    <AssistantWidget />
+    </>
   )
 }
 

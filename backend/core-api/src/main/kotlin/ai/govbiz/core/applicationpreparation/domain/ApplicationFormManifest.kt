@@ -29,6 +29,8 @@ data class ApplicationFormManifest(
         val officialHosts = when (sourceCode) {
             "BIZINFO" -> setOf("bizinfo.go.kr", "www.bizinfo.go.kr")
             "MSIT" -> setOf("msit.go.kr", "www.msit.go.kr")
+            "KSTARTUP" -> setOf("k-startup.go.kr", "www.k-startup.go.kr")
+            "CNTRADE_NOTICE" -> setOf("cntrade.chungnam.go.kr")
             else -> emptySet()
         }
         require(uri.scheme == "https" && uri.host in officialHosts) {

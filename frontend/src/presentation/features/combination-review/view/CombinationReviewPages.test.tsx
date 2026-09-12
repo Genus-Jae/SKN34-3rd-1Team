@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { asValue } from 'awilix/browser'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +18,8 @@ import { useReviewSessionIsolation } from '../viewmodel/useReviewSessionIsolatio
 const original = appContainer.resolve('combinationReviewUseCase')
 const originalCatalog = appContainer.resolve('browseSupportProgramsUseCase')
 const originalDetail = appContainer.resolve('getSupportProgramDetailUseCase')
+const originalSavedPrograms = appContainer.resolve('browseSavedSupportProgramsUseCase')
+const browseSavedPrograms = vi.fn()
 const repository = { list: vi.fn(), get: vi.fn(), create: vi.fn(), delete: vi.fn(), replace: vi.fn(), runs: vi.fn(), run: vi.fn(), start: vi.fn(), source: vi.fn() }
 beforeEach(() => {
   sessionStorage.clear(); vi.resetAllMocks()
@@ -26,12 +28,14 @@ beforeEach(() => {
   repository.run.mockResolvedValue(structuredClone(runFixture))
   repository.list.mockResolvedValue({ items: [], nextBeforeId: null })
   repository.delete.mockResolvedValue(undefined)
+  browseSavedPrograms.mockResolvedValue([])
   appContainer.register({
     combinationReviewUseCase: asValue(new CombinationReviewUseCase(repository)),
+    browseSavedSupportProgramsUseCase: asValue({ execute: browseSavedPrograms }),
     getSupportProgramDetailUseCase: asValue({ execute: vi.fn(async (identity) => ({ ...supportPrograms[0], sourceCode: identity.sourceCode, id: identity.sourceProgramId, title: identity.sourceProgramId === 'PBLN_100' ? '청년창업 사업화 지원 공고' : '딥테크 성장 지원 공고' })) }),
   })
 })
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); appContainer.register({ combinationReviewUseCase: asValue(original), browseSupportProgramsUseCase: asValue(originalCatalog), getSupportProgramDetailUseCase: asValue(originalDetail) }) })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); appContainer.register({ combinationReviewUseCase: asValue(original), browseSupportProgramsUseCase: asValue(originalCatalog), browseSavedSupportProgramsUseCase: asValue(originalSavedPrograms), getSupportProgramDetailUseCase: asValue(originalDetail) }) })
 function Isolation() { useReviewSessionIsolation(); return null }
 function mount(path = '/app/combination-reviews/12?step=analysis') {
   const store = createAppStore()
@@ -101,6 +105,20 @@ describe('review screens and execution safety', () => {
     expect(repository.run).toHaveBeenCalledTimes(1)
     expect(repository.start).not.toHaveBeenCalled()
   })
+  it('adds two saved notices to a new review without a catalog search', async () => {
+    const programs = supportPrograms.slice(0, 2).map((program, index) => ({ ...structuredClone(program), id: `saved-${index + 1}` }))
+    browseSavedPrograms.mockResolvedValueOnce(programs.map((program, index) => ({ savedAt: `2026-09-12T10:0${index}:00+09:00`, program })))
+    mount('/app/combination-reviews/new')
+
+    const savedPrograms = await screen.findByRole('list', { name: '중복 지원 검토 관심 공고 목록' })
+    fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[0]!.title} 관심 공고 선택` }))
+    fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[1]!.title} 관심 공고 선택` }))
+
+    expect(screen.getByText('공고 선택 · 2/3')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: '선택한 공고' })).getAllByRole('button', { name: '선택 해제' })).toHaveLength(2)
+    expect(browseSavedPrograms).toHaveBeenCalledWith(expect.any(AbortSignal))
+  })
+
   it.each([201, 404])('handles new review save HTTP %s through the production adapter', async (status) => {
     const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
       if (_url.includes('/catalog')) return Response.json({ programs: supportPrograms.slice(0, 2).map((program) => ({ ...program, recommendationScore: null, eligibilityReview: null, matchedReasons: [] })), total: 2, page: 1, pageSize: 10, totalPages: 1, regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [] })
@@ -213,12 +231,16 @@ describe('review screens and execution safety', () => {
     await screen.findByText('실행 #30 · 분석 완료')
     expect(repository.start.mock.calls[1][1]).toEqual(input)
   })
-  it('allows automatic analysis when a selected program is an official numeric MSIT notice', async () => {
+  it.each([
+    ['KSTARTUP', '177911'],
+    ['MSIT', '3186573'],
+    ['CNTRADE_NOTICE', '3862'],
+  ])('allows automatic analysis when a selected program is an official numeric %s notice', async (sourceCode, sourceProgramId) => {
     repository.get.mockResolvedValue({
       ...structuredClone(reviewFixture),
       programs: [
         reviewFixture.programs[0],
-        { ...reviewFixture.programs[1], sourceCode: 'MSIT', sourceProgramId: '3186573' },
+        { ...reviewFixture.programs[1], sourceCode, sourceProgramId },
       ],
     })
 
@@ -226,7 +248,7 @@ describe('review screens and execution safety', () => {
 
     const button = await screen.findByRole('button', { name: '새 분석 실행' }) as HTMLButtonElement
     expect(button.disabled).toBe(false)
-    expect(screen.queryByText(/현재 기업마당의 숫자형/)).toBeNull()
+    expect(screen.queryByText(/자동 분석은 지원하지 않습니다/)).toBeNull()
   })
   it.each([422, 429, 503])('shows %s as technical error with saved failed run', async (status) => {
     repository.start.mockRejectedValue(new CombinationReviewError(status, 'SOURCE_UNSUPPORTED', 30))

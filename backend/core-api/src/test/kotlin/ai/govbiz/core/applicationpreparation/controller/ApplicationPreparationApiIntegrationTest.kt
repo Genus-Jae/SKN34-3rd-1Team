@@ -18,11 +18,13 @@ import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicati
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicationFormSectionPayload
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.cntradenotice.CnTradeNoticeAttachmentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachment
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentBlock
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
 import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
+import ai.govbiz.core.supportprogram.client.kstartup.KStartupAttachmentClient
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
@@ -76,6 +78,8 @@ class ApplicationPreparationApiIntegrationTest {
     @MockitoBean private lateinit var details: SupportProgramDetailService
     @MockitoBean private lateinit var bizInfoAttachments: BizInfoAttachmentClient
     @MockitoBean private lateinit var msitAttachments: MsitAttachmentClient
+    @MockitoBean private lateinit var kStartupAttachments: KStartupAttachmentClient
+    @MockitoBean private lateinit var cnTradeNoticeAttachments: CnTradeNoticeAttachmentClient
     @MockitoBean private lateinit var documentParser: SupportProgramDocumentParser
     private lateinit var owner: Cookie
     private lateinit var other: Cookie
@@ -144,8 +148,43 @@ class ApplicationPreparationApiIntegrationTest {
                 listOf("과기정통부 원문 대조 필요"),
             ),
         )
+        val kStartupProgram = program.copy(
+            id = KSTARTUP_PROGRAM_ID,
+            sourceCode = "KSTARTUP",
+            sourceName = "K-Startup",
+            sourceUrl = KSTARTUP_SOURCE_URL,
+        )
+        `when`(details.get("KSTARTUP", KSTARTUP_PROGRAM_ID)).thenReturn(kStartupProgram)
+        `when`(kStartupAttachments.collect("KSTARTUP", KSTARTUP_PROGRAM_ID, KSTARTUP_SOURCE_URL)).thenReturn(
+            SupportProgramAttachments(
+                kStartupProgram.title,
+                listOf(SupportProgramAttachment("https://www.k-startup.go.kr/afile/fileDownload/test", "신청양식.hwp", "HWP", bytes)),
+                listOf("K-Startup 원문 대조 필요"),
+            ),
+        )
+        val cnTradeProgram = program.copy(
+            id = CNTRADE_PROGRAM_ID,
+            sourceCode = "CNTRADE_NOTICE",
+            sourceName = "충청남도 온라인수출지원시스템",
+            sourceUrl = CNTRADE_SOURCE_URL,
+            targetDescription = CNTRADE_BODY,
+        )
+        `when`(details.get("CNTRADE_NOTICE", CNTRADE_PROGRAM_ID)).thenReturn(cnTradeProgram)
+        `when`(cnTradeNoticeAttachments.collect("CNTRADE_NOTICE", CNTRADE_PROGRAM_ID, cnTradeProgram.title, CNTRADE_BODY)).thenReturn(
+            SupportProgramAttachments(
+                cnTradeProgram.title,
+                listOf(SupportProgramAttachment("https://cntrade.chungnam.go.kr/fileDownload.do?uniqueKey=test", "신청서.pdf", "PDF", bytes)),
+                listOf("충남 원문 대조 필요"),
+            ),
+        )
         `when`(documentParser.parse(bytes, "HWPX")).thenReturn(
             listOf(SupportProgramDocumentBlock("HWPX section0 paragraphs 1-3", "사업 개요를 작성해 주세요.")),
+        )
+        `when`(documentParser.parse(bytes, "HWP")).thenReturn(
+            listOf(SupportProgramDocumentBlock("HWP paragraph 1 part 1", "사업 개요를 작성해 주세요.")),
+        )
+        `when`(documentParser.parse(bytes, "PDF")).thenReturn(
+            listOf(SupportProgramDocumentBlock("PDF page 1 part 1", "사업 개요를 작성해 주세요.")),
         )
         `when`(ai.discover(any(AiApplicationFormDiscoveryRequest::class.java) ?: fallbackDiscoveryRequest())).thenReturn(
             AiApplicationFormDiscoveryPayload(
@@ -238,6 +277,26 @@ class ApplicationPreparationApiIntegrationTest {
             .andExpect(jsonPath("$.items[0].sourceUrl").value(MSIT_SOURCE_URL))
             .andExpect(jsonPath("$.warnings[0]").value("과기정통부 원문 대조 필요"))
         verify(msitAttachments).collect("MSIT", MSIT_PROGRAM_ID, MSIT_SOURCE_URL)
+    }
+
+    @Test
+    fun discoversKStartupAndCnTradeFormsThroughTheirProviderClients() {
+        mvc.perform(post("$BASE/forms/discover").cookie(other).header(HttpHeaders.ORIGIN, ORIGIN)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"sourceCode":"KSTARTUP","sourceProgramId":"$KSTARTUP_PROGRAM_ID"}"""))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].sourceCode").value("KSTARTUP"))
+            .andExpect(jsonPath("$.items[0].attachmentFileName").value("신청양식.hwp"))
+
+        mvc.perform(post("$BASE/forms/discover").cookie(owner).header(HttpHeaders.ORIGIN, ORIGIN)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"sourceCode":"CNTRADE_NOTICE","sourceProgramId":"$CNTRADE_PROGRAM_ID"}"""))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].sourceCode").value("CNTRADE_NOTICE"))
+            .andExpect(jsonPath("$.items[0].attachmentFileName").value("신청서.pdf"))
+
+        verify(kStartupAttachments).collect("KSTARTUP", KSTARTUP_PROGRAM_ID, KSTARTUP_SOURCE_URL)
+        verify(cnTradeNoticeAttachments).collect("CNTRADE_NOTICE", CNTRADE_PROGRAM_ID, "동적 지원사업", CNTRADE_BODY)
     }
 
     @Test
@@ -428,5 +487,10 @@ class ApplicationPreparationApiIntegrationTest {
         const val DISCOVERY_PROGRAM_ID = "PBLN_123456"
         const val MSIT_PROGRAM_ID = "3186573"
         const val MSIT_SOURCE_URL = "https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&mId=311&mPid=121&nttSeqNo=3186573&sCode=user"
+        const val KSTARTUP_PROGRAM_ID = "177911"
+        const val KSTARTUP_SOURCE_URL = "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?pbancSn=177911&schM=view"
+        const val CNTRADE_PROGRAM_ID = "3862"
+        const val CNTRADE_SOURCE_URL = "https://cntrade.chungnam.go.kr/home/kor/M102638244/board.do"
+        const val CNTRADE_BODY = "공식 본문"
     }
 }

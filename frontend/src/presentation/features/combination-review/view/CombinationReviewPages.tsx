@@ -94,7 +94,28 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
       {step === 'selection' && <fieldset disabled={inputBusy} className="space-y-4">
           <div className={s.card}><label className="font-semibold">검토 제목<input className={s.input} value={vm.draft.title} onChange={(e) => vm.setDraft({ ...vm.draft, title: e.target.value })} required placeholder="예: 창업 지원사업 참여 검토" /></label><p className={s.muted}>제목은 200자 이내입니다. 참여 상태는 제목과 별도로 입력합니다.</p></div>
           <section className={s.card} aria-label="공고 선택">
-            <h2 className="font-bold">공고 선택 · {vm.draft.programs.length}/3</h2><p className={s.muted}>기존 카탈로그에서 2~3개를 선택하세요. 접수 종료 공고도 참여 이력 검토를 위해 검색합니다.</p>
+            <h2 className="font-bold">공고 선택 · {vm.draft.programs.length}/3</h2><p className={s.muted}>관심 공고함이나 전체 공고 검색에서 2~3개를 선택하세요. 접수 종료 공고도 참여 이력 검토에 사용할 수 있습니다.</p>
+            <div className="mt-4 rounded-xl border border-slate-200 p-4" aria-labelledby="saved-review-programs-title">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="font-semibold" id="saved-review-programs-title">관심 공고함에서 선택</h3>
+                {vm.savedProgramChoices.phase === 'failed' && <button type="button" className={s.button} onClick={vm.savedProgramChoices.retry}>다시 불러오기</button>}
+              </div>
+              {(vm.savedProgramChoices.phase === 'idle' || vm.savedProgramChoices.phase === 'loading') && <p className="mt-3" role="status">관심 공고를 불러오는 중입니다.</p>}
+              {vm.savedProgramChoices.phase === 'failed' && <p className={`${s.warning} mt-3`} role="alert">관심 공고를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>}
+              {vm.savedProgramChoices.phase === 'ready' && vm.savedProgramChoices.programs.length === 0 && <p className={`${s.muted} mt-3`}>관심 공고함에 담은 공고가 없습니다.</p>}
+              {vm.savedProgramChoices.programs.length > 0 && <ul className="mt-3 divide-y divide-slate-200" aria-label="중복 지원 검토 관심 공고 목록">{vm.savedProgramChoices.programs.map((program) => {
+                const identity = { sourceCode: program.sourceCode, sourceProgramId: program.id, subProgramId: null }
+                const selected = vm.draft.programs.some((candidate) => reviewProgramKey(candidate) === reviewProgramKey(identity))
+                return <li className="py-3" key={reviewProgramKey(identity)}><div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0 flex-1"><strong>{program.title}</strong><p className={s.muted}>{program.organization} · {({ OPEN: '접수 중', CLOSED: '접수 종료', UPCOMING: '접수 예정', UNKNOWN: '접수 상태 미확인' })[program.status]}</p><p className={s.muted}>{program.applicationPeriod}</p></div><button
+                  type="button"
+                  className={s.button}
+                  aria-label={`${program.title} 관심 공고 ${selected ? '선택됨' : '선택'}`}
+                  disabled={selected || vm.draft.programs.length >= 3}
+                  onClick={() => vm.add(program)}
+                >{selected ? '선택됨' : '선택'}</button></div></li>
+              })}</ul>}
+            </div>
+            <h3 className="mt-5 font-semibold">전체 공고 검색</h3>
             <div className="mt-3 flex flex-wrap items-end gap-2"><label className="min-w-0 flex-1 text-sm">공고명·기관명<input className={s.input} maxLength={100} value={vm.keyword} onChange={(e) => vm.setKeyword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void vm.search() } }} /></label><button type="button" className={s.button} disabled={vm.busy.includes('catalog')} onClick={() => void vm.search()}>공고 검색</button></div>
             {vm.busy.includes('catalog') && <p className="mt-3" role="status">공고를 불러오는 중입니다.</p>}
             {vm.catalog?.programs.length === 0 && <p className="mt-3">검색 결과가 없습니다.</p>}
@@ -109,7 +130,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
             {vm.catalog && <div className="mt-3 flex items-center gap-3"><button type="button" className={s.button} disabled={vm.catalog.page <= 1 || vm.busy.includes('catalog')} onClick={() => void vm.search(vm.catalog!.page - 1, vm.appliedKeyword)}>이전 공고</button><span className="text-sm">{vm.catalog.page} / {Math.max(1, vm.catalog.totalPages)}</span><button type="button" className={s.button} disabled={vm.catalog.page >= vm.catalog.totalPages || vm.busy.includes('catalog')} onClick={() => void vm.search(vm.catalog!.page + 1, vm.appliedKeyword)}>다음 공고</button></div>}
           </section>
           {vm.draft.programs.length > 0 && <section className={`${s.card} space-y-3`} aria-label="선택한 공고"><h2 className="font-bold">선택한 공고</h2>{vm.draft.programs.map((program, index) => <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4" key={reviewProgramKey(program)}><div className="min-w-0 flex-1"><strong>사업 {index + 1} · {vm.names[reviewProgramKey(program)] ?? '공고 정보 확인 중'}</strong><p className="break-all text-xs text-slate-500">{reviewProgramKey(program)}</p></div><button type="button" className={s.button} onClick={() => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.filter((_, i) => i !== index) })}>선택 해제</button></div>)}</section>}
-          {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 현재 기업마당의 숫자형 PBLN_ 공고와 과기정통부의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
+          {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 기업마당의 숫자형 PBLN_ 공고와 K-Startup·과기정통부·충남 수출지원의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
           <div className="flex justify-end"><button className={s.primary} type="button" onClick={goToParticipation} disabled={vm.draft.programs.length < 2}>다음: 참여 상태 설정</button></div>
         </fieldset>}
       {step === 'participation' && <>
@@ -117,7 +138,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
           <fieldset disabled={inputBusy} className="space-y-4">
             <div className={s.card}><h2 className="font-bold">공고별 현재 상태</h2><p className={s.muted}>신청·선정·확약·협약·수행·교부는 서로 독립된 사실입니다. 모르는 항목은 ‘모름’을 유지하세요.</p></div>
             {vm.draft.programs.map((program, index) => <ReviewParticipation key={reviewProgramKey(program)} program={program} index={index} name={vm.names[reviewProgramKey(program)]} onChange={(participation) => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.map((p, i) => i === index ? { ...p, participation } : p) })} />)}
-            {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 현재 기업마당의 숫자형 PBLN_ 공고와 과기정통부의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
+            {unsupported && <p className={s.warning}>선택 입력은 저장할 수 있지만 자동 분석은 지원하지 않습니다. 기업마당의 숫자형 PBLN_ 공고와 K-Startup·과기정통부·충남 수출지원의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
             <div className="flex flex-wrap justify-between gap-3"><button className={s.button} type="button" onClick={() => setStep('selection')}>이전: 제목·공고 선택</button><button className={s.primary} type="submit">{inputBusy ? '저장 중…' : '설정 완료 후 공고 분석'}</button></div>
           </fieldset>
         </form>
@@ -131,7 +152,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
         <button className={s.button} type="button" onClick={() => setStep('participation')}>← 참여 상태 수정</button>
         <section className={`${s.card} space-y-3`} aria-label="분석 대상 공고"><h2 className="font-bold">분석 대상 공고</h2><ul className="space-y-2">{vm.draft.programs.map((program, index) => <li key={reviewProgramKey(program)} className="rounded-lg bg-slate-50 p-3"><strong>사업 {index + 1} · {vm.names[reviewProgramKey(program)] ?? '공고 정보 확인 중'}</strong><p className="break-all text-xs text-slate-500">{reviewProgramKey(program)}</p></li>)}</ul></section>
         <section className={`${s.card} space-y-3`} aria-label="분석 실행"><h2 className="text-lg font-bold">공식 근거 분석</h2>
-          <p className={s.muted}>PDF·HWPX 공식 첨부를 자동 수집하여 OpenAI로 분석합니다. 유료 API 호출이 발생할 수 있습니다. 원문 미확보·미지원 형식은 오류로 표시합니다.</p>
+          <p className={s.muted}>PDF·HWP·HWPX 공식 첨부를 자동 수집하여 OpenAI로 분석합니다. 유료 API 호출이 발생할 수 있습니다. 원문 미확보·미지원 형식은 오류로 표시합니다.</p>
           <label className="block text-sm font-semibold">이번 실행의 추가 설명<textarea className={s.input} rows={4} maxLength={8000} value={vm.facts} disabled={analysisBusy || !!vm.pending} onChange={(e) => vm.setFacts(e.target.value)} /></label>
           <p className={s.muted}>{vm.facts.length}/8000 · 추가 설명은 실행에만 저장됩니다.</p>
           {vm.dirty && <p className={s.warning}>저장하지 않은 입력이 있습니다. 저장한 뒤 분석해 주세요.</p>}

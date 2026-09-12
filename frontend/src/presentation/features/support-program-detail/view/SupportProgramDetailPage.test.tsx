@@ -60,6 +60,21 @@ describe('상세 오류 복구와 검색 화면 복귀', () => {
     )
   })
 
+  it.each([
+    ['KSTARTUP', '177911'],
+    ['CNTRADE_NOTICE', '3862'],
+  ])('%s 공고도 신청 문서 작성 도우미로 연결한다', async (sourceCode, id) => {
+    const program = { ...supportPrograms[0], sourceCode, id }
+    vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(program)
+    renderDetail(null, `?${new URLSearchParams({ sourceCode, sourceProgramId: id })}`)
+
+    await screen.findByRole('heading', { name: program.title })
+    const preparationPath = `/app/application-preparations/new?${new URLSearchParams({ sourceCode, sourceProgramId: id })}`
+    expect(screen.getByRole('link', { name: '로그인하고 신청 문서 작성하기' }).getAttribute('href')).toBe(
+      `/login?next=${encodeURIComponent(preparationPath)}`,
+    )
+  })
+
   it.each([null, {}, { searchReturnTo: 'https://example.com' }, { searchReturnTo: '//example.com' }, { searchReturnTo: '/admin' }])(
     '직접 진입 또는 허용하지 않는 복귀 상태 %j는 첫 검색 화면으로 돌아간다', async (state) => {
       vi.spyOn(appContainer.resolve('getSupportProgramDetailUseCase'), 'execute').mockResolvedValue(null)

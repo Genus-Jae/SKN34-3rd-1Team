@@ -6,6 +6,7 @@ import { reviewProgramKey, supportsAutomaticReview, unknownParticipation, valida
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCatalog } from '../../../../domain/entities/SupportProgramCatalog'
 import { useReviewScope } from './useReviewScope'
+import { useSavedSupportProgramChoices } from '../../../shared/support-program/useSavedSupportProgramChoices'
 
 // 자동 조회보다 늦게 도착한 과거 응답이 완료 상태를 대기/분석 중으로 되돌리지 않게 한다.
 function isEarlierState(current: RunSummary, next: RunSummary) {
@@ -21,6 +22,7 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
   const detailUseCase = appContainer.resolve('getSupportProgramDetailUseCase')
   const journal = appContainer.resolve('reviewRequestJournal')
   const navigate = useNavigate()
+  const savedProgramChoices = useSavedSupportProgramChoices()
   const { perform, ...scope } = useReviewScope()
   const [review, setReview] = useState<CombinationReview | null>(null)
   const [latest, setLatest] = useState<CombinationReview | null>(null)
@@ -147,6 +149,6 @@ export function useReviewEditorViewModel(id: number | null, account: string) {
       anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
     })
   }
-  return { ...scope, review, latest, draft, setDraft, catalog, keyword, setKeyword, appliedKeyword, names, runs, run, facts, setFacts,
+  return { ...scope, review, latest, draft, setDraft, catalog, savedProgramChoices, keyword, setKeyword, appliedKeyword, names, runs, run, facts, setFacts,
     pending, notice, dirty, pollingPaused, rejectedRevision, clearRejectedRequest, load, search, add, save, reloadLatest, adoptLatest, history, selectRun, start, download }
 }

@@ -101,7 +101,7 @@ pnpm dev
 | `/reset-password` | 없음 | 메일 링크(`#token=`)로 여는 새 비밀번호 설정. 성공하면 로그인으로 안내 |
 | `/app/chat` | 사이드바 | 로그인 뒤 작업 채팅·필터 검색 탭 (`?mode=filter`) |
 | `/app/application-preparations` | 사이드바 | 내 신청 준비 목록과 생성 ID 커서 페이지. 확인 후 내 작업만 삭제하며 하위 사실·AI 실행 기록도 함께 삭제 |
-| `/app/application-preparations/new` | 사이드바 | 전체 제공처 공고를 검색하고 기업마당·과기정통부 공고를 선택해 공식 신청 문서를 찾음. 공고 선택과 발견 문서 확인은 두 단계 화면으로 분리하며 기업마당 URL·ID 직접 입력은 보조 경로 |
+| `/app/application-preparations/new` | 사이드바 | 전체 제공처 공고를 검색하고 네 제공처 공고를 선택해 공식 신청 문서를 찾음. 공고 선택과 발견 문서 확인은 두 단계 화면으로 분리하며 기업마당 URL·ID 직접 입력은 보조 경로 |
 | `/app/application-preparations/:preparationId` | 사이드바 | 공식 문항별 답변을 AI가 사실·미정으로 제안하고, 사용자가 값과 근거를 확인한 항목만 입력 스냅샷으로 저장. 초안은 후속 기능 |
 | `/app/pricing` | 사이드바 | 요금제를 사이드바 안에서. 무료 검색 버튼은 작업 채팅으로 |
 | `/app/partners` | 사이드바(파트너 관리 · 모집글 탭) | 파트너 모집 목록. 검색어·찾는 역할(복수)·지역(복수, 전체가 전국까지 뜻함)은 조회 버튼으로 적용하고 정렬·페이지는 바로 적용해 모집 API 조회(내 글만 보기 칩은 내 모집글 탭으로 대체). 카드는 폭에 따라 3·2·1열, 작성 버튼은 기업 등록 회원만 |
@@ -110,6 +110,7 @@ pnpm dev
 | `/app/partners/edit?recruitmentId=...` | 상세·내 모집글의 수정 버튼 | 모집글 수정. 작성과 같은 폼에 저장된 값을 채우되 묶인 공고는 바꾸지 않음. 남의 글·마감된 글은 안내만 |
 | `/app/partners/detail?recruitmentId=...` | 사이드바 | 모집 API의 상세·참여 제안 보내기·링크 복사. 내 글이면 오른쪽 칸 없이 받은 제안 카드(제안함 링크)와 수정·마감(확인 상자). 제안 상태 흐름은 `?` 도움말 |
 | `/app/proposals` | 사이드바(파트너 관리 · 제안함 탭) | 제안함. 받은 제안 수락·거절, 보낸 제안 철회, 수락된 제안의 상대 담당자 연락처 |
+| (모든 화면) 오른쪽 아래 도우미 | 런처 | GovBiz 도우미(`presentation/shared/assistant`). 인사·화면별 빠른 답변·도움말 항목 답변·관심 공고 마감·받은 제안 상태를 카드로 답하고 화면으로 이동. C1은 AI 호출 없이 동작하며 자유 질문은 추천 질문으로 안내. 로그인·회원가입·소셜 완료·예제 화면에서는 숨김 |
 | `/app/saved-programs` | 사이드바 | 관심 공고함. 공고 상세에서 담은 공고를 최근 순서로 카드로 보여 주고 제목을 누르면 상세(위 링크가 `← 관심 공고함으로 돌아가기`)로 감 |
 | `/app/support-programs/detail`, `/app/support-programs/detail/question` | 사이드바 | 작업 채팅에서 연 공고 상세·원문 질문 |
 | `/app/profile` | 사이드바 계정 카드 메뉴 | 사업자등록번호 조회로 기업 등록(기업명·소재지·업종·설립연도·홈페이지)·기본정보 수정. 완성도와 체크리스트는 맨 위 요약 카드, 이 정보가 쓰이는 곳·공개 범위는 카드 제목 옆 `?` 도움말(한 칸 배치). 나머지 섹션은 준비 중 |
@@ -182,10 +183,10 @@ Redux `receivedProposals` slice와 `useReceivedProposals`(계정당 한 번 조�
 Core API 코드도 변경되므로 기존 실행 이미지는 재빌드해야 합니다. [백엔드 변경 반영 안내](../infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)를 참고하세요.
 
 신청 문서 작성 도우미는 `View → ViewModel → ApplicationPreparationUseCase → ApplicationPreparationRepository →
-data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 기존 공고 카탈로그의 모든 제공처를 공고명·기관명으로 검색하고,
-공식 첨부 수집을 검증한 기업마당·과기정통부 공고를 선택하는 흐름을 기본으로 제공합니다. K-Startup과 충남 수출지원 공고는
-검색 결과에서 확인할 수 있지만 안전한 개별 첨부 수집 계약이 없어 `문서 지원 준비 중`으로 표시합니다. 검색에서 찾지 못한
-기업마당 공고만 공식 URL·ID 직접 입력을 보조 경로로 제공합니다.
+data/api → Core API` 흐름을 사용합니다. 새 작성 화면은 관심 공고함에서 공고를 바로 고르거나 기존 공고 카탈로그의 모든 제공처를 공고명·기관명으로 검색하고,
+공식 첨부 수집을 검증한 기업마당·K-Startup·과기정통부·충남 수출지원 공고를 선택하는 흐름을 기본으로 제공합니다.
+K-Startup은 카탈로그의 공식 상세 URL과 공고 ID를, 충남은 OpenAPI 제목·본문과 공식 게시판 상세의 단일 일치를 검증한 뒤
+PDF/HWP/HWPX 첨부를 분석합니다. 검색에서 찾지 못한 기업마당 공고만 공식 URL·ID 직접 입력을 보조 경로로 제공합니다.
 공고 선택은 분석을 시작하지 않으며 사용자가 `신청 문서 찾기`를 누를 때만 공식 첨부 분석 POST를 보냅니다. 공고 상세 링크는 공고 식별자를 입력란에만 전달하며 화면 진입으로 분석을
 시작하지 않습니다. 분석이 끝나면 공고 검색 영역을 접고 두 번째 `신청 문서 확인` 단계로 전환하며, 발견 문서·문항을 확인하고
 별도 시작 버튼을 눌러야 준비 건을 생성합니다. 목록·상세는 AI Service를
@@ -383,6 +384,7 @@ src/
 ├── presentation/features/chat/ # 채팅 검색 View, 페이지 ViewModel, 내부 hooks, chat slice
 ├── presentation/features/support-program-detail/ # 상세·질문 페이지와 각 페이지 ViewModel, 관심 공고 저장 ViewModel
 ├── presentation/features/saved-support-program/ # 관심 공고함 목록 View와 ViewModel
+├── presentation/shared/assistant/ # GovBiz 도우미 위젯(런처·패널·대화 규칙·ViewModel), shared/help 데이터를 읽음
 ├── presentation/features/sample-item/ # 상태관리 비교 예제
 ├── presentation/features/auth/ # 로그인·회원가입 View와 각 페이지 ViewModel
 ├── presentation/features/partner-recruitment/ # 로그인 뒤 모집 목록·상세·작성 View와 각 페이지 ViewModel
@@ -593,10 +595,10 @@ Node 24.20.0·pnpm 11.22.0에서 전체 **43파일 526개 테스트**, lint·bui
 
 ## 중복 지원·수혜 검토 사용자 화면 (5-1)
 
-`/app/combination-reviews`는 본인 목록·커서 조회, `/new`는 공고 2~3개 선택·저장,
+`/app/combination-reviews`는 본인 목록·커서 조회, `/new`는 관심 공고함 또는 전체 공고 검색에서 공고 2~3개 선택·저장,
 `/:reviewId`는 입력 수정·실행·이력·원본 다운로드를 제공한다. RequireAuth와 WorkspaceLayout을 사용한다.
 호출은 `View → ViewModel → CombinationReviewUseCase → Domain Repository 계약 → Data 구현 → HTTP/Zod → Core API`다.
-공고 선택은 기존 BrowseSupportProgramsUseCase의 무료 카탈로그 API를 재사용하며 접수 종료·미지원 자동 분석을 구분한다.
+공고 선택은 `BrowseSavedSupportProgramsUseCase`의 관심 공고 목록과 기존 `BrowseSupportProgramsUseCase`의 무료 카탈로그 API를 재사용하며 접수 종료·미지원 자동 분석을 구분한다.
 
 저장과 분석은 별도 버튼으로 실행한다. 입력 충돌 시 편집 내용을 유지하고 최신 입력 조회·명시적 적용을 제공한다.
 동기 분석 POST 응답을 최대 120초 기다리며 서버 실행 취소를 보장하지 않는다. 미확인 요청의 키·버전·추가 설명만

@@ -22,7 +22,7 @@ AI 자체의 응답 속도, 토큰 비용, 정확도가 개선됐다는 의미�
 5. `CombinationReviewOutboxScheduler → CombinationReviewQueueClient → RabbitMQ`가 작업 ID만 발행한다.
 6. `CombinationReviewRunConsumer → CombinationReviewRunService.executeQueued`가 공유 동시 실행 슬롯을 확보한 뒤
    DB에서 `QUEUED → RUNNING`을 선점한다.
-7. 기존 제공처별 공식 첨부 수집 → PDF/HWPX 파싱 → 근거 보존 → AI Facade/Client → AI Service 경로를 실행한다.
+7. 기존 제공처별 공식 첨부 수집 → PDF/HWP/HWPX 파싱 → 근거 보존 → AI Facade/Client → AI Service 경로를 실행한다.
 8. DB에 성공·실패·결과 불명을 기록한 뒤 ACK한다. 브라우저는 기존 GET으로 저장된 상태와 결과를 확인한다.
 
 DB transaction 안에서 RabbitMQ·다운로드·AI를 호출하지 않는다. 입력 수정은 접수 당시 스냅샷을 바꾸지 않는다.
@@ -178,3 +178,24 @@ VERIFY_COMPOSE_QDRANT_HOST_PORT=26333 \
 초기 병렬 검증에서는 Docker Desktop 메모리 부족으로 기존 개발 Core가 OOM 종료됐다. 기존 이미지·설정 그대로
 재시작하고 health HTTP 200을 확인했으며, 이후 전체 테스트는 위 캐시 제한과 순차 실행으로 완료했다.
 새 코드/V25를 기존 개발 Core·DB에 배포한 것은 아니다. 초기 검증 포트 충돌도 별도 포트 지정으로 분리했다.
+
+### 원격 main 병합 후 호환성 확인
+
+`skn-119`의 `42b7e1f`에 원격 `main`의 `69ff211`을 병합했다. 충돌한 ViewModel은 관심 공고 선택과
+상태 조회 중지 상태를 모두 반환하도록 합쳤으며, 화면 테스트도 관심 공고 선택·큐 진행 상태 시나리오를 모두 유지했다.
+아키텍처 설명은 비동기 접수 이후 네 제공처의 PDF/HWP/HWPX 첨부를 처리하는 경로로 맞췄다.
+
+자동 병합된 신규 제공처 통합 테스트에는 동기 실행 당시의 HTTP 201 기대가 남아 있어,
+202 접수·worker 실행 후 결과 GET의 HTTP 200을 확인하도록 수정했다. 새 제공처 수집 기능이나
+기존 중복 실행 방지를 제거해서 충돌을 해소하지 않았다. 기존 프로세스별 검토 2개 제한 설명도
+현재 계정별 활성 작업 3개·검토 큐 소비자 1개·공유 동시 실행 제한으로 정정했다.
+
+병합된 코드의 재검증은 Core 136개 suite·1,256건(실패·오류·건너뜀 0, JDK 21 클린 빌드 18분 26초),
+AI Service 941건, Frontend 91개 파일·1,086건과 lint·production build, 인프라 테스트 25건이 통과했다.
+Core 테스트는 동일한 테스트 컨텍스트 캐시 제한 4를 사용했고, 유료 모델·실제 공식 파일 다운로드 검증은 실행하지 않았다.
+
+격리 Compose 전체 검증도 `govbiz-verify-merge-skn119-20260912` 프로젝트에서 통과했다.
+포트는 위 명령과 동일하게 MySQL 23306·Web 25173·Core 28080·Qdrant 26333을 사용했다.
+양식 문답·네 제공처 동기화/검색, Core 재시작과 Redis AOF 복원, 두 RabbitMQ 큐의 소비자 재연결,
+Elasticsearch·Qdrant·AI 장애/복구를 확인했다. 검증용 컨테이너·네트워크·볼륨은 종료 시 정리하며,
+이 병합 검증은 기존 개발 환경에 새 코드를 배포하거나 유료 API를 호출하지 않는다.

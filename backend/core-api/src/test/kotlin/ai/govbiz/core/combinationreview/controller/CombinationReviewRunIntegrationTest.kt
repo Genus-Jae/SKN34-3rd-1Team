@@ -18,10 +18,12 @@ import ai.govbiz.core.combinationreview.service.CombinationReviewRunService
 import ai.govbiz.core.combinationreview.service.CombinationReviewOutboxScheduler
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.cntradenotice.CnTradeNoticeAttachmentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachment
 import ai.govbiz.core.supportprogram.client.document.SupportProgramAttachments
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
 import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
+import ai.govbiz.core.supportprogram.client.kstartup.KStartupAttachmentClient
 import ai.govbiz.core.supportprogram.domain.SupportProgram
 import ai.govbiz.core.supportprogram.domain.SupportProgramStatus
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
@@ -79,6 +81,8 @@ class CombinationReviewRunIntegrationTest {
     @Autowired private lateinit var admission: SupportProgramRequestAdmissionService
     @MockitoBean private lateinit var source: BizInfoAttachmentClient
     @MockitoBean private lateinit var msitSource: MsitAttachmentClient
+    @MockitoBean private lateinit var kStartupSource: KStartupAttachmentClient
+    @MockitoBean private lateinit var cnTradeNoticeSource: CnTradeNoticeAttachmentClient
     @MockitoBean private lateinit var programDetails: SupportProgramDetailService
     @MockitoBean private lateinit var ai: AiCombinationReviewClient
     private var ownerId = 0L
@@ -250,6 +254,35 @@ class CombinationReviewRunIntegrationTest {
         verify(source).collect(g.sourceCode, g.sourceProgramId)
         verify(programDetails).get(msit.sourceCode, msit.sourceProgramId)
         verify(msitSource).collect(msit.sourceCode, msit.sourceProgramId, sourceUrl)
+    }
+
+    @Test
+    fun collectsKStartupAndCnTradeAttachmentsThroughTheSameReviewFlow() {
+        val kStartup = ReviewProgramIdentity("KSTARTUP", "177911")
+        val cnTrade = ReviewProgramIdentity("CNTRADE_NOTICE", "3862")
+        val kStartupUrl = "https://www.k-startup.go.kr/web/contents/bizpbanc-ongoing.do?pbancSn=177911&schM=view"
+        val cnTradeUrl = "https://cntrade.chungnam.go.kr/home/kor/M102638244/board.do"
+        reviewId = reviews.create(
+            ownerId,
+            CombinationReviewDraft("두 신규 제공처 검토", CombinationReviewInput(listOf(SelectedReviewProgram(kStartup), SelectedReviewProgram(cnTrade)))),
+        ).id
+        val kStartupProgram = supportProgram(kStartup, kStartupUrl)
+        val cnTradeProgram = supportProgram(cnTrade, cnTradeUrl).copy(targetDescription = "충남 공식 본문")
+        `when`(programDetails.get(kStartup.sourceCode, kStartup.sourceProgramId)).thenReturn(kStartupProgram)
+        `when`(programDetails.get(cnTrade.sourceCode, cnTrade.sourceProgramId)).thenReturn(cnTradeProgram)
+        `when`(kStartupSource.collect(kStartup.sourceCode, kStartup.sourceProgramId, kStartupUrl))
+            .thenReturn(fetched(general, "K-Startup-신청서.hwpx"))
+        `when`(cnTradeNoticeSource.collect(cnTrade.sourceCode, cnTrade.sourceProgramId, cnTradeProgram.title, cnTradeProgram.targetDescription))
+            .thenReturn(fetched(deep, "충남-신청서.hwpx"))
+
+        val runId = id(start().andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+            .andExpect(jsonPath("$.evidence.documents[0].programIndex").value(0))
+            .andExpect(jsonPath("$.evidence.documents[1].programIndex").value(1)))
+
+        assertEquals(listOf(0, 1), requireNotNull(runs.findOwned(ownerId, reviewId, runId)).evidence!!.documents.map { it.programIndex })
+        verify(kStartupSource).collect(kStartup.sourceCode, kStartup.sourceProgramId, kStartupUrl)
+        verify(cnTradeNoticeSource).collect(cnTrade.sourceCode, cnTrade.sourceProgramId, cnTradeProgram.title, cnTradeProgram.targetDescription)
     }
 
     @Test

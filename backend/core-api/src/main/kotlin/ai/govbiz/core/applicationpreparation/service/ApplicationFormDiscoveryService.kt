@@ -15,8 +15,10 @@ import ai.govbiz.core.applicationpreparation.repository.ApplicationFormSnapshotR
 import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormDiscoveryException
 import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormDiscoveryException.Reason
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
+import ai.govbiz.core.supportprogram.client.cntradenotice.CnTradeNoticeAttachmentClient
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentParser
 import ai.govbiz.core.supportprogram.client.document.SupportProgramDocumentException
+import ai.govbiz.core.supportprogram.client.kstartup.KStartupAttachmentClient
 import ai.govbiz.core.supportprogram.client.msit.MsitAttachmentClient
 import ai.govbiz.core.supportprogram.service.admission.SupportProgramRequestAdmissionService
 import ai.govbiz.core.supportprogram.service.detail.SupportProgramDetailService
@@ -30,6 +32,8 @@ class ApplicationFormDiscoveryService(
     private val details: SupportProgramDetailService,
     private val bizInfoAttachments: BizInfoAttachmentClient,
     private val msitAttachments: MsitAttachmentClient,
+    private val kStartupAttachments: KStartupAttachmentClient,
+    private val cnTradeNoticeAttachments: CnTradeNoticeAttachmentClient,
     private val parser: SupportProgramDocumentParser,
     private val ai: AiApplicationPreparationFacade,
     private val snapshots: ApplicationFormSnapshotRepository,
@@ -39,7 +43,7 @@ class ApplicationFormDiscoveryService(
         require(account.id > 0)
         val validIdentity = when (sourceCode) {
             "BIZINFO" -> Regex("PBLN_[0-9]{1,32}").matches(sourceProgramId)
-            "MSIT" -> Regex("[1-9][0-9]{0,254}").matches(sourceProgramId)
+            "MSIT", "KSTARTUP", "CNTRADE_NOTICE" -> Regex("[1-9][0-9]{0,254}").matches(sourceProgramId)
             else -> false
         }
         if (!validIdentity) {
@@ -52,7 +56,14 @@ class ApplicationFormDiscoveryService(
         }
         val configuration = ai.discoveryConfiguration()
         return admission.execute("application-form-discovery-account:${account.id}") {
-            discoverFresh(program.sourceCode, program.id, program.title, program.sourceUrl, configuration)
+            discoverFresh(
+                program.sourceCode,
+                program.id,
+                program.title,
+                program.targetDescription,
+                program.sourceUrl,
+                configuration,
+            )
         }
     }
 
@@ -60,6 +71,7 @@ class ApplicationFormDiscoveryService(
         sourceCode: String,
         sourceProgramId: String,
         catalogTitle: String,
+        catalogBody: String,
         sourceUrl: String,
         configuration: ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryConfiguration,
     ): ApplicationFormDiscoveryResult {
@@ -67,6 +79,8 @@ class ApplicationFormDiscoveryService(
             val collected = when (sourceCode) {
                 "BIZINFO" -> bizInfoAttachments.collect(sourceCode, sourceProgramId)
                 "MSIT" -> msitAttachments.collect(sourceCode, sourceProgramId, sourceUrl)
+                "KSTARTUP" -> kStartupAttachments.collect(sourceCode, sourceProgramId, sourceUrl)
+                "CNTRADE_NOTICE" -> cnTradeNoticeAttachments.collect(sourceCode, sourceProgramId, catalogTitle, catalogBody)
                 else -> throw ApplicationFormDiscoveryException(Reason.SOURCE_UNSUPPORTED)
             }
             val warnings = collected.warnings.toMutableList()
@@ -132,7 +146,7 @@ class ApplicationFormDiscoveryService(
                         sourceCode = sourceCode,
                         sourceProgramId = sourceProgramId,
                         programTitle = input.programTitle,
-                        formTitle = document.fileName.replace(Regex("(?i)\\.(pdf|hwpx).*"), "").trim().take(300),
+                        formTitle = document.fileName.replace(Regex("(?i)\\.(pdf|hwp|hwpx).*"), "").trim().take(300),
                         sourceUrl = input.programSourceUrl,
                         attachmentFileName = document.fileName,
                         attachmentBytes = document.bytes,
@@ -191,7 +205,11 @@ class ApplicationFormDiscoveryService(
         val versionHash = sha256(
             "$documentHash\u0000${SupportProgramDocumentParser.VERSION}\u0000$model\u0000$promptVersion".toByteArray(),
         )
-        return "${sourceCode.lowercase()}-${sourceProgramId.lowercase().replace('_', '-')}-${versionHash.take(28)}"
+        val source = sourceCode.lowercase().replace('_', '-')
+        val hash = versionHash.take(28)
+        val program = sourceProgramId.lowercase().replace('_', '-')
+            .take(160 - source.length - hash.length - 2)
+        return "$source-$program-$hash"
     }
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
