@@ -114,14 +114,32 @@ describe('review screens and execution safety', () => {
     browseSavedPrograms.mockResolvedValueOnce(programs.map((program, index) => ({ savedAt: `2026-09-12T10:0${index}:00+09:00`, program })))
     mount('/app/combination-reviews/new')
 
-    const savedPrograms = await screen.findByRole('list', { name: '중복 지원 검토 관심 공고 목록' })
+    const selectionSummary = screen.getByLabelText('현재 선택한 공고')
+    expect(selectionSummary.className).toContain('min-h-12')
+    expect(screen.getByText('선택한 공고가 없습니다.')).toBeTruthy()
+    expect(browseSavedPrograms).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '관심 공고함에서 선택' }))
+    const dialog = await screen.findByRole('dialog', { name: '관심 공고함에서 선택' })
+    const savedPrograms = within(dialog).getByRole('list', { name: '중복 지원 검토 관심 공고 목록' })
     fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[0]!.title} 관심 공고 선택` }))
     fireEvent.click(within(savedPrograms).getByRole('button', { name: `${programs[1]!.title} 관심 공고 선택` }))
 
-    expect(screen.getByText('2/2 선택')).toBeTruthy()
+    expect(screen.getAllByText('2/2 선택')).toHaveLength(2)
     expect(within(savedPrograms).getAllByRole('button', { name: /관심 공고 선택 해제$/ })).toHaveLength(2)
-    expect(screen.getByLabelText('현재 선택한 공고').children).toHaveLength(2)
+    expect(selectionSummary.children).toHaveLength(2)
     expect(browseSavedPrograms).toHaveBeenCalledWith(expect.any(AbortSignal))
+    fireEvent.click(within(dialog).getByRole('button', { name: '선택 완료' }))
+    expect(screen.queryByRole('dialog', { name: '관심 공고함에서 선택' })).toBeNull()
+  })
+
+  it('shows an explicit empty message only after opening the saved-program picker', async () => {
+    mount('/app/combination-reviews/new')
+    expect(screen.queryByText('관심 공고함에 담은 공고가 없습니다.')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '관심 공고함에서 선택' }))
+
+    expect(await screen.findByText('관심 공고함에 담은 공고가 없습니다.')).toBeTruthy()
+    expect(screen.queryByText(/관심 공고를 불러오지 못했습니다/)).toBeNull()
   })
 
   it.each([201, 404])('handles new review save HTTP %s through the production adapter', async (status) => {

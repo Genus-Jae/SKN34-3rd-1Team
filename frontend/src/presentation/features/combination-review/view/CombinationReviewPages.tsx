@@ -8,6 +8,7 @@ import { useReviewListViewModel } from '../viewmodel/useReviewListViewModel'
 import { useReviewEditorViewModel } from '../viewmodel/useReviewEditorViewModel'
 import { ReviewParticipation } from './ReviewParticipation'
 import { ReviewRunResult } from './ReviewRunResult'
+import { SavedProgramPickerDialog } from './SavedProgramPickerDialog'
 import { runLabels } from './reviewLabels'
 import { reviewStyles as s } from './CombinationReview.styles'
 import { workspacePageStyles } from '../../../shared/workspace/WorkspacePage.styles'
@@ -68,10 +69,14 @@ export function CombinationReviewEditorPage({ create = false }: { create?: boole
 function ReviewEditor({ id, account }: { id: number | null; account: string }) {
   const location = useLocation()
   const autoStart = new URLSearchParams(location.search).get('start') === '1'
-  const vm = useReviewEditorViewModel(id, account, autoStart)
+  const [savedProgramsOpen, setSavedProgramsOpen] = useState(false)
+  const vm = useReviewEditorViewModel(id, account, autoStart, savedProgramsOpen)
   const [step, setStep] = useState<'selection' | 'participation' | 'analysis'>(() => id && new URLSearchParams(location.search).get('step') === 'analysis' ? 'analysis' : 'selection')
   const contentRef = useRef<HTMLElement>(null)
+  const savedProgramsButtonRef = useRef<HTMLButtonElement>(null)
+  const closeSavedPrograms = () => { setSavedProgramsOpen(false); savedProgramsButtonRef.current?.focus() }
   useEffect(() => {
+    setSavedProgramsOpen(false)
     const scrollArea = contentRef.current?.parentElement
     if (scrollArea && typeof scrollArea.scrollTo === 'function') scrollArea.scrollTo({ top: 0, left: 0, behavior: 'auto' })
   }, [step])
@@ -103,31 +108,15 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
           <section className={s.card} aria-label="공고 선택">
             <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-bold">비교할 공고 선택</h2><strong className="rounded-full bg-emerald-100 px-3 py-1 text-sm text-emerald-900">{vm.draft.programs.length}/2 선택</strong></div>
             <p className={s.muted}>관심 공고함이나 전체 공고 검색에서 서로 비교할 공고를 정확히 2개 선택하세요. 접수 종료 공고도 참여 이력 검토에 사용할 수 있습니다.</p>
-            {vm.draft.programs.length > 0 && <div className="mt-3 flex flex-wrap gap-2" aria-label="현재 선택한 공고">{vm.draft.programs.map((program, index) => {
-              const name = vm.names[reviewProgramKey(program)] ?? reviewProgramKey(program)
-              return <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-300 bg-emerald-50 py-1 pr-1 pl-3 text-sm font-semibold text-emerald-900" key={reviewProgramKey(program)}><span className="truncate">사업 {index + 1} · {name}</span><button type="button" className="grid size-7 shrink-0 place-items-center rounded-full hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label={`${name} 선택 해제`} onClick={() => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.filter((_, selectedIndex) => selectedIndex !== index) })}>×</button></span>
-            })}</div>}
-            <div className="mt-4 rounded-xl border border-slate-200 p-4" aria-labelledby="saved-review-programs-title">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="font-semibold" id="saved-review-programs-title">관심 공고함에서 선택</h3>
-                {vm.savedProgramChoices.phase === 'failed' && <button type="button" className={s.button} onClick={vm.savedProgramChoices.retry}>다시 불러오기</button>}
-              </div>
-              {(vm.savedProgramChoices.phase === 'idle' || vm.savedProgramChoices.phase === 'loading') && <p className="mt-3" role="status">관심 공고를 불러오는 중입니다.</p>}
-              {vm.savedProgramChoices.phase === 'failed' && <p className={`${s.warning} mt-3`} role="alert">관심 공고를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>}
-              {vm.savedProgramChoices.phase === 'ready' && vm.savedProgramChoices.programs.length === 0 && <p className={`${s.muted} mt-3`}>관심 공고함에 담은 공고가 없습니다.</p>}
-              {vm.savedProgramChoices.programs.length > 0 && <ul className="mt-3 divide-y divide-slate-200" aria-label="중복 지원 검토 관심 공고 목록">{vm.savedProgramChoices.programs.map((program) => {
-                const identity = { sourceCode: program.sourceCode, sourceProgramId: program.id, subProgramId: null }
-                const selected = vm.draft.programs.some((candidate) => reviewProgramKey(candidate) === reviewProgramKey(identity))
-                return <li className={`my-2 rounded-xl border px-3 py-3 transition-colors ${selected ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-200' : 'border-transparent'}`} key={reviewProgramKey(identity)}><div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0 flex-1"><strong>{program.title}</strong><p className={s.muted}>{program.organization} · {({ OPEN: '접수 중', CLOSED: '접수 종료', UPCOMING: '접수 예정', UNKNOWN: '접수 상태 미확인' })[program.status]}</p><p className={s.muted}>{program.applicationPeriod}</p></div><button
-                  type="button"
-                  className={selected ? s.primary : s.button}
-                  aria-label={`${program.title} 관심 공고 ${selected ? '선택 해제' : '선택'}`}
-                  aria-pressed={selected}
-                  disabled={!selected && vm.draft.programs.length >= 2}
-                  onClick={() => vm.toggle(program)}
-                >{selected ? '선택 해제' : '선택'}</button></div></li>
-              })}</ul>}
+            <div className="mt-3 flex min-h-12 items-center gap-2 overflow-x-auto rounded-xl bg-slate-50 px-3 py-2" aria-label="현재 선택한 공고">
+              {vm.draft.programs.length === 0 && <span className="text-sm text-slate-500">선택한 공고가 없습니다.</span>}
+              {vm.draft.programs.map((program, index) => {
+                const name = vm.names[reviewProgramKey(program)] ?? reviewProgramKey(program)
+                return <span className="inline-flex max-w-[32rem] shrink-0 items-center gap-2 rounded-full border border-emerald-300 bg-emerald-50 py-1 pr-1 pl-3 text-sm font-semibold text-emerald-900" key={reviewProgramKey(program)}><span className="truncate">사업 {index + 1} · {name}</span><button type="button" className="grid size-7 shrink-0 place-items-center rounded-full hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label={`${name} 선택 해제`} onClick={() => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.filter((_, selectedIndex) => selectedIndex !== index) })}>×</button></span>
+              })}
             </div>
+            <button ref={savedProgramsButtonRef} type="button" className="mt-4 flex w-full cursor-pointer items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-3 text-left text-sm font-semibold hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label="관심 공고함에서 선택" aria-haspopup="dialog" aria-expanded={savedProgramsOpen} onClick={() => setSavedProgramsOpen(true)}><span>관심 공고함에서 선택</span><span className="text-emerald-800">열기 ›</span></button>
+            <SavedProgramPickerDialog open={savedProgramsOpen} phase={vm.savedProgramChoices.phase} programs={vm.savedProgramChoices.programs} selectedPrograms={vm.draft.programs} onToggle={vm.toggle} onRetry={vm.savedProgramChoices.retry} onClose={closeSavedPrograms} />
             <h3 className="mt-5 font-semibold">전체 공고 검색</h3>
             <div className="mt-3 flex flex-wrap items-end gap-2"><label className="min-w-0 flex-1 text-sm">공고명·기관명<input className={s.input} maxLength={100} value={vm.keyword} onChange={(e) => vm.setKeyword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void vm.search() } }} /></label><button type="button" className={s.button} disabled={vm.busy.includes('catalog')} onClick={() => void vm.search()}>공고 검색</button></div>
             {vm.busy.includes('catalog') && <p className="mt-3" role="status">공고를 불러오는 중입니다.</p>}

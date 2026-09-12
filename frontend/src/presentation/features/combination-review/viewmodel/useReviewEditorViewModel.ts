@@ -16,13 +16,13 @@ function isEarlierState(current: RunSummary, next: RunSummary) {
   )
 }
 
-export function useReviewEditorViewModel(id: number | null, account: string, autoStart = false) {
+export function useReviewEditorViewModel(id: number | null, account: string, autoStart = false, loadSavedPrograms = false) {
   const useCase = appContainer.resolve('combinationReviewUseCase')
   const catalogUseCase = appContainer.resolve('browseSupportProgramsUseCase')
   const detailUseCase = appContainer.resolve('getSupportProgramDetailUseCase')
   const journal = appContainer.resolve('reviewRequestJournal')
   const navigate = useNavigate()
-  const savedProgramChoices = useSavedSupportProgramChoices()
+  const savedProgramChoices = useSavedSupportProgramChoices(loadSavedPrograms)
   const { perform, ...scope } = useReviewScope()
   const [review, setReview] = useState<CombinationReview | null>(null)
   const [latest, setLatest] = useState<CombinationReview | null>(null)

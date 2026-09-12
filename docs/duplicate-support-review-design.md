@@ -625,7 +625,7 @@ AI production 코드와 공개 서비스 간 계약은 변경하지 않았으므
 `제목·공고 선택 → 참여 상태 설정 → 공고 분석` 3단계로 나누며, 단계 이동 시 화면 상단으로 이동한다. 목록에서는 결과를 바로 열고 확인 후 검토를 삭제할 수 있다.
 기존 RequireAuth·WorkspaceLayout·appPaths·Awilix DI·세션 쿠키를 재사용한다.
 `View → ViewModel → CombinationReviewUseCase → Domain Repository 계약 → Data 구현 → HTTP/Zod → Core API`로 호출하며
-공고 선택은 BrowseSavedSupportProgramsUseCase의 관심 공고함과 기존 BrowseSupportProgramsUseCase의 무료 카탈로그 조회를 함께 사용한다.
+공고 선택은 BrowseSavedSupportProgramsUseCase의 관심 공고함과 기존 BrowseSupportProgramsUseCase의 무료 카탈로그 조회를 함께 사용한다. 관심 공고는 버튼으로 연 팝업에서만 지연 조회하고 선택 요약은 고정 높이 한 줄로 유지해 선택 전후 레이아웃 이동을 막는다.
 
 - 본인 검토와 실행 이력에 커서 더 보기를 제공한다. 로딩·빈 결과·오류·인증 만료를 구분한다.
 - 제공처/공고 ID로 중복 선택을 막고 정확히 2개 사업을 저장한다. 선택한 검색 결과는 같은 자리에서 색과 버튼으로 확인·해제하며 UNKNOWN과 독립적인 수행 상태를 유지한다.
