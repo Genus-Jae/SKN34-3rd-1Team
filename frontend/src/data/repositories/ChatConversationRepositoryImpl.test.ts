@@ -17,6 +17,19 @@ function snapshot() {
 }
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('대화 기록 Repository HTTP 계약', () => {
+  it('삭제는 본인 세션으로 DELETE를 보내고 본문 없는 204를 처리한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(repository.delete(email, 'saved')).resolves.toBeUndefined()
+    expect(fetchMock.mock.calls[0][0]).toMatch(/chat-conversations\/saved$/)
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'DELETE', credentials: 'include', cache: 'no-store',
+      headers: { 'X-Chat-Account': encodeURIComponent(email) } })
+    expect(fetchMock.mock.calls[0][1].body).toBeUndefined()
+  })
+  it.each([401, 403, 500])('삭제 HTTP %s를 성공으로 처리하지 않는다', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })))
+    await expect(repository.delete(email, 'saved')).rejects.toMatchObject({ status })
+  })
   it('계정 확인 헤더·쿠키·페이지 커서를 전송하고 마이크로초 날짜를 검증한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [summary], nextCursor: 10 })))
     vi.stubGlobal('fetch', fetchMock)

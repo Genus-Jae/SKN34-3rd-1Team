@@ -141,6 +141,74 @@ class ChatConversationFlowIntegrationTest {
         assertEquals(null, repository.find(accountId, "rollback"))
     }
 
+    @Test
+    fun deletesOnlyOwnersConversationAndErasesContentWithoutResurrection() {
+        val email = "${UUID.randomUUID()}@test.local"
+        val owner = signup(email)
+        val other = signup()
+        save(owner, "shared-id", 0, snapshot("shared-id", "삭제할 개인정보 😀")).andExpect(status().isOk())
+        save(owner, "keep", 0, snapshot("keep")).andExpect(status().isOk())
+        save(other, "shared-id", 0, snapshot("shared-id", "다른 회원")).andExpect(status().isOk())
+        remove(owner, "shared-id").andExpect(status().isNoContent())
+            .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store")).andExpect(content().string(""))
+        remove(owner, "shared-id").andExpect(status().isNoContent())
+        mvc.perform(get("$path/shared-id").owner(login(email))).andExpect(status().isNotFound())
+        mvc.perform(get(path).owner(owner)).andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].id").value("keep"))
+        mvc.perform(get("$path/shared-id").owner(other)).andExpect(jsonPath("$.snapshot.messages[0].text").value("다른 회원"))
+        val row = jdbc.queryForMap("SELECT title, CAST(snapshot AS CHAR) AS snapshot, deleted_at FROM chat_conversation WHERE account_id = ? AND conversation_id = ?", accountId(email), "shared-id")
+        assertEquals("", row["title"])
+        assertEquals("{}", row["snapshot"])
+        org.junit.jupiter.api.Assertions.assertNotNull(row["deleted_at"])
+        for (version in listOf(0L, 1L, 2L)) save(owner, "shared-id", version, snapshot("shared-id")).andExpect(status().isConflict())
+    }
+
+    @Test
+    fun deletionBeforeTheFirstSaveBlocksDelayedCreationAndDoesNotExposeOtherOwnersRecord() {
+        val owner = signup()
+        val other = signup()
+        save(other, "pending", 0, snapshot("pending")).andExpect(status().isOk())
+        remove(owner, "pending").andExpect(status().isNoContent())
+        save(owner, "pending", 0, snapshot("pending")).andExpect(status().isConflict())
+        mvc.perform(get(path).owner(owner)).andExpect(jsonPath("$.items").isEmpty)
+        mvc.perform(get("$path/pending").owner(other)).andExpect(status().isOk())
+    }
+
+    @Test
+    fun deletionRequiresSessionSameAccountAndTrustedOrigin() {
+        val owner = signup()
+        save(owner, "protected", 0, snapshot("protected")).andExpect(status().isOk())
+        mvc.perform(delete("$path/protected")).andExpect(status().isUnauthorized())
+        mvc.perform(delete("$path/protected").owner(owner)).andExpect(status().isForbidden())
+        mvc.perform(delete("$path/protected").owner(owner).header(HttpHeaders.ORIGIN, "https://untrusted.invalid")).andExpect(status().isForbidden())
+        mvc.perform(delete("$path/protected").cookie(owner).header("X-Chat-Account", "old@test.local")
+            .header(HttpHeaders.ORIGIN, origin)).andExpect(status().isUnauthorized())
+        remove(owner, "invalid.id").andExpect(status().isBadRequest())
+        mvc.perform(get("$path/protected").owner(owner)).andExpect(status().isOk())
+    }
+
+    @Test
+    fun deletionParticipatesInRollbackAndAccountRemovalPurgesDeletedMarkers() {
+        val email = "${UUID.randomUUID()}@test.local"
+        val owner = signup(email)
+        save(owner, "rollback-delete", 0, snapshot("rollback-delete")).andExpect(status().isOk())
+        val accountId = accountId(email)
+        assertThrows(IllegalStateException::class.java) {
+            transaction.executeWithoutResult {
+                repository.delete(accountId, "rollback-delete")
+                throw IllegalStateException("rollback")
+            }
+        }
+        mvc.perform(get("$path/rollback-delete").owner(owner)).andExpect(status().isOk())
+        remove(owner, "rollback-delete").andExpect(status().isNoContent())
+        mvc.perform(delete("/api/v1/me").owner(owner).header(HttpHeaders.ORIGIN, origin)
+            .contentType(MediaType.APPLICATION_JSON).content("""{"password":"password1"}""")).andExpect(status().isNoContent())
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM chat_conversation WHERE account_id = ?", Int::class.java, accountId))
+    }
+
+    private fun accountId(email: String) = jdbc.queryForObject("SELECT id FROM account WHERE email = ?", Long::class.java, email)!!
+    private fun remove(owner: Cookie, id: String) = mvc.perform(delete("$path/$id").owner(owner).header(HttpHeaders.ORIGIN, origin))
+
     private fun snapshot(id: String, text: String = "서울 AI 지원사업") = json.writeValueAsString(mapOf(
         "schemaVersion" to 1, "messages" to listOf(mapOf("id" to id, "role" to "user", "text" to text),
             mapOf("id" to "$id-answer", "role" to "assistant", "text" to "답변", "programs" to emptyList<String>())),

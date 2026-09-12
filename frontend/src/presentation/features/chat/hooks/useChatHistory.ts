@@ -6,20 +6,21 @@ import { useAppSelector } from '../../../../app/hooks'
 import type { ChatConversationSnapshot, ChatConversationSummary } from '../../../../domain/entities/ChatConversation'
 import type { ChatConversationUseCase } from '../../../../domain/usecases/ChatConversationUseCase'
 import { selectCurrentAccount } from '../../../shared/auth/state/authSlice'
-import { conversationHistoryOpened, createChatConversationSnapshot } from '../state/chatSlice'
+import { conversationHistoryOpened, conversationReset, createChatConversationSnapshot } from '../state/chatSlice'
 
 type Entry = { snapshot: ChatConversationSnapshot; signature: string; saved: string | null; version: number; saving: boolean; error: boolean }
 type Session = {
   email: string; alive: boolean; entries: Map<string, Entry>; controllers: Set<AbortController>
-  opening: AbortController | null; listing: boolean
+  opening: AbortController | null; listing: boolean; deletingId: string | null; deletedIds: Set<string>
 }
 type HistoryState = { email: string | null; items: ChatConversationSummary[]; nextCursor: number | null;
-  loading: boolean; openingId: string | null; loadError: string | null; saveError: boolean; saving: boolean }
+  loading: boolean; openingId: string | null; loadError: string | null; saveError: boolean; saving: boolean;
+  deletingId: string | null; deleteError: string | null }
 const initialHistory: HistoryState = { email: null, items: [], nextCursor: null, loading: false,
-  openingId: null, loadError: null, saveError: false, saving: false }
+  openingId: null, loadError: null, saveError: false, saving: false, deletingId: null, deleteError: null }
 
 /** 로그인 작업 화면에서만 구독합니다. 대화별 저장을 순서대로 보내고 계정 변경 시 요청·메모리를 함께 폐기합니다. */
-export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | 'get' | 'save'> = appContainer.resolve('chatConversationUseCase')) {
+export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | 'get' | 'save' | 'delete'> = appContainer.resolve('chatConversationUseCase')) {
   const store = useStore() as AppStore
   const email = useAppSelector(selectCurrentAccount)?.email ?? null
   const activeId = useAppSelector((state) => state.chat.messages.find((message) => message.role === 'user')?.id ?? null)
@@ -40,7 +41,8 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
     }))
   }, [update])
   const save = useCallback(async function saveEntry(current: Session, id: string, entry: Entry) {
-    if (!isCurrent(current) || entry.saving || entry.error || entry.saved === entry.signature) return
+    if (!isCurrent(current) || current.deletingId === id || current.deletedIds.has(id)
+      || current.entries.get(id) !== entry || entry.saving || entry.error || entry.saved === entry.signature) return
     entry.saving = true
     updateSaveState(current)
     const controller = new AbortController()
@@ -48,12 +50,12 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
     const signature = entry.signature
     try {
       const summary = await useCase.save(current.email, id, entry.version, entry.snapshot, controller.signal)
-      if (!isCurrent(current) || controller.signal.aborted) return
+      if (!isCurrent(current) || controller.signal.aborted || current.entries.get(id) !== entry) return
       entry.version = summary.version
       entry.saved = signature
       update(current, (previous) => ({ ...previous, items: previous.items.map((item) => item.id === id ? summary : item) }))
     } catch {
-      if (isCurrent(current) && !controller.signal.aborted) entry.error = true
+      if (isCurrent(current) && !controller.signal.aborted && current.entries.get(id) === entry && current.deletingId !== id) entry.error = true
     } finally {
       current.controllers.delete(controller)
       entry.saving = false
@@ -67,7 +69,7 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
     const chat = store.getState().chat
     if (chat.accountEmail !== current.email) return
     const question = chat.messages.find((message) => message.role === 'user')
-    if (!question) return
+    if (!question || current.deletingId === question.id || current.deletedIds.has(question.id)) return
     const snapshot = createChatConversationSnapshot(chat)
     const signature = JSON.stringify(snapshot)
     let entry = current.entries.get(question.id)
@@ -91,7 +93,7 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
       const page = await useCase.list(current.email, before, controller.signal)
       if (!isCurrent(current) || controller.signal.aborted) return
       update(current, (previous) => ({ ...previous, nextCursor: page.nextCursor,
-        items: [...previous.items, ...page.items.filter((item) => !previous.items.some((existing) => existing.id === item.id))] }))
+        items: [...previous.items, ...page.items.filter((item) => !current.deletedIds.has(item.id) && !previous.items.some((existing) => existing.id === item.id))] }))
     } catch {
       update(current, (previous) => ({ ...previous, loadError: '대화 기록을 불러오지 못했습니다. 다시 시도해 주세요.' }))
     } finally {
@@ -103,14 +105,14 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
 
   useEffect(() => {
     if (!email) return
-    const current: Session = { email, alive: true, entries: new Map(), controllers: new Set(), opening: null, listing: false }
+    const current: Session = { email, alive: true, entries: new Map(), controllers: new Set(), opening: null, listing: false, deletingId: null, deletedIds: new Set() }
     session.current = current
     setState({ ...initialHistory, email })
     // StrictMode의 첫 setup/cleanup은 실제 HTTP 요청 전에 취소됩니다.
     void Promise.resolve().then(() => { if (isCurrent(current)) { capture(current); void load(current, null) } })
     const unsubscribe = store.subscribe(() => capture(current))
     const warnUnsaved = (event: BeforeUnloadEvent) => {
-      if (isCurrent(current) && [...current.entries.values()].some((entry) => entry.saved !== entry.signature)) {
+      if (isCurrent(current) && (current.deletingId !== null || [...current.entries.values()].some((entry) => entry.saved !== entry.signature))) {
         event.preventDefault(); event.returnValue = ''
       }
     }
@@ -133,7 +135,7 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
   }, [update])
   async function open(id: string): Promise<boolean> {
     const current = session.current
-    if (!current || !isCurrent(current)) return false
+    if (!current || !isCurrent(current) || current.deletingId === id || current.deletedIds.has(id)) return false
     cancelOpening()
     if (store.getState().chat.messages.find((message) => message.role === 'user')?.id === id) return true
     capture(current)
@@ -149,7 +151,7 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
     update(current, (previous) => ({ ...previous, openingId: id, loadError: null }))
     try {
       const detail = await useCase.get(current.email, id, controller.signal)
-      if (!isCurrent(current) || controller.signal.aborted || store.getState().chat !== previousChat) return false
+      if (!isCurrent(current) || controller.signal.aborted || current.deletedIds.has(id) || current.deletingId === id || store.getState().chat !== previousChat) return false
       const signature = JSON.stringify(detail.snapshot)
       current.entries.set(id, { snapshot: detail.snapshot, signature, saved: signature, version: detail.conversation.version, saving: false, error: false })
       store.dispatch(conversationHistoryOpened({ accountEmail: current.email, snapshot: detail.snapshot }))
@@ -164,6 +166,39 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
       }
     }
   }
+  async function remove(id: string): Promise<boolean> {
+    const current = session.current
+    if (!current || !isCurrent(current) || current.deletingId !== null || current.deletedIds.has(id)) return false
+    cancelOpening()
+    current.deletingId = id
+    update(current, (previous) => ({ ...previous, deletingId: id, deleteError: null }))
+    const controller = new AbortController()
+    current.controllers.add(controller)
+    try {
+      await useCase.delete(current.email, id, controller.signal)
+      if (!isCurrent(current) || controller.signal.aborted) return false
+      current.deletedIds.add(id)
+      current.entries.delete(id)
+      update(current, (previous) => ({ ...previous, items: previous.items.filter((item) => item.id !== id) }))
+      // 삭제 중 다른 대화를 열었다면 그 대화는 보존합니다. 현재 대화의 늦은 AI 응답은 request ID 초기화로 무시합니다.
+      if (store.getState().chat.messages.find((message) => message.role === 'user')?.id === id) store.dispatch(conversationReset())
+      return true
+    } catch {
+      if (!controller.signal.aborted) update(current, (previous) => ({ ...previous,
+        deleteError: '대화 삭제를 확인하지 못했습니다. 연결을 확인한 뒤 해당 대화의 삭제 버튼을 다시 눌러 주세요.',
+      }))
+      return false
+    } finally {
+      current.controllers.delete(controller)
+      current.deletingId = null
+      update(current, (previous) => ({ ...previous, deletingId: null }))
+      updateSaveState(current)
+      capture(current)
+      // 삭제 실패 중 보류했던 저장도 재개합니다. 성공한 삭제는 entries에서 이미 제거되어 재저장되지 않습니다.
+      const entry = current.entries.get(id)
+      if (entry) void save(current, id, entry)
+    }
+  }
   function retrySave() {
     const current = session.current
     if (!current || !isCurrent(current)) return
@@ -171,7 +206,7 @@ export function useChatHistory(useCase: Pick<ChatConversationUseCase, 'list' | '
     updateSaveState(current)
   }
   const visible = state.email === email ? state : initialHistory
-  return { ...visible, activeId, open, cancelOpening, retrySave,
+  return { ...visible, activeId, open, remove, cancelOpening, retrySave,
     loadMore: () => { const current = session.current; if (current) void load(current, visible.nextCursor) } }
 }
 

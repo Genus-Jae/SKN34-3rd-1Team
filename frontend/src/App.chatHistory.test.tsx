@@ -41,6 +41,7 @@ beforeEach(() => {
     const body = init.body ? JSON.parse(String(init.body)) : undefined
     historyRequests.push({ email, url: url.pathname, method: init.method!, body })
     const mine = records.get(email) ?? new Map<string, ChatConversationDetail>(); records.set(email, mine)
+    if (init.method === 'DELETE') { mine.delete(id); return new Response(null, { status: 204 }) }
     if (init.method === 'PUT') {
       const current = mine.get(id)
       if ((current?.conversation.version ?? 0) !== body.expectedVersion) return json({}, 409)
@@ -65,6 +66,66 @@ async function submit(text: string) {
 }
 
 describe('사이드바 대화 기록 HTTP 통합', () => {
+  it('삭제 취소 시 보존하고 확인하면 현재 대화를 비우며 새 세션에서도 삭제 상태를 유지한다', async () => {
+    const view = renderChat()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await submit('삭제할 서울 지원사업')
+    await waitFor(() => expect([...records.get(account.email)!.values()][0].snapshot.interpretation.status).toBe('ready'))
+    const remove = screen.getByRole('button', { name: '대화 삭제: 삭제할 서울 지원사업' })
+    fireEvent.click(remove)
+    expect(historyRequests.filter((request) => request.method === 'DELETE')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: '대화 열기: 삭제할 서울 지원사업' })).toBeTruthy()
+    confirm.mockReturnValue(true)
+    await act(async () => fireEvent.click(remove))
+    expect(confirm.mock.calls.at(-1)?.[0]).toContain('복구할 수 없습니다')
+    expect(historyRequests.filter((request) => request.method === 'DELETE')).toHaveLength(1)
+    expect(records.get(account.email)?.size).toBe(0)
+    expect(screen.queryByRole('button', { name: /^대화 열기:/ })).toBeNull()
+    expect(view.store.getState().chat.messages).toHaveLength(1)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '지원사업 새검색' }))
+    expect(appContainer.resolve('interpretSupportProgramConversationUseCase').execute).toHaveBeenCalledOnce()
+    view.unmount()
+    renderChat()
+    await waitFor(() => expect(screen.getByText('대화를 시작하면 여기에 저장됩니다.')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /^대화 열기:/ })).toBeNull()
+  })
+
+  it('다른 기록을 삭제해도 현재 대화는 그대로 유지한다', async () => {
+    const view = renderChat()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await submit('이전 질문')
+    await waitFor(() => expect([...records.get(account.email)!.values()][0].snapshot.interpretation.status).toBe('ready'))
+    fireEvent.click(screen.getByRole('button', { name: '지원사업 새검색' }))
+    await submit('현재 질문')
+    await waitFor(() => expect([...records.get(account.email)!.values()].every((entry) => entry.snapshot.interpretation.status === 'ready')).toBe(true))
+    const before = view.store.getState().chat
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '대화 삭제: 이전 질문' })))
+    expect(screen.queryByRole('button', { name: '대화 열기: 이전 질문' })).toBeNull()
+    expect(screen.getByRole('button', { name: '대화 열기: 현재 질문' })).toBeTruthy()
+    expect(view.store.getState().chat).toBe(before)
+  })
+
+  it('삭제 중 버튼을 잠그고 실패 안내 후 같은 버튼으로 재시도할 수 있다', async () => {
+    renderChat()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await submit('삭제 재시도')
+    await waitFor(() => expect([...records.get(account.email)!.values()][0].snapshot.interpretation.status).toBe('ready'))
+    const fetch = globalThis.fetch
+    let finish!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn((input, init) => init?.method === 'DELETE'
+      ? new Promise<Response>((resolve) => { finish = resolve }) : fetch(input, init)))
+    fireEvent.click(screen.getByRole('button', { name: '대화 삭제: 삭제 재시도' }))
+    expect((screen.getByRole('button', { name: '대화 삭제: 삭제 재시도' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText('대화 삭제 중…')).toBeTruthy()
+    await act(async () => finish(json({}, 500)))
+    expect(screen.getByText(/대화 삭제를 확인하지 못했습니다/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '대화 열기: 삭제 재시도' })).toBeTruthy()
+    vi.stubGlobal('fetch', fetch)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '대화 삭제: 삭제 재시도' })))
+    expect(screen.queryByRole('button', { name: '대화 열기: 삭제 재시도' })).toBeNull()
+    expect(screen.queryByText(/대화 삭제를 확인하지 못했습니다/)).toBeNull()
+  })
+
   it('요금제 아래 대화 단위로 쌓이고 새 대화·필터 이동 후 클릭으로 복원하며 AI를 다시 호출하지 않는다', async () => {
     renderChat()
     await waitFor(() => expect(historyRequests).toHaveLength(1))

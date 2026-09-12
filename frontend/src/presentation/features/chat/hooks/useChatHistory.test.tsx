@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAppStore } from '../../../../app/store'
 import type { Account } from '../../../../domain/entities/Account'
-import type { ChatConversationDetail, ChatConversationSummary } from '../../../../domain/entities/ChatConversation'
+import type { ChatConversationDetail, ChatConversationPage, ChatConversationSummary } from '../../../../domain/entities/ChatConversation'
 import type { ChatConversationRepository } from '../../../../domain/repositories/ChatConversationRepository'
 import { emptyConversationContext, readyConversationProposal, seoulConversationContext } from '../../../../data/fixtures/supportProgramConversation'
 import { supportPrograms } from '../../../../data/fixtures/supportPrograms'
@@ -21,6 +21,7 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 function harness(auth: Account | null = account) {
   const store = createAppStore(); store.dispatch(sessionRestored(auth))
   const api: ChatConversationRepository = {
+    delete: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue({ items: [], nextCursor: null }), get: vi.fn(),
     save: vi.fn().mockImplementation(async (_email, id, version) => summary(id, version + 1)),
   }
@@ -41,6 +42,98 @@ function savedDetail(id = 'saved'): ChatConversationDetail {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('로그인 계정별 대화 기록 수명', () => {
+  it('현재 대화를 삭제하면 초기화하고 늦은 저장·AI 응답이 기록을 되살리지 않는다', async () => {
+    const { store, api, result } = harness()
+    const pendingSave = deferred<ChatConversationSummary>()
+    vi.mocked(api.save).mockReturnValueOnce(pendingSave.promise)
+    await waitFor(() => expect(api.list).toHaveBeenCalledOnce())
+    const started = interpretationStarted({ message: '삭제할 질문', context: emptyConversationContext }, 'delete-me')
+    act(() => store.dispatch(started))
+    await act(async () => { expect(await result.current.remove('delete-me')).toBe(true) })
+    expect(result.current.items).toEqual([])
+    expect(result.current.activeId).toBeNull()
+    await act(async () => pendingSave.resolve(summary('delete-me')))
+    act(() => store.dispatch(interpretationSucceeded({ requestId: started.payload.requestId, result: readyConversationProposal(seoulConversationContext) })))
+    act(() => result.current.retrySave())
+    expect(api.save).toHaveBeenCalledOnce()
+    expect(result.current.items).toEqual([])
+    expect(result.current.saveError).toBe(false)
+    expect(store.getState().chat.messages).toHaveLength(1)
+    await act(async () => { expect(await result.current.open('delete-me')).toBe(false) })
+    expect(api.get).not.toHaveBeenCalled()
+  })
+
+  it('삭제 중 중복 요청을 막고 다른 대화로 전환해도 그 대화는 유지한다', async () => {
+    const { store, api, result } = harness()
+    const pending = deferred<void>()
+    vi.mocked(api.delete).mockReturnValueOnce(pending.promise)
+    const otherDetail = savedDetail('other')
+    vi.mocked(api.get).mockResolvedValue(otherDetail)
+    await waitFor(() => expect(api.list).toHaveBeenCalledOnce())
+    act(() => store.dispatch(interpretationStarted({ message: '삭제할 질문', context: emptyConversationContext }, 'first')))
+    let removing!: Promise<boolean>
+    act(() => { removing = result.current.remove('first') })
+    expect(result.current.deletingId).toBe('first')
+    await act(async () => {
+      expect(await result.current.remove('first')).toBe(false)
+      expect(await result.current.open('first')).toBe(false)
+      expect(await result.current.open('other')).toBe(true)
+    })
+    await act(async () => { pending.resolve(); expect(await removing).toBe(true) })
+    expect(result.current.activeId).toBe('other')
+    expect(store.getState().chat.messages).toEqual(otherDetail.snapshot.messages)
+    expect(api.delete).toHaveBeenCalledOnce()
+  })
+
+  it('삭제 전에 시작한 목록·상세의 늦은 응답을 무시한다', async () => {
+    const { api, result } = harness()
+    const pendingList = deferred<ChatConversationPage>()
+    const pendingGet = deferred<ChatConversationDetail>()
+    vi.mocked(api.list).mockReturnValueOnce(pendingList.promise)
+    vi.mocked(api.get).mockReturnValueOnce(pendingGet.promise)
+    await waitFor(() => expect(api.list).toHaveBeenCalledOnce())
+    let opening!: Promise<boolean>
+    act(() => { opening = result.current.open('saved') })
+    await act(async () => { await result.current.remove('saved') })
+    expect(vi.mocked(api.get).mock.calls[0][2]?.aborted).toBe(true)
+    await act(async () => {
+      pendingGet.resolve(savedDetail()); pendingList.resolve({ items: [summary('saved')], nextCursor: null })
+      expect(await opening).toBe(false)
+    })
+    expect(result.current.items).toEqual([])
+    expect(result.current.activeId).toBeNull()
+  })
+
+  it('삭제 실패 시 대화와 목록을 보존하고 재시도 성공 후에만 비운다', async () => {
+    const { store, api, result } = harness()
+    vi.mocked(api.delete).mockRejectedValueOnce(new Error('offline'))
+    await waitFor(() => expect(api.list).toHaveBeenCalledOnce())
+    act(() => store.dispatch(interpretationStarted({ message: '보존할 질문', context: emptyConversationContext }, 'keep')))
+    await act(async () => { expect(await result.current.remove('keep')).toBe(false) })
+    expect(result.current.deleteError).toContain('삭제를 확인하지 못했습니다')
+    expect(result.current.items.map((item) => item.id)).toEqual(['keep'])
+    expect(result.current.activeId).toBe('keep')
+    expect(result.current.deletingId).toBeNull()
+    await act(async () => { expect(await result.current.remove('keep')).toBe(true) })
+    expect(result.current.deleteError).toBeNull()
+    expect(result.current.items).toEqual([])
+  })
+
+  it('계정이 바뀌면 삭제 요청을 취소하고 이전 계정의 응답이 새 대화를 초기화하지 않는다', async () => {
+    const { store, api, result } = harness()
+    const pending = deferred<void>(); vi.mocked(api.delete).mockReturnValueOnce(pending.promise)
+    await waitFor(() => expect(api.list).toHaveBeenCalledOnce())
+    let removing!: Promise<boolean>
+    act(() => { removing = result.current.remove('same-id') })
+    act(() => { store.dispatch(signedOut()); store.dispatch(signedIn(other)) })
+    act(() => store.dispatch(interpretationStarted({ message: '새 계정 대화', context: emptyConversationContext }, 'same-id')))
+    expect(vi.mocked(api.delete).mock.calls[0][2]?.aborted).toBe(true)
+    await act(async () => { pending.resolve(); expect(await removing).toBe(false) })
+    expect(result.current.items.map((item) => item.id)).toEqual(['same-id'])
+    expect(result.current.activeId).toBe('same-id')
+    expect(result.current.deletingId).toBeNull()
+  })
+
   it('비로그인·초안·빈 새 대화는 기록을 생성하거나 API를 호출하지 않는다', async () => {
     const { store, api, result } = harness(null)
     act(() => { store.dispatch(draftChanged('작성 중')); store.dispatch(interpretationStarted({ message: '비회원 질문', context: emptyConversationContext })) })
