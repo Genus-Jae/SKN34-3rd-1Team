@@ -321,13 +321,16 @@ describe('계정 화면', () => {
     expect(screen.queryByRole('complementary', { name: '작업 사이드바' })).toBeNull()
   })
 
-  it('관리자 메뉴와 화면은 관리자에게만 보인다', () => {
-    renderApp('/app/admin/members', memberAccount)
+  it.each([memberAccount, companyAccount])('$tier 회원은 계정 메뉴를 열어도 관리자 메뉴와 화면을 보지 못한다', (account) => {
+    renderApp('/app/admin/members', account)
     // 회원은 관리자 화면 대신 작업 채팅으로 돌아가고 메뉴도 보지 못합니다.
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
     expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
     expect(screen.queryByRole('heading', { name: '회원·기업 목록' })).toBeNull()
-    expect(within(sidebar).getByText('회원 · 기업 미등록')).toBeTruthy()
+    fireEvent.click(within(sidebar).getByRole('button', { name: `계정 메뉴 · ${account.email}` }))
+    expect(within(sidebar).getByRole('link', { name: '내 프로필' })).toBeTruthy()
+    expect(within(sidebar).getByRole('button', { name: '로그아웃' })).toBeTruthy()
+    expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
   })
 })
 
@@ -360,7 +363,7 @@ describe('작업 화면 사이드바', () => {
     expect(search.classList.contains('bg-[#e6f5ed]')).toBe(false)
   })
 
-  it('사이드바로 파트너 모집과 관리자 목록을 오간다', () => {
+  it('사이드바에서 파트너 모집을 열고 관리자 계정 메뉴에서 회원·기업 목록으로 이동한다', () => {
     renderApp('/app/chat', adminAccount)
 
     const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
@@ -376,8 +379,45 @@ describe('작업 화면 사이드바', () => {
     expect(screen.getByRole('tablist', { name: '제안함 종류' })).toBeTruthy()
     expect(within(sidebar).getByRole('link', { name: /파트너 관리/ }).getAttribute('aria-current')).toBe('page')
 
-    fireEvent.click(within(sidebar).getByRole('link', { name: '회원·기업' }))
+    expect(within(sidebar).queryByRole('navigation', { name: '관리자' })).toBeNull()
+    expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
+    const accountButton = within(sidebar).getByRole('button', { name: `계정 메뉴 · ${adminAccount.email}` })
+    fireEvent.click(accountButton)
+    expect(accountButton.getAttribute('aria-expanded')).toBe('true')
+    const accountMenu = document.getElementById(accountButton.getAttribute('aria-controls')!)!
+    expect(within(accountMenu).getByRole('link', { name: '내 프로필' })).toBeTruthy()
+    expect(within(accountMenu).getByRole('button', { name: '로그아웃' })).toBeTruthy()
+    const adminLink = within(accountMenu).getByRole('link', { name: '회원·기업' })
+    expect(adminLink.getAttribute('href')).toBe('/app/admin/members')
+    expect(adminLink.getAttribute('aria-current')).toBeNull()
+    expect(within(sidebar).getAllByRole('link', { name: '회원·기업' })).toHaveLength(1)
+    fireEvent.click(adminLink)
     expect(screen.getByRole('heading', { name: '회원·기업 목록' })).toBeTruthy()
+    expect(accountButton.getAttribute('aria-expanded')).toBe('false')
+    expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
+
+    fireEvent.click(accountButton)
+    const activeAdminLink = within(sidebar).getByRole('link', { name: '회원·기업' })
+    expect(activeAdminLink.getAttribute('aria-current')).toBe('page')
+    expect(activeAdminLink.classList.contains('bg-[#e6f5ed]')).toBe(true)
+  })
+
+  it('관리자 계정 메뉴를 Escape나 바깥 클릭으로 닫으면 회원·기업 링크도 숨긴다', () => {
+    renderApp('/app/chat', adminAccount)
+    const sidebar = screen.getByRole('complementary', { name: '작업 사이드바' })
+    const accountButton = within(sidebar).getByRole('button', { name: `계정 메뉴 · ${adminAccount.email}` })
+
+    fireEvent.click(accountButton)
+    expect(within(sidebar).getByRole('link', { name: '회원·기업' })).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(accountButton.getAttribute('aria-expanded')).toBe('false')
+    expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
+
+    fireEvent.click(accountButton)
+    expect(within(sidebar).getByRole('link', { name: '회원·기업' })).toBeTruthy()
+    fireEvent.mouseDown(document.body)
+    expect(accountButton.getAttribute('aria-expanded')).toBe('false')
+    expect(within(sidebar).queryByRole('link', { name: '회원·기업' })).toBeNull()
   })
 
   it('아직 화면이 없는 메뉴는 링크로 만들지 않는다', () => {
