@@ -192,6 +192,7 @@ describe('review screens and execution safety', () => {
     await screen.findByText('분석이 완료되어 저장된 결과를 표시합니다.')
     expect(screen.getByText('검토 #12 · 저장 입력 버전 3')).toBeTruthy()
     expect(screen.getByRole('heading', { name: '공고 분석' })).toBeTruthy()
+    expect(screen.queryByLabelText('이번 실행의 추가 설명')).toBeNull()
     expect(repository.get).toHaveBeenCalledTimes(1)
     expect(repository.start).toHaveBeenCalledWith(12, expect.objectContaining({ expectedRevision: 3 }), expect.any(AbortSignal))
   })
@@ -206,6 +207,18 @@ describe('review screens and execution safety', () => {
     expect(document.activeElement).toBe(alert)
     fireEvent.click(screen.getByText('이전: 제목·공고 선택'))
     expect(screen.getByDisplayValue('보존할 입력')).toBeTruthy()
+  })
+  it('clears a selection-step validation error after the corrected input advances', async () => {
+    mount('/app/combination-reviews/12'); await screen.findByDisplayValue(reviewFixture.title)
+    fireEvent.change(screen.getByLabelText('검토 제목'), { target: { value: '' } })
+    fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
+    expect((await screen.findByRole('alert')).textContent).toContain('제목은 제어문자 없이 1~200자로 입력해 주세요.')
+
+    fireEvent.change(screen.getByLabelText('검토 제목'), { target: { value: '수정한 검토 제목' } })
+    fireEvent.click(screen.getByText('다음: 참여 상태 설정'))
+
+    expect(screen.getByRole('heading', { name: '공고별 참여 상태' })).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
   it('mounts with GET only and renders empty list', async () => {
     mount('/app/combination-reviews')
@@ -252,8 +265,9 @@ describe('review screens and execution safety', () => {
   it('retains one logical request after response loss and across remount, with no automatic POST', async () => {
     repository.start.mockRejectedValueOnce(new TypeError('network lost')).mockImplementation(async (_id, request) => ({ ...runFixture, requestKey: request.requestKey }))
     const view = mount(); await screen.findByText('새 분석 실행')
-    fireEvent.change(screen.getByLabelText('이번 실행의 추가 설명'), { target: { value: '한 번만 전달할 설명' } })
-    const button = screen.getByText('새 분석 실행'); fireEvent.click(button); fireEvent.click(button)
+    fireEvent.click(screen.getByText('← 참여 상태 수정'))
+    fireEvent.change(screen.getByLabelText('분석에 참고할 추가 설명 (선택)'), { target: { value: '한 번만 전달할 설명' } })
+    const button = screen.getByText('입력 저장 후 분석 시작'); fireEvent.click(button); fireEvent.click(button)
     await screen.findByRole('alert')
     expect(repository.start).toHaveBeenCalledTimes(1)
     const input = repository.start.mock.calls[0][1]
@@ -325,7 +339,7 @@ describe('review screens and execution safety', () => {
     mount(); await screen.findByText('새 분석 실행')
     await screen.findByText('실행 #30 · 분석 완료')
     expect(screen.getByText(/과거 입력 버전의 결과/)).toBeTruthy()
-    expect(screen.getByText('BIZINFO:PBLN_200 ↔ BIZINFO:PBLN_100')).toBeTruthy()
+    expect(screen.queryByText(/BIZINFO:PBLN_/)).toBeNull()
     expect(screen.getAllByRole('tab')).toHaveLength(6)
     expect(screen.getByText(/PDF 3쪽, 문단 2/)).toBeTruthy()
     expect(screen.getByRole('tab', { name: '1단계 · 신청 · 사용자 정보 부족' }).getAttribute('aria-selected')).toBe('true')

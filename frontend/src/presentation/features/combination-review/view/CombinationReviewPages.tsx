@@ -85,8 +85,9 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
   const invalidProgramCount = vm.draft.programs.length !== 2
   const unsupported = vm.draft.programs.some((p) => !supportsAutomaticReview(p))
   const running = vm.runs?.items.some((run) => ['QUEUED', 'RUNNING', 'UNKNOWN'].includes(run.status))
+  const changeStep = (next: 'selection' | 'participation' | 'analysis') => { vm.setError(null); setStep(next) }
   const goToParticipation = () => {
-    try { validateReviewDraft(vm.draft); setStep('participation') }
+    try { validateReviewDraft(vm.draft); changeStep('participation') }
     catch (error) { vm.setError({ message: (error as Error).message }) }
   }
   const title = step === 'selection' ? (id ? '검토 제목과 공고 선택' : '새 검토') : step === 'participation' ? '공고별 참여 상태' : '공고 분석'
@@ -111,7 +112,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
             <div className="mt-3 flex min-h-12 items-center gap-2 overflow-x-auto rounded-xl bg-slate-50 px-3 py-2" aria-label="현재 선택한 공고">
               {vm.draft.programs.length === 0 && <span className="text-sm text-slate-500">선택한 공고가 없습니다.</span>}
               {vm.draft.programs.map((program, index) => {
-                const name = vm.names[reviewProgramKey(program)] ?? reviewProgramKey(program)
+                const name = vm.names[reviewProgramKey(program)] ?? '공고 정보 확인 중'
                 return <span className="inline-flex max-w-[32rem] shrink-0 items-center gap-2 rounded-full border border-emerald-300 bg-emerald-50 py-1 pr-1 pl-3 text-sm font-semibold text-emerald-900" key={reviewProgramKey(program)}><span className="truncate">사업 {index + 1} · {name}</span><button type="button" className="grid size-7 shrink-0 place-items-center rounded-full hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label={`${name} 선택 해제`} onClick={() => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.filter((_, selectedIndex) => selectedIndex !== index) })}>×</button></span>
               })}
             </div>
@@ -124,7 +125,7 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
             <ul className="mt-4 divide-y divide-slate-200">{vm.catalog?.programs.map((program) => {
               const identity = { sourceCode: program.sourceCode, sourceProgramId: program.id, subProgramId: null }
               const selected = vm.draft.programs.some((p) => reviewProgramKey(p) === reviewProgramKey(identity))
-              return <li className={`my-2 rounded-xl border px-3 py-3 transition-colors ${selected ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-200' : 'border-transparent'}`} key={reviewProgramKey(identity)}><div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0 flex-1"><strong>{program.title}</strong><p className={s.muted}>{program.organization} · {({ OPEN: '접수 중', CLOSED: '접수 종료', UPCOMING: '접수 예정', UNKNOWN: '접수 상태 미확인' })[program.status]}</p><p className={s.muted}>{program.applicationPeriod}</p><p className="break-all text-xs">{reviewProgramKey(identity)}</p></div><button type="button" className={selected ? s.primary : s.button} aria-pressed={selected} disabled={!selected && vm.draft.programs.length >= 2} onClick={() => vm.toggle(program)}>{selected ? '선택 해제' : '선택'}</button></div>
+              return <li className={`my-2 rounded-xl border px-3 py-3 transition-colors ${selected ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-200' : 'border-transparent'}`} key={reviewProgramKey(identity)}><div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0 flex-1"><strong>{program.title}</strong><p className={s.muted}>{program.organization} · {({ OPEN: '접수 중', CLOSED: '접수 종료', UPCOMING: '접수 예정', UNKNOWN: '접수 상태 미확인' })[program.status]}</p><p className={s.muted}>{program.applicationPeriod}</p></div><button type="button" className={selected ? s.primary : s.button} aria-pressed={selected} disabled={!selected && vm.draft.programs.length >= 2} onClick={() => vm.toggle(program)}>{selected ? '선택 해제' : '선택'}</button></div>
                 {!supportsAutomaticReview(identity) && <p className="text-sm text-amber-800">현재 자동 분석을 지원하지 않는 공고입니다.</p>}
                 <Link className="text-sm text-emerald-800 underline" to={supportProgramDetailPath({ sourceCode: identity.sourceCode, sourceProgramId: identity.sourceProgramId }, true)} target="_blank">공고 상세 확인</Link>
               </li>
@@ -135,13 +136,13 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
           <div className="flex justify-end"><button className={s.primary} type="button" onClick={goToParticipation} disabled={vm.draft.programs.length !== 2}>다음: 참여 상태 설정</button></div>
         </fieldset>}
       {step === 'participation' && <>
-        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); vm.saveAndStart(() => setStep('analysis')) }}>
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); vm.saveAndStart(() => changeStep('analysis')) }}>
           <fieldset disabled={inputBusy} className="space-y-4">
             <div className={s.card}><h2 className="font-bold">공고별 현재 상태</h2><p className={s.muted}>신청·선정·확약·협약·수행·교부는 서로 독립된 사실입니다. 모르는 항목은 ‘모름’을 유지하세요.</p></div>
             {vm.draft.programs.map((program, index) => <ReviewParticipation key={reviewProgramKey(program)} program={program} index={index} name={vm.names[reviewProgramKey(program)]} onChange={(participation) => vm.setDraft({ ...vm.draft, programs: vm.draft.programs.map((p, i) => i === index ? { ...p, participation } : p) })} />)}
             <div className={s.card}><label className="block text-sm font-semibold">분석에 참고할 추가 설명 <span className="font-normal text-slate-500">(선택)</span><textarea className={s.input} rows={4} maxLength={8000} value={vm.facts} onChange={(e) => vm.setFacts(e.target.value)} /></label><p className={s.muted}>{vm.facts.length}/8000 · 이 실행에만 저장됩니다.</p></div>
             {unsupported && <p className={s.warning}>선택한 공고는 현재 자동 분석을 지원하지 않습니다. 기업마당의 숫자형 PBLN_ 공고와 K-Startup·과기정통부·충남 수출지원의 숫자형 공고를 지원하며, 세부사업은 지정하지 않아야 합니다.</p>}
-            <div className="flex flex-wrap justify-between gap-3"><button className={s.button} type="button" onClick={() => setStep('selection')}>이전: 제목·공고 선택</button><button className={s.primary} type="submit" disabled={unsupported}>{inputBusy ? '입력 저장 중…' : '입력 저장 후 분석 시작'}</button></div>
+            <div className="flex flex-wrap justify-between gap-3"><button className={s.button} type="button" onClick={() => changeStep('selection')}>이전: 제목·공고 선택</button><button className={s.primary} type="submit" disabled={unsupported}>{inputBusy ? '입력 저장 중…' : '입력 저장 후 분석 시작'}</button></div>
           </fieldset>
         </form>
         {id && <>
@@ -151,12 +152,10 @@ function ReviewEditor({ id, account }: { id: number | null; account: string }) {
         </>}
       </>}
       {step === 'analysis' && id && <>
-        <button className={s.button} type="button" onClick={() => setStep('participation')}>← 참여 상태 수정</button>
-        <section className={`${s.card} space-y-3`} aria-label="분석 대상 공고"><h2 className="font-bold">분석 대상 공고</h2><ul className="space-y-2">{vm.draft.programs.map((program, index) => <li key={reviewProgramKey(program)} className="rounded-lg bg-slate-50 p-3"><strong>사업 {index + 1} · {vm.names[reviewProgramKey(program)] ?? '공고 정보 확인 중'}</strong><p className="break-all text-xs text-slate-500">{reviewProgramKey(program)}</p></li>)}</ul></section>
+        <button className={s.button} type="button" onClick={() => changeStep('participation')}>← 참여 상태 수정</button>
+        <section className={`${s.card} space-y-3`} aria-label="분석 대상 공고"><h2 className="font-bold">분석 대상 공고</h2><ul className="space-y-2">{vm.draft.programs.map((program, index) => <li key={reviewProgramKey(program)} className="rounded-lg bg-slate-50 p-3"><strong>사업 {index + 1} · {vm.names[reviewProgramKey(program)] ?? '공고 정보 확인 중'}</strong></li>)}</ul></section>
         <section className={`${s.card} space-y-3`} aria-label="분석 실행"><h2 className="text-lg font-bold">공식 근거 분석</h2>
           <p className={s.muted}>PDF·HWP·HWPX 공식 첨부를 자동 수집하여 OpenAI로 분석합니다. 유료 API 호출이 발생할 수 있습니다. 원문 미확보·미지원 형식은 오류로 표시합니다.</p>
-          <label className="block text-sm font-semibold">이번 실행의 추가 설명<textarea className={s.input} rows={4} maxLength={8000} value={vm.facts} disabled={analysisBusy || !!vm.pending} onChange={(e) => vm.setFacts(e.target.value)} /></label>
-          <p className={s.muted}>{vm.facts.length}/8000 · 추가 설명은 실행에만 저장됩니다.</p>
           {vm.dirty && <p className={s.warning}>저장하지 않은 입력이 있습니다. 저장한 뒤 분석해 주세요.</p>}
           {invalidProgramCount && <p className={s.warning}>기존에 저장한 3개 공고의 결과는 조회할 수 있지만 새 분석은 공고를 2개로 줄인 뒤 실행할 수 있습니다.</p>}
           {analysisBusy && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950"><div className="flex items-center gap-3"><span className="size-3 animate-pulse rounded-full bg-emerald-700" aria-hidden="true" /><strong>분석 요청을 안전하게 접수하고 있습니다.</strong></div><ol className="mt-3 grid gap-2 text-xs sm:grid-cols-3"><li className="rounded-lg bg-white px-3 py-2 font-semibold text-emerald-800">✓ 입력 저장 완료</li><li className="rounded-lg border border-emerald-300 bg-white px-3 py-2 font-semibold">● 분석 대기열 등록 중</li><li className="rounded-lg bg-white/60 px-3 py-2 text-slate-500">상태·결과 자동 표시</li></ol><p className="mt-3">창을 닫아도 접수된 서버 작업은 취소되지 않습니다.</p></div>}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { reviewProgramKey, reviewStages, type ReviewRun } from '../../../../domain/entities/CombinationReview'
+import { reviewStages, type ReviewRun } from '../../../../domain/entities/CombinationReview'
 import { ReviewParticipation } from './ReviewParticipation'
 import { reviewStyles as s } from './CombinationReview.styles'
 
@@ -32,7 +32,7 @@ export function ReviewRunResult({ run, currentRevision, download, downloading }:
         const activeStage = pair.stages.find((stage) => selectedStage === `${pairKey}:${stage.stage}`) ?? pair.stages.find((stage) => stage.stage === reviewStages[0])!
         const activeKey = `${pairKey}:${activeStage.stage}`
         return <section className="space-y-4" key={pairKey}>
-          <div><h3 className="break-all font-bold">두 사업의 단계별 비교</h3><p className={s.muted}>{reviewProgramKey(run.input.programs[pair.firstProgramIndex])} ↔ {reviewProgramKey(run.input.programs[pair.secondProgramIndex])}</p></div>
+          <div><h3 className="font-bold">두 사업의 단계별 비교</h3><p className={s.muted}>신청부터 교부까지 여섯 단계의 판단을 비교합니다.</p></div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="tablist" aria-label="중복 지원 분석 단계">
             {reviewStages.map((stageName, index) => {
               const stage = pair.stages.find((value) => value.stage === stageName)!

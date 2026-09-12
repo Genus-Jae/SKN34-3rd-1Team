@@ -135,6 +135,11 @@ export function useReviewEditorViewModel(id: number | null, account: string, aut
     })
   }, [id, review, journalReady, busy, pending, dirty, runs, facts, journal, account, setError, perform, useCase, acceptRun])
   const saveAndStart = (showAnalysis: () => void) => {
+    if (pending || busy.includes('save') || busy.includes('analysis')) return
+    if (id) {
+      try { if (journal.read(account, id)) return }
+      catch { setError({ message: '요청 상태를 안전하게 확인할 수 없습니다. 브라우저 저장소 설정을 확인해 주세요.' }); return }
+    }
     let input: ReviewDraft
     try { input = validateReviewDraft(draft) } catch (e) { setError({ message: (e as Error).message }); return }
     if (!input.programs.every(supportsAutomaticReview)) return
