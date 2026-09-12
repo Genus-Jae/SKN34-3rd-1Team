@@ -57,6 +57,10 @@ ES 직접 실패는 공개 503 `SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE`이다.
 
 ### 기존 환경 업그레이드
 
+복사해서 실행할 명령과 제공처별 준비 확인 기준은
+[인프라 README의 기존 환경 갱신 절차](../infrastructure/README.md#백엔드-변경-반영과-화면api-버전-불일치)에서 관리합니다.
+아래는 순서와 데이터·비용 경계 요약입니다. 이 문서 갱신 자체가 개발 환경에 배포했다는 뜻은 아닙니다.
+
 1. DB·볼륨 백업과 기존 예약 작업을 확인한다. 특히 큐를 활성화하면 기존 리포트 작업이 실행될 수 있으므로
    Elasticsearch 배포를 이유로 RabbitMQ/메일/새 수집을 임의로 켜지 않는다.
 2. Nori가 설치된 Elasticsearch를 먼저 시작하고 Core를 새 빌드로 배포한다.
@@ -64,7 +68,8 @@ ES 직접 실패는 공개 503 `SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE`이다.
    공고·공개 세대·지문·건수·동기화 성공/실패 시각·대화 기록은 삭제하지 않는다. 적용 이력을 수정하지 않는다.
 4. `SUPPORT_PROGRAM_INDEX_ENABLED=true`로 복구를 실행해 기존 MySQL 공고를 두 색인에 확인한다.
    ES 색인은 AI API를 쓰지 않는다. **Qdrant에 없는 버전이 있으면 기존 임베딩 API 비용은 발생할 수 있다.**
-5. `/api/v1/support-programs/readiness`의 제공처별 `indexReady`와 검색 상태를 확인한다.
+5. `/api/v1/support-programs/readiness`의 `sources`에서 사용하려는 제공처별 `indexReady`와 검색 상태를 확인한다.
+   최상위 `indexReady=true`만으로 모든 제공처가 준비됐다고 판단하지 않는다. 이는 한 제공처 이상 준비됐다는 뜻이다.
    복구 전 자연어 검색은 제한되지만 기존 공개 필터 목록·상세는 사용할 수 있다.
 
 복구를 꺼 둔 환경에서는 새 빌드만 올렸다고 검색 준비가 끝나지 않는다. 장애 복구는 정상 색인을 준비하여
@@ -74,7 +79,7 @@ ES 직접 실패는 공개 503 `SUPPORT_PROGRAM_SEARCH_INDEX_UNAVAILABLE`이다.
 
 | 설정 | 기본값/역할 |
 | --- | --- |
-| `ELASTICSEARCH_BASE_URL` | 호스트 실행 `http://127.0.0.1:9200`, Compose `http://elasticsearch:9200` |
+| `ELASTICSEARCH_BASE_URL` | 호스트 실행 `http://127.0.0.1:9200`, Compose는 `http://elasticsearch:9200` 고정 (`.env` 덮어쓰기 없음) |
 | `ELASTICSEARCH_INDEX_NAME` | `govbiz-support-program-lexical-v1`; 단일 인덱스 이름만 허용 |
 | `ELASTICSEARCH_API_KEY` | 선택 API Key. 저장소에 실제 키를 기록하지 않는다 |
 | `ELASTICSEARCH_CONNECT_TIMEOUT` / `ELASTICSEARCH_READ_TIMEOUT` | `2s` / `10s` |

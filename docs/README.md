@@ -9,8 +9,9 @@
 | 문서 | 확인할 내용 |
 |---|---|
 | [아키텍처 README](architecture/README.md) | 서비스 경계, Frontend·Core API·AI Service의 계층·DI·디자인 패턴 |
-| [서비스 호출·데이터 흐름](architecture.md) | 검색·상세·RAG·동기화·벡터 복구와 오류 처리 순서 |
-| [기술 스택과 데이터 구성](technology.md) | 사용 기술·버전, MySQL·Qdrant·Redis 저장 역할과 점수 정책 |
+| [서비스 호출·데이터 흐름](architecture.md) | 검색·상세·RAG·동기화·키워드/벡터 복구와 오류 처리 순서 |
+| [기술 스택과 데이터 구성](technology.md) | 사용 기술·버전, MySQL·Elasticsearch·Qdrant·Redis·RabbitMQ의 역할과 점수 정책 |
+| [Elasticsearch 한국어 후보 검색](elasticsearch-lexical-search.md) | Nori·BM25·RRF 흐름, 불변 버전·공개 전 준비·복구, 설정·V24 업그레이드·검증·한계 |
 | [Redis 적용 범위·검색 결과 복원](redis-search-result-restoration.md) | 적용 위치·호출 흐름·저장 구조, 30분 TTL·계정 소유권, 장애·운영·검증과 미적용 범위 |
 | [RabbitMQ 정기 리포트 생성](rabbitmq-daily-report-generation.md) | 용어·호출 흐름·코드 위치, DB Outbox·중복·예산·실행 불명, 설정 조합·증상별 대응·검증과 미적용 범위 |
 | [구현 현황](implementation-status.md) | 현재 완료 단계, 검증 범위, 제한 사항과 다음 작업 |
@@ -45,6 +46,7 @@ C01 문서의 수동 조건 입력 UI와 개발 전략의 최초 UI 계획은 �
 | [중복 검토 공식 근거·사례](../evaluation/combination-review/README.md) | 4-1 창업도약패키지 원문·인용·AI 작성 사례·사람 검수표와 무료 무결성 검사 |
 | [실데이터 평가 결과·이어받기](../evaluation/support-program-search/runs/support-program-catalog-20260906-v1/README.md) | 고정 스냅샷·판정 원표·3단계 기준선·4단계 전후 비교와 API 없는 재현 |
 | [검색 평가 도구](../evaluation/support-program-search/README.md) | 가상 공고 회귀 평가, 실제 후보·최종 추천 캡처와 지표 계산 |
+| [Elasticsearch 독립 비교 실험](../evaluation/support-program-search/elasticsearch/README.md) | 고정 스냅샷의 키워드·Standard BM25·Nori BM25 비교와 API 없는 보고서 재검증 |
 | [RAG 검수·답변 평가](../evaluation/support-program-evidence/README.md) | 5단계 인용 오류 수정, 가상 근거 평가·공식 HTML 전체 경로 검증, API 없는 기록 재검사 |
 | [6단계 다중 제공처 준비](support-program-multi-source-preparation.md) | API 없는 제공처별 준비 상태·검색 범위·복구 실패 격리·K-Startup URL/RAG 화면 준비와 남은 연동 범위 |
 | [C01 기업 조건 검색](company-conditions-search.md) | 익명 조건 입력·적용·초기화, POST 검색 반영, 검증 결과와 후속 범위 |

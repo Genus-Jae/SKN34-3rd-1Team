@@ -420,7 +420,8 @@ BizInfoSupportProgramCatalogSyncScheduler (기본: 최초 PT0S, 완료 후 PT6H)
 기업마당 수집·응답 검증·필수 필드 정규화 중 하나라도 실패하면 카탈로그를 바꾸지 않습니다.
 현재 Client는 페이지당 1,000건을 요청하며 최대 20페이지·20,000건으로 제한합니다.
 
-색인은 전체 공고를 16개씩 나누어 요청합니다. AI Service는 동일 ID·해시의 벡터가 이미 있으면 재사용하고
+Elasticsearch는 64개 단위로 버전 존재 여부를 확인하고 없는 버전을 준비합니다. 이어 Qdrant 색인은
+전체 공고를 16개씩 나누어 AI Service에 요청합니다. AI Service는 동일 ID·해시의 벡터가 이미 있으면 재사용하고
 없는 버전만 생성합니다. 모든 배치의 성공과 처리 건수를 확인한 후에만 DB 공개를 시도합니다.
 색인 도중 실패하면 현재 세대일 때만 실패 시각을 기록하고 기존 공개 카탈로그·그 스냅샷의 색인 준비 상태를
 유지합니다. 이미 준비된 벡터는 재시도 시 재사용할 수 있습니다. 더 최신 세대가 시작되면 이전 세대의
@@ -524,7 +525,8 @@ K-Startup은 별도 구체 Client·Facade·SyncService·Scheduler를 사용하�
 
 `KStartupSupportProgramCatalogSyncScheduler → KStartupSupportProgramCatalogSyncService →
 KStartupSupportProgramCatalogFacade → KStartupClient → KStartupProgramMapper`에서 수집·검증한 뒤,
-기업마당과 같은 `SupportProgramIndexSyncService → AI Service → OpenAI 임베딩 → Qdrant` 경로를 거칩니다.
+기업마당과 같은 `SupportProgramIndexSyncService`에서 Elasticsearch 키워드 색인을 먼저 준비한 뒤
+`AI Service → OpenAI 임베딩 → Qdrant`로 벡터를 준비합니다. 같은 버전은 재사용합니다.
 전체 색인 성공 후 Repository가 `KSTARTUP` 범위만 UPSERT·누락 비활성화·공개 상태 갱신합니다.
 
 - 공식 API: `getAnnouncementInformation01`. 안정 ID는 `pbanc_sn`이며 화면 순번 `id`를 쓰지 않습니다.
@@ -550,7 +552,8 @@ KStartupSupportProgramCatalogFacade → KStartupClient → KStartupProgramMapper
 ## 과기정통부·충청남도 수출입공지 수집
 
 각 `Msit`/`CnTradeNotice` Scheduler → SyncService → CatalogFacade → Client → Mapper에서 전체 수집을
-검증하고, 기존 `SupportProgramIndexSyncService → AI Service → OpenAI 임베딩 → Qdrant`를 거쳐
+검증하고, 기존 `SupportProgramIndexSyncService`에서 Elasticsearch 키워드 색인과
+`AI Service → OpenAI 임베딩 → Qdrant` 벡터 색인을 순서대로 준비한 뒤
 Repository가 해당 `source_code`만 UPSERT·누락 비활성화·스냅샷 공개합니다. DB migration이나 신규 의존성은 없습니다.
 
 - MSIT의 `response` 배열(header/body)과 충남의 최상위 `09/RETURN_SUCCESS` 응답을 별도로 검증합니다.
