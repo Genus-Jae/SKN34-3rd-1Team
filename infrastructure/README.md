@@ -149,7 +149,7 @@ OPENAI_API_KEY=발급받은_OpenAI_API_키
 | `QDRANT_TIMEOUT_SECONDS` | `5` | Qdrant 요청 제한시간(초) |
 | `QDRANT_HOST_PORT` | `6333` | Host loopback에 연결할 Qdrant 포트 |
 | `ELASTICSEARCH_BASE_URL` | Compose에서 `http://elasticsearch:9200` 고정 | Core의 키워드 색인·검색 주소. `.env`로 덮어쓰지 않으며 호스트 실행은 Core README 참고 |
-| `ELASTICSEARCH_INDEX_NAME` | `govbiz-support-program-lexical-v1` | 단일 키워드 인덱스 이름. 분석기 변경은 새 버전 인덱스와 재색인 필요 |
+| `ELASTICSEARCH_INDEX_NAME` | `govbiz-support-program-lexical-v2` | v1에서 전환 시 환경변수의 이전 이름도 변경하고 재색인. [업그레이드·롤백](../docs/elasticsearch-lexical-search.md#v1--v2-분석기-업그레이드) |
 | `ELASTICSEARCH_API_KEY` | 빈 값 | 인증을 별도로 구성한 ES의 API Key. 개발 Compose는 인증 비활성 |
 | `ELASTICSEARCH_CONNECT_TIMEOUT` / `ELASTICSEARCH_READ_TIMEOUT` | `2s` / `10s` | Core의 ES 연결·읽기 제한시간 |
 | `SUPPORT_PROGRAM_INDEX_ENABLED` | `true` | MySQL 현재 공고의 Elasticsearch·Qdrant 정기 확인·복구 여부. 공개 전 필수 색인은 중지하지 않음 |

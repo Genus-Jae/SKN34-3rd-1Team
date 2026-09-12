@@ -32,7 +32,7 @@ class ElasticsearchSupportProgramClientTest {
 
     @Test
     fun sendsNoriMatchWithExactAllowedVersionsAndGlobalCompletenessCheck() {
-        server.expect(requestTo("http://es.test/govbiz-support-program-lexical-v1/_search"))
+        server.expect(requestTo("http://es.test/govbiz-support-program-lexical-v2/_search"))
             .andExpect(method(HttpMethod.POST))
             .andExpect(content().json("""{
                 "size":20,"query":{"bool":{"filter":[{"ids":{"values":["v1"]}}],
