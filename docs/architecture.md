@@ -9,7 +9,10 @@
 
 ## 서비스 경계
 
-신청 문서 작성 도우미는 기존 세션 Account가 명시적으로 요청한 네 제공처 공고를
+신청 문서 작성 도우미는 `ApplicationFormDiscoveryJobController → ApplicationFormDiscoveryJobService → Repository → MyBatis → MySQL`
+로 V26 분석 작업과 Outbox를 함께 저장하고 202를 반환합니다.
+`ApplicationFormDiscoveryOutboxScheduler → QueueClient → RabbitMQ → ApplicationFormDiscoveryJobConsumer → JobService`
+가 공유 실행 슬롯·DB 실행권을 선점한 뒤, 기존 세션 Account가 명시적으로 요청한 네 제공처 공고를
 `ApplicationFormDiscoveryService → 제공처별 AttachmentClient → 공식 첨부 → SupportProgramDocumentParser →
 AiApplicationPreparationFacade → AI Service`로 분석합니다. 검증된 응답은 `ApplicationFormSnapshotRepository → MyBatis → MySQL`에
 파일 hash·파서·모델·프롬프트 버전과 함께 저장해 동일 추출 버전에서 재사용합니다. 발견 양식을 선택한 뒤
@@ -24,6 +27,11 @@ Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 지연 
 첨부 분석 뒤 발견 양식 확인을 별도 두 번째 단계로 표시하고, `/:preparationId`의 공식 문항
 상세와 질문·사실 확인을 연결합니다. AI 제안은 저장하지 않고 사용자가 선택·수정한 전체 문항 입력만 revision을 올려 저장합니다.
 초안 생성·직접 수정·사용자 확인은 후속 사용자 기능입니다.
+
+Frontend는 최근 20개 분석 작업을 조회하고 선택한 활성 작업을 3초마다 확인합니다. 재시도·이력 조회는 새 분석을 만들지 않습니다.
+관리자 큐 운영 조회는 `QueueOperationsController → QueueOperationsService → Repository/MyBatis/MySQL + QueueOperationsClient/RabbitMQ`
+로 세 큐의 보관 상태·브로커 관측치를 읽습니다. 메시지 소비/재발행/DB 작업 상태 수정은 없습니다.
+[실행권·만료·결과 불명·관리자 지표·운영 한계](rabbitmq-application-form-discovery.md)를 참고하세요.
 
 중복 지원 검토의 현재 입력은 `기존 세션 Account 해석 → CombinationReviewController → CombinationReviewService
 → CombinationReviewRepository → CombinationReviewMapper → Mapper XML → MySQL`로 생성·조회·수정·삭제합니다.

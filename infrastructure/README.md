@@ -1,7 +1,7 @@
 # GovBiz Docker Compose
 
 Docker Compose는 React 개발 서버, Core API, AI Service, 원본 카탈로그용 MySQL과 의미 검색용
-Qdrant, Nori·BM25 키워드 검색용 Elasticsearch, 로그인 후 검색 결과 복원용 Redis, 정기 리포트 생성·중복 검토 분석용 RabbitMQ를 함께 실행하는 로컬 개발 구성입니다. 회원 세션은 동작하지만 개발용 시드 로그인이 켜져 있고 쿠키 `Secure`가
+Qdrant, Nori·BM25 키워드 검색용 Elasticsearch, 로그인 후 검색 결과 복원용 Redis, 리포트·중복 검토·공식 문서 분석용 RabbitMQ를 함께 실행하는 로컬 개발 구성입니다. 회원 세션은 동작하지만 개발용 시드 로그인이 켜져 있고 쿠키 `Secure`가
 꺼져 있으므로 운영 배포·TLS·운영 인증 구성으로 쓰지 않습니다.
 전체 기술 선택과 데이터 흐름은 [프로젝트 기술 문서](../docs/technology.md)를 참고하세요.
 
@@ -16,7 +16,7 @@ Browser (127.0.0.1:5173)
               ├→ mysql:3306 (사용자 검색 카탈로그)
               ├→ elasticsearch:9200 (Nori·BM25 키워드 후보)
               ├→ redis:6379 (로그인 전 검색 결과·조건의 30분 임시 보관)
-              ├↔ rabbitmq:5672 (리포트·중복 검토 작업 ID 전달, 소비자는 Core 내부)
+              ├↔ rabbitmq:5672 (리포트·중복 검토·공식 문서 분석 작업 ID 전달, 소비자는 Core 내부)
               ├→ https://apis.data.go.kr (백그라운드 동기화)
               └→ ai-service:8000
                     ├→ qdrant:6333 (현재 공고의 벡터 색인)
@@ -33,7 +33,7 @@ Browser (127.0.0.1:5173)
 | Core API 컨테이너 | `http://elasticsearch:9200` | 한국어 키워드 색인·검색. 호스트 포트는 공개하지 않음 |
 | Core API 컨테이너 | `jdbc:mysql://mysql:3306/govbiz` | 사용자 검색용 지원사업 카탈로그 MySQL |
 | Core API 컨테이너 | `redis:6379` | 로그인 후 원본 검색 결과 복원. 호스트 포트는 공개하지 않음 |
-| Core API 컨테이너 | `rabbitmq:5672` | 리포트·중복 검토별 큐. AMQP·관리 UI 호스트 포트는 공개하지 않음 |
+| Core API 컨테이너 | `rabbitmq:5672` | 리포트·중복 검토·공식 문서 분석별 큐. AMQP·관리 UI 호스트 포트는 공개하지 않음 |
 | Core API 컨테이너 | `https://apis.data.go.kr` | 백그라운드 동기화 전용 실제 기업마당 공고 upstream |
 | AI Service 컨테이너 | `https://api.openai.com/v1` | 공고·질의 임베딩 및 후보 점수화 |
 | AI Service 컨테이너 | `http://qdrant:6333` | 공고 임베딩 저장·의미 검색 |
@@ -61,6 +61,11 @@ Compose는 `DAILY_REPORT_QUEUE_ENABLED=true`이지만 정기 예약·메일은 �
 중복 지원·수혜 검토 큐는 `COMBINATION_REVIEW_QUEUE_ENABLED=true`가 Compose 기본값입니다.
 V25 적용 후 신규 분석은 202로 접수하고 Core 내부의 별도 검토 소비자가 처리합니다. 기존 QUEUED 작업도 실행될 수 있습니다.
 끄면 새 분석은 503으로 거절하지만 저장된 결과 조회는 유지합니다. [상태·한도·운영·검증](../docs/rabbitmq-combination-review.md)을 참고하세요.
+
+공식 신청 문서 분석도 `APPLICATION_FORM_DISCOVERY_QUEUE_ENABLED=true`로 별도 주 큐·DLQ·소비자 1개를 사용합니다.
+Core의 V26과 최신 Frontend를 함께 갱신해야 하며, 큐를 켜면 기존 QUEUED가 실행될 수 있습니다.
+관리자 `GET /api/v1/admin/queues`로 세 큐의 DB 상태·대기 메시지·소비자·DLQ를 읽기 전용으로 확인합니다.
+[작업 API·운영 지표 의미·복구 주의사항](../docs/rabbitmq-application-form-discovery.md)을 참고하세요.
 
 Redis는 8.2.9로 고정하고 `redis-data` 볼륨에 AOF(`appendfsync everysec`)를 기록합니다. Core 재시작과
 Redis 컨테이너 재생성에도 만료 전 결과와 최초 복원 계정이 유지되지만, Redis 비정상 종료 시 최근 약 1초는

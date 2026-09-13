@@ -27,7 +27,7 @@
 | 의미 검색 | Qdrant 1.17.1, qdrant-client 1.17.x | 임베딩 벡터 저장과 유사도 검색 | [Compose 설정](../infrastructure/compose.yaml) |
 | 한국어 키워드 검색 | Elasticsearch 9.5.3, analysis-nori 9.5.3, BM25 | 현재 공고 버전의 키워드 후보 최대 20개, 의미 후보와 RRF 결합 | [적용 상세](elasticsearch-lexical-search.md) |
 | 임시 검색 결과 보관 | Redis 8.2.9, Spring Data Redis·Lettuce | 비회원 검색 후 로그인 복원용 전체 결과·조건·소유 계정, 고정 30분 TTL | [Redis 적용 상세](redis-search-result-restoration.md) |
-| 백그라운드 작업 전달 | RabbitMQ 4.3.5, Spring AMQP | 정기 리포트·중복 검토별 quorum queue. 실행 상태·Outbox는 MySQL | [리포트](rabbitmq-daily-report-generation.md) · [중복 검토](rabbitmq-combination-review.md) |
+| 백그라운드 작업 전달 | RabbitMQ 4.3.5, Spring AMQP | 정기 리포트·중복 검토·공식 문서 분석별 quorum queue. 실행 상태·Outbox는 MySQL | [리포트](rabbitmq-daily-report-generation.md) · [중복 검토](rabbitmq-combination-review.md) · [공식 문서·운영 조회](rabbitmq-application-form-discovery.md) |
 | 검증·실행 | Vitest, Testing Library, JUnit, Testcontainers, pytest, Docker Compose | 서비스별 테스트와 컨테이너 통합 검증 | [CI 정의](../.github/workflows/ci.yml) |
 
 AI 패키지는 Python `>=3.11,<3.15`를 선언하며, Frontend와 AI Service의 의존성은 각각

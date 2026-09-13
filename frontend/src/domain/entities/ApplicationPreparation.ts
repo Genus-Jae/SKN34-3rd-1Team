@@ -110,6 +110,16 @@ export type DiscoveredApplicationForms = {
   cached: boolean
 }
 
+export type ApplicationFormDiscoveryJob = {
+  id: number
+  sourceCode: string
+  sourceProgramId: string
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'UNKNOWN'
+  result: DiscoveredApplicationForms | null
+  failureCode: string | null
+  createdAt: string
+}
+
 export function validateNewApplicationPreparation(input: NewApplicationPreparation): NewApplicationPreparation {
   if (!input.sourceCode || !input.sourceProgramId || !/^[a-z0-9][a-z0-9-]{0,159}$/.test(input.formVersionId)) {
     throw new Error('지원 공고와 공식 양식을 다시 선택해 주세요.')

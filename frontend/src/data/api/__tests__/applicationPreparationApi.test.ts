@@ -36,6 +36,28 @@ const creation = {
 }
 
 describe('application preparation HTTP boundary', () => {
+  it('rejects mismatched job identity and missing completed results', async () => {
+    const job = { id: 7, sourceCode: 'MSIT', sourceProgramId: '1', status: 'QUEUED', result: null, failureCode: null, createdAt: detail.createdAt }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json(job, { status: 202 }))
+      .mockResolvedValueOnce(Response.json({ ...job, id: 8 }))
+      .mockResolvedValueOnce(Response.json({ ...job, status: 'SUCCEEDED' })))
+    const repository = new ApplicationPreparationRepositoryImpl()
+    await expect(repository.discover('BIZINFO', 'PBLN_1')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(repository.discoveryJob(7)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+    await expect(repository.discoveryJob(7)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' })
+  })
+
+  it('uses GET only when restoring account job history and details', async () => {
+    const job = { id: 7, sourceCode: 'BIZINFO', sourceProgramId: 'PBLN_1', status: 'UNKNOWN', result: null,
+      failureCode: 'RUN_OUTCOME_UNKNOWN', createdAt: detail.createdAt }
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json([job])).mockResolvedValueOnce(Response.json(job))
+    vi.stubGlobal('fetch', fetchMock)
+    const repository = new ApplicationPreparationRepositoryImpl()
+    await expect(repository.discoveryJobs()).resolves.toEqual([job])
+    await expect(repository.discoveryJob(7)).resolves.toEqual(job)
+    expect(fetchMock.mock.calls.map((call) => call[1].method)).toEqual(['GET', 'GET'])
+  })
+
   it('deletes an owned preparation with the exact 204 contract', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
     vi.stubGlobal('fetch', fetchMock)
@@ -51,7 +73,8 @@ describe('application preparation HTTP boundary', () => {
   it('uses the exact URLs, methods, body, session cookie and no-store options', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({ items: [form] }))
-      .mockResolvedValueOnce(Response.json({ items: [form], warnings: [], cached: false }))
+      .mockResolvedValueOnce(Response.json({ id: 7, sourceCode: form.sourceCode, sourceProgramId: form.sourceProgramId,
+        status: 'SUCCEEDED', result: { items: [form], warnings: [], cached: false }, failureCode: null, createdAt: detail.createdAt }, { status: 202 }))
       .mockResolvedValueOnce(Response.json({ items: [], nextBeforeId: null }))
       .mockResolvedValueOnce(Response.json(detail, { status: 201 }))
       .mockResolvedValueOnce(Response.json(detail))
@@ -66,7 +89,7 @@ describe('application preparation HTTP boundary', () => {
     const calls = fetchMock.mock.calls as [string, RequestInit][]
     expect(calls.map(([url]) => url)).toEqual([
       expect.stringMatching(/\/api\/v1\/application-preparations\/forms$/),
-      expect.stringMatching(/\/api\/v1\/application-preparations\/forms\/discover$/),
+      expect.stringMatching(/\/api\/v1\/application-preparations\/forms\/discovery-jobs$/),
       expect.stringMatching(/\/api\/v1\/application-preparations\?size=20&beforeId=20$/),
       expect.stringMatching(/\/api\/v1\/application-preparations$/),
       expect.stringMatching(/\/api\/v1\/application-preparations\/1$/),
@@ -77,7 +100,7 @@ describe('application preparation HTTP boundary', () => {
       expect(options.signal).toBeInstanceOf(AbortSignal)
     }
     expect(calls[0]?.[1].body).toBeUndefined()
-    expect(JSON.parse(calls[1]?.[1].body as string)).toEqual({ sourceCode: 'BIZINFO', sourceProgramId: 'PBLN_1' })
+    expect(JSON.parse(calls[1]?.[1].body as string)).toEqual({ sourceCode: 'BIZINFO', sourceProgramId: 'PBLN_1', requestKey: expect.any(String) })
     expect(calls[3]?.[1].headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(calls[3]?.[1].body as string)).toEqual(creation)
   })

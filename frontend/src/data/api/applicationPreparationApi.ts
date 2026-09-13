@@ -21,7 +21,7 @@ export async function applicationPreparationRequest<T>(
   const timer = setTimeout(() => {
     timedOut = true
     abort()
-  }, path.endsWith('/forms/discover') ? 90_000 : path.endsWith('/messages') ? 45_000 : 15_000)
+  }, path.endsWith('/messages') ? 45_000 : 15_000)
   try {
     const response = await fetch(`${getCoreApiBaseUrl()}/api/v1/application-preparations${path}`, {
       method,
@@ -34,7 +34,7 @@ export async function applicationPreparationRequest<T>(
       const problem = applicationPreparationProblemSchema.safeParse(await response.json().catch(() => null))
       const serverCode = problem.success ? problem.data.code : null
       let code = serverCode ?? 'REQUEST_FAILED'
-      if (path.endsWith('/forms/discover') && serverCode === 'AI_SERVICE_INVALID_RESPONSE') {
+      if (path.includes('/forms/discovery-jobs') && serverCode === 'AI_SERVICE_INVALID_RESPONSE') {
         code = 'APPLICATION_FORM_AI_INVALID_RESPONSE'
       } else if (response.status === 404 && serverCode?.startsWith('APPLICATION_FORM_')) {
         code = serverCode
