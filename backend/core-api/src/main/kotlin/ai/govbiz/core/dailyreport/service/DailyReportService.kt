@@ -20,6 +20,7 @@ import ai.govbiz.core.supportprogram.service.readiness.SupportProgramSearchReadi
 import ai.govbiz.core.supportprogram.service.search.SupportProgramSearchService
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.concurrent.atomic.AtomicBoolean
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
@@ -139,6 +140,12 @@ class DailyReportService(
         return DailyReportContent(programs, warnings)
     }
 
+    /** SMTP 설정이 없으면 미선점 상태를 유지한다. Outbox가 기한 안에서 다시 전달한다. */
+    fun deliverQueued(reportId: Long) {
+        if (!mail.isAvailable() || LocalTime.now(clock).hour < properties.sendHour) return
+        repository.queuedDelivery(reportId)?.let(::deliver)
+    }
+
     fun deliver(report: DailyReport) {
         if (report.status != DailyReportStatus.READY || report.deliveryStatus != DailyReportDeliveryStatus.NOT_REQUESTED || !mail.isAvailable()) return
         val account = accounts.findById(report.accountId)?.takeUnless { it.isSuspended } ?: return
@@ -149,17 +156,19 @@ class DailyReportService(
         val subscription = repository.subscription(account.id)
         if (current == null || current.isSuspended || current.email != account.email || subscription?.enabled != true ||
             subscription.confirmedEmail != account.email || companies.findByAccountId(account.id) == null) {
-            repository.finishDelivery(report.id, DailyReportDeliveryStatus.SKIPPED)
+            check(repository.finishDelivery(report.id, DailyReportDeliveryStatus.SKIPPED))
             return
         }
-        try {
+        val outcome = try {
             mail.sendReport(account.email, report.input.companyName, report.reportDate, renderSummary(report), token)
-            repository.finishDelivery(report.id, DailyReportDeliveryStatus.SENT)
+            DailyReportDeliveryStatus.SENT
         } catch (_: Exception) {
             // SMTP timeout은 서버 접수 이후일 수도 있다. 자동 재발송하지 않고 확인 필요 상태로 남긴다.
-            repository.finishDelivery(report.id, DailyReportDeliveryStatus.UNKNOWN)
             log.warn("Daily report delivery outcome unknown; reportId={}", report.id)
+            DailyReportDeliveryStatus.UNKNOWN
         }
+        // SMTP 응답과 DB 저장은 원자적이지 않다. 저장 실패는 소비자에서 DLQ로 보내고 재발송하지 않는다.
+        check(repository.finishDelivery(report.id, outcome))
     }
 
     private fun analyze(program: SupportProgram): DailyReportItem {

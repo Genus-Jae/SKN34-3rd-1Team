@@ -11,10 +11,10 @@ Core 안의 전용 RabbitMQ 소비자가 순서대로 생성합니다. 정기 �
 
 - 이 문서의 적용 범위: 정기 일일 리포트의 **생성 작업**.
 - 유지: 웹 `POST /api/v1/me/daily-reports/preview`는 기존 동기 생성·조회 계약, 기존 검색·근거 답변 구현 재사용.
-- 미적용: 실시간 대화 검색, 공고 동기화·벡터 색인, 이메일 전송, 신청 양식 발견, 알림 등 다른 업무.
-- SMTP는 기존 DB 발송 권한과 `UNKNOWN` 정책을 유지합니다. 메일을 RabbitMQ로 옮기지 않았습니다.
+- 이 생성 큐의 미적용 범위: 실시간 대화 검색, 공고 동기화·벡터 색인, 이메일 전송, 신청 양식 발견, 알림 등 다른 업무.
+- 메일 발송은 후속 [발송 전용 큐](rabbitmq-daily-report-delivery.md)로 분리했습니다. 기존 DB 발송 권한과 `UNKNOWN` 정책을 유지합니다.
 - 후속으로 [중복 지원·수혜 검토 분석](rabbitmq-combination-review.md)에 별도 큐를 적용했습니다. 리포트 큐의 예산·상태 정책과 구분합니다.
-- 2026-09-13 후속 [공식 문서 분석·관리자 운영 조회](rabbitmq-application-form-discovery.md)는 세 큐의 읽기 전용 현황을 제공합니다. 기존 수동 리포트·SMTP 경로는 바꾸지 않았습니다.
+- 2026-09-13 후속 [공식 문서 분석·관리자 운영 조회](rabbitmq-application-form-discovery.md)에 이어 발송 큐도 운영 조회에 포함합니다. 수동 미리보기는 유지합니다.
 
 ### 처음 읽을 때 알아둘 용어
 
@@ -47,10 +47,11 @@ RabbitMQ → DailyReportGenerationConsumer (Core 내부, active consumer 1개 / 
   → DB에 리포트와 작업 결과를 함께 저장 → ACK
 
 다음 DailyReportScheduler 실행
-  → READY 리포트 재사용 → 기존 deliver → DailyReportMailClient → SMTP
+  → READY 리포트 재사용 → 발송 Outbox → 별도 발송 큐/소비자 → 기존 deliver → DailyReportMailClient → SMTP
+  (발송 큐 스위치가 false이면 기존 직접 SMTP 경로)
 ```
 
-완료 직후 즉시 메일을 보내는 구조가 아닙니다. 정상적으로는 다음 5분 주기에서 발송하며, 계정 처리 상한 등에 따라
+완료 직후 즉시 메일을 보내는 구조가 아닙니다. 정상적으로는 다음 5분 주기에서 발송 예약하며, 계정 처리 상한 등에 따라
 더 늦어질 수 있습니다. 외부 HTTP·RabbitMQ·SMTP 호출은 DB transaction 안에 넣지 않습니다.
 
 ## 코드를 읽는 순서와 파일별 책임
@@ -159,7 +160,8 @@ Flyway [V23](../backend/core-api/src/main/resources/db/migration/V23__create_dai
 
 ### 정기 예약과 큐 스위치의 차이
 
-아래 표의 두 스위치는 이름이 비슷하지만 서로 다른 실행을 제어합니다. **메일 사용 여부는 별도 설정**입니다.
+아래 표는 생성 큐와 정기 예약의 관계입니다. **메일 사용 여부와 V27 발송 큐는 별도 설정**입니다.
+표의 발송 중지는 새 예약 기준이며, `DAILY_REPORT_DELIVERY_QUEUE_ENABLED=true`이고 SMTP가 가능하면 기존 발송 대기는 처리됩니다.
 
 | `DAILY_REPORT_ENABLED` | `DAILY_REPORT_QUEUE_ENABLED` | 동작 |
 |---|---|---|
@@ -214,7 +216,7 @@ LIMIT 100;
 | `RUNNING`이 오래 유지됨 | `started_at`, 해당 job ID의 Core 로그와 AI Service 상태 | 프로세스 중단 등으로 20분 이상 완료 기록이 없으면 만료 검사에서 `UNKNOWN`. 상태만 되돌려 재실행하지 않음 |
 | `UNKNOWN`으로 실패 표시 | 해당 실행이 외부 요청을 보냈는지, 결과 저장 전에 종료됐는지 등 운영 기록 | 외부 사용량과 결과를 확인하기 전 자동/수동 재시도를 허용하지 않음. 안전한 운영자 복구 기능은 미구현 |
 | DLQ에 메시지가 쌓임 | 메시지 형식, job ID의 DB 상태, 소비자 거부·연결 오류, 대기 만료 여부 | DLQ 메시지 수는 실패한 리포트 수와 같지 않음. 중복·이미 완료된 작업이 있을 수 있어 일괄 재생 금지 |
-| 리포트는 READY인데 메일이 안 옴 | 정기 예약/발송 스위치, 다음 주기, 현재 동의·계정 상태, `delivery_status`, SMTP | 발송은 큐가 아니라 기존 스케줄러/SMTP 경로. `SENT`는 SMTP 접수이며 받은 편지함 도착 보장이 아님 |
+| 리포트는 READY인데 메일이 안 옴 | 정기 예약·발송 큐·메일 스위치, 다음 주기, 현재 동의·계정 상태, `delivery_status`, SMTP | [발송 큐 문서](rabbitmq-daily-report-delivery.md)의 대기·UNKNOWN 확인. `SENT`는 SMTP 접수이며 받은 편지함 도착 보장이 아님 |
 
 처음 도입할 때는 브로커와 서버의 기동·큐 연결을 먼저 확인하고, 실제 AI 생성/메일 검증은 대상 계정과 비용 범위를
 정한 뒤 진행합니다. 개발 데이터를 삭제하는 `down --volumes`, migration 이력 수정, DLQ 일괄 재생을 복구의 첫 조치로 삼지 않습니다.

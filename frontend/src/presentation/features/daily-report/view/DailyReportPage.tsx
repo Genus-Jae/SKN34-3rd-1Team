@@ -26,7 +26,7 @@ export function DailyReportPage() {
         {!vm.loaded && !vm.error && <p role="status">리포트 설정을 불러오는 중입니다.</p>}
         {vm.loaded && settings && <>
           {!settings.emailDeliveryAvailable && <p className={warningClass}>현재 서버의 이메일 발송이 꺼져 있습니다. 웹 미리보기는 사용할 수 있지만, 확인 메일과 정기 이메일 발송은 운영자의 설정 후 사용할 수 있습니다.</p>}
-          {settings.emailDeliveryAvailable && !settings.schedulerEnabled && <p className={warningClass}>서버의 자동 발송이 꺼져 있어 정기 메일은 아직 발송되지 않습니다. 주소 확인과 수신 설정은 미리 저장할 수 있습니다. 메일 설정이 있어도 실제 도착을 보장하지는 않습니다.</p>}
+          {settings.emailDeliveryAvailable && !settings.schedulerEnabled && <p className={warningClass}>서버의 새 정기 발송 예약이 꺼져 있습니다. 이미 예약된 메일은 처리될 수 있습니다. 주소 확인과 수신 설정은 미리 저장할 수 있습니다. 메일 설정이 있어도 실제 도착을 보장하지는 않습니다.</p>}
           {vm.company === null ? <section className={styles.card}>
             <h2 className={styles.cardTitle}>기업 정보가 필요합니다</h2>
             <p className={noteClass}>지역과 업종을 기준으로 공고를 찾으려면 기업 정보를 먼저 등록해 주세요.</p>
@@ -74,7 +74,7 @@ export function DailyReportPage() {
 }
 
 const deliveryLabels: Record<DailyReport['deliveryStatus'], string> = {
-  NOT_REQUESTED: '발송 요청 없음', SENDING: '발송 처리 중', SENT: '메일 서버에 전달 완료',
+  NOT_REQUESTED: '미발송 (예약 전 또는 대기 중)', SENDING: '발송 처리 중', SENT: '메일 서버에 전달 완료',
   UNKNOWN: '발송 결과 확인 필요 — 중복 방지를 위해 자동 재발송하지 않음', SKIPPED: '발송하지 않음',
 }
 

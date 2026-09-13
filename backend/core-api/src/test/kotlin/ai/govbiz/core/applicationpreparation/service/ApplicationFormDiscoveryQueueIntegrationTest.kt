@@ -149,7 +149,7 @@ class ApplicationFormDiscoveryQueueIntegrationTest {
         assertEquals("UNKNOWN", state(job.id))
         verify(discovery, times(1)).discoverQueued(anyString(), anyString(), any<() -> Unit>() ?: {})
         assertThrows(ApplicationFormDiscoveryException::class.java) { enqueue() }
-        assertEquals(1L, operations.status().last().jobs.single().count)
+        assertEquals(1L, operations.status().single { it.feature == "application-form-discovery" }.jobs.single().count)
     }
 
     @Test
@@ -197,7 +197,7 @@ class ApplicationFormDiscoveryQueueIntegrationTest {
         assertEquals(0, rabbit.execInContainer("rabbitmqctl", "stop_app").exitCode)
         try {
             publisher.publishPending()
-            val status = operations.status().last()
+            val status = operations.status().single { it.feature == "application-form-discovery" }
             assertFalse(status.queue!!.available)
             assertNull(status.queue.readyMessages)
             assertEquals(1L, status.jobs.single().unconfirmedPublicationCount)

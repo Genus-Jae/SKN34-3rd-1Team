@@ -50,7 +50,7 @@ docker compose --env-file .env --file infrastructure/compose.yaml up --build
 | [기술 구성](docs/technology.md) | 기술 스택·버전과 MySQL·Elasticsearch·Qdrant·Redis·RabbitMQ의 역할 |
 | [Elasticsearch 적용 상세](docs/elasticsearch-lexical-search.md) | 한국어 키워드 검색·벡터 검색 결합, 색인·운영 설정 |
 | [Redis 적용 상세](docs/redis-search-result-restoration.md) | 로그인 후 검색 결과 복원과 저장·장애 처리 |
-| [RabbitMQ 정기 리포트](docs/rabbitmq-daily-report-generation.md) | 정기 리포트 생성 큐와 중복 방지·장애 대응 |
+| [RabbitMQ 정기 리포트](docs/rabbitmq-daily-report-generation.md) · [메일 발송](docs/rabbitmq-daily-report-delivery.md) | 생성·발송 큐 분리와 중복 방지·장애 대응 |
 | [RabbitMQ 중복 검토 분석](docs/rabbitmq-combination-review.md) | 분석 작업 큐, 진행 상태·이력 복원·운영 설정 |
 | [RabbitMQ 공식 문서 분석](docs/rabbitmq-application-form-discovery.md) | 문항 추출 작업·결과 복원·관리자 큐 운영 조회 |
 | [구현 현황](docs/implementation-status.md) | 완료 단계·검증 결과·현재 한계·다음 작업 |

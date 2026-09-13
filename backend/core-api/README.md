@@ -58,7 +58,12 @@ V20에 맞추고 미적용 대화용 V19를 한 번만 out-of-order로 적용하
 
 정기 생성은 `V23`의 `daily_report_generation_job`에 리포트·예산과 함께 예약한 뒤 RabbitMQ로 전달합니다.
 `DailyReportOutboxScheduler → DailyReportQueueClient → RabbitMQ → DailyReportGenerationConsumer → DailyReportService`이며,
-Core 내부 소비자 1개가 기존 AI 경로를 재사용합니다. 웹 미리보기는 기존 동기 계약, SMTP는 기존 발송 경로를 유지합니다.
+Core 내부 소비자 1개가 기존 AI 경로를 재사용합니다. 웹 미리보기는 기존 동기 계약을 유지합니다.
+V27부터 발송 큐를 켜면 `DailyReportScheduler → Repository`가 기존 리포트 행에 발송 대기를 저장하고,
+`DailyReportDeliveryOutboxScheduler → DailyReportDeliveryQueueClient → RabbitMQ → DailyReportDeliveryConsumer → DailyReportService → DailyReportMailClient`
+에서 SMTP를 실행합니다. `DAILY_REPORT_DELIVERY_QUEUE_ENABLED`는 직접 실행 false / Compose true이며,
+false면 기존 직접 SMTP 경로를 유지합니다. 기존 대기 작업은 정기 예약이 꺼져도 메일 설정이 있으면 전송될 수 있습니다.
+[발송 상태·UNKNOWN·V27·설정·검증 상세](../../docs/rabbitmq-daily-report-delivery.md)를 참고하세요.
 직접 Core를 실행할 때 큐는 기본 비활성입니다. 정기 실행에는 `DAILY_REPORT_ENABLED=true`와
 `DAILY_REPORT_QUEUE_ENABLED=true` 모두 필요하며, 큐가 꺼진 정기 실행 설정은 시작 시 거부합니다.
 브로커는 `RABBITMQ_HOST`/`RABBITMQ_PORT`/`RABBITMQ_USERNAME`/`RABBITMQ_PASSWORD`/`RABBITMQ_VHOST`로 연결합니다.
@@ -114,7 +119,7 @@ UNKNOWN은 같은 검토의 새 실행도 차단합니다. [한도·만료·재�
 가 MySQL 실행권을 선점하고 기존 수집·추출 Service를 실행합니다. V26 작업 행이 Outbox이며 UNKNOWN은 새 분석도 차단합니다.
 `APPLICATION_FORM_DISCOVERY_QUEUE_ENABLED`는 Compose에서 true, Core 단독 기본 false입니다. 새 API는 비활성 시 503입니다.
 구형 동기 `POST .../forms/discover`는 큐 비활성 환경에서만 남기며, 큐 활성 환경은 409로 차단합니다.
-관리자 전용 `GET /api/v1/admin/queues`는 세 큐의 DB 상태·대기 메시지·소비자·DLQ를 읽기 전용으로 확인합니다.
+관리자 전용 `GET /api/v1/admin/queues`는 생성·발송·중복 검토·공식 문서 분석 네 큐의 DB 상태·대기 메시지·소비자·DLQ를 읽기 전용으로 확인합니다.
 [API·화면·한도·장애·운영 조회·V26 배포 상세](../../docs/rabbitmq-application-form-discovery.md)를 참고하세요.
 
 목록·상세와 화면 진입은 AI Service·OpenAI·Qdrant를 호출하지 않습니다. 양식 발견과 생성은 각각 사용자의 명시적 POST와

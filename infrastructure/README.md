@@ -64,7 +64,10 @@ V25 적용 후 신규 분석은 202로 접수하고 Core 내부의 별도 검토
 
 공식 신청 문서 분석도 `APPLICATION_FORM_DISCOVERY_QUEUE_ENABLED=true`로 별도 주 큐·DLQ·소비자 1개를 사용합니다.
 Core의 V26과 최신 Frontend를 함께 갱신해야 하며, 큐를 켜면 기존 QUEUED가 실행될 수 있습니다.
-관리자 `GET /api/v1/admin/queues`로 세 큐의 DB 상태·대기 메시지·소비자·DLQ를 읽기 전용으로 확인합니다.
+리포트 메일 발송도 `DAILY_REPORT_DELIVERY_QUEUE_ENABLED=true`로 별도 큐·소비자를 사용합니다. V27은 기존 리포트에
+발송 대기 컬럼을 추가합니다. false이면 기존 스케줄러 직접 SMTP 경로를 유지합니다. 큐와 메일이 켜져 있으면 기존 발송
+대기가 정기 예약 스위치와 별개로 실행될 수 있습니다. [발송 큐 설정·전환·검증](../docs/rabbitmq-daily-report-delivery.md)을 참고하세요.
+관리자 `GET /api/v1/admin/queues`로 네 큐의 DB 상태·대기 메시지·소비자·DLQ를 읽기 전용으로 확인합니다.
 [작업 API·운영 지표 의미·복구 주의사항](../docs/rabbitmq-application-form-discovery.md)을 참고하세요.
 
 Redis는 8.2.9로 고정하고 `redis-data` 볼륨에 AOF(`appendfsync everysec`)를 기록합니다. Core 재시작과

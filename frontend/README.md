@@ -6,6 +6,9 @@ React·TypeScript·Vite·Tailwind CSS를 사용합니다. 전체 기술 구성�
 [구현 현황](../docs/implementation-status.md)을 참고하세요. 계층·DI·MVVM·Redux의 역할은
 [아키텍처 README](../docs/architecture/README.md#frontend-화면과-데이터-처리-분리)에 정리했습니다.
 
+리포트 발송 큐 적용 후에도 기존 상태 enum은 유지합니다. 미발송에는 예약 전·큐 대기를 함께 표시하고,
+새 정기 예약을 꺼도 이미 예약된 메일은 처리될 수 있음을 안내합니다. [발송 큐의 설정·상태](../docs/rabbitmq-daily-report-delivery.md)를 참고하세요.
+
 ## 실행
 
 ### Docker Compose
