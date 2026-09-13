@@ -39,6 +39,7 @@ AI Service가 하는 일:
 - Core가 준비한 공고 상세 원문 청크를 별도 Qdrant collection에 색인하고, 지정된 현재 청크 안에서 근거를 최대 5개 검색
 - 검색된 공고 상세 근거만 사용해 한국어 답변과 인용 청크 ID를 strict structured output으로 반환
 - 새 메시지와 작은 검색 상태를 해석해 사용자 확인 전 조건 변경 패치 또는 확인 질문을 반환
+- 도우미 자유 질문을 여섯 의도 중 하나로 분류하고, 사용법 답은 Core가 보낸 도움말 항목만 인용해 반환 (`govbiz-assistant-v1`)
 - Core가 보낸 정확히 2개 사업의 전체 근거·참여 사실을 단일 Agent로 대조하고 한 사업쌍의 여섯 단계 판단·질문·정확한 인용을 반환 (`combination-review-v2`)
 
 AI Service가 하지 않는 일:
@@ -68,6 +69,7 @@ PUT /internal/v1/support-program-evidence/chunks
 POST /internal/v1/support-program-evidence/search
 POST /internal/v1/support-program-evidence/answers
 POST /internal/v1/support-program-conversation/interpret
+POST /internal/v1/assistant/answers
 ```
 
 점수화 요청은 최대 20개 후보와 상위 결과 개수 1~5개를 받습니다. 응답 `rankings`는 적격 공고가
@@ -108,6 +110,31 @@ ANSWERED는 비어 있지 않은 answer와 빈 updates, null 질문을 반환합
 `HTTP API → SupportProgramConversationService → SupportProgramConversationAgent → OpenAI → Response`로
 한 번의 typed structured 호출만 실행합니다. 기존 client/model, store=false, tracing 비활성을 공유하며
 이 역할의 모델·HTTP 25초/전체 실행 30초 제한과 최대 출력 2,000 tokens를 유지합니다.
+
+## 도우미 자유 질문 분류 (C2)
+
+`POST /internal/v1/assistant/answers`는 `govbiz-assistant-v1` 계약을 사용합니다. 화면 오른쪽 아래 도우미에
+사용자가 자유롭게 쓴 한 마디를 받아 의도 하나를 고르고, 그 의도에 필요한 필드만 채웁니다. 실제 기능 실행과
+화면 이동은 분류 결과를 받은 Core가 하며 모델은 도구를 호출하지 않습니다.
+입력은 `schemaVersion`, `message`(1~500자), 최근 대화 `history`(최대 6개, USER/ASSISTANT), `session`
+(`authenticated`, `hasCompany`), `context`(`route`, 공고 상세처럼 원문 질문이 가능한 화면인지 `programSelected`),
+`helpEntries`(1~40개, id 고유)입니다. 도움말 항목은 프런트 `helpContent`와 같은 필드
+(`id`·`title`·`question`·`summary`·`body`·`limitation`·`audience`·`status`·`action`)이며 AI Service는 사본을 갖지 않습니다.
+응답 `intent`와 함께 채워야 하는 필드는 아래와 같고 나머지는 null 또는 빈 배열입니다.
+
+| intent | 채우는 필드 | 뜻 |
+|---|---|---|
+| `PRODUCT_HELP` | `answer`, `citations`(요청 helpEntries의 id 1~3개) | 사용법·화면·정책 질문 |
+| `ACCOUNT_STATE` | `accountTopic`(`SAVED_PROGRAMS`/`RECEIVED_PROPOSALS`/`COMPANY_PROFILE`) | 내 상태 질문. 숫자는 Core가 붙임 |
+| `SEARCH` | `searchQuery` | 지원사업을 찾아 달라는 말 |
+| `PROGRAM_QUESTION` | 없음 | 특정 공고 내용 질문. 원문 근거 경로로 위임 |
+| `OUT_OF_SCOPE` | `answer` | 할 수 없는 일임을 알리고 가장 가까운 기능 안내 |
+| `UNCLEAR` | `clarificationQuestion` | 종류를 정할 수 없어 한 번 되묻기 |
+
+Service는 의도별 필드 조합과 인용 id가 요청의 도움말 항목에 있는지 검증하고 위반이면 503으로 거절합니다.
+`HTTP API → AssistantService → AssistantAgent → OpenAI → Response`로 한 번의 typed structured 호출만 실행하며
+C02와 같은 모델·HTTP 25초/전체 실행 30초 제한, 최대 출력 1,200 tokens, store=false, tracing 비활성을 씁니다.
+로그에는 결과·소요 시간·토큰 수만 남기고 메시지·답변 본문은 남기지 않습니다.
 세션·전체 대화 이력·영속성·추가 provider는 없습니다.
 모델은 상태·패치·질문 또는 결과 설명을 출력하고 Service가 검증 후 계약 버전을 붙입니다. 검색/임베딩/랭킹은 호출하지 않습니다.
 
