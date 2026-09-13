@@ -14,6 +14,12 @@
 
 ## 시스템 구성
 
+기술 로고가 포함된 이미지는 [로컬 구성 기록](../assets/architecture/README.md#로컬-구성-기록)과
+[Vercel + AWS 초기 배포 예정안](../assets/architecture/README-aws.md)으로 구분합니다.
+예정안은 별도 도메인 구매 없이 Vercel 기본 주소의 `/api`를 CloudFront 기본 HTTPS 주소로 중계하고,
+VPC origin으로 비공개 EC2에 연결하는 그림입니다. RDS·ECR·SSM 및 외부 연결용 NAT·IGW도 포함하며,
+추가 운영 비용이 발생합니다. 실제 인프라 구축 완료를 의미하지 않습니다.
+
 ```mermaid
 flowchart LR
     Web[React Web] --> Core[Spring Boot Core API]

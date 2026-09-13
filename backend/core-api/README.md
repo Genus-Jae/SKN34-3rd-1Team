@@ -100,13 +100,22 @@ UNKNOWN은 같은 검토의 새 실행도 차단합니다. [한도·만료·재�
 | 신청 준비 API | 동작 |
 |---|---|
 | `GET /api/v1/application-preparations/forms` | 로그인 회원에게 지원 양식·분야·문항 조회. DB·AI 호출 없음 |
-| `POST /api/v1/application-preparations/forms/discover` | 선택한 네 제공처 공고의 공식 PDF/HWP/HWPX에서 신청 문서·문항을 추출하고 동일 버전 스냅샷 재사용 |
+| `POST /api/v1/application-preparations/forms/discovery-jobs` | UUID requestKey·공고 식별자로 V26 작업 접수. 202·Location 반환, Worker가 네 제공처 공식 문서 분석 |
+| `GET /api/v1/application-preparations/forms/discovery-jobs` | 본인의 최근 20개 분석 작업 요약 |
+| `GET /api/v1/application-preparations/forms/discovery-jobs/{id}` | 본인 작업 상태·결과 조회 |
 | `POST /api/v1/application-preparations` | 공고·양식 버전·지원 분야를 검증해 본인 준비 건 생성. 201·Location·상세 반환 |
 | `GET /api/v1/application-preparations?size=20&beforeId=123` | 본인 준비 건 목록을 생성 ID 내림차순으로 조회 |
 | `GET /api/v1/application-preparations/{id}` | 본인 준비 건과 선택한 버전의 양식 문항 조회. 타인 건과 없는 건은 같은 404 |
 | `DELETE /api/v1/application-preparations/{id}` | 본인 준비 건 삭제. 확인 사실·AI 실행 기록은 FK cascade 삭제하고 공용 양식 스냅샷은 유지 |
 | `POST /api/v1/application-preparations/{id}/sections/{sectionKey}/messages` | 현재 입력 revision과 요청 키로 사용자 답변을 AI가 해석해 확인 전 사실·미정 제안 반환 |
 | `PUT /api/v1/application-preparations/{id}/sections/{sectionKey}/inputs` | 사용자가 확인한 문항 사실 전체 스냅샷 저장. revision 충돌은 409 |
+
+`ApplicationFormDiscoveryOutboxScheduler → ApplicationFormDiscoveryQueueClient → RabbitMQ → ApplicationFormDiscoveryJobConsumer`
+가 MySQL 실행권을 선점하고 기존 수집·추출 Service를 실행합니다. V26 작업 행이 Outbox이며 UNKNOWN은 새 분석도 차단합니다.
+`APPLICATION_FORM_DISCOVERY_QUEUE_ENABLED`는 Compose에서 true, Core 단독 기본 false입니다. 새 API는 비활성 시 503입니다.
+구형 동기 `POST .../forms/discover`는 큐 비활성 환경에서만 남기며, 큐 활성 환경은 409로 차단합니다.
+관리자 전용 `GET /api/v1/admin/queues`는 세 큐의 DB 상태·대기 메시지·소비자·DLQ를 읽기 전용으로 확인합니다.
+[API·화면·한도·장애·운영 조회·V26 배포 상세](../../docs/rabbitmq-application-form-discovery.md)를 참고하세요.
 
 목록·상세와 화면 진입은 AI Service·OpenAI·Qdrant를 호출하지 않습니다. 양식 발견과 생성은 각각 사용자의 명시적 POST와
 허용된 Origin에서만 수행합니다. 공식 출처 확인과 AI 문항 추출은 기관 검수·선정 가능성 판단을 뜻하지 않습니다.

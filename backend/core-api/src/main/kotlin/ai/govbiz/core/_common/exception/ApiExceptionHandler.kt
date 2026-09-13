@@ -88,6 +88,10 @@ class ApiExceptionHandler {
             ApplicationFormDiscoveryException.Reason.SOURCE_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE
             ApplicationFormDiscoveryException.Reason.SOURCE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE
             ApplicationFormDiscoveryException.Reason.SOURCE_NOT_FOUND -> HttpStatus.NOT_FOUND
+            ApplicationFormDiscoveryException.Reason.JOB_NOT_FOUND -> HttpStatus.NOT_FOUND
+            ApplicationFormDiscoveryException.Reason.QUEUE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE
+            ApplicationFormDiscoveryException.Reason.JOB_CONFLICT -> HttpStatus.CONFLICT
+            ApplicationFormDiscoveryException.Reason.JOB_CAPACITY -> HttpStatus.TOO_MANY_REQUESTS
             else -> HttpStatus.UNPROCESSABLE_CONTENT
         }
         val code = "APPLICATION_FORM_${exception.reason.name}"

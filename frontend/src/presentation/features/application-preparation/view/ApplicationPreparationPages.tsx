@@ -259,6 +259,21 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
           ? { title: vm.selectedProgram.title, url: vm.selectedProgram.sourceUrl }
           : undefined}
       />}
+      {id === null && <section className={s.card} aria-label="최근 공식 문서 분석 작업">
+        <h2 className={s.cardTitle}>최근 공식 문서 분석 작업</h2>
+        <p className={s.muted}>분석은 화면을 떠나도 계속됩니다. 새로고침 후에는 아래 작업을 선택해 상태와 결과를 다시 확인하세요.</p>
+        {vm.discoveryHistoryError && <p role="alert">{vm.discoveryHistoryError.message} 페이지를 새로고침하면 목록을 다시 조회합니다.</p>}
+        {vm.discoveryJobs.length === 0 && !vm.discoveryHistoryError && <p className={s.muted}>최근 분석 작업이 없습니다.</p>}
+        <ul>{vm.discoveryJobs.map((job) => <li key={job.id} className="my-2 flex items-center justify-between gap-3">
+          <span className="min-w-0 break-all text-sm">{job.sourceCode} · {job.sourceProgramId} · {{ QUEUED: '대기 중', RUNNING: '분석 중', SUCCEEDED: '완료', FAILED: '실패', UNKNOWN: '관리자 확인 필요' }[job.status]}</span>
+          <button type="button" className={`${s.button} shrink-0`} disabled={vm.discovering || vm.submitting} onClick={() => { void vm.loadDiscoveryJob(job.id) }}>상태·결과 보기</button>
+        </li>)}</ul>
+        {vm.activeDiscoveryJob && vm.creationStep === 'PROGRAM' && <p role="status" aria-live="polite">
+          {{ QUEUED: '작업이 접수되어 분석 순서를 기다리고 있습니다.', RUNNING: '공식 첨부를 수집하고 AI가 문항을 분석하고 있습니다.',
+            SUCCEEDED: '저장된 분석 결과를 확인했습니다.', FAILED: '분석 작업이 실패로 종료되었습니다.', UNKNOWN: '분석 결과가 불확실하여 관리자 확인이 필요합니다.' }[vm.activeDiscoveryJob.status]}
+          {vm.discoveryPollingPaused && ' 상태 조회가 중단되었습니다. 다시 시도하면 기존 작업만 조회하며 새 분석을 실행하지 않습니다.'}
+        </p>}
+      </section>}
 
       {id === null && <form className={s.form} aria-labelledby="create-preparation-title" onSubmit={(event) => {
         event.preventDefault()

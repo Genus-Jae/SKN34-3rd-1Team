@@ -41,6 +41,7 @@ export OPENAI_BASE_URL="http://openai-stub:8002/v1"
 export DAILY_REPORT_ENABLED="false"
 export DAILY_REPORT_QUEUE_ENABLED="true"
 export COMBINATION_REVIEW_QUEUE_ENABLED="true"
+export APPLICATION_FORM_DISCOVERY_QUEUE_ENABLED="true"
 export RABBITMQ_USERNAME="govbiz-verification"
 export RABBITMQ_PASSWORD="govbiz-verification-not-a-secret"
 export DAILY_REPORT_MAIL_ENABLED="false"
@@ -379,8 +380,10 @@ wait_for_report_consumer() {
     if grep -Eq '^govbiz\.daily-report\.generation\.v1[[:space:]]+quorum[[:space:]]+1$' <<<"${queues}" \
         && grep -Eq '^govbiz\.daily-report\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}" \
         && grep -Eq '^govbiz\.combination-review\.generation\.v1[[:space:]]+quorum[[:space:]]+1$' <<<"${queues}" \
-        && grep -Eq '^govbiz\.combination-review\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}"; then
-      echo "Verified report and combination-review quorum queues and their connected consumers"
+        && grep -Eq '^govbiz\.combination-review\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}" \
+        && grep -Eq '^govbiz\.application-form-discovery\.generation\.v1[[:space:]]+quorum[[:space:]]+1$' <<<"${queues}" \
+        && grep -Eq '^govbiz\.application-form-discovery\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}"; then
+      echo "Verified report, combination-review and form-discovery quorum queues and their connected consumers"
       return 0
     fi
     sleep "${WAIT_INTERVAL_SECONDS}"

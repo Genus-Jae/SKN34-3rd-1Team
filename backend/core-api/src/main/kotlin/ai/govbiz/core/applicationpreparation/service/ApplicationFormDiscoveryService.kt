@@ -41,6 +41,13 @@ class ApplicationFormDiscoveryService(
 ) {
     fun discover(account: Account, sourceCode: String, sourceProgramId: String): ApplicationFormDiscoveryResult {
         require(account.id > 0)
+        validateIdentity(sourceCode, sourceProgramId)
+        return admission.execute("application-form-discovery-account:${account.id}") {
+            discoverQueued(sourceCode, sourceProgramId) {}
+        }
+    }
+
+    fun validateIdentity(sourceCode: String, sourceProgramId: String) {
         val validIdentity = when (sourceCode) {
             "BIZINFO" -> Regex("PBLN_[0-9]{1,32}").matches(sourceProgramId)
             "MSIT", "KSTARTUP", "CNTRADE_NOTICE" -> Regex("[1-9][0-9]{0,254}").matches(sourceProgramId)
@@ -49,22 +56,26 @@ class ApplicationFormDiscoveryService(
         if (!validIdentity) {
             throw ApplicationFormDiscoveryException(Reason.SOURCE_UNSUPPORTED)
         }
+    }
+
+    /** 큐 실행권과 동시 실행 슬롯은 호출 Service가 소유한다. 유료 호출 직전에 실행권을 재확인한다. */
+    fun discoverQueued(sourceCode: String, sourceProgramId: String, beforeAi: () -> Unit): ApplicationFormDiscoveryResult {
+        validateIdentity(sourceCode, sourceProgramId)
         val program = try {
             details.get(sourceCode, sourceProgramId)
         } catch (error: SupportProgramNotFoundException) {
             throw ApplicationFormDiscoveryException(Reason.SOURCE_NOT_FOUND, error)
         }
         val configuration = ai.discoveryConfiguration()
-        return admission.execute("application-form-discovery-account:${account.id}") {
-            discoverFresh(
+        return discoverFresh(
                 program.sourceCode,
                 program.id,
                 program.title,
                 program.targetDescription,
                 program.sourceUrl,
                 configuration,
+                beforeAi,
             )
-        }
     }
 
     private fun discoverFresh(
@@ -74,6 +85,7 @@ class ApplicationFormDiscoveryService(
         catalogBody: String,
         sourceUrl: String,
         configuration: ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryConfiguration,
+        beforeAi: () -> Unit,
     ): ApplicationFormDiscoveryResult {
         return try {
             val collected = when (sourceCode) {
@@ -132,6 +144,7 @@ class ApplicationFormDiscoveryService(
                 sourceUrl,
                 documents,
             )
+            beforeAi()
             val extracted = ai.discover(input, configuration)
             if (extracted.isEmpty()) throw ApplicationFormDiscoveryException(Reason.NO_FORM)
             val forms = try {

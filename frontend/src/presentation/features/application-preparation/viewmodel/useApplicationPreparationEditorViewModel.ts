@@ -8,7 +8,9 @@ import type {
   ApplicationFormSection,
   NewApplicationPreparationFact,
   ApplicationServiceField,
+  ApplicationFormDiscoveryJob,
 } from '../../../../domain/entities/ApplicationPreparation'
+import { ApplicationPreparationError } from '../../../../domain/errors/ApplicationPreparationError'
 import type { SupportProgram } from '../../../../domain/entities/SupportProgram'
 import type { SupportProgramCatalog } from '../../../../domain/entities/SupportProgramCatalog'
 import { appPaths } from '../../../shared/routes/appPaths'
@@ -32,6 +34,12 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   const [discoveryInput, setDiscoveryInput] = useState(initialSourceProgramId)
   const [discovering, setDiscovering] = useState(false)
   const [discoveryWarnings, setDiscoveryWarnings] = useState<string[]>([])
+  const [discoveryJobs, setDiscoveryJobs] = useState<ApplicationFormDiscoveryJob[]>([])
+  const [discoveryHistoryError, setDiscoveryHistoryError] = useState<Error | null>(null)
+  const [activeDiscoveryJob, setActiveDiscoveryJob] = useState<ApplicationFormDiscoveryJob | null>(null)
+  const [discoveryPollingPaused, setDiscoveryPollingPaused] = useState(false)
+  const discoveryRequestKey = useRef<string | null>(null)
+  const discoveryLookupId = useRef<number | null>(null)
   const [catalog, setCatalog] = useState<SupportProgramCatalog | null>(null)
   const [catalogKeyword, setCatalogKeyword] = useState('')
   const [appliedCatalogKeyword, setAppliedCatalogKeyword] = useState('')
@@ -140,6 +148,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
   }, [catalogKeyword, catalogUseCase])
 
   const selectProgram = useCallback((program: SupportProgram) => {
+    if (discoveryController.current || (activeDiscoveryJob && ['QUEUED', 'RUNNING'].includes(activeDiscoveryJob.status) && !discoveryPollingPaused)) return
     if (!supportedDocumentSources.includes(program.sourceCode)) return
     setSelectedProgram(program)
     setDiscoverySourceCode(program.sourceCode)
@@ -149,39 +158,130 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     setSelectedFormVersionId('')
     setDiscoveryWarnings([])
     setError(null)
-  }, [])
+    setActiveDiscoveryJob(null)
+    setDiscoveryPollingPaused(false)
+    discoveryRequestKey.current = null
+    discoveryLookupId.current = null
+  }, [activeDiscoveryJob, discoveryPollingPaused])
 
   const setManualDiscoveryInput = useCallback((value: string) => {
+    if (discoveryController.current || (activeDiscoveryJob && ['QUEUED', 'RUNNING'].includes(activeDiscoveryJob.status) && !discoveryPollingPaused)) return
     setSelectedProgram(null)
     setDiscoveryInput(value)
     setCreationStep('PROGRAM')
     setForms([])
     setSelectedFormVersionId('')
     setDiscoveryWarnings([])
-  }, [])
+    setActiveDiscoveryJob(null)
+    setDiscoveryPollingPaused(false)
+    discoveryRequestKey.current = null
+    discoveryLookupId.current = null
+  }, [activeDiscoveryJob, discoveryPollingPaused])
 
-  const discoverForms = useCallback(async () => {
-    if (discovering || !discoveryInput.trim()) {
-      if (!discoveryInput.trim()) setError(new Error('기업마당 공식 공고 URL 또는 PBLN 공고 ID를 입력해 주세요.'))
-      return
-    }
-    discoveryController.current?.abort()
+  useEffect(() => {
+    if (id !== null) return
     const controller = new AbortController()
-    discoveryController.current = controller
-    setDiscovering(true)
-    setError(null)
-    setDiscoveryWarnings([])
-    try {
-      const result = selectedProgram || discoverySourceCode
-        ? await useCase.discover(discoverySourceCode, discoveryInput, controller.signal)
-        : await useCase.discoverBizInfo(discoveryInput, controller.signal)
-      if (controller.signal.aborted || discoveryController.current !== controller) return
+    void useCase.discoveryJobs(controller.signal).then((jobs) => {
+      if (!controller.signal.aborted) setDiscoveryJobs((current) => [
+        ...current, ...jobs.filter((job) => !current.some((item) => item.id === job.id)),
+      ].sort((a, b) => b.id - a.id).slice(0, 20))
+    }).catch((caught: unknown) => {
+      if (!controller.signal.aborted) setDiscoveryHistoryError(asError(caught))
+    })
+    return () => controller.abort()
+  }, [id, useCase])
+
+  const acceptDiscoveryJob = useCallback((job: ApplicationFormDiscoveryJob) => {
+    setActiveDiscoveryJob(job)
+    setDiscoveryJobs((jobs) => [job, ...jobs.filter((item) => item.id !== job.id)].sort((a, b) => b.id - a.id).slice(0, 20))
+    if (job.status === 'SUCCEEDED' && job.result) {
+      const result = job.result
       const firstForm = result.items[0]
       setForms(result.items)
       setSelectedFormVersionId(firstForm?.formVersionId ?? '')
       if (firstForm?.supportedServiceFields[0]) setServiceField(firstForm.supportedServiceFields[0])
       setDiscoveryWarnings(result.warnings)
       if (firstForm) setCreationStep('FORM')
+    } else if (job.status === 'FAILED' || job.status === 'UNKNOWN') {
+      setError(new ApplicationPreparationError(422, job.failureCode ?? 'DISCOVERY_FAILED'))
+    }
+  }, [])
+
+  const loadDiscoveryJob = useCallback(async (jobId: number) => {
+    if (discoveryController.current) return
+    discoveryLookupId.current = jobId
+    setActiveDiscoveryJob(null)
+    const controller = new AbortController()
+    discoveryController.current = controller
+    setDiscovering(true)
+    setError(null)
+    setDiscoveryPollingPaused(true)
+    setForms([])
+    setSelectedFormVersionId('')
+    setDiscoveryWarnings([])
+    setCreationStep('PROGRAM')
+    try {
+      const job = await useCase.discoveryJob(jobId, controller.signal)
+      if (controller.signal.aborted) return
+      setSelectedProgram(null)
+      setDiscoverySourceCode(job.sourceCode)
+      setDiscoveryInput(job.sourceProgramId)
+      setCreationStep('PROGRAM')
+      acceptDiscoveryJob(job)
+      setDiscoveryPollingPaused(false)
+    } catch (caught) {
+      if (!controller.signal.aborted) setError(asError(caught))
+    } finally {
+      if (discoveryController.current === controller) {
+        discoveryController.current = null
+        setDiscovering(false)
+      }
+    }
+  }, [useCase, acceptDiscoveryJob])
+
+  const activeDiscoveryId = activeDiscoveryJob && ['QUEUED', 'RUNNING'].includes(activeDiscoveryJob.status) ? activeDiscoveryJob.id : null
+  useEffect(() => {
+    if (!activeDiscoveryId || discoveryPollingPaused) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const job = await useCase.discoveryJob(activeDiscoveryId, controller.signal)
+        if (controller.signal.aborted) return
+        acceptDiscoveryJob(job)
+        if (['QUEUED', 'RUNNING'].includes(job.status)) timer = setTimeout(() => void poll(), 3000)
+      } catch (caught) {
+        if (!controller.signal.aborted) {
+          setDiscoveryPollingPaused(true)
+          setError(asError(caught))
+        }
+      }
+    }
+    timer = setTimeout(() => void poll(), 3000)
+    return () => { controller.abort(); clearTimeout(timer) }
+  }, [activeDiscoveryId, discoveryPollingPaused, useCase, acceptDiscoveryJob])
+
+  const discoverForms = useCallback(async () => {
+    const lookupId = discoveryLookupId.current ?? activeDiscoveryJob?.id
+    if (lookupId) { await loadDiscoveryJob(lookupId); return }
+    if (discoveryController.current) return
+    if (discovering || !discoveryInput.trim()) {
+      if (!discoveryInput.trim()) setError(new Error('기업마당 공식 공고 URL 또는 PBLN 공고 ID를 입력해 주세요.'))
+      return
+    }
+    const controller = new AbortController()
+    discoveryController.current = controller
+    setDiscovering(true)
+    setError(null)
+    setDiscoveryWarnings([])
+    try {
+      // 응답 유실 후 재시도에도 동일 키를 사용한다. 공고를 바꿀 때만 새 요청을 만든다.
+      discoveryRequestKey.current ??= crypto.randomUUID()
+      const job = selectedProgram || discoverySourceCode
+        ? await useCase.discover(discoverySourceCode, discoveryInput, controller.signal, discoveryRequestKey.current)
+        : await useCase.discoverBizInfo(discoveryInput, controller.signal, discoveryRequestKey.current)
+      if (controller.signal.aborted || discoveryController.current !== controller) return
+      acceptDiscoveryJob(job)
     } catch (caught) {
       if (!controller.signal.aborted && discoveryController.current === controller) {
         setForms([])
@@ -194,7 +294,7 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
         setDiscovering(false)
       }
     }
-  }, [discovering, discoveryInput, discoverySourceCode, selectedProgram, useCase])
+  }, [activeDiscoveryJob, loadDiscoveryJob, discovering, discoveryInput, discoverySourceCode, selectedProgram, useCase, acceptDiscoveryJob])
 
   const backToProgramSelection = useCallback(() => {
     setCreationStep('PROGRAM')
@@ -363,7 +463,12 @@ export function useApplicationPreparationEditorViewModel(id: number | null, init
     preparation,
     serviceField,
     discoveryInput,
-    discovering,
+    discovering: discovering || (activeDiscoveryId !== null && !discoveryPollingPaused),
+    discoveryJobs,
+    discoveryHistoryError,
+    activeDiscoveryJob,
+    loadDiscoveryJob,
+    discoveryPollingPaused,
     discoveryWarnings,
     catalog,
     catalogKeyword,
