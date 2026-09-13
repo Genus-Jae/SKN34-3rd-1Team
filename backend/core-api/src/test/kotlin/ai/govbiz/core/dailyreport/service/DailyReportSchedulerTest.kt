@@ -68,6 +68,18 @@ class DailyReportSchedulerTest {
         verifyNoInteractions(reports, accounts, mail)
     }
 
+    @Test
+    fun deliveryQueueStoresOutboxWithoutWaitingForSmtpAndExcludesAlreadyQueuedAccounts() {
+        doReturn(true).`when`(mail).isAvailable()
+        doReturn(listOf(1L)).`when`(repository).dueAccountIds(date, 21, false)
+        doReturn(first).`when`(accounts).findById(1)
+        doReturn(report).`when`(reports).enqueueScheduled(first)
+        DailyReportScheduler(reports, repository, accounts, mail, DailyReportProperties(enabled = true),
+            Clock.fixed(Instant.parse("2026-09-09T00:00:00Z"), ZoneId.of("Asia/Seoul")), DailyReportQueueProperties(true, true)).run()
+        verify(repository).enqueueDelivery(report.id)
+        verify(reports, never()).deliver(AccountTestHelper.anyValue())
+    }
+
     private fun scheduler(clock: Clock) = DailyReportScheduler(reports, repository, accounts, mail, DailyReportProperties(enabled = true), clock, DailyReportQueueProperties(true))
     private class MutableClock(var current: Instant) : Clock() {
         override fun instant(): Instant = current

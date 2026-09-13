@@ -38,7 +38,7 @@ class DailyReportScheduler(
         }
         if (!mail.isAvailable() || LocalTime.now(clock).hour < properties.sendHour) return
         val runDate = LocalDate.now(clock)
-        val due = repository.dueAccountIds(runDate, properties.maxAccountsPerRun + 1)
+        val due = repository.dueAccountIds(runDate, properties.maxAccountsPerRun + 1, includeQueuedDeliveries = !queue.deliveryEnabled)
         if (due.size > properties.maxAccountsPerRun) log.info("Daily report backlog remains after bounded batch")
         for (id in due.take(properties.maxAccountsPerRun)) {
             if (LocalDate.now(clock) != runDate || LocalTime.now(clock).hour < properties.sendHour) break
@@ -46,7 +46,7 @@ class DailyReportScheduler(
             try {
                 val report = reports.enqueueScheduled(account)
                 if (LocalDate.now(clock) != runDate) break
-                reports.deliver(report)
+                if (queue.deliveryEnabled) repository.enqueueDelivery(report.id) else reports.deliver(report)
             } catch (error: DailyReportException) {
                 log.warn("Daily report batch paused or skipped; code={}", error.code)
                 if (error.code in setOf(DailyReportErrorCode.REPORT_DAILY_BUDGET_EXCEEDED, DailyReportErrorCode.REPORT_CAPACITY_EXCEEDED,

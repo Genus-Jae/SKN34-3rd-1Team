@@ -30,7 +30,7 @@ Frontend는 `/app/application-preparations`의 목록·삭제, `/new`의 지연 
 
 Frontend는 최근 20개 분석 작업을 조회하고 선택한 활성 작업을 3초마다 확인합니다. 재시도·이력 조회는 새 분석을 만들지 않습니다.
 관리자 큐 운영 조회는 `QueueOperationsController → QueueOperationsService → Repository/MyBatis/MySQL + QueueOperationsClient/RabbitMQ`
-로 세 큐의 보관 상태·브로커 관측치를 읽습니다. 메시지 소비/재발행/DB 작업 상태 수정은 없습니다.
+로 생성·메일 발송·중복 검토·문서 분석의 네 큐 보관 상태·브로커 관측치를 읽습니다. 메시지 소비/재발행/DB 작업 상태 수정은 없습니다.
 [실행권·만료·결과 불명·관리자 지표·운영 한계](rabbitmq-application-form-discovery.md)를 참고하세요.
 
 중복 지원 검토의 현재 입력은 `기존 세션 Account 해석 → CombinationReviewController → CombinationReviewService
@@ -115,7 +115,10 @@ Frontend는 확인 후 삭제 요청을 보내고 성공 시에만 목록·메�
 수동 미리보기는 기존 동기 호출을 유지합니다. 정기 스케줄러는 리포트·예산·작업 Outbox를 함께 저장하고,
 `DailyReportOutboxScheduler → DailyReportQueueClient → RabbitMQ → DailyReportGenerationConsumer → DailyReportService`로 생성합니다.
 Core 내부 전용 소비자가 기존 검색·근거 답변을 재사용하며 DB 선점으로 중복 실행을 차단합니다. 별도 Worker 서버는 아닙니다.
-메일은 이후 스케줄러 주기에서 저장된 결과를 `DailyReportMailClient → SMTP`로 전송합니다.
+메일은 이후 스케줄러 주기에서 V27 리포트 행의 발송 Outbox에 예약합니다.
+`DailyReportDeliveryOutboxScheduler → DailyReportDeliveryQueueClient → RabbitMQ → DailyReportDeliveryConsumer → DailyReportService → DailyReportMailClient → SMTP`
+로 전송하며 기존 NOT_REQUESTED → SENDING 선점과 UNKNOWN 재발송 금지를 재사용합니다.
+발송 큐를 끄면 기존 스케줄러 직접 SMTP 경로가 유지됩니다. [발송 큐 상세](rabbitmq-daily-report-delivery.md)를 참고하세요.
 생성·발송 예약 및 결과 저장만 짧은 transaction에서 수행하고 AI·원문 HTTP·SMTP 호출은 transaction 밖에서 수행합니다.
 프런트엔드는 본인 리포트·설정과 명시적 이메일 확인·해지 화면을 제공합니다. 점수는 검색 관련도이며 선정 확률이 아닙니다.
 [리포트 API·수신 동의·중복/비용 제한·운영 설정](daily-reports.md)에 상세 경계를 정리합니다.

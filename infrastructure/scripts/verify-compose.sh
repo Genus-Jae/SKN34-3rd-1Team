@@ -40,6 +40,7 @@ export OPENAI_BASE_URL="http://openai-stub:8002/v1"
 # 개발자 .env에 리포트가 켜져 있어도 검증 스택에서 외부 메일을 보내지 않는다.
 export DAILY_REPORT_ENABLED="false"
 export DAILY_REPORT_QUEUE_ENABLED="true"
+export DAILY_REPORT_DELIVERY_QUEUE_ENABLED="true"
 export COMBINATION_REVIEW_QUEUE_ENABLED="true"
 export APPLICATION_FORM_DISCOVERY_QUEUE_ENABLED="true"
 export RABBITMQ_USERNAME="govbiz-verification"
@@ -382,8 +383,10 @@ wait_for_report_consumer() {
         && grep -Eq '^govbiz\.combination-review\.generation\.v1[[:space:]]+quorum[[:space:]]+1$' <<<"${queues}" \
         && grep -Eq '^govbiz\.combination-review\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}" \
         && grep -Eq '^govbiz\.application-form-discovery\.generation\.v1[[:space:]]+quorum[[:space:]]+1$' <<<"${queues}" \
-        && grep -Eq '^govbiz\.application-form-discovery\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}"; then
-      echo "Verified report, combination-review and form-discovery quorum queues and their connected consumers"
+        && grep -Eq '^govbiz\.application-form-discovery\.generation\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}" \
+        && grep -Eq '^govbiz\.daily-report\.delivery\.v1[[:space:]]+quorum[[:space:]]+1$' <<<"${queues}" \
+        && grep -Eq '^govbiz\.daily-report\.delivery\.dead\.v1[[:space:]]+quorum[[:space:]]+0$' <<<"${queues}"; then
+      echo "Verified report generation/delivery, combination-review and form-discovery quorum queues and their connected consumers"
       return 0
     fi
     sleep "${WAIT_INTERVAL_SECONDS}"

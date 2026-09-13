@@ -133,16 +133,29 @@ class DailyReportRepository(
         mapper.expireRunningJobs(now().minusMinutes(20), now())
         mapper.expireGeneration(now().minusMinutes(20))
         mapper.expireDelivery(now().minusMinutes(20))
+        mapper.expireQueuedDeliveries(now())
     }
+
+    fun enqueueDelivery(id: Long): Boolean {
+        val now = now()
+        return mapper.enqueueDelivery(id, now, minOf(now.plusHours(1), now.toLocalDate().plusDays(1).atStartOfDay())) == 1
+    }
+    fun queuedDelivery(id: Long): DailyReport? = mapper.findQueuedDelivery(id)?.toDomain()
+    fun publishableDeliveries(): List<Long> = mapper.findPublishableDeliveries(now())
+    fun reserveDeliveryPublication(id: Long): Boolean {
+        val now = now()
+        return mapper.reserveDeliveryPublication(id, now, now.plusMinutes(1)) == 1
+    }
+    fun markDeliveryPublished(id: Long) { check(mapper.markDeliveryPublished(id, now()) == 1) }
 
     fun claimDelivery(id: Long, email: String, unsubscribeHash: String): Boolean = mapper.claimDelivery(id, email, unsubscribeHash, now()) == 1
     fun finishDelivery(id: Long, status: DailyReportDeliveryStatus): Boolean {
         require(status in setOf(DailyReportDeliveryStatus.SENT, DailyReportDeliveryStatus.UNKNOWN, DailyReportDeliveryStatus.SKIPPED))
         return mapper.finishDelivery(id, status.name, now()) == 1
     }
-    fun dueAccountIds(date: LocalDate, limit: Int): List<Long> {
+    fun dueAccountIds(date: LocalDate, limit: Int, includeQueuedDeliveries: Boolean = true): List<Long> {
         require(limit in 1..101)
-        return mapper.findDueAccountIds(date, limit)
+        return mapper.findDueAccountIds(date, limit, includeQueuedDeliveries)
     }
 
     private fun now(): LocalDateTime = LocalDateTime.now(clock)

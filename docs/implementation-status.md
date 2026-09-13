@@ -11,6 +11,12 @@ Elasticsearch·RabbitMQ 후속 반영 기준일은 2026-09-12이며, 이 갱신�
 유료 AI 자동 재시도·DLQ 일괄 재생·관리자 화면 위젯·실행 중 개발 환경 배포는 포함하지 않습니다.
 [계약·검증 경로·남은 제약](rabbitmq-application-form-discovery.md)을 참고하세요.
 
+2026-09-13 추가 후속: 정기 리포트 메일 발송을 생성과 별도 큐로 분리했습니다. V27은 기존 `daily_report`에
+발송 Outbox 컬럼만 추가하며, 기존 발송권·SMTP Client·UNKNOWN 정책과 큐 off 직접 발송 경로를 재사용합니다.
+관리자 조회에는 `daily-report-delivery`를 추가했습니다. 실제 개발 환경 배포·외부 SMTP 실발송은 별도입니다.
+최종 Core clean build 1,280건·Frontend 1,102건·인프라 25건 및 격리 Compose의 네 큐 연결·브로커 재생성 후 복구를 통과했습니다.
+[발송 큐 적용 범위·설정·검증](rabbitmq-daily-report-delivery.md)을 참고하세요.
+
 현재 검색 정책은 [v5 개선 기록](search-relevance-v5-fix.md)을 우선 참고하세요. 시스템 날짜·서울 표제를
 후보 검색어에서 제외하고, 관련도와 자격 미확인을 분리했습니다. 화면은 서버 관련도순을 보존하고
 작은 `새 검색` 버튼과 적용 조건 요약을 제공합니다. 아래 C01/C02/v4 및 과거 테스트 수치는 당시 기록입니다.

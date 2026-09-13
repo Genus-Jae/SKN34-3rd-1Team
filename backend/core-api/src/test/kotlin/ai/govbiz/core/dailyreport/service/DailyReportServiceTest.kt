@@ -115,6 +115,7 @@ class DailyReportServiceTest {
         doReturn(account).`when`(accounts).findById(account.id)
         doReturn(true).`when`(repository).claimDelivery(eq(saved.id), equalValue(account.email), anyString())
         doReturn(DailyReportSubscription(account.id, "", false, account.email, now, now)).`when`(repository).subscription(account.id)
+        doReturn(true).`when`(repository).finishDelivery(saved.id, DailyReportDeliveryStatus.SKIPPED)
         service.deliver(saved)
         verify(repository).finishDelivery(saved.id, DailyReportDeliveryStatus.SKIPPED)
         verify(mail, never()).sendReport(anyString(), anyString(), anyValue(), anyString(), anyString())
@@ -128,6 +129,7 @@ class DailyReportServiceTest {
         doReturn(true, false).`when`(repository).claimDelivery(eq(saved.id), equalValue(account.email), anyString())
         doReturn(DailyReportSubscription(account.id, "", true, account.email, now, now)).`when`(repository).subscription(account.id)
         doThrow(DailyReportMailException()).`when`(mail).sendReport(anyString(), anyString(), anyValue(), anyString(), anyString())
+        doReturn(true).`when`(repository).finishDelivery(saved.id, DailyReportDeliveryStatus.UNKNOWN)
         service.deliver(saved)
         service.deliver(saved)
         verify(repository).finishDelivery(saved.id, DailyReportDeliveryStatus.UNKNOWN)
@@ -135,6 +137,17 @@ class DailyReportServiceTest {
     }
 
     private fun <T> equalValue(value: T): T { eq(value); return value }
+
+    @Test
+    fun queuedDeliveryBeforeSeoulSendHourDoesNotClaimOrSend() {
+        doReturn(true).`when`(mail).isAvailable()
+        val earlyClock = java.time.Clock.fixed(java.time.Instant.parse("2026-09-08T22:59:00Z"), java.time.ZoneId.of("Asia/Seoul"))
+        DailyReportService(repository, companies, accounts, search, readiness, evidence, mail,
+            DailyReportProperties(), SupportProgramRequestAdmissionService(SupportProgramRequestAdmissionProperties()), earlyClock)
+            .deliverQueued(report.id)
+        verifyNoInteractions(repository, accounts, search, evidence)
+        verify(mail, never()).sendReport(anyString(), anyString(), anyValue(), anyString(), anyString())
+    }
 
     private fun prepareGeneration() {
         doReturn(SupportProgramSearchReadinessResult(SupportProgramSearchState.SEARCHABLE_WITH_PARTIAL_SOURCES, 1, true, null, null, emptyList()))

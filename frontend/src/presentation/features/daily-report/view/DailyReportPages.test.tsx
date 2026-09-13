@@ -67,8 +67,11 @@ describe('기업 맞춤 리포트 화면', () => {
 
   it('SMTP 준비와 자동 발송 활성화는 서로 구분한다', async () => {
     vi.mocked(useCase.settings).mockResolvedValue({ ...reportSettings, schedulerEnabled: false })
+    vi.mocked(useCase.latest).mockResolvedValue(readyReport)
     renderPage()
-    await screen.findByText(/서버의 자동 발송이 꺼져 있어/)
+    await screen.findByText(/서버의 새 정기 발송 예약이 꺼져/)
+    expect(screen.getByText(/이미 예약된 메일은 처리될 수/)).toBeTruthy()
+    expect(await screen.findByText('이메일: 미발송 (예약 전 또는 대기 중)')).toBeTruthy()
     expect((screen.getByRole('button', { name: '이메일 주소 확인 메일 보내기' }) as HTMLButtonElement).disabled).toBe(false)
   })
 

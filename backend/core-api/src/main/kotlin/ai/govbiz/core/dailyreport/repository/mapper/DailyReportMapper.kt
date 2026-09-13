@@ -27,7 +27,13 @@ interface DailyReportMapper {
     fun claimDelivery(@Param("id") id: Long, @Param("email") email: String, @Param("hash") hash: String, @Param("now") now: LocalDateTime): Int
     fun finishDelivery(@Param("id") id: Long, @Param("status") status: String, @Param("now") now: LocalDateTime): Int
     fun expireDelivery(@Param("before") before: LocalDateTime): Int
-    fun findDueAccountIds(@Param("date") date: LocalDate, @Param("limit") limit: Int): List<Long>
+    fun findDueAccountIds(@Param("date") date: LocalDate, @Param("limit") limit: Int, @Param("includeQueuedDeliveries") includeQueuedDeliveries: Boolean): List<Long>
+    fun enqueueDelivery(@Param("id") id: Long, @Param("now") now: LocalDateTime, @Param("deadline") deadline: LocalDateTime): Int
+    fun findQueuedDelivery(@Param("id") id: Long): DailyReportDbRow?
+    fun findPublishableDeliveries(@Param("now") now: LocalDateTime): List<Long>
+    fun reserveDeliveryPublication(@Param("id") id: Long, @Param("now") now: LocalDateTime, @Param("retryAt") retryAt: LocalDateTime): Int
+    fun markDeliveryPublished(@Param("id") id: Long, @Param("now") now: LocalDateTime): Int
+    fun expireQueuedDeliveries(@Param("now") now: LocalDateTime): Int
     fun insertGenerationJob(@Param("reportId") reportId: Long, @Param("key") key: String, @Param("now") now: LocalDateTime, @Param("deadline") deadline: LocalDateTime): Int
     fun hasUnknownGeneration(@Param("reportId") reportId: Long): Boolean
     fun findPublishableJobs(@Param("now") now: LocalDateTime): List<Long>
