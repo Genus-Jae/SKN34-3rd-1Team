@@ -1,7 +1,23 @@
 # GovBiz 아키텍처 이미지
 
-2026-09-12 저장소의 주요 서비스 연결을 기술 로고와 함께 정리한 문서용 이미지입니다.
-앱 실행 코드나 배포 설정을 변경하지 않습니다.
+주요 서비스 연결을 기술 로고와 함께 정리한 문서용 이미지입니다.
+**로컬 구성 기록(2026-09-12)**과 **Vercel + AWS 초기 배포 예정안(2026-09-13)**을 별도 파일로 관리합니다.
+배포 예정안은 실제 인프라 구축이나 배포 완료를 의미하지 않으며, 이미지 제작은 앱 실행 코드나 배포 설정을 변경하지 않습니다.
+
+## Vercel + AWS 초기 배포 예정안
+
+- [Vercel + AWS PNG](govbiz-aws-architecture.png): 5,640 × 3,800.
+- [Vercel + AWS SVG](govbiz-aws-architecture.svg): 수정 가능한 2,820 × 1,900 벡터 원본.
+- [설계 범위·주의사항·재생성 방법](README-aws.md).
+- [AWS 이미지 생성 스크립트](build-aws.mjs) · [사용 로고 출처·해시](aws-logo-sources.json).
+
+별도 도메인을 구매하지 않고 Vercel 기본 주소로 화면과 `/api`를 함께 사용하는 제안입니다.
+Vercel external rewrites → CloudFront 기본 HTTPS 주소 → VPC origin → 비공개 EC2 Nginx로 API를 전달합니다.
+외부 API 호출용 NAT·IGW와 비공개 RDS MySQL·ECR 이미지 저장·SSM 배포 경로도 표시합니다.
+CloudFront·NAT 등 운영 비용이 발생하는 배포 예정안이며 실제 설정을 적용한 것은 아닙니다.
+기존 로컬 구성 이미지와 생성 스크립트는 보존합니다.
+
+## 로컬 구성 기록
 
 ![GovBiz 시스템 아키텍처](govbiz-architecture.png)
 
@@ -16,7 +32,7 @@ SVG 안에 로고를 데이터 URI로 포함했으므로 외부 로고 서버 �
 한글 폰트는 Arial, Apple SD Gothic Neo, Noto Sans KR, Malgun Gothic 순으로 대체합니다.
 다른 OS에서 SVG의 글자 폭이 달라질 수 있어 발표에는 확인 완료된 PNG를 권장합니다.
 
-## 구성의 기준과 한계
+## 로컬 구성 이미지의 기준과 한계
 
 - [Compose](../../../infrastructure/compose.yaml): React/Vite, Core, AI Service, MySQL, Elasticsearch, Redis, Qdrant, RabbitMQ 구성.
 - [CI](../../../.github/workflows/ci.yml): Git push·PR → GitHub Actions의 테스트·빌드·컨테이너 통합 검증.
