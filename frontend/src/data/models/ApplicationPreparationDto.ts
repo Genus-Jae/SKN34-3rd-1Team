@@ -76,6 +76,22 @@ export const applicationPreparationSummarySchema = z.object({
   formTitle: z.string().min(1),
   updatedAt: time,
 })
+
+export const applicationFormDiscoveryJobSchema = z.object({
+  id,
+  sourceCode: z.enum(['BIZINFO', 'KSTARTUP', 'MSIT', 'CNTRADE_NOTICE']),
+  sourceProgramId: z.string().min(1).max(255),
+  status: z.enum(['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'UNKNOWN']),
+  result: discoveredApplicationFormsSchema.nullable(),
+  failureCode: z.string().min(1).max(64).nullable(),
+  createdAt: time,
+}).superRefine((job, context) => {
+  if ((job.status !== 'SUCCEEDED' && job.result !== null)
+    || (job.result !== null && job.result.items.some((form) => form.sourceCode !== job.sourceCode || form.sourceProgramId !== job.sourceProgramId))
+    || (['FAILED', 'UNKNOWN'].includes(job.status) !== (job.failureCode !== null))) {
+    context.addIssue({ code: 'custom', message: '분석 작업의 상태 또는 공고 식별자가 일치하지 않습니다.' })
+  }
+})
 export const applicationPreparationPageSchema = z.object({
   items: z.array(applicationPreparationSummarySchema).max(50).refine(
     (items) => new Set(items.map(({ id: itemId }) => itemId)).size === items.length,

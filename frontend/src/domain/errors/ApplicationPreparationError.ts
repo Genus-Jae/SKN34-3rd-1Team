@@ -12,6 +12,14 @@ export class ApplicationPreparationError extends Error {
 
 function messageFor(code: string, status: number): string {
   if (status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.'
+  if (code === 'RUN_OUTCOME_UNKNOWN') return '분석 결과를 확정할 수 없어 자동 재실행을 중단했습니다. 관리자 확인이 필요합니다.'
+  if (code === 'QUEUE_EXPIRED') return '분석 대기 시간이 초과되었습니다. 공고를 다시 선택해 새 작업을 요청할 수 있습니다.'
+  if (code === 'ACCOUNT_INACTIVE') return '계정 상태가 변경되어 분석을 중단했습니다.'
+  if (code === 'DISCOVERY_FAILED') return '공식 문서 분석을 완료하지 못했습니다. 작업 내역을 확인해 주세요.'
+  if (code === 'APPLICATION_FORM_QUEUE_UNAVAILABLE') return '공식 문서 분석 큐가 비활성화되어 있습니다. 관리자에게 문의해 주세요.'
+  if (code === 'APPLICATION_FORM_JOB_NOT_FOUND') return '본인의 분석 작업을 찾을 수 없습니다.'
+  if (code === 'APPLICATION_FORM_JOB_CONFLICT') return '같은 공고의 분석이 진행 중이거나 결과 확인이 필요합니다. 최근 분석 작업을 확인해 주세요.'
+  if (code === 'APPLICATION_FORM_JOB_CAPACITY') return '진행 중이거나 확인이 필요한 분석이 3건입니다. 기존 작업을 먼저 확인해 주세요.'
   if (code === 'APPLICATION_PREPARATION_API_UNAVAILABLE') return '현재 연결된 서버가 신청 문서 작성 기능을 지원하지 않습니다. Core·AI Service 이미지를 갱신한 뒤 다시 시도해 주세요.'
   if (code === 'APPLICATION_PREPARATION_NOT_FOUND') return '신청 준비 건을 찾을 수 없습니다.'
   if (code === 'APPLICATION_FORM_NOT_SUPPORTED') return '현재 지원하지 않는 공고·양식·지원 분야입니다.'

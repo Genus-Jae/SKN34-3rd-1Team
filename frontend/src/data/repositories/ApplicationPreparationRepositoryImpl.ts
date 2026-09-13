@@ -12,7 +12,7 @@ import {
   applicationPreparationSchema,
   supportedApplicationFormsSchema,
   applicationInterpretationSchema,
-  discoveredApplicationFormsSchema,
+  applicationFormDiscoveryJobSchema,
 } from '../models/ApplicationPreparationDto'
 
 const cursor = (beforeId?: number) => `?size=20${beforeId === undefined ? '' : `&beforeId=${beforeId}`}`
@@ -21,8 +21,20 @@ export class ApplicationPreparationRepositoryImpl implements ApplicationPreparat
   async forms(signal?: AbortSignal) {
     return (await request('/forms', supportedApplicationFormsSchema, 'GET', undefined, signal)).items
   }
-  discover(sourceCode: string, sourceProgramId: string, signal?: AbortSignal) {
-    return request('/forms/discover', discoveredApplicationFormsSchema, 'POST', { sourceCode, sourceProgramId }, signal)
+  async discover(sourceCode: string, sourceProgramId: string, signal?: AbortSignal, requestKey = crypto.randomUUID()) {
+    const job = await request('/forms/discovery-jobs', applicationFormDiscoveryJobSchema, 'POST', { sourceCode, sourceProgramId, requestKey }, signal)
+    if (job.sourceCode !== sourceCode || job.sourceProgramId !== sourceProgramId || (job.status === 'SUCCEEDED' && job.result === null)) {
+      throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
+    }
+    return job
+  }
+  async discoveryJob(id: number, signal?: AbortSignal) {
+    const job = await request(`/forms/discovery-jobs/${id}`, applicationFormDiscoveryJobSchema, 'GET', undefined, signal)
+    if (job.id !== id || (job.status === 'SUCCEEDED' && job.result === null)) throw new ApplicationPreparationError(502, 'INVALID_RESPONSE')
+    return job
+  }
+  discoveryJobs(signal?: AbortSignal) {
+    return request('/forms/discovery-jobs', z.array(applicationFormDiscoveryJobSchema).max(20), 'GET', undefined, signal)
   }
   list(beforeId?: number, signal?: AbortSignal) {
     return request(cursor(beforeId), applicationPreparationPageSchema, 'GET', undefined, signal)

@@ -8,7 +8,7 @@
 - AI 대화 검색: 기업 조건과 지원 목적을 대화로 반영하고, 추천 공고·관련도 점수·추천 이유 표시
 - 필터 검색: 키워드·지역·분야·제공처·접수 상태와 K-Startup 전용 조건으로 공고 조회
 - 공고 상세·원문 질문: 신청 기간·접수 상태 확인, 기업마당 공식 원문 기반 답변과 근거 인용
-- 신청 문서 준비: 기업마당·K-Startup·과기정통부·충남 수출지원 공식 첨부에서 신청 문항을 찾고, AI와 정리한 입력을 사용자가 확인해 저장
+- 신청 문서 준비: 네 제공처의 공식 첨부를 백그라운드 분석하고 작업 상태·결과를 다시 확인, AI와 정리한 입력은 사용자가 확인해 저장
 - 중복 지원·수혜 검토: 선택한 공고의 공식 첨부와 참여 정보를 근거로 백그라운드 분석, 진행 상태·결과·근거 이력 확인
 - 기업 맞춤 리포트: 저장된 기업 정보 기반 지원사업 추천, 웹 미리보기와 정기 이메일 수신 설정
 - 파트너 관리: 공고별 협업 모집글 작성·수정·마감, 참여 제안과 수락·거절·철회
@@ -52,6 +52,7 @@ docker compose --env-file .env --file infrastructure/compose.yaml up --build
 | [Redis 적용 상세](docs/redis-search-result-restoration.md) | 로그인 후 검색 결과 복원과 저장·장애 처리 |
 | [RabbitMQ 정기 리포트](docs/rabbitmq-daily-report-generation.md) | 정기 리포트 생성 큐와 중복 방지·장애 대응 |
 | [RabbitMQ 중복 검토 분석](docs/rabbitmq-combination-review.md) | 분석 작업 큐, 진행 상태·이력 복원·운영 설정 |
+| [RabbitMQ 공식 문서 분석](docs/rabbitmq-application-form-discovery.md) | 문항 추출 작업·결과 복원·관리자 큐 운영 조회 |
 | [구현 현황](docs/implementation-status.md) | 완료 단계·검증 결과·현재 한계·다음 작업 |
 | [검색 평가 결과](evaluation/support-program-search/runs/support-program-catalog-20260906-v1/README.md) | 고정 실데이터·AI-only 판정·전후 비교·재현 방법 |
 | [실행·검증](infrastructure/README.md) | Compose·환경변수·통합 검증 |

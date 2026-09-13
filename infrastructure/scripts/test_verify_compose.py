@@ -34,6 +34,7 @@ if [[ "${VERIFY_CHECK_SAFE_UPSTREAM_ENV:-false}" == "true" ]]; then
   [[ -z "$DAILY_REPORT_FROM$SMTP_HOST$SMTP_USERNAME$SMTP_PASSWORD" ]] || exit 108
   [[ "$DAILY_REPORT_QUEUE_ENABLED" == "true" ]] || exit 109
   [[ "$COMBINATION_REVIEW_QUEUE_ENABLED" == "true" ]] || exit 111
+  [[ "$APPLICATION_FORM_DISCOVERY_QUEUE_ENABLED" == "true" ]] || exit 112
   [[ "$RABBITMQ_USERNAME" == "govbiz-verification" && "$RABBITMQ_PASSWORD" == "govbiz-verification-not-a-secret" ]] || exit 110
 fi
 case "$*" in

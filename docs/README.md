@@ -15,6 +15,7 @@
 | [Redis 적용 범위·검색 결과 복원](redis-search-result-restoration.md) | 적용 위치·호출 흐름·저장 구조, 30분 TTL·계정 소유권, 장애·운영·검증과 미적용 범위 |
 | [RabbitMQ 정기 리포트 생성](rabbitmq-daily-report-generation.md) | 용어·호출 흐름·코드 위치, DB Outbox·중복·예산·실행 불명, 설정 조합·증상별 대응·검증과 미적용 범위 |
 | [RabbitMQ 중복 검토 분석](rabbitmq-combination-review.md) | 202 접수·실행 상태 자동 조회, 실행 행 Outbox·중복/만료/결과 불명·V25·설정·검증 |
+| [RabbitMQ 공식 문서 분석·운영 조회](rabbitmq-application-form-discovery.md) | V26 문항 추출 작업·이력 복원, 세 큐의 관리자 현황·장애 대응 |
 | [구현 현황](implementation-status.md) | 현재 완료 단계, 검증 범위, 제한 사항과 다음 작업 |
 | [코드 검수·최적화 기록](code-audit-20260907.md) | 학습 코드 보존, 미사용 항목 제거, 장애·화면·평가 오류 수정과 전체 검증 결과 |
 | [기획 대조 추가 검수](project-review-20260907.md) | 추가 발견 버그의 재현·수정, 이번 실행 검증과 환경 제약 |

@@ -27,12 +27,15 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.beans.factory.annotation.Value
+import ai.govbiz.core.applicationpreparation.service.exception.ApplicationFormDiscoveryException
 
 @RestController
 @RequestMapping("/api/v1/application-preparations")
 class ApplicationPreparationController(
     private val service: ApplicationPreparationService,
     private val discovery: ApplicationFormDiscoveryService,
+    @param:Value("\${app.application-form-discovery.queue.enabled:false}") private val discoveryQueueEnabled: Boolean,
 ) {
     @GetMapping("/forms")
     fun forms(account: Account): ResponseEntity<SupportedApplicationFormsResponse> =
@@ -43,10 +46,13 @@ class ApplicationPreparationController(
     fun discoverForms(
         account: Account,
         @RequestBody @Valid request: DiscoverApplicationFormsRequest,
-    ): ResponseEntity<DiscoveredApplicationFormsResponse> =
-        ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+    ): ResponseEntity<DiscoveredApplicationFormsResponse> {
+        // 큐 사용 환경에서 구형 API로 동시 실행 제한·멱등 처리를 우회할 수 없다.
+        if (discoveryQueueEnabled) throw ApplicationFormDiscoveryException(ApplicationFormDiscoveryException.Reason.JOB_CONFLICT)
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
             DiscoveredApplicationFormsResponse.from(discovery.discover(account, request.sourceCode, request.sourceProgramId)),
         )
+    }
 
     @PostMapping
     fun create(
