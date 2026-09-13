@@ -7,6 +7,7 @@ import {
   type ApplicationFormSection,
 } from '../../../../domain/entities/ApplicationPreparation'
 import { catalogSourceLabels } from '../../../../domain/entities/SupportProgramCatalog'
+import { ApplicationPreparationError } from '../../../../domain/errors/ApplicationPreparationError'
 import { selectCurrentAccount } from '../../../shared/auth/state/authSlice'
 import { appPaths } from '../../../shared/routes/appPaths'
 import { WorkspacePageHeader } from '../../../shared/workspace/WorkspacePageHeader'
@@ -40,12 +41,22 @@ function readableTime(value: string) {
   return new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
-function ErrorNotice({ message, retryLabel, onRetry }: { message: string; retryLabel?: string; onRetry?: () => void }) {
+function ErrorNotice({ message, retryLabel, onRetry, officialSource }: {
+  message: string
+  retryLabel?: string
+  onRetry?: () => void
+  officialSource?: { title: string; url: string }
+}) {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => { ref.current?.focus() }, [message])
   return <div className={s.warning} ref={ref} role="alert" tabIndex={-1}>
     <p>{message}</p>
-    {onRetry && <button className={`${s.button} mt-3`} type="button" onClick={onRetry}>{retryLabel ?? '다시 시도'}</button>}
+    {(onRetry || officialSource) && <div className="mt-3 flex flex-wrap gap-3">
+      {onRetry && <button className={s.button} type="button" onClick={onRetry}>{retryLabel ?? '다시 시도'}</button>}
+      {officialSource && <a className={s.officialLink} href={officialSource.url} target="_blank" rel="noreferrer">
+        공고 원문 열기<span className="sr-only">: {officialSource.title} (새 창)</span>
+      </a>}
+    </div>}
   </div>
 }
 
@@ -231,6 +242,7 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
   useLayoutEffect(() => {
     if (vm.creationStep === 'FORM') { setSavedProgramsOpen(false); resultHeading.current?.focus() }
   }, [vm.creationStep])
+  const noDiscoveredForm = vm.error instanceof ApplicationPreparationError && vm.error.code === 'APPLICATION_FORM_NO_FORM'
   return <>
     <WorkspacePageHeader
       parent={{ to: appPaths.applicationPreparations, label: listTitle }}
@@ -240,7 +252,13 @@ function ApplicationPreparationEditor({ id, initialSourceCode, initialSourceProg
       {vm.loading && <p className={s.status} role="status" aria-live="polite">
         {id === null ? '지원 가능한 공식 양식을 불러오는 중입니다.' : '신청 문서 정보를 불러오는 중입니다.'}
       </p>}
-      {vm.error && <ErrorNotice message={vm.error.message} onRetry={vm.submitting || vm.discovering ? undefined : id === null ? vm.discoverForms : vm.load} />}
+      {vm.error && <ErrorNotice
+        message={vm.error.message}
+        onRetry={noDiscoveredForm || vm.submitting || vm.discovering ? undefined : id === null ? vm.discoverForms : vm.load}
+        officialSource={noDiscoveredForm && vm.selectedProgram
+          ? { title: vm.selectedProgram.title, url: vm.selectedProgram.sourceUrl }
+          : undefined}
+      />}
       {id === null && <section className={s.card} aria-label="최근 공식 문서 분석 작업">
         <h2 className={s.cardTitle}>최근 공식 문서 분석 작업</h2>
         <p className={s.muted}>분석은 화면을 떠나도 계속됩니다. 새로고침 후에는 아래 작업을 선택해 상태와 결과를 다시 확인하세요.</p>

@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -21,6 +23,12 @@ from app.application_preparation.prompt import PROMPT_VERSION
 from app.application_preparation.service import ApplicationPreparationError, ApplicationPreparationService
 from app.config import Settings
 from app.main import create_app
+
+FIXTURES = (
+    Path(os.environ["GOVBIZ_TEST_APPLICATION_PREPARATION_CONTRACT_DIR"])
+    if "GOVBIZ_TEST_APPLICATION_PREPARATION_CONTRACT_DIR" in os.environ
+    else Path(__file__).resolve().parents[4] / "backend/core-api/src/test/resources/applicationpreparation"
+)
 
 
 def request_data():
@@ -53,34 +61,24 @@ def selection_data():
 
 
 def discovery_request_data():
-    return {
-        "contractVersion": "application-form-discovery-v1",
-        "sourceCode": "BIZINFO",
-        "sourceProgramId": "PBLN_123",
-        "programTitle": "지원사업 공고",
-        "documents": [{
-            "documentIndex": 0,
-            "fileName": "사업계획서.hwpx",
-            "format": "HWPX",
-            "blocks": [{"blockId": "D0-B0", "locator": "HWPX section0 paragraphs 1-3", "text": "사업 개요를 작성해 주세요."}],
-        }],
-    }
+    return json.loads((FIXTURES / "discovery-contract-request.json").read_text(encoding="utf-8"))
+
+
+def discovery_response_data():
+    return json.loads((FIXTURES / "discovery-contract-response.json").read_text(encoding="utf-8"))
 
 
 def discovery_selection_data():
-    return {"forms": [{"documentIndex": 0, "sections": [{
-        "sectionKey": "business-plan",
-        "title": "사업 계획",
-        "description": "사업 개요를 작성합니다.",
-        "fields": [{
-            "fieldKey": "business-overview",
-            "label": "사업 개요",
-            "guidance": "사업의 목적과 내용을 입력합니다.",
-            "required": True,
-            "evidenceBlockId": "D0-B0",
-            "evidenceQuote": "사업 개요",
-        }],
-    }]}]}
+    data = discovery_response_data()
+    for name in ("contractVersion", "model", "promptVersion"):
+        data.pop(name)
+    section = data["forms"][0]["sections"][0]
+    section["title"] = "  사업\n계획  "
+    section["description"] = " 사업 개요와\r\n추진 방법을 작성합니다. "
+    section["fields"][0]["label"] = " 사업\t개요 "
+    section["fields"][0]["guidance"] = " 사업의 목적과\n주요 내용을 입력합니다. "
+    section["fields"][0]["evidenceQuote"] = "사업 개요"
+    return data
 
 
 def make_service(data=None):
@@ -106,8 +104,9 @@ def test_real_runner_discovers_only_fields_with_exact_document_evidence():
     agent = ApplicationPreparationAgent(model=model, model_timeout_seconds=2, run_timeout_seconds=3)
     service = ApplicationPreparationService(agent, "test-model")
     result = asyncio.run(service.discover(DiscoverFormsRequest.model_validate(discovery_request_data())))
-    assert result["forms"][0]["sections"][0]["fields"][0]["evidenceQuote"] == "사업 개요"
+    assert result == discovery_response_data()
     assert result["promptVersion"] == DISCOVERY_PROMPT_VERSION
+    assert result["forms"][0]["sections"][0]["fields"][0]["evidenceQuote"] == "사업\n개요"
     assert len(model.calls) == 1
     assert agent._discovery_agent.tools == []
 
@@ -150,14 +149,8 @@ def test_discovery_contract_rejects_provider_mismatched_ids(source_code, source_
 
 def test_discovery_normalizes_display_text_and_whitespace_only_quote_differences():
     request_data = discovery_request_data()
-    request_data["documents"][0]["blocks"][0]["text"] = "사업\n개요를 작성해 주세요."
     output = discovery_selection_data()
     section = output["forms"][0]["sections"][0]
-    section["title"] = "  사업 계획  "
-    section["description"] = "  사업 개요를 작성합니다.  "
-    section["fields"][0]["label"] = "  사업 개요  "
-    section["fields"][0]["guidance"] = "  사업의 목적과 내용을 입력합니다.  "
-    section["fields"][0]["evidenceQuote"] = "사업 개요"
     agent = SimpleNamespace(discover=AsyncMock(return_value=FormDiscoverySelection.model_validate(output)))
 
     result = asyncio.run(ApplicationPreparationService(agent, "test-model").discover(
@@ -166,8 +159,27 @@ def test_discovery_normalizes_display_text_and_whitespace_only_quote_differences
 
     normalized = result["forms"][0]["sections"][0]
     assert normalized["title"] == "사업 계획"
+    assert normalized["description"] == "사업 개요와 추진 방법을 작성합니다."
     assert normalized["fields"][0]["label"] == "사업 개요"
+    assert normalized["fields"][0]["guidance"] == "사업의 목적과 주요 내용을 입력합니다."
     assert normalized["fields"][0]["evidenceQuote"] == "사업\n개요"
+
+
+def test_discovery_rejects_non_layout_control_or_format_characters_with_a_safe_path():
+    output = discovery_selection_data()
+    output["forms"][0]["sections"][0]["fields"][0]["guidance"] = "사업\u200b내용"
+    agent = SimpleNamespace(discover=AsyncMock(return_value=FormDiscoverySelection.model_validate(output)))
+
+    with pytest.raises(ApplicationPreparationError, match="APPLICATION_PREPARATION_FAILED") as failure:
+        asyncio.run(ApplicationPreparationService(agent, "test-model").discover(
+            DiscoverFormsRequest.model_validate(discovery_request_data()),
+        ))
+
+    cause = failure.value.__cause__
+    assert cause.reason == "FORBIDDEN_DISPLAY_CHARACTER"
+    assert cause.path == "forms[0].sections[0].fields[0].guidance"
+    assert cause.code_point_count == 5
+    assert cause.forbidden_character_count == 1
 
 
 def test_discovery_merges_repeated_document_candidates_and_makes_generated_keys_unique():
@@ -247,3 +259,34 @@ def test_fastapi_contract_hides_private_failures():
         assert failure.status_code == 503
         assert failure.json() == {"detail": {"code": "APPLICATION_PREPARATION_FAILED"}}
         assert "private failure" not in failure.text
+
+
+def test_discovery_failure_log_keeps_only_safe_path_and_counts(caplog):
+    output = discovery_selection_data()
+    private_guidance = "민감한\u200b진단 원문"
+    output["forms"][0]["sections"][0]["fields"][0]["guidance"] = private_guidance
+    app = create_app(settings=Settings(
+        openai_api_key="unused",
+        openai_model="test-model",
+        llm_model_timeout_seconds=2,
+        llm_run_timeout_seconds=3,
+    ))
+    app.state.container.application_preparation_service = ApplicationPreparationService(
+        SimpleNamespace(discover=AsyncMock(return_value=FormDiscoverySelection.model_validate(output))),
+        "test-model",
+    )
+    caplog.set_level("WARNING", logger="app.application_preparation.router")
+
+    with TestClient(app) as client:
+        response = client.post("/internal/v1/application-preparations/discovery", json=discovery_request_data())
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": {"code": "APPLICATION_PREPARATION_FAILED"}}
+    assert "validation_reason=FORBIDDEN_DISPLAY_CHARACTER" in caplog.text
+    assert "validation_path=forms[0].sections[0].fields[0].guidance" in caplog.text
+    assert "code_point_count=9" in caplog.text
+    assert "forbidden_character_count=1" in caplog.text
+    assert "document_count=1" in caplog.text
+    assert "block_count=1" in caplog.text
+    assert private_guidance not in caplog.text
+    assert discovery_request_data()["documents"][0]["blocks"][0]["text"] not in caplog.text

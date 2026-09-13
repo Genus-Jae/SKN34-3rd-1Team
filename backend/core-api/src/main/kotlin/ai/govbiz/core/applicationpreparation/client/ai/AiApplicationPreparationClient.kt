@@ -1,6 +1,7 @@
 package ai.govbiz.core.applicationpreparation.client.ai
 
 import ai.govbiz.core._common.exception.AiServiceCallException
+import ai.govbiz.core._common.exception.AiServiceFailure
 import ai.govbiz.core._common.helper.executeAiServiceCall
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationConfigurationPayload
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationInterpretPayload
@@ -10,8 +11,10 @@ import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDisc
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.MediaType
 import org.springframework.http.client.ClientHttpResponse
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
+import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
 
 @Component
@@ -48,24 +51,54 @@ class AiApplicationPreparationClient(
             ?: throw AiServiceCallException.invalidResponse("Application form discovery configuration was empty", null)
     }
 
-    fun discover(request: AiApplicationFormDiscoveryRequest): AiApplicationFormDiscoveryPayload = executeAiServiceCall {
-        client.post().uri("/internal/v1/application-preparations/discovery")
-            .contentType(MediaType.APPLICATION_JSON).body(request).retrieve()
-            .onStatus({ it.value() == 503 }, { _, response ->
-                if (readErrorCode(response) == "APPLICATION_PREPARATION_FAILED") {
-                    throw AiServiceCallException.invalidResponse("Application form discovery response failed validation", null)
-                }
-                throw AiServiceCallException.unavailable(null)
-            })
-            .onStatus({ it.value() == 504 }, { _, _ -> throw AiServiceCallException.timeout(null) })
-            .onStatus({ it.value() != 200 }, { _, _ -> throw AiServiceCallException.unavailable(null) })
-            .body(AiApplicationFormDiscoveryPayload::class.java)
-            ?: throw AiServiceCallException.invalidResponse("Application form discovery response was empty", null)
+    fun discover(request: AiApplicationFormDiscoveryRequest): AiApplicationFormDiscoveryPayload = try {
+        executeAiServiceCall {
+            client.post().uri("/internal/v1/application-preparations/discovery")
+                .contentType(MediaType.APPLICATION_JSON).body(request).retrieve()
+                .onStatus({ it.value() == 503 }, { _, response ->
+                    if (readErrorCode(response) == "APPLICATION_PREPARATION_FAILED") {
+                        throw AiServiceCallException.invalidResponse("Application form discovery response failed validation", null)
+                    }
+                    throw AiServiceCallException.unavailable(null)
+                })
+                .onStatus({ it.value() == 504 }, { _, _ -> throw AiServiceCallException.timeout(null) })
+                .onStatus({ it.value() != 200 }, { _, _ -> throw AiServiceCallException.unavailable(null) })
+                .body(AiApplicationFormDiscoveryPayload::class.java)
+                ?: throw AiServiceCallException.invalidResponse("Application form discovery response was empty", null)
+        }
+    } catch (error: AiServiceCallException) {
+        if (error.failure == AiServiceFailure.INVALID_RESPONSE) {
+            val decoding = generateSequence(error as Throwable?) { it.cause }
+                .filterIsInstance<JacksonException>()
+                .firstOrNull()
+            val stage = when {
+                decoding != null -> "decode"
+                error.message?.endsWith("was empty") == true -> "empty"
+                else -> "upstream-validation"
+            }
+            logger.warn(
+                "application_form_discovery_response_invalid stage={} path={} errorType={} documentCount={} blockCount={}",
+                stage,
+                decoding?.safePath() ?: "unknown",
+                decoding?.javaClass?.simpleName ?: error.cause?.javaClass?.simpleName ?: "UNKNOWN",
+                request.documents.size,
+                request.documents.sumOf { it.blocks.size },
+            )
+        }
+        throw error
     }
 
     private fun readErrorCode(response: ClientHttpResponse): String? {
         val bytes = response.body.readNBytes(8193)
         if (bytes.size > 8192) return null
         return runCatching { json.readTree(bytes).path("detail").path("code").asString() }.getOrNull()
+    }
+
+    private fun JacksonException.safePath(): String = path.joinToString("") { reference ->
+        reference.propertyName?.let { ".$it" } ?: "[${reference.index}]"
+    }.removePrefix(".").ifEmpty { "unknown" }
+
+    private companion object {
+        val logger = LoggerFactory.getLogger(AiApplicationPreparationClient::class.java)
     }
 }

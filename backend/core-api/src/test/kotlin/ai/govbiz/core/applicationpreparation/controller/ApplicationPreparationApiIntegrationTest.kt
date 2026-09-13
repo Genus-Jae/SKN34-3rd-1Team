@@ -13,9 +13,6 @@ import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparat
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationPreparationSuggestionPayload
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDiscoveryPayload
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AiApplicationFormDiscoveryRequest
-import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicationFormFieldPayload
-import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicationFormPayload
-import ai.govbiz.core.applicationpreparation.client.ai.dto.AiDiscoveredApplicationFormSectionPayload
 import ai.govbiz.core.applicationpreparation.client.ai.dto.AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION
 import ai.govbiz.core.supportprogram.client.bizinfo.BizInfoAttachmentClient
 import ai.govbiz.core.supportprogram.client.cntradenotice.CnTradeNoticeAttachmentClient
@@ -178,28 +175,16 @@ class ApplicationPreparationApiIntegrationTest {
             ),
         )
         `when`(documentParser.parse(bytes, "HWPX")).thenReturn(
-            listOf(SupportProgramDocumentBlock("HWPX section0 paragraphs 1-3", "사업 개요를 작성해 주세요.")),
+            listOf(SupportProgramDocumentBlock(DISCOVERY_LOCATOR, DISCOVERY_BLOCK_TEXT)),
         )
         `when`(documentParser.parse(bytes, "HWP")).thenReturn(
-            listOf(SupportProgramDocumentBlock("HWP paragraph 1 part 1", "사업 개요를 작성해 주세요.")),
+            listOf(SupportProgramDocumentBlock("HWP paragraph 1 part 1", DISCOVERY_BLOCK_TEXT)),
         )
         `when`(documentParser.parse(bytes, "PDF")).thenReturn(
-            listOf(SupportProgramDocumentBlock("PDF page 1 part 1", "사업 개요를 작성해 주세요.")),
+            listOf(SupportProgramDocumentBlock("PDF page 1 part 1", DISCOVERY_BLOCK_TEXT)),
         )
         `when`(ai.discover(any(AiApplicationFormDiscoveryRequest::class.java) ?: fallbackDiscoveryRequest())).thenReturn(
-            AiApplicationFormDiscoveryPayload(
-                AI_APPLICATION_FORM_DISCOVERY_CONTRACT_VERSION,
-                "test-model",
-                DISCOVERY_PROMPT_VERSION,
-                listOf(AiDiscoveredApplicationFormPayload(0, listOf(
-                    AiDiscoveredApplicationFormSectionPayload("business-plan", "사업 계획", "사업 개요를 작성합니다.", listOf(
-                        AiDiscoveredApplicationFormFieldPayload(
-                            "business-overview", "사업 개요", "사업의 목적과 내용을 입력합니다.", true,
-                            "D0-B0", "사업 개요",
-                        ),
-                    )),
-                ))),
-            ),
+            json.readValue(resource("discovery-contract-response.json"), AiApplicationFormDiscoveryPayload::class.java),
         )
     }
 
@@ -478,12 +463,18 @@ class ApplicationPreparationApiIntegrationTest {
 
     private fun count(): Int = requireNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM application_preparation", Int::class.java))
 
+    private fun resource(name: String) = requireNotNull(
+        javaClass.getResourceAsStream("/applicationpreparation/$name"),
+    ).bufferedReader().use { it.readText() }
+
     private companion object {
         const val BASE = "/api/v1/application-preparations"
         const val ORIGIN = "http://localhost:5173"
         const val FORM_VERSION = "bizinfo-pbln-000000000118979-innovation-voucher-2026-v1"
         const val PROMPT_VERSION = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        const val DISCOVERY_PROMPT_VERSION = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        const val DISCOVERY_PROMPT_VERSION = "sha256:15eae460de872e14ef6e6a99db4bd5952acc293466adb9492dc34fa51a971c8d"
+        const val DISCOVERY_LOCATOR = "HWPX section0 paragraphs 1-2"
+        const val DISCOVERY_BLOCK_TEXT = "사업\n개요를 작성해 주세요. 지원 목적과 주요 내용을 구체적으로 설명하고 지원 대상과 기대 효과도 함께 작성해 주세요."
         const val DISCOVERY_PROGRAM_ID = "PBLN_123456"
         const val MSIT_PROGRAM_ID = "3186573"
         const val MSIT_SOURCE_URL = "https://www.msit.go.kr/bbs/view.do?bbsSeqNo=100&mId=311&mPid=121&nttSeqNo=3186573&sCode=user"

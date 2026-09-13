@@ -369,12 +369,28 @@ describe('application preparation creation and detail', () => {
   })
 
   it('explains when the selected notice has no discoverable application form', async () => {
+    const program = {
+      ...structuredClone(supportPrograms[0]),
+      sourceCode: 'BIZINFO',
+      id: 'PBLN_126043',
+      sourceUrl: 'https://www.bizinfo.go.kr/official-notice',
+    }
+    browsePrograms.mockResolvedValueOnce({
+      programs: [program], total: 1, page: 1, pageSize: 10, totalPages: 1,
+      regions: [], categories: [], startupStages: [], applicantTypes: [], founderAges: [],
+    })
     repository.discover.mockRejectedValueOnce(new ApplicationPreparationError(422, 'APPLICATION_FORM_NO_FORM'))
     mount('/app/application-preparations/new')
-    fireEvent.change(screen.getByLabelText('기업마당 공식 공고 URL 또는 공고 ID'), { target: { value: 'PBLN_1' } })
-    fireEvent.click(screen.getByRole('button', { name: '신청 문서 찾기' }))
 
-    expect((await screen.findByRole('alert')).textContent).toContain('신청 문서를 찾지 못했습니다')
+    fireEvent.click(screen.getByRole('button', { name: '공고 검색' }))
+    const results = await screen.findByRole('list', { name: '신청 문서 공고 검색 결과' })
+    fireEvent.click(within(results).getByRole('button', { name: '선택' }))
+    const selected = screen.getByRole('heading', { name: '선택한 공고' }).closest('section')!
+    fireEvent.click(within(selected).getByRole('button', { name: '신청 문서 찾기' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('현재 지원하지 않는 신청 문서 형식입니다')
+    expect(screen.queryByRole('button', { name: '다시 시도' })).toBeNull()
+    expect(screen.getByRole('link', { name: /공고 원문 열기/ }).getAttribute('href')).toBe(program.sourceUrl)
     expect(screen.queryByRole('button', { name: '신청 문서 작성 시작' })).toBeNull()
   })
 

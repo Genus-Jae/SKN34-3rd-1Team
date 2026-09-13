@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -138,9 +139,42 @@ class FormDiscoverySelection(Contract):
 
 
 class FormDiscoveryValidationError(ValueError):
-    def __init__(self, reason: str):
+    def __init__(
+        self,
+        reason: str,
+        *,
+        path: str = "response",
+        code_point_count: int | None = None,
+        item_count: int | None = None,
+        forbidden_character_count: int | None = None,
+    ):
         super().__init__(reason)
         self.reason = reason
+        self.path = path
+        self.code_point_count = code_point_count
+        self.item_count = item_count
+        self.forbidden_character_count = forbidden_character_count
+
+
+def _canonical_display_text(value: str, maximum: int, path: str) -> str:
+    normalized = re.sub(r"[ \t\r\n]+", " ", value).strip(" ")
+    if not normalized:
+        raise FormDiscoveryValidationError("EMPTY_DISPLAY_TEXT", path=path, code_point_count=0)
+    forbidden_count = sum(unicodedata.category(character).startswith("C") for character in normalized)
+    if forbidden_count:
+        raise FormDiscoveryValidationError(
+            "FORBIDDEN_DISPLAY_CHARACTER",
+            path=path,
+            code_point_count=len(normalized),
+            forbidden_character_count=forbidden_count,
+        )
+    if len(normalized) > maximum:
+        raise FormDiscoveryValidationError(
+            "DISPLAY_TEXT_TOO_LONG",
+            path=path,
+            code_point_count=len(normalized),
+        )
+    return normalized
 
 
 def _canonical_source_quote(source: str, proposed: str) -> str | None:
@@ -172,39 +206,45 @@ def _unique_key(key: str, used: set[str]) -> str:
 def validate_discovery(request: DiscoverFormsRequest, output: FormDiscoverySelection) -> None:
     documents = {item.documentIndex: item for item in request.documents}
     merged_forms: dict[int, DiscoveredForm] = {}
-    for form in output.forms:
+    for form_index, form in enumerate(output.forms):
         if form.documentIndex not in documents:
-            raise FormDiscoveryValidationError("INVALID_DOCUMENT_INDEX")
+            raise FormDiscoveryValidationError("INVALID_DOCUMENT_INDEX", path=f"forms[{form_index}].documentIndex")
         existing = merged_forms.get(form.documentIndex)
         if existing is None:
             merged_forms[form.documentIndex] = form
         else:
             existing.sections.extend(form.sections)
             if len(existing.sections) > 12:
-                raise FormDiscoveryValidationError("TOO_MANY_MERGED_SECTIONS")
+                raise FormDiscoveryValidationError(
+                    "TOO_MANY_MERGED_SECTIONS",
+                    path=f"forms[{form_index}].sections",
+                    item_count=len(existing.sections),
+                )
     output.forms = list(merged_forms.values())
-    for form in output.forms:
+    for form_index, form in enumerate(output.forms):
         section_keys: set[str] = set()
         blocks = {block.blockId: block for block in documents[form.documentIndex].blocks}
-        for section in form.sections:
+        for section_index, section in enumerate(form.sections):
+            section_path = f"forms[{form_index}].sections[{section_index}]"
             section.sectionKey = _unique_key(section.sectionKey, section_keys)
-            section.title = section.title.strip()
-            section.description = section.description.strip()
-            if not section.title or not section.description:
-                raise FormDiscoveryValidationError("EMPTY_SECTION_TEXT")
+            section.title = _canonical_display_text(section.title, 100, f"{section_path}.title")
+            section.description = _canonical_display_text(section.description, 1000, f"{section_path}.description")
             field_keys: set[str] = set()
-            for field in section.fields:
+            for field_index, field in enumerate(section.fields):
+                field_path = f"{section_path}.fields[{field_index}]"
                 field.fieldKey = _unique_key(field.fieldKey, field_keys)
                 block = blocks.get(field.evidenceBlockId)
                 if block is None:
-                    raise FormDiscoveryValidationError("UNKNOWN_EVIDENCE_BLOCK")
-                field.label = field.label.strip()
-                field.guidance = field.guidance.strip()
-                if not field.label or not field.guidance:
-                    raise FormDiscoveryValidationError("EMPTY_FIELD_TEXT")
+                    raise FormDiscoveryValidationError("UNKNOWN_EVIDENCE_BLOCK", path=f"{field_path}.evidenceBlockId")
+                field.label = _canonical_display_text(field.label, 100, f"{field_path}.label")
+                field.guidance = _canonical_display_text(field.guidance, 500, f"{field_path}.guidance")
                 canonical_quote = _canonical_source_quote(block.text, field.evidenceQuote)
                 if canonical_quote is None:
-                    raise FormDiscoveryValidationError("EVIDENCE_QUOTE_MISMATCH")
+                    raise FormDiscoveryValidationError(
+                        "EVIDENCE_QUOTE_MISMATCH",
+                        path=f"{field_path}.evidenceQuote",
+                        code_point_count=len(field.evidenceQuote),
+                    )
                 field.evidenceQuote = canonical_quote
 
 
