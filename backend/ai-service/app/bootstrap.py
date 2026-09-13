@@ -7,6 +7,8 @@ from app.combination_review.agent import CombinationReviewAgent
 from app.combination_review.service import CombinationReviewService
 from app.application_preparation.agent import ApplicationPreparationAgent
 from app.application_preparation.service import ApplicationPreparationService
+from app.assistant.agent import AssistantAgent
+from app.assistant.service import AssistantService
 
 from app.support_program_evidence.agent import SupportProgramEvidenceAnswerAgent
 from app.support_program_evidence.answer_service import SupportProgramEvidenceAnswerService
@@ -32,6 +34,7 @@ class ApplicationContainer:
     qdrant_client: AsyncQdrantClient | None = None
     combination_review_service: CombinationReviewService | None = None
     application_preparation_service: ApplicationPreparationService | None = None
+    assistant_service: AssistantService | None = None
 
     async def close(self) -> None:
         try:
@@ -49,6 +52,7 @@ def build_application_container(
     support_program_evidence_answer_agent: SupportProgramEvidenceAnswerAgent | None = None,
     support_program_conversation_agent: SupportProgramConversationAgent | None = None,
     application_preparation_agent: ApplicationPreparationAgent | None = None,
+    assistant_agent: AssistantAgent | None = None,
 ) -> ApplicationContainer:
     """환경설정과 선택적 테스트 대역을 실제 애플리케이션 객체로 조립한다."""
 
@@ -61,7 +65,10 @@ def build_application_container(
     evidence_answer_agent = support_program_evidence_answer_agent
     conversation_agent = support_program_conversation_agent
     general_model = None
-    if evidence_answer_agent is None or conversation_agent is None or application_preparation_agent is None:
+    if (
+        evidence_answer_agent is None or conversation_agent is None
+        or application_preparation_agent is None or assistant_agent is None
+    ):
         general_model = OpenAIResponsesModel(
             model=settings.openai_model,
             openai_client=openai_client,
@@ -101,6 +108,14 @@ def build_application_container(
             run_timeout_seconds=settings.llm_run_timeout_seconds,
         )
 
+    if assistant_agent is None:
+        assert general_model is not None
+        assistant_agent = AssistantAgent(
+            model=general_model,
+            model_timeout_seconds=settings.llm_model_timeout_seconds,
+            run_timeout_seconds=settings.llm_run_timeout_seconds,
+        )
+
     combination_agent = CombinationReviewAgent(
         model=general_model or OpenAIResponsesModel(model=settings.openai_model, openai_client=openai_client),
         model_timeout_seconds=settings.llm_combination_review_model_timeout_seconds,
@@ -118,6 +133,7 @@ def build_application_container(
         application_preparation_service=ApplicationPreparationService(application_preparation_agent, settings.openai_model),
         support_program_ranking_service=SupportProgramRankingService(ranking_agent),
         support_program_conversation_service=SupportProgramConversationService(conversation_agent),
+        assistant_service=AssistantService(assistant_agent),
         openai_client=openai_client,
         qdrant_client=qdrant_client,
         support_program_index_service=SupportProgramIndexService(
