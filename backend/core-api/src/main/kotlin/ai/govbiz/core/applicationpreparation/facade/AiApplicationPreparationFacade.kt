@@ -21,6 +21,7 @@ import ai.govbiz.core.applicationpreparation.domain.ApplicationFormDiscoveryInpu
 import ai.govbiz.core.applicationpreparation.domain.ExtractedApplicationForm
 import ai.govbiz.core.applicationpreparation.domain.ExtractedApplicationFormField
 import ai.govbiz.core.applicationpreparation.domain.ExtractedApplicationFormSection
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /** AI 계약 생성·응답 검증·내부 모델 변환을 담당하며 DB나 상위 Service를 호출하지 않습니다. */
@@ -55,32 +56,80 @@ class AiApplicationPreparationFacade(private val client: AiApplicationPreparatio
             },
         )
         val payload = client.discover(request)
-        require(payload.contractVersion == configuration.contractVersion && payload.model == configuration.model &&
-            payload.promptVersion == configuration.promptVersion && payload.forms.size <= input.documents.size)
+        validateDiscovery(
+            payload.contractVersion == configuration.contractVersion && payload.model == configuration.model &&
+                payload.promptVersion == configuration.promptVersion && payload.forms.size <= input.documents.size,
+            "response",
+            "METADATA_OR_FORM_COUNT_MISMATCH",
+            "contractVersionMatch=${payload.contractVersion == configuration.contractVersion} " +
+                "modelMatch=${payload.model == configuration.model} promptVersionMatch=${payload.promptVersion == configuration.promptVersion} " +
+                "formCount=${payload.forms.size} documentCount=${input.documents.size}",
+        )
         val documents = input.documents.associateBy { it.documentIndex }
-        require(payload.forms.map { it.documentIndex }.distinct().size == payload.forms.size)
-        payload.forms.map { form ->
-            val document = requireNotNull(documents[form.documentIndex])
+        validateDiscovery(
+            payload.forms.map { it.documentIndex }.distinct().size == payload.forms.size,
+            "forms",
+            "DUPLICATE_DOCUMENT_INDEX",
+            "formCount=${payload.forms.size} distinctDocumentCount=${payload.forms.map { it.documentIndex }.distinct().size}",
+        )
+        payload.forms.mapIndexed { formIndex, form ->
+            val document = documents[form.documentIndex] ?: discoveryViolation(
+                "forms[$formIndex].documentIndex",
+                "UNKNOWN_DOCUMENT_INDEX",
+                "documentCount=${documents.size}",
+            )
             val blocks = document.blocks.associateBy { it.blockId }
-            require(form.sections.isNotEmpty() && form.sections.size <= 12 &&
-                form.sections.map { it.sectionKey }.distinct().size == form.sections.size)
-            ExtractedApplicationForm(form.documentIndex, form.sections.map { section ->
-                require(Regex("[a-z][a-z0-9-]{0,63}").matches(section.sectionKey))
-                val sectionTitle = validatedAiText(section.title, 100)
-                val sectionDescription = validatedAiText(section.description, 1000)
-                require(section.fields.isNotEmpty() && section.fields.size <= 20 &&
-                    section.fields.map { it.fieldKey }.distinct().size == section.fields.size)
+            validateDiscovery(
+                form.sections.isNotEmpty() && form.sections.size <= 12 &&
+                    form.sections.map { it.sectionKey }.distinct().size == form.sections.size,
+                "forms[$formIndex].sections",
+                "INVALID_SECTION_COUNT_OR_DUPLICATE_KEY",
+                "sectionCount=${form.sections.size} distinctKeyCount=${form.sections.map { it.sectionKey }.distinct().size} limit=12",
+            )
+            ExtractedApplicationForm(form.documentIndex, form.sections.mapIndexed { sectionIndex, section ->
+                val sectionPath = "forms[$formIndex].sections[$sectionIndex]"
+                validateDiscovery(
+                    Regex("[a-z][a-z0-9-]{0,63}").matches(section.sectionKey),
+                    "$sectionPath.sectionKey",
+                    "INVALID_KEY",
+                    "utf16Length=${section.sectionKey.length} codePoints=${section.sectionKey.codePointCount(0, section.sectionKey.length)}",
+                )
+                val sectionTitle = validatedAiText(section.title, 100, "$sectionPath.title")
+                val sectionDescription = validatedAiText(section.description, 1000, "$sectionPath.description")
+                validateDiscovery(
+                    section.fields.isNotEmpty() && section.fields.size <= 20 &&
+                        section.fields.map { it.fieldKey }.distinct().size == section.fields.size,
+                    "$sectionPath.fields",
+                    "INVALID_FIELD_COUNT_OR_DUPLICATE_KEY",
+                    "fieldCount=${section.fields.size} distinctKeyCount=${section.fields.map { it.fieldKey }.distinct().size} limit=20",
+                )
                 ExtractedApplicationFormSection(
                     section.sectionKey,
                     sectionTitle,
                     sectionDescription,
-                    section.fields.map { field ->
-                        val block = requireNotNull(blocks[field.evidenceBlockId])
-                        require(Regex("[a-z][a-z0-9-]{0,63}").matches(field.fieldKey))
-                        val label = validatedAiText(field.label, 100)
-                        val guidance = validatedAiText(field.guidance, 500)
-                        require(field.evidenceQuote.isNotBlank() && field.evidenceQuote.length <= 300 &&
-                            block.text.contains(field.evidenceQuote))
+                    section.fields.mapIndexed { fieldIndex, field ->
+                        val fieldPath = "$sectionPath.fields[$fieldIndex]"
+                        val block = blocks[field.evidenceBlockId] ?: discoveryViolation(
+                            "$fieldPath.evidenceBlockId",
+                            "UNKNOWN_EVIDENCE_BLOCK",
+                            "blockCount=${blocks.size}",
+                        )
+                        validateDiscovery(
+                            Regex("[a-z][a-z0-9-]{0,63}").matches(field.fieldKey),
+                            "$fieldPath.fieldKey",
+                            "INVALID_KEY",
+                            "utf16Length=${field.fieldKey.length} codePoints=${field.fieldKey.codePointCount(0, field.fieldKey.length)}",
+                        )
+                        val label = validatedAiText(field.label, 100, "$fieldPath.label")
+                        val guidance = validatedAiText(field.guidance, 500, "$fieldPath.guidance")
+                        val quoteCodePoints = field.evidenceQuote.codePointCount(0, field.evidenceQuote.length)
+                        validateDiscovery(
+                            field.evidenceQuote.isNotBlank() && quoteCodePoints <= 300 && block.text.contains(field.evidenceQuote),
+                            "$fieldPath.evidenceQuote",
+                            "INVALID_EVIDENCE_QUOTE",
+                            "blank=${field.evidenceQuote.isBlank()} utf16Length=${field.evidenceQuote.length} codePoints=$quoteCodePoints " +
+                                "limit=300 sourceUtf16Length=${block.text.length} exactSourceSubstring=${block.text.contains(field.evidenceQuote)}",
+                        )
                         ExtractedApplicationFormField(
                             field.fieldKey, label, guidance, field.required,
                             field.evidenceBlockId, field.evidenceQuote,
@@ -91,7 +140,16 @@ class AiApplicationPreparationFacade(private val client: AiApplicationPreparatio
         }
     } catch (error: AiServiceCallException) {
         throw error
+    } catch (error: DiscoveryContractViolation) {
+        logger.warn(
+            "application_form_discovery_response_invalid stage=validation path={} reason={} {}",
+            error.path,
+            error.reason,
+            error.safeDetails,
+        )
+        throw AiServiceCallException.invalidResponse("Application form discovery response violated its contract", error)
     } catch (error: IllegalArgumentException) {
+        logger.warn("application_form_discovery_response_invalid stage=validation path=unknown reason=ILLEGAL_ARGUMENT")
         throw AiServiceCallException.invalidResponse("Application form discovery response violated its contract", error)
     }
 
@@ -166,8 +224,43 @@ class AiApplicationPreparationFacade(private val client: AiApplicationPreparatio
         require(Regex("sha256:[0-9a-f]{64}").matches(configuration.promptVersion))
     }
 
-    private fun validatedAiText(value: String, maxCodePoints: Int): String = value.trim().also { normalized ->
-        require(normalized.isNotEmpty() && normalized.codePointCount(0, normalized.length) <= maxCodePoints)
-        require(!Regex("\\p{C}").containsMatchIn(normalized))
+    private fun validatedAiText(value: String, maxCodePoints: Int, path: String): String =
+        value.replace(Regex("[ \\t\\r\\n]+"), " ").trim(' ').also { normalized ->
+            val codePoints = normalized.codePointCount(0, normalized.length)
+            val forbiddenCount = normalized.codePoints().filter { Character.getType(it) in FORBIDDEN_CHARACTER_TYPES }.count()
+            validateDiscovery(
+                normalized.isNotEmpty() && codePoints <= maxCodePoints && forbiddenCount == 0L,
+                path,
+                when {
+                    normalized.isEmpty() -> "EMPTY_DISPLAY_TEXT"
+                    codePoints > maxCodePoints -> "DISPLAY_TEXT_TOO_LONG"
+                    else -> "FORBIDDEN_DISPLAY_CHARACTER"
+                },
+                "utf16Length=${normalized.length} codePoints=$codePoints limit=$maxCodePoints forbiddenCharacterCount=$forbiddenCount",
+            )
+        }
+
+    private fun validateDiscovery(condition: Boolean, path: String, reason: String, safeDetails: String) {
+        if (!condition) discoveryViolation(path, reason, safeDetails)
+    }
+
+    private fun discoveryViolation(path: String, reason: String, safeDetails: String): Nothing =
+        throw DiscoveryContractViolation(path, reason, safeDetails)
+
+    private class DiscoveryContractViolation(
+        val path: String,
+        val reason: String,
+        val safeDetails: String,
+    ) : IllegalArgumentException(reason)
+
+    private companion object {
+        val logger = LoggerFactory.getLogger(AiApplicationPreparationFacade::class.java)
+        val FORBIDDEN_CHARACTER_TYPES = setOf(
+            Character.CONTROL.toInt(),
+            Character.FORMAT.toInt(),
+            Character.SURROGATE.toInt(),
+            Character.PRIVATE_USE.toInt(),
+            Character.UNASSIGNED.toInt(),
+        )
     }
 }

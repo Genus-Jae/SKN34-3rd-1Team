@@ -198,6 +198,11 @@ AI가 답변에서 추출한 값은 제안이며 사용자 확인 전에는 초�
 쓰기 요청은 현재 상태의 `expectedRevision`을 받고, AI 실행 요청은 소문자 UUID `requestKey`를 추가로 받는다.
 같은 신청 준비 건·요청 키·payload는 기존 실행을 반환하고, 같은 키의 다른 payload는 409로 거절한다.
 
+양식 발견 응답의 `title`, `description`, `label`, `guidance`는 AI Service와 Core가 같은 규칙으로
+공백·탭·줄바꿈을 단일 공백으로 정규화하고, 그 밖의 Unicode control/format 문자는 거부한다.
+`evidenceQuote`는 표시 문자열과 달리 공식 원문에 존재하는 연속 부분 문자열을 그대로 보존하며 길이는 Unicode code point로 계산한다.
+계약 위반 로그에는 응답 본문 대신 실패 경로·검증 사유·문자 길이·문서/블록/항목 개수만 남긴다.
+
 문항 답변 해석은 현재 확인 사실을 자동 변경하지 않는다.
 
 ```json

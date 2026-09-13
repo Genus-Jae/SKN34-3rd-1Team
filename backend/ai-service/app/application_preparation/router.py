@@ -33,11 +33,17 @@ async def discover(payload: DiscoverFormsRequest, service: Annotated[Application
         timed_out = str(error) == "APPLICATION_PREPARATION_TIMEOUT"
         cause = error.__cause__
         logger.warning(
-            "application_form_discovery_failed failure_kind=%s error_type=%s validation_reason=%s document_count=%d",
+            "application_form_discovery_failed failure_kind=%s error_type=%s validation_reason=%s validation_path=%s "
+            "code_point_count=%s item_count=%s forbidden_character_count=%s document_count=%d block_count=%d",
             "timeout" if timed_out else "execution",
             type(cause or error).__name__,
             cause.reason if isinstance(cause, FormDiscoveryValidationError) else "NONE",
+            cause.path if isinstance(cause, FormDiscoveryValidationError) else "NONE",
+            cause.code_point_count if isinstance(cause, FormDiscoveryValidationError) else None,
+            cause.item_count if isinstance(cause, FormDiscoveryValidationError) else None,
+            cause.forbidden_character_count if isinstance(cause, FormDiscoveryValidationError) else None,
             len(payload.documents),
+            sum(len(document.blocks) for document in payload.documents),
         )
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT if timed_out else status.HTTP_503_SERVICE_UNAVAILABLE,
