@@ -18,17 +18,17 @@
       </a>
     </td>
     <td align="center">
-      <img src="https://github.com/kimdongseop.png" alt="김동섭 GitHub 프로필" width="100" height="100"/><br>
+      <img src="https://github.com/20220348-kim.png" alt="김동섭 GitHub 프로필" width="100" height="100"/><br>
       <b>김동섭</b><br>
-      <a href="https://github.com/kimdongseop">
-        <img src="https://img.shields.io/badge/GitHub-kimdongseop-181717?style=flat&logo=github"/>
+      <a href="https://github.com/20220348-kim">
+        <img src="https://img.shields.io/badge/GitHub-20220348--kim-181717?style=flat&logo=github"/>
       </a>
     </td>
     <td align="center">
-      <img src="https://github.com/sungmin.png" alt="이성민 GitHub 프로필" width="100" height="100"/><br>
+      <img src="https://github.com/lsm15111.png" alt="이성민 GitHub 프로필" width="100" height="100"/><br>
       <b>이성민</b><br>
-      <a href="https://github.com/sungmin">
-        <img src="https://img.shields.io/badge/GitHub-sungmin-181717?style=flat&logo=github"/>
+      <a href="https://github.com/lsm15111">
+        <img src="https://img.shields.io/badge/GitHub-lsm15111-181717?style=flat&logo=github"/>
       </a>
     </td>
     <td align="center">
@@ -456,16 +456,21 @@ python3 -B evaluation/support-program-evidence/verify_flow.py \
 ## 13. 한 줄 회고
 
 **김건우**
-> 작성 예정
+
+> 기획 / 디자인 / 시스템 아키텍처 / 프론트 및 백엔드 아키텍처 설계 / AI 개발 파일 규칙 설계 / CICD 배포 자동화 구축 / AWS 클라우드 서버 구축 / AI 검색 최적화 및 프론트 및 백엔드 기능 개발 여러 부분을 다 진행하다가 허리가 휠뻔했지만, 역시나 안휘었다. 팀원들의 배움에 대한 열망이 있어서 많이 가르쳐줬지만, 고도화가 진행될 수록 팀원들이 점점 눈의 초점이 사라져가는걸 관측했다.
 
 **김동섭**
-> 작성 예정
+
+> 팀의 전체 흐름을 이해하고 구조를 함께 맞춰가는 과정에서 많이 배우고 성장했으며, 4차 프로젝트에서는 이를 바탕으로 기능 구현을 넘어 서비스 고도화와 성능 개선에도 도전하고 싶다
 
 **송승재**
-> 작성 예정
+
+> 실제 서비스 개발의 과정을 경험해 보는 좋은 시간이었습니다.
 
 **이성민**
-> 작성 예정
+
+> 여러 기술이 프로젝트에 반영됐고 실제 서비스 환경을 전체적으로 경험해 보는 좋은 시간이었습니다. 4차때는 주 기능을 고도화하는 작업에 더 시간을 쏟아볼 계획입니다.
 
 **홍지윤**
-> 작성 예정
+
+> 화면별 관리 보드와 리드미 작성을 시도해봤고, 끝까지 완성하진 못했지만 프로젝트를 다시 한번 들여다보는 계기가 됐습니다.
